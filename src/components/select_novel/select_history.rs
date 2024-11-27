@@ -5,28 +5,27 @@ use ratatui::{
     text::{Line, Text},
     widgets::{Block, Padding, Paragraph},
 };
-use std::path::PathBuf;
 use tui_widget_list::{ListBuilder, ListState, ListView};
 
 use super::empty::Empty;
-use crate::{actions::Actions, components::Component, history::HistoryItem};
+use crate::{actions::Actions, components::Component, history::History};
 
-#[derive(Debug, Default, Clone)]
+#[derive(Debug, Clone)]
 pub struct SelectHistory {
     pub state: ListState,
-    pub item: Vec<(PathBuf, HistoryItem)>,
+    pub history: History,
 }
 
 impl SelectHistory {
-    pub fn new(item: Vec<(PathBuf, HistoryItem)>) -> Self {
+    pub fn new(history: History) -> Self {
         Self {
             state: ListState::default(),
-            item,
+            history,
         }
     }
 
     fn render_list(&mut self, frame: &mut ratatui::Frame, area: ratatui::prelude::Rect) {
-        let list_items = self.item.clone();
+        let list_items = self.history.histories.clone();
         let builder = ListBuilder::new(move |context| {
             let (_path, item) = &list_items[context.index];
 
@@ -55,7 +54,7 @@ impl SelectHistory {
 
             (paragraph, 5)
         });
-        let widget = ListView::new(builder, self.item.len()).infinite_scrolling(false);
+        let widget = ListView::new(builder, self.history.histories.len()).infinite_scrolling(false);
         frame.render_stateful_widget(widget, area, &mut self.state);
     }
 }
@@ -66,7 +65,7 @@ impl Component for SelectHistory {
         frame: &mut ratatui::Frame,
         area: ratatui::prelude::Rect,
     ) -> anyhow::Result<()> {
-        if self.item.is_empty() {
+        if self.history.histories.is_empty() {
             frame.render_widget(Empty::new("暂无历史记录"), area);
             return Ok(());
         }
@@ -95,7 +94,9 @@ impl Component for SelectHistory {
                 let Some(index) = self.state.selected else {
                     return Err(anyhow!("No selected item"));
                 };
-                return Ok(Some(Actions::SelectedFile(self.item[index].0.clone())));
+                return Ok(Some(Actions::SelectedFile(
+                    self.history.histories[index].0.clone(),
+                )));
             }
             _ => {}
         }

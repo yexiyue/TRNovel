@@ -15,7 +15,7 @@ mod empty;
 pub mod select_file;
 pub mod select_history;
 
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub struct SelectNovel<'a> {
     pub select_file: SelectFile<'a>,
     pub select_history: SelectHistory,

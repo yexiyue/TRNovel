@@ -12,7 +12,7 @@ use crate::{
     novel::TxtNovel,
 };
 
-#[derive(Clone, Debug)]
+#[derive(Debug)]
 pub enum Mode<'a> {
     Loading(Loading),
     Select(SelectNovel<'a>),
@@ -109,7 +109,7 @@ impl<'a> Component for Mode<'a> {
             Events::SelectNovel((tree, history)) => {
                 *self = Self::Select(SelectNovel::new(
                     SelectFile::new(tree)?,
-                    SelectHistory::new(history.histories),
+                    SelectHistory::new(history),
                 )?);
             }
             Events::Tick => match self {
