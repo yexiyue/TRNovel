@@ -1,0 +1,24 @@
+[package]
+name = "novel-tui"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+anyhow = "1.0.93"
+chrono = { version = "0.4.38", features = ["serde"] }
+clap = { version = "4.5.21", features = ["derive"] }
+crossterm = { version = "0.28.1", features = ["event-stream"] }
+encoding_rs = { version = "0.8.35", features = ["serde"] }
+encoding_rs_io = "0.1.7"
+futures = "0.3.31"
+md5 = "0.7.0"
+ratatui = "0.29.0"
+regex = "1.11.1"
+serde = { version = "1.0.215", features = ["derive"] }
+serde_json = "1.0.133"
+strum = { version = "0.26.3", features = ["derive"] }
+throbber-widgets-tui = "0.8.0"
+tokio = { version = "1.41.1", features = ["full"] }
+tui-tree-widget = "0.23.0"
+tui-widget-list = "0.13.0"
+walkdir = "2.5.0"
