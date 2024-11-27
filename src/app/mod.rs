@@ -3,6 +3,7 @@ use crossterm::event::{Event, KeyCode, KeyEventKind, KeyModifiers};
 use futures::{stream::StreamExt, FutureExt};
 use ratatui::{DefaultTerminal, Frame};
 use std::{path::PathBuf, time::Duration};
+use tui_tree_widget::TreeItem;
 
 mod mode;
 use mode::Mode;
@@ -14,11 +15,12 @@ use crate::{
         Component,
     },
     events::Events,
+    history::History,
 };
 
 pub struct App<'a> {
     pub mode: Mode<'a>,
-    pub prev_mode: Option<Mode<'a>>,
+    pub prev_mode: Option<Vec<TreeItem<'a, PathBuf>>>,
     pub show_exit: bool,
     pub event_rx: tokio::sync::mpsc::UnboundedReceiver<Events>,
     pub event_tx: tokio::sync::mpsc::UnboundedSender<Events>,
@@ -116,7 +118,10 @@ impl<'a> App<'a> {
                             KeyCode::Backspace => {
                                 if let Mode::Read(_) = self.mode {
                                     if self.prev_mode.is_some() {
-                                        self.mode = self.prev_mode.clone().unwrap();
+                                        self.mode = Mode::Select(SelectNovel::new(
+                                            SelectFile::new(self.prev_mode.clone().unwrap())?,
+                                            SelectHistory::new(History::default()?),
+                                        )?);
                                     }
                                 }
                             }
@@ -126,11 +131,8 @@ impl<'a> App<'a> {
                 }
                 _ => {}
             },
-            Events::SelectNovel((tree, history)) => {
-                self.prev_mode = Some(Mode::Select(SelectNovel::new(
-                    SelectFile::new(tree)?,
-                    SelectHistory::new(history.histories),
-                )?));
+            Events::SelectNovel((tree, _)) => {
+                self.prev_mode = Some(tree);
             }
             Events::Error(e) => {
                 self.warning = Some(e);

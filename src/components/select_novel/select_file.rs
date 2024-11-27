@@ -17,15 +17,6 @@ pub struct SelectFile<'a> {
     pub items: Vec<TreeItem<'a, PathBuf>>,
 }
 
-impl<'a> Clone for SelectFile<'a> {
-    fn clone(&self) -> Self {
-        Self {
-            state: TreeState::default(),
-            items: self.items.clone(),
-        }
-    }
-}
-
 impl<'a> SelectFile<'a> {
     pub fn new(items: Vec<TreeItem<'a, PathBuf>>) -> Result<Self> {
         Ok(Self {

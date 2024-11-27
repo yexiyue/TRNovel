@@ -4,7 +4,8 @@ use serde::{Deserialize, Serialize};
 use std::{
     fs::File,
     io::{BufRead, BufReader, Read, Seek, SeekFrom},
-    path::{Path, PathBuf}, sync::{Arc, RwLock},
+    path::{Path, PathBuf},
+    sync::{Arc, RwLock},
 };
 
 use crate::{
@@ -134,22 +135,30 @@ impl TxtNovel {
         encoding: &'static Encoding,
     ) -> Result<Vec<(String, usize)>> {
         let mut buf_reader = BufReader::new(file);
-        let regexp = regex::Regex::new(r"^第.+章.*").unwrap();
+        let regexp = regex::Regex::new(r"第.+章").unwrap();
         let mut chapter_offset = Vec::new();
         let mut offset = 0;
 
         let mut line = vec![];
 
+        let mut first_line = String::new();
         while let Ok(chunk_size) = buf_reader.read_until(b'\n', &mut line) {
             if chunk_size == 0 {
                 break;
             }
             let (new_line, _, _) = encoding.decode(&line);
+            if first_line.is_empty() {
+                first_line = new_line.to_string();
+            }
             if regexp.is_match(&new_line) {
-                chapter_offset.push((new_line.to_string(), offset));
+                chapter_offset.push((new_line.trim().to_string(), offset));
             }
             line.clear();
             offset += chunk_size;
+        }
+
+        if chapter_offset.is_empty() {
+            chapter_offset = vec![(first_line, 0)];
         }
 
         Ok(chapter_offset)
@@ -171,7 +180,10 @@ impl TxtNovel {
         };
 
         let mut buffer = vec![0; end - start];
-        self.file.write().unwrap().seek(SeekFrom::Start(start as u64))?;
+        self.file
+            .write()
+            .unwrap()
+            .seek(SeekFrom::Start(start as u64))?;
         self.file.write().unwrap().read(&mut buffer)?;
 
         let (str, _, has_error) = self.encoding.decode(&buffer);
