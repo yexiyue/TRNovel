@@ -61,27 +61,41 @@ impl<'a> Component for Mode<'a> {
             Events::CrosstermEvent(event) => match self.handle_term_events(event)? {
                 Some(Actions::SelectedFile(path)) => {
                     tokio::spawn(async move {
-                        tx.send(Events::Loading(Loading::new("正在加载小说...")))
-                            .unwrap();
-                        let novel = TxtNovel::from_path(path).unwrap();
-                        tx.send(Events::ReadNovel(novel)).unwrap();
+                        match (|| {
+                            tx.send(Events::Loading(Loading::new("正在加载小说...")))?;
+                            let novel = TxtNovel::from_path(path)?;
+                            tx.send(Events::ReadNovel(novel))?;
+                            Ok::<(), anyhow::Error>(())
+                        })() {
+                            Ok(_) => {}
+                            Err(e) => {
+                                tx.send(Events::Error(e.to_string())).unwrap();
+                            }
+                        }
                     });
                 }
                 _ => {}
             },
             Events::Init(path) => {
                 tokio::spawn(async move {
-                    let novel_files = NovelFiles::from_path(path).expect("find novel files failed");
-                    let history = History::default().expect("init history failed");
-                    match novel_files {
-                        NovelFiles::File(path) => {
-                            tx.send(Events::Loading(Loading::new("正在加载小说...")))
-                                .unwrap();
-                            let novel = TxtNovel::from_path(path).expect("load novel failed");
-                            tx.send(Events::ReadNovel(novel)).unwrap();
+                    match (|| {
+                        let novel_files = NovelFiles::from_path(path)?;
+                        let history = History::default()?;
+                        match novel_files {
+                            NovelFiles::File(path) => {
+                                tx.send(Events::Loading(Loading::new("正在加载小说...")))?;
+                                let novel = TxtNovel::from_path(path)?;
+                                tx.send(Events::ReadNovel(novel))?;
+                            }
+                            NovelFiles::FileTree(tree) => {
+                                tx.send(Events::SelectNovel((tree, history)))?;
+                            }
                         }
-                        NovelFiles::FileTree(tree) => {
-                            tx.send(Events::SelectNovel((tree, history))).unwrap();
+                        Ok::<(), anyhow::Error>(())
+                    })() {
+                        Ok(_) => {}
+                        Err(e) => {
+                            tx.send(Events::Error(e.to_string())).unwrap();
                         }
                     }
                 });
@@ -104,6 +118,7 @@ impl<'a> Component for Mode<'a> {
                 }
                 _ => {}
             },
+            _ => {}
         }
         Ok(())
     }

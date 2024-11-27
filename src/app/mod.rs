@@ -132,6 +132,9 @@ impl<'a> App<'a> {
                     SelectHistory::new(history.histories),
                 )?));
             }
+            Events::Error(e) => {
+                self.warning = Some(e);
+            }
             _ => {}
         }
         Ok(())

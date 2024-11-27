@@ -12,4 +12,5 @@ pub enum Events {
     ReadNovel(TxtNovel),
     SelectNovel((Vec<TreeItem<'static, PathBuf>>, History)),
     Tick,
+    Error(String),
 }
