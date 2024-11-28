@@ -8,7 +8,7 @@ use std::path::PathBuf;
 use tokio::sync::mpsc::UnboundedSender;
 use tui_tree_widget::{Tree, TreeItem, TreeState};
 
-use crate::{components::Component, events::Events, routes::Route};
+use crate::{app::state::State, components::Component, events::Events, routes::Route};
 
 use super::empty::Empty;
 
@@ -49,6 +49,7 @@ impl<'a> Component for SelectFile<'a> {
         &mut self,
         key: crossterm::event::KeyEvent,
         tx: UnboundedSender<Events>,
+        _state: State,
     ) -> Result<()> {
         if key.kind == KeyEventKind::Press {
             match key.code {

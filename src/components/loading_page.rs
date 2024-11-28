@@ -1,4 +1,5 @@
 use crate::{
+    app::state::State,
     components::{Component, Loading},
     events::Events,
 };
@@ -49,9 +50,14 @@ where
         Ok(())
     }
 
-    fn handle_events(&mut self, events: Events, tx: UnboundedSender<Events>) -> anyhow::Result<()> {
+    fn handle_events(
+        &mut self,
+        events: Events,
+        tx: UnboundedSender<Events>,
+        state: State,
+    ) -> anyhow::Result<()> {
         if let Some(inner) = self.inner.try_lock()?.as_mut() {
-            inner.handle_events(events, tx)?;
+            inner.handle_events(events, tx, state)?;
             return Ok(());
         }
         if let Events::Tick = events {

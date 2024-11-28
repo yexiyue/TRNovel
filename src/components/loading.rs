@@ -30,6 +30,7 @@ impl Widget for &mut Loading {
             .areas(vertical);
 
         Clear.render(area, buf);
+
         let block = Block::bordered().border_style(Style::new().blue());
         let inner_area = block.inner(horizontal);
         block.render(horizontal, buf);

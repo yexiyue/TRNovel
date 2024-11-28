@@ -10,7 +10,9 @@ use ratatui::{
 };
 use tokio::sync::mpsc::UnboundedSender;
 
-use crate::{events::Events, novel::TxtNovel, routes::Router};
+use crate::{
+    app::state::State, events::Events, history::HistoryItem, novel::TxtNovel, routes::Router,
+};
 
 use super::{Component, LoadingPage};
 
@@ -149,6 +151,7 @@ impl Component for ReadNovel {
         &mut self,
         key: crossterm::event::KeyEvent,
         _tx: UnboundedSender<Events>,
+        _state: State,
     ) -> anyhow::Result<()> {
         if key.kind != KeyEventKind::Press {
             return Ok(());
@@ -216,10 +219,30 @@ impl Component for ReadNovel {
         }
         Ok(())
     }
+
+    fn handle_events(
+        &mut self,
+        events: Events,
+        tx: UnboundedSender<Events>,
+        state: State,
+    ) -> Result<()> {
+        match events {
+            Events::KeyEvent(key) => self.handle_key_event(key, tx, state)?,
+            Events::Back | Events::Pop => {
+                state
+                    .history
+                    .lock()
+                    .unwrap()
+                    .add(self.novel.path.clone(), HistoryItem::from(&self.novel));
+            }
+            _ => {}
+        }
+        Ok(())
+    }
 }
 
 impl Router for LoadingPage<ReadNovel, PathBuf> {
-    fn init(&mut self, tx: UnboundedSender<Events>) -> Result<()> {
+    fn init(&mut self, tx: UnboundedSender<Events>, _state: State) -> Result<()> {
         let path = self.args.to_path_buf();
         let inner = self.inner.clone();
         tokio::spawn(async move {

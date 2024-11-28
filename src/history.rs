@@ -3,7 +3,7 @@ use chrono::{DateTime, Local};
 use serde::{Deserialize, Serialize};
 use std::{fs::File, path::PathBuf};
 
-use crate::{novel::TxtNovelCache, utils::novel_catch_dir};
+use crate::{novel::{TxtNovel, TxtNovelCache}, utils::novel_catch_dir};
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct History {
@@ -15,7 +15,7 @@ impl History {
     pub fn get_catch_file_path() -> Result<PathBuf> {
         Ok(PathBuf::new().join(novel_catch_dir()?).join("history.json"))
     }
-/*  */
+
     pub fn load() -> Result<Self> {
         match File::open(Self::get_catch_file_path()?) {
             Ok(file) => Ok(serde_json::from_reader(file)?),
@@ -43,6 +43,12 @@ impl History {
             }
         }
     }
+
+    pub fn remove(&mut self, path: PathBuf) {
+        if let Some(index) = self.histories.iter().position(|item| item.0 == path) {
+            self.histories.remove(index);
+        }
+    }
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -55,6 +61,27 @@ pub struct HistoryItem {
 
 impl From<TxtNovelCache> for HistoryItem {
     fn from(value: TxtNovelCache) -> Self {
+        let current_chapter = value.chapter_offset[value.current_chapter].0.clone();
+
+        let percent =
+            ((value.current_chapter as f64 / value.chapter_offset.len() as f64) * 100.0).round();
+
+        Self {
+            current_chapter,
+            last_read_at: Local::now(),
+            percent,
+            file_name: value
+                .path
+                .file_name()
+                .unwrap()
+                .to_string_lossy()
+                .to_string(),
+        }
+    }
+}
+
+impl From<&TxtNovel> for HistoryItem {
+    fn from(value: &TxtNovel) -> Self {
         let current_chapter = value.chapter_offset[value.current_chapter].0.clone();
 
         let percent =
