@@ -38,11 +38,11 @@ fn find_novels<'a>(path: PathBuf, file_exts: &[&str]) -> Result<Vec<TreeItem<'a,
     let walkdir = WalkDir::new(&path)
         .sort_by(|a, b| {
             if a.path().is_dir() && b.path().is_file() {
-                return std::cmp::Ordering::Less;
+                std::cmp::Ordering::Less
             } else if a.path().is_file() && b.path().is_dir() {
-                return std::cmp::Ordering::Greater;
+                std::cmp::Ordering::Greater
             } else {
-                return a.path().cmp(b.path());
+                a.path().cmp(b.path())
             }
         })
         .max_depth(1);
@@ -63,17 +63,15 @@ fn find_novels<'a>(path: PathBuf, file_exts: &[&str]) -> Result<Vec<TreeItem<'a,
                 entity.file_name().to_string_lossy().to_string(),
                 children,
             )?);
-        } else if entity.path().is_file() {
-            if file_exts
-                .into_iter()
-                .find(|&&e| e == entity.path().extension().unwrap_or(OsStr::new("")))
-                .is_some()
-            {
-                res.push(TreeItem::new_leaf(
-                    entity.clone().into_path(),
-                    entity.file_name().to_string_lossy().to_string(),
-                ));
-            }
+        } else if entity.path().is_file()
+            && file_exts
+                .iter()
+                .any(|&e| e == entity.path().extension().unwrap_or(OsStr::new("")))
+        {
+            res.push(TreeItem::new_leaf(
+                entity.clone().into_path(),
+                entity.file_name().to_string_lossy().to_string(),
+            ));
         }
     }
     Ok(res)

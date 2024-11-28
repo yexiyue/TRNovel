@@ -5,10 +5,11 @@ use ratatui::{
     text::{Line, Text},
     widgets::{Block, Padding, Paragraph},
 };
+use tokio::sync::mpsc::UnboundedSender;
 use tui_widget_list::{ListBuilder, ListState, ListView};
 
 use super::empty::Empty;
-use crate::{actions::Actions, components::Component, history::History};
+use crate::{components::Component, events::Events, history::History, routes::Route};
 
 #[derive(Debug, Clone)]
 pub struct SelectHistory {
@@ -76,9 +77,10 @@ impl Component for SelectHistory {
     fn handle_key_event(
         &mut self,
         key: crossterm::event::KeyEvent,
-    ) -> anyhow::Result<Option<crate::actions::Actions>> {
+        tx: UnboundedSender<Events>,
+    ) -> anyhow::Result<()> {
         if key.kind != KeyEventKind::Press {
-            return Ok(None);
+            return Ok(());
         }
         match key.code {
             KeyCode::Char('h') | KeyCode::Left => {
@@ -94,12 +96,11 @@ impl Component for SelectHistory {
                 let Some(index) = self.state.selected else {
                     return Err(anyhow!("No selected item"));
                 };
-                return Ok(Some(Actions::SelectedFile(
-                    self.history.histories[index].0.clone(),
-                )));
+                let (path, _) = &self.history.histories[index];
+                tx.send(Events::PushRoute(Route::ReadNovel(path.clone())))?;
             }
             _ => {}
         }
-        Ok(None)
+        Ok(())
     }
 }

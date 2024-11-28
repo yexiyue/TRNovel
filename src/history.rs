@@ -15,8 +15,8 @@ impl History {
     pub fn get_catch_file_path() -> Result<PathBuf> {
         Ok(PathBuf::new().join(novel_catch_dir()?).join("history.json"))
     }
-
-    pub fn default() -> Result<Self> {
+/*  */
+    pub fn load() -> Result<Self> {
         match File::open(Self::get_catch_file_path()?) {
             Ok(file) => Ok(serde_json::from_reader(file)?),
             Err(_) => Ok(Self { histories: vec![] }),

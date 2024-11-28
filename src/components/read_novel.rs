@@ -1,17 +1,20 @@
+use std::path::PathBuf;
+
 use anyhow::Result;
-use crossterm::event::KeyCode;
+use crossterm::event::{KeyCode, KeyEventKind};
 use ratatui::{
     layout::{Constraint, Layout, Rect},
     style::{Style, Stylize},
     text::{Line, Text},
     widgets::{Block, Clear, List, ListState, Padding, Paragraph, Scrollbar, ScrollbarState, Wrap},
 };
+use tokio::sync::mpsc::UnboundedSender;
 
-use crate::novel::TxtNovel;
+use crate::{events::Events, novel::TxtNovel, routes::Router};
 
-use super::Component;
+use super::{Component, LoadingPage};
 
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub struct ReadNovel {
     pub novel: TxtNovel,
     pub list_state: ListState,
@@ -48,10 +51,7 @@ impl ReadNovel {
             .clone();
 
         let paragraph = Paragraph::new(Text::from(
-            self.content
-                .lines()
-                .map(|item| Line::from(item))
-                .collect::<Vec<_>>(),
+            self.content.lines().map(Line::from).collect::<Vec<_>>(),
         ))
         .wrap(Wrap { trim: true })
         .block(
@@ -148,7 +148,11 @@ impl Component for ReadNovel {
     fn handle_key_event(
         &mut self,
         key: crossterm::event::KeyEvent,
-    ) -> anyhow::Result<Option<crate::actions::Actions>> {
+        _tx: UnboundedSender<Events>,
+    ) -> anyhow::Result<()> {
+        if key.kind != KeyEventKind::Press {
+            return Ok(());
+        }
         if self.show_sidebar {
             match key.code {
                 KeyCode::Char('j') | KeyCode::Down => {
@@ -210,6 +214,26 @@ impl Component for ReadNovel {
                 _ => {}
             }
         }
-        Ok(None)
+        Ok(())
+    }
+}
+
+impl Router for LoadingPage<ReadNovel, PathBuf> {
+    fn init(&mut self, tx: UnboundedSender<Events>) -> Result<()> {
+        let path = self.args.to_path_buf();
+        let inner = self.inner.clone();
+        tokio::spawn(async move {
+            match (|| {
+                let tx_novel = TxtNovel::from_path(path)?;
+                *inner.try_lock()? = Some(ReadNovel::new(tx_novel)?);
+                Ok::<_, anyhow::Error>(())
+            })() {
+                Ok(_) => {}
+                Err(e) => {
+                    tx.send(Events::Error(e.to_string())).unwrap();
+                }
+            }
+        });
+        Ok(())
     }
 }

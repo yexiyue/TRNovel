@@ -5,7 +5,6 @@ use std::{
     fs::File,
     io::{BufRead, BufReader, Read, Seek, SeekFrom},
     path::{Path, PathBuf},
-    sync::{Arc, RwLock},
 };
 
 use crate::{
@@ -58,9 +57,9 @@ impl From<&mut TxtNovel> for TxtNovelCache {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub struct TxtNovel {
-    pub file: Arc<RwLock<File>>,
+    pub file: File,
     pub chapter_offset: Vec<(String, usize)>,
     pub encoding: &'static encoding_rs::Encoding,
     pub current_chapter: usize,
@@ -73,7 +72,7 @@ impl TxtNovel {
     pub fn from(value: TxtNovelCache) -> Result<Self> {
         let file = File::open(&value.path)?;
         Ok(Self {
-            file: Arc::new(RwLock::new(file)),
+            file,
             chapter_offset: value.chapter_offset,
             encoding: value.encoding,
             current_chapter: value.current_chapter,
@@ -102,7 +101,7 @@ impl TxtNovel {
         let chapter_offset = Self::get_chapter_offset(&mut file, encoding)?;
 
         Ok(Self {
-            file: Arc::new(RwLock::new(file)),
+            file,
             chapter_offset,
             encoding,
             current_chapter: 0,
@@ -117,11 +116,11 @@ impl TxtNovel {
 
         file.read_to_end(&mut buffer)?;
         if let (_, encoding, false) = encoding_rs::UTF_8.decode(&buffer) {
-            return Ok(&encoding);
+            return Ok(encoding);
         }
 
         if let (_, encoding, false) = encoding_rs::GBK.decode(&buffer) {
-            return Ok(&encoding);
+            return Ok(encoding);
         }
 
         Err(std::io::Error::new(
@@ -173,18 +172,15 @@ impl TxtNovel {
         };
 
         let end = if self.current_chapter + 1 >= self.chapter_offset.len() {
-            self.file.read().unwrap().metadata()?.len() as usize
+            self.file.metadata()?.len() as usize
         } else {
             let (_, end) = &self.chapter_offset[self.current_chapter + 1];
             end.to_owned()
         };
 
         let mut buffer = vec![0; end - start];
-        self.file
-            .write()
-            .unwrap()
-            .seek(SeekFrom::Start(start as u64))?;
-        self.file.write().unwrap().read(&mut buffer)?;
+        self.file.seek(SeekFrom::Start(start as u64))?;
+        self.file.read_exact(&mut buffer)?;
 
         let (str, _, has_error) = self.encoding.decode(&buffer);
         if has_error {
@@ -219,7 +215,7 @@ impl TxtNovel {
     }
 
     pub fn prev_chapter(&mut self) -> Result<String> {
-        if self.current_chapter <= 0 {
+        if self.current_chapter == 0 {
             Err(anyhow::anyhow!("已经是第一章"))
         } else {
             self.current_chapter -= 1;
@@ -232,7 +228,7 @@ impl TxtNovel {
 impl Drop for TxtNovel {
     fn drop(&mut self) {
         let txt_novel_cache: TxtNovelCache = self.into();
-        let mut histories = History::default().expect("历史记录加载失败");
+        let mut histories = History::load().expect("历史记录加载失败");
         histories.add(txt_novel_cache.path.clone(), txt_novel_cache.clone().into());
         histories.save().expect("历史记录保存失败");
         txt_novel_cache.save().expect("小说缓存失败");
