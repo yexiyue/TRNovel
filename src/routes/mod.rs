@@ -1,5 +1,3 @@
-use std::sync::{Arc, Mutex};
-
 use crate::{components::Component, events::Events};
 use anyhow::Result;
 
@@ -11,7 +9,7 @@ use tokio::sync::mpsc::UnboundedSender;
 
 pub struct Routes {
     pub current_router: usize,
-    pub routes: Vec<Arc<Mutex<dyn Router>>>,
+    pub routes: Vec<Box<dyn Router>>,
     pub event_tx: UnboundedSender<Events>,
 }
 
@@ -24,35 +22,21 @@ impl Routes {
         }
     }
 
-    pub fn push_router(&mut self, router: Arc<Mutex<dyn Router>>) -> Result<()> {
+    pub fn push_router(&mut self,mut router: Box<dyn Router>) -> Result<()> {
         if self.current_router < self.routes.len().saturating_sub(1) {
             self.routes.drain(self.current_router + 1..);
         }
-
-        self.routes.push(router.clone());
+        router.as_mut().init(self.event_tx.clone())?;
+        self.routes.push(router);
         self.current_router = self.routes.len().saturating_sub(1);
 
-        Self::router_init(router, self.event_tx.clone())?;
         Ok(())
     }
 
-    pub fn replace_router(&mut self, router: Arc<Mutex<dyn Router>>) -> Result<()> {
-        self.routes[self.current_router] = router.clone();
+    pub fn replace_router(&mut self,mut router: Box<dyn Router>) -> Result<()> {
+        router.as_mut().init(self.event_tx.clone())?;
+        self.routes[self.current_router] = router;
 
-        Self::router_init(router, self.event_tx.clone())?;
-
-        Ok(())
-    }
-
-    fn router_init(router: Arc<Mutex<dyn Router>>, tx: UnboundedSender<Events>) -> Result<()> {
-        tokio::spawn(async move {
-            match router.lock().unwrap().init(tx.clone()) {
-                Ok(_) => {}
-                Err(e) => {
-                    tx.send(Events::Error(e.to_string())).unwrap();
-                }
-            }
-        });
         Ok(())
     }
 
@@ -67,7 +51,7 @@ impl Routes {
     }
 }
 
-pub trait Router: Component + Send + Sync {
+pub trait Router: Component {
     fn init(&mut self, tx: UnboundedSender<Events>) -> Result<()>;
 }
 
@@ -76,17 +60,17 @@ impl Component for Routes {
         if self.routes.is_empty() {
             return Ok(());
         }
-        let router = self.routes[self.current_router].clone();
+        let router = self.routes[self.current_router].as_mut();
 
-        router.lock().unwrap().draw(frame, area)?;
+        router.draw(frame, area)?;
 
         Ok(())
     }
 
     fn handle_events(&mut self, events: Events, tx: UnboundedSender<Events>) -> Result<()> {
         if !self.routes.is_empty() {
-            let router = self.routes[self.current_router].clone();
-            router.lock().unwrap().handle_events(events.clone(), tx.clone())?;
+            let router = self.routes[self.current_router].as_mut();
+            router.handle_events(events.clone(), tx.clone())?;
         }
 
         match events {

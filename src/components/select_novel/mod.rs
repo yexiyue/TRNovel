@@ -87,9 +87,8 @@ impl<'a> Component for SelectNovel<'a> {
         events: crate::events::Events,
         tx: UnboundedSender<Events>,
     ) -> Result<()> {
-        match events.clone() {
-            Events::KeyEvent(key) => self.handle_key_event(key, tx.clone())?,
-            _ => {}
+        if let Events::KeyEvent(key) = events.clone() {
+            self.handle_key_event(key, tx.clone())?
         }
 
         match self.mode {
@@ -131,22 +130,35 @@ impl<'a> SelectNovel<'a> {
     }
 }
 
-impl<'a> Router for LoadingPage<SelectNovel<'a>, PathBuf> {
+impl Router for LoadingPage<SelectNovel<'static>, PathBuf> {
     fn init(&mut self, tx: UnboundedSender<Events>) -> Result<()> {
-        let novel_files = NovelFiles::from_path(self.args.to_path_buf())?;
+        let path = self.args.to_path_buf();
+        let inner = self.inner.clone();
 
-        match novel_files {
-            NovelFiles::File(path) => {
-                tx.send(Events::ReplaceRoute(Route::ReadNovel(path)))?;
-            }
-            NovelFiles::FileTree(tree) => {
-                let select_file = SelectFile::new(tree)?;
-                let history = History::default()?;
-                let select_history = SelectHistory::new(history);
+        tokio::spawn(async move {
+            match (|| {
+                let novel_files = NovelFiles::from_path(path)?;
 
-                self.inner = Some(SelectNovel::new(select_file, select_history)?);
+                match novel_files {
+                    NovelFiles::File(path) => {
+                        tx.send(Events::ReplaceRoute(Route::ReadNovel(path)))?;
+                    }
+                    NovelFiles::FileTree(tree) => {
+                        let select_file = SelectFile::new(tree)?;
+                        let history = History::load()?;
+                        let select_history = SelectHistory::new(history);
+
+                        *inner.try_lock()? = Some(SelectNovel::new(select_file, select_history)?);
+                    }
+                }
+                Ok::<_, anyhow::Error>(())
+            })() {
+                Ok(_) => {}
+                Err(e) => {
+                    tx.send(Events::Error(e.to_string())).unwrap();
+                }
             }
-        }
+        });
 
         Ok(())
     }

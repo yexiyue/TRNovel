@@ -2,6 +2,7 @@ use anyhow::Result;
 use crossterm::event::{KeyCode, KeyEventKind, KeyModifiers};
 use ratatui::{DefaultTerminal, Frame};
 use std::path::PathBuf;
+use tokio::sync::mpsc::{UnboundedReceiver, UnboundedSender};
 use tokio_util::sync::CancellationToken;
 use tui_tree_widget::TreeItem;
 
@@ -15,8 +16,8 @@ pub struct App<'a> {
     pub state: Option<Vec<TreeItem<'a, PathBuf>>>,
     pub routes: Routes,
     pub show_exit: bool,
-    pub event_rx: tokio::sync::mpsc::UnboundedReceiver<Events>,
-    pub event_tx: tokio::sync::mpsc::UnboundedSender<Events>,
+    pub event_rx: UnboundedReceiver<Events>,
+    pub event_tx: UnboundedSender<Events>,
     pub warning: Option<String>,
     pub cancellation_token: CancellationToken,
 }
@@ -42,13 +43,7 @@ impl<'a> App<'a> {
 
     pub async fn run(mut self, mut terminal: DefaultTerminal) -> Result<()> {
         while !self.show_exit {
-            terminal.draw(|frame| match self.draw(frame) {
-                Ok(_) => {}
-                Err(e) => {
-                    self.warning = Some(e.to_string());
-                }
-            })?;
-            match self.handle_events().await {
+            match self.handle_events(&mut terminal).await {
                 Ok(_) => {}
                 Err(e) => {
                     self.warning = Some(e.to_string());
@@ -58,7 +53,7 @@ impl<'a> App<'a> {
         Ok(())
     }
 
-    pub async fn handle_events(&mut self) -> Result<()> {
+    pub async fn handle_events(&mut self, terminal: &mut DefaultTerminal) -> Result<()> {
         let Some(event) = self.event_rx.recv().await else {
             return Ok(());
         };
@@ -66,22 +61,14 @@ impl<'a> App<'a> {
         self.routes
             .handle_events(event.clone(), self.event_tx.clone())?;
 
-        if let Some(_) = &self.warning {
-            match event {
-                Events::KeyEvent(key) => {
-                    if key.kind == KeyEventKind::Press {
-                        match key.code {
-                            KeyCode::Esc => self.warning = None,
-                            _ => {}
+        match event {
+            Events::KeyEvent(key) => {
+                if key.kind == KeyEventKind::Press {
+                    if self.warning.is_some() {
+                        if key.code == KeyCode::Esc {
+                            self.warning = None
                         }
-                    }
-                }
-                _ => {}
-            }
-        } else {
-            match event {
-                Events::KeyEvent(key) => {
-                    if key.kind == KeyEventKind::Press {
+                    } else {
                         match key.code {
                             KeyCode::Char('q') => {
                                 self.cancellation_token.cancel();
@@ -97,8 +84,16 @@ impl<'a> App<'a> {
                         }
                     }
                 }
-                _ => {}
             }
+            Events::Render => {
+                terminal.draw(|frame| match self.draw(frame) {
+                    Ok(_) => {}
+                    Err(e) => {
+                        self.warning = Some(e.to_string());
+                    }
+                })?;
+            }
+            _ => {}
         }
 
         Ok(())

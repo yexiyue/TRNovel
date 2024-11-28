@@ -11,6 +11,11 @@ pub mod read_novel;
 pub mod select_novel;
 pub mod warning;
 
+pub use loading::Loading;
+pub use read_novel::ReadNovel;
+pub use select_novel::SelectNovel;
+pub use warning::Warning;
+
 pub trait Component {
     fn draw(&mut self, frame: &mut Frame, area: Rect) -> Result<()>;
 
@@ -20,12 +25,10 @@ pub trait Component {
     }
 
     fn handle_events(&mut self, events: Events, tx: UnboundedSender<Events>) -> Result<()> {
-        match events {
-            Events::KeyEvent(event) => {
-                self.handle_key_event(event, tx)?;
-            }
-            _ => {}
+        if let Events::KeyEvent(event) = events {
+            self.handle_key_event(event, tx)?;
         }
+
         Ok(())
     }
 }

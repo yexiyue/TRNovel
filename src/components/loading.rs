@@ -37,7 +37,7 @@ impl Widget for &mut Loading {
         Throbber::default()
             .label(self.tip.as_str())
             .throbber_set(throbber_widgets_tui::ASCII)
-            .to_line(&mut self.state)
+            .to_line(&self.state)
             .bold()
             .centered()
             .light_blue()

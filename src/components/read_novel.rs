@@ -51,10 +51,7 @@ impl ReadNovel {
             .clone();
 
         let paragraph = Paragraph::new(Text::from(
-            self.content
-                .lines()
-                .map(|item| Line::from(item))
-                .collect::<Vec<_>>(),
+            self.content.lines().map(Line::from).collect::<Vec<_>>(),
         ))
         .wrap(Wrap { trim: true })
         .block(
@@ -222,9 +219,21 @@ impl Component for ReadNovel {
 }
 
 impl Router for LoadingPage<ReadNovel, PathBuf> {
-    fn init(&mut self, _tx: UnboundedSender<Events>) -> Result<()> {
-        let tx_novel = TxtNovel::from_path(self.args.to_path_buf())?;
-        self.inner = Some(ReadNovel::new(tx_novel)?);
+    fn init(&mut self, tx: UnboundedSender<Events>) -> Result<()> {
+        let path = self.args.to_path_buf();
+        let inner = self.inner.clone();
+        tokio::spawn(async move {
+            match (|| {
+                let tx_novel = TxtNovel::from_path(path)?;
+                *inner.try_lock()? = Some(ReadNovel::new(tx_novel)?);
+                Ok::<_, anyhow::Error>(())
+            })() {
+                Ok(_) => {}
+                Err(e) => {
+                    tx.send(Events::Error(e.to_string())).unwrap();
+                }
+            }
+        });
         Ok(())
     }
 }

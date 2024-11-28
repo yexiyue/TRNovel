@@ -116,11 +116,11 @@ impl TxtNovel {
 
         file.read_to_end(&mut buffer)?;
         if let (_, encoding, false) = encoding_rs::UTF_8.decode(&buffer) {
-            return Ok(&encoding);
+            return Ok(encoding);
         }
 
         if let (_, encoding, false) = encoding_rs::GBK.decode(&buffer) {
-            return Ok(&encoding);
+            return Ok(encoding);
         }
 
         Err(std::io::Error::new(
@@ -180,7 +180,7 @@ impl TxtNovel {
 
         let mut buffer = vec![0; end - start];
         self.file.seek(SeekFrom::Start(start as u64))?;
-        self.file.read(&mut buffer)?;
+        self.file.read_exact(&mut buffer)?;
 
         let (str, _, has_error) = self.encoding.decode(&buffer);
         if has_error {
@@ -215,7 +215,7 @@ impl TxtNovel {
     }
 
     pub fn prev_chapter(&mut self) -> Result<String> {
-        if self.current_chapter <= 0 {
+        if self.current_chapter == 0 {
             Err(anyhow::anyhow!("已经是第一章"))
         } else {
             self.current_chapter -= 1;
@@ -228,7 +228,7 @@ impl TxtNovel {
 impl Drop for TxtNovel {
     fn drop(&mut self) {
         let txt_novel_cache: TxtNovelCache = self.into();
-        let mut histories = History::default().expect("历史记录加载失败");
+        let mut histories = History::load().expect("历史记录加载失败");
         histories.add(txt_novel_cache.path.clone(), txt_novel_cache.clone().into());
         histories.save().expect("历史记录保存失败");
         txt_novel_cache.save().expect("小说缓存失败");

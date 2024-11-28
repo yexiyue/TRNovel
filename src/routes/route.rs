@@ -1,11 +1,6 @@
-use std::{
-    path::PathBuf,
-    sync::{Arc, Mutex},
-};
+use std::path::PathBuf;
 
-use crate::components::{
-    loading::Loading, read_novel::ReadNovel, select_novel::SelectNovel, LoadingPage,
-};
+use crate::components::{Loading, LoadingPage, ReadNovel, SelectNovel};
 
 use super::Router;
 
@@ -16,15 +11,16 @@ pub enum Route {
 }
 
 impl Route {
-    pub fn to_page(self) -> Arc<Mutex<dyn Router>> {
+    pub fn to_page(self) -> Box<dyn Router> {
         match self {
-            Route::SelectNovel(path) => Arc::new(Mutex::new(
-                LoadingPage::<SelectNovel, PathBuf>::new(path, Some(Loading::new("扫描文件中..."))),
-            )),
-            Route::ReadNovel(path) => Arc::new(Mutex::new(LoadingPage::<ReadNovel, PathBuf>::new(
+            Route::SelectNovel(path) => Box::new(LoadingPage::<SelectNovel, PathBuf>::new(
                 path,
-                Some(Loading::new("加载小说中...")),
-            ))),
+                Loading::new("扫描文件中..."),
+            )),
+            Route::ReadNovel(path) => Box::new(LoadingPage::<ReadNovel, PathBuf>::new(
+                path,
+                Loading::new("加载小说中..."),
+            )),
         }
     }
 }

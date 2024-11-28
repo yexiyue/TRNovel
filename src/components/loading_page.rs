@@ -1,16 +1,19 @@
-use tokio::sync::mpsc::UnboundedSender;
-
 use crate::{
-    components::{loading::Loading, Component},
+    components::{Component, Loading},
     events::Events,
 };
+use std::sync::Arc;
+use tokio::sync::{mpsc::UnboundedSender, Mutex};
 
+/// LoadingPage
+/// 包装组件，用于在组件加载时显示loading
+#[derive(Debug, Clone)]
 pub struct LoadingPage<T, A>
 where
     T: Sized + Component,
 {
-    pub inner: Option<T>,
-    pub loading: Option<Loading>,
+    pub inner: Arc<Mutex<Option<T>>>,
+    pub loading: Loading,
     pub args: A,
 }
 
@@ -18,9 +21,9 @@ impl<T, A> LoadingPage<T, A>
 where
     T: Sized + Component,
 {
-    pub fn new(args: A, loading: Option<Loading>) -> Self {
+    pub fn new(args: A, loading: Loading) -> Self {
         Self {
-            inner: None,
+            inner: Arc::new(Mutex::new(None)),
             loading,
             args,
         }
@@ -36,28 +39,23 @@ where
         frame: &mut ratatui::Frame,
         area: ratatui::prelude::Rect,
     ) -> anyhow::Result<()> {
-        if let Some(inner) = self.inner.as_mut() {
+        if let Some(inner) = self.inner.try_lock()?.as_mut() {
             inner.draw(frame, area)?;
             return Ok(());
         }
-        if let Some(loading) = &mut self.loading {
-            frame.render_widget(loading, area);
-        }
+
+        frame.render_widget(&mut self.loading, area);
+
         Ok(())
     }
 
     fn handle_events(&mut self, events: Events, tx: UnboundedSender<Events>) -> anyhow::Result<()> {
-        if let Some(inner) = &mut self.inner {
+        if let Some(inner) = self.inner.try_lock()?.as_mut() {
             inner.handle_events(events, tx)?;
             return Ok(());
         }
-        if let Some(loading) = &mut self.loading {
-            match events {
-                Events::Tick => {
-                    loading.state.calc_next();
-                }
-                _ => {}
-            }
+        if let Events::Tick = events {
+            self.loading.state.calc_next();
         }
 
         Ok(())
