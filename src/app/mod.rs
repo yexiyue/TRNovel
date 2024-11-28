@@ -1,19 +1,24 @@
 use anyhow::Result;
 use crossterm::event::{KeyCode, KeyEventKind, KeyModifiers};
 use ratatui::{DefaultTerminal, Frame};
-use std::path::PathBuf;
+use state::State;
+use std::{
+    path::PathBuf,
+    sync::{Arc, Mutex},
+};
 use tokio::sync::mpsc::{UnboundedReceiver, UnboundedSender};
 use tokio_util::sync::CancellationToken;
-use tui_tree_widget::TreeItem;
+pub mod state;
 
 use crate::{
     components::{warning::Warning, Component},
     events::{event_loop, Events},
+    history::History,
     routes::{Route, Routes},
 };
 
-pub struct App<'a> {
-    pub state: Option<Vec<TreeItem<'a, PathBuf>>>,
+pub struct App {
+    pub state: State,
     pub routes: Routes,
     pub show_exit: bool,
     pub event_rx: UnboundedReceiver<Events>,
@@ -22,22 +27,24 @@ pub struct App<'a> {
     pub cancellation_token: CancellationToken,
 }
 
-impl<'a> App<'a> {
+impl App {
     pub fn new(path: PathBuf) -> Result<Self> {
         let (tx, rx) = tokio::sync::mpsc::unbounded_channel();
         let cancellation_token = CancellationToken::new();
 
         event_loop(tx.clone(), cancellation_token.clone());
         tx.send(Events::PushRoute(Route::SelectNovel(path)))?;
-
+        let state = State {
+            history: Arc::new(Mutex::new(History::load()?)),
+        };
         Ok(Self {
-            state: None,
-            show_exit: false,
-            event_rx: rx,
             event_tx: tx.clone(),
+            event_rx: rx,
+            show_exit: false,
             warning: None,
+            routes: Routes::new(tx, state.clone()),
+            state,
             cancellation_token,
-            routes: Routes::new(tx),
         })
     }
 
@@ -60,7 +67,7 @@ impl<'a> App<'a> {
 
         if self.warning.is_none() {
             self.routes
-                .handle_events(event.clone(), self.event_tx.clone())?;
+                .handle_events(event.clone(), self.event_tx.clone(), self.state.clone())?;
         }
 
         match event {
@@ -95,6 +102,7 @@ impl<'a> App<'a> {
                     }
                 })?;
             }
+            Events::Error(e) => self.warning = Some(e),
             _ => {}
         }
 

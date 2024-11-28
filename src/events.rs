@@ -12,6 +12,7 @@ pub enum Events {
     Render,
     Go,
     Back,
+    Pop,
     KeyEvent(crossterm::event::KeyEvent),
     PushRoute(Route),
     ReplaceRoute(Route),

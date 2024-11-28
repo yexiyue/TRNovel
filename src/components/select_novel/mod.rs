@@ -1,8 +1,8 @@
 use super::{Component, LoadingPage};
 use crate::{
+    app::state::State,
     events::Events,
     file_list::NovelFiles,
-    history::History,
     routes::{Route, Router},
 };
 use anyhow::Result;
@@ -69,6 +69,7 @@ impl<'a> Component for SelectNovel<'a> {
         &mut self,
         key: crossterm::event::KeyEvent,
         _tx: UnboundedSender<Events>,
+        _state: State,
     ) -> anyhow::Result<()> {
         match key.code {
             KeyCode::Tab => {
@@ -86,14 +87,15 @@ impl<'a> Component for SelectNovel<'a> {
         &mut self,
         events: crate::events::Events,
         tx: UnboundedSender<Events>,
+        state: State,
     ) -> Result<()> {
         if let Events::KeyEvent(key) = events.clone() {
-            self.handle_key_event(key, tx.clone())?
+            self.handle_key_event(key, tx.clone(), state.clone())?
         }
 
         match self.mode {
-            Mode::SelectFile => self.select_file.handle_events(events, tx)?,
-            Mode::SelectHistory => self.select_history.handle_events(events, tx)?,
+            Mode::SelectFile => self.select_file.handle_events(events, tx, state)?,
+            Mode::SelectHistory => self.select_history.handle_events(events, tx, state)?,
         }
 
         Ok(())
@@ -131,10 +133,10 @@ impl<'a> SelectNovel<'a> {
 }
 
 impl Router for LoadingPage<SelectNovel<'static>, PathBuf> {
-    fn init(&mut self, tx: UnboundedSender<Events>) -> Result<()> {
+    fn init(&mut self, tx: UnboundedSender<Events>, state: State) -> Result<()> {
         let path = self.args.to_path_buf();
         let inner = self.inner.clone();
-
+        let history = state.history.clone();
         tokio::spawn(async move {
             match (|| {
                 let novel_files = NovelFiles::from_path(path)?;
@@ -145,7 +147,6 @@ impl Router for LoadingPage<SelectNovel<'static>, PathBuf> {
                     }
                     NovelFiles::FileTree(tree) => {
                         let select_file = SelectFile::new(tree)?;
-                        let history = History::load()?;
                         let select_history = SelectHistory::new(history);
 
                         *inner.try_lock()? = Some(SelectNovel::new(select_file, select_history)?);
