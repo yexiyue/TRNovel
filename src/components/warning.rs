@@ -16,28 +16,6 @@ impl Warning {
     }
 }
 
-impl Widget for &mut Warning {
-    fn render(self, area: ratatui::prelude::Rect, buf: &mut ratatui::prelude::Buffer) {
-        let [vertical] = Layout::vertical([Constraint::Length(5)])
-            .flex(Flex::Center)
-            .areas(area);
-        let [horizontal] = Layout::horizontal([Constraint::Percentage(50)])
-            .flex(Flex::Center)
-            .areas(vertical);
-
-        Clear.render(area, buf);
-        let block = Block::bordered();
-        let inner_area = block.inner(horizontal);
-        block.render(horizontal, buf);
-
-        Line::from(self.tip.as_str())
-            .bold()
-            .centered()
-            .light_yellow()
-            .render(inner_area.offset(Offset { x: 0, y: 1 }), buf);
-    }
-}
-
 impl Widget for Warning {
     fn render(self, area: ratatui::prelude::Rect, buf: &mut ratatui::prelude::Buffer) {
         let [vertical] = Layout::vertical([Constraint::Length(5)])
@@ -47,7 +25,8 @@ impl Widget for Warning {
             .flex(Flex::Center)
             .areas(vertical);
 
-        Clear.render(area, buf);
+        Clear.render(horizontal, buf);
+
         let block = Block::bordered()
             .title("警告".light_yellow())
             .title_alignment(Alignment::Center)

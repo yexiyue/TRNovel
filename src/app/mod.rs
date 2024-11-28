@@ -58,8 +58,10 @@ impl<'a> App<'a> {
             return Ok(());
         };
 
-        self.routes
-            .handle_events(event.clone(), self.event_tx.clone())?;
+        if self.warning.is_none() {
+            self.routes
+                .handle_events(event.clone(), self.event_tx.clone())?;
+        }
 
         match event {
             Events::KeyEvent(key) => {
