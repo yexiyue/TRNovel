@@ -19,6 +19,7 @@ serde_json = "1.0.133"
 strum = { version = "0.26.3", features = ["derive"] }
 throbber-widgets-tui = "0.8.0"
 tokio = { version = "1.41.1", features = ["full"] }
+tokio-util = "0.7.12"
 tui-tree-widget = "0.23.0"
 tui-widget-list = "0.13.0"
 walkdir = "2.5.0"

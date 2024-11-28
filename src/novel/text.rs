@@ -5,7 +5,6 @@ use std::{
     fs::File,
     io::{BufRead, BufReader, Read, Seek, SeekFrom},
     path::{Path, PathBuf},
-    sync::{Arc, RwLock},
 };
 
 use crate::{
@@ -58,9 +57,9 @@ impl From<&mut TxtNovel> for TxtNovelCache {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub struct TxtNovel {
-    pub file: Arc<RwLock<File>>,
+    pub file: File,
     pub chapter_offset: Vec<(String, usize)>,
     pub encoding: &'static encoding_rs::Encoding,
     pub current_chapter: usize,
@@ -73,7 +72,7 @@ impl TxtNovel {
     pub fn from(value: TxtNovelCache) -> Result<Self> {
         let file = File::open(&value.path)?;
         Ok(Self {
-            file: Arc::new(RwLock::new(file)),
+            file,
             chapter_offset: value.chapter_offset,
             encoding: value.encoding,
             current_chapter: value.current_chapter,
@@ -102,7 +101,7 @@ impl TxtNovel {
         let chapter_offset = Self::get_chapter_offset(&mut file, encoding)?;
 
         Ok(Self {
-            file: Arc::new(RwLock::new(file)),
+            file,
             chapter_offset,
             encoding,
             current_chapter: 0,
@@ -173,18 +172,15 @@ impl TxtNovel {
         };
 
         let end = if self.current_chapter + 1 >= self.chapter_offset.len() {
-            self.file.read().unwrap().metadata()?.len() as usize
+            self.file.metadata()?.len() as usize
         } else {
             let (_, end) = &self.chapter_offset[self.current_chapter + 1];
             end.to_owned()
         };
 
         let mut buffer = vec![0; end - start];
-        self.file
-            .write()
-            .unwrap()
-            .seek(SeekFrom::Start(start as u64))?;
-        self.file.write().unwrap().read(&mut buffer)?;
+        self.file.seek(SeekFrom::Start(start as u64))?;
+        self.file.read(&mut buffer)?;
 
         let (str, _, has_error) = self.encoding.decode(&buffer);
         if has_error {

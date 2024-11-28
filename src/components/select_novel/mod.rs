@@ -1,19 +1,28 @@
-use super::Component;
+use super::{Component, LoadingPage};
+use crate::{
+    events::Events,
+    file_list::NovelFiles,
+    history::History,
+    routes::{Route, Router},
+};
 use anyhow::Result;
-use crossterm::event::{Event, KeyCode};
+use crossterm::event::KeyCode;
 use ratatui::{
     layout::{Constraint, Layout},
     style::{Style, Stylize},
     text::Line,
     widgets::{Block, Tabs},
 };
-pub use select_file::SelectFile;
-pub use select_history::SelectHistory;
+use tokio::sync::mpsc::UnboundedSender;
+
+use std::path::PathBuf;
 use strum::{Display, EnumCount, EnumIter, FromRepr, IntoEnumIterator};
 
 mod empty;
 pub mod select_file;
 pub mod select_history;
+pub use select_file::SelectFile;
+pub use select_history::SelectHistory;
 
 #[derive(Debug)]
 pub struct SelectNovel<'a> {
@@ -56,26 +65,11 @@ impl<'a> Component for SelectNovel<'a> {
         Ok(())
     }
 
-    fn handle_term_events(
-        &mut self,
-        event: crossterm::event::Event,
-    ) -> anyhow::Result<Option<crate::actions::Actions>> {
-        match event {
-            Event::Key(key) => {
-                self.handle_key_event(key)?;
-            }
-            _ => {}
-        };
-        match self.mode {
-            Mode::SelectFile => self.select_file.handle_term_events(event),
-            Mode::SelectHistory => self.select_history.handle_term_events(event),
-        }
-    }
-
     fn handle_key_event(
         &mut self,
         key: crossterm::event::KeyEvent,
-    ) -> anyhow::Result<Option<crate::actions::Actions>> {
+        _tx: UnboundedSender<Events>,
+    ) -> anyhow::Result<()> {
         match key.code {
             KeyCode::Tab => {
                 self.mode = self.mode.toggle();
@@ -85,7 +79,25 @@ impl<'a> Component for SelectNovel<'a> {
             }
             _ => {}
         }
-        Ok(None)
+        Ok(())
+    }
+
+    fn handle_events(
+        &mut self,
+        events: crate::events::Events,
+        tx: UnboundedSender<Events>,
+    ) -> Result<()> {
+        match events.clone() {
+            Events::KeyEvent(key) => self.handle_key_event(key, tx.clone())?,
+            _ => {}
+        }
+
+        match self.mode {
+            Mode::SelectFile => self.select_file.handle_events(events, tx)?,
+            Mode::SelectHistory => self.select_history.handle_events(events, tx)?,
+        }
+
+        Ok(())
     }
 }
 
@@ -116,5 +128,26 @@ impl<'a> SelectNovel<'a> {
             Mode::SelectFile => self.select_file.draw(frame, area),
             Mode::SelectHistory => self.select_history.draw(frame, area),
         }
+    }
+}
+
+impl<'a> Router for LoadingPage<SelectNovel<'a>, PathBuf> {
+    fn init(&mut self, tx: UnboundedSender<Events>) -> Result<()> {
+        let novel_files = NovelFiles::from_path(self.args.to_path_buf())?;
+
+        match novel_files {
+            NovelFiles::File(path) => {
+                tx.send(Events::ReplaceRoute(Route::ReadNovel(path)))?;
+            }
+            NovelFiles::FileTree(tree) => {
+                let select_file = SelectFile::new(tree)?;
+                let history = History::default()?;
+                let select_history = SelectHistory::new(history);
+
+                self.inner = Some(SelectNovel::new(select_file, select_history)?);
+            }
+        }
+
+        Ok(())
     }
 }

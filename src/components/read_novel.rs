@@ -1,17 +1,20 @@
+use std::path::PathBuf;
+
 use anyhow::Result;
-use crossterm::event::KeyCode;
+use crossterm::event::{KeyCode, KeyEventKind};
 use ratatui::{
     layout::{Constraint, Layout, Rect},
     style::{Style, Stylize},
     text::{Line, Text},
     widgets::{Block, Clear, List, ListState, Padding, Paragraph, Scrollbar, ScrollbarState, Wrap},
 };
+use tokio::sync::mpsc::UnboundedSender;
 
-use crate::novel::TxtNovel;
+use crate::{events::Events, novel::TxtNovel, routes::Router};
 
-use super::Component;
+use super::{Component, LoadingPage};
 
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub struct ReadNovel {
     pub novel: TxtNovel,
     pub list_state: ListState,
@@ -148,7 +151,11 @@ impl Component for ReadNovel {
     fn handle_key_event(
         &mut self,
         key: crossterm::event::KeyEvent,
-    ) -> anyhow::Result<Option<crate::actions::Actions>> {
+        _tx: UnboundedSender<Events>,
+    ) -> anyhow::Result<()> {
+        if key.kind != KeyEventKind::Press {
+            return Ok(());
+        }
         if self.show_sidebar {
             match key.code {
                 KeyCode::Char('j') | KeyCode::Down => {
@@ -210,6 +217,14 @@ impl Component for ReadNovel {
                 _ => {}
             }
         }
-        Ok(None)
+        Ok(())
+    }
+}
+
+impl Router for LoadingPage<ReadNovel, PathBuf> {
+    fn init(&mut self, _tx: UnboundedSender<Events>) -> Result<()> {
+        let tx_novel = TxtNovel::from_path(self.args.to_path_buf())?;
+        self.inner = Some(ReadNovel::new(tx_novel)?);
+        Ok(())
     }
 }

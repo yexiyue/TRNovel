@@ -1,8 +1,10 @@
 use anyhow::Result;
-use crossterm::event::{Event, KeyEvent, MouseEvent};
+use crossterm::event::KeyEvent;
 use ratatui::{layout::Rect, Frame};
-
-use crate::{actions::Actions, events::Events};
+use tokio::sync::mpsc::UnboundedSender;
+mod loading_page;
+use crate::events::Events;
+pub use loading_page::LoadingPage;
 
 pub mod loading;
 pub mod read_novel;
@@ -12,33 +14,15 @@ pub mod warning;
 pub trait Component {
     fn draw(&mut self, frame: &mut Frame, area: Rect) -> Result<()>;
 
-    fn handle_key_event(&mut self, key: KeyEvent) -> Result<Option<Actions>> {
+    fn handle_key_event(&mut self, key: KeyEvent, _tx: UnboundedSender<Events>) -> Result<()> {
         let _ = key;
-        Ok(None)
+        Ok(())
     }
 
-    fn handle_mouse_event(&mut self, key: MouseEvent) -> Result<Option<Actions>> {
-        let _ = key;
-        Ok(None)
-    }
-
-    fn handle_term_events(&mut self, event: Event) -> Result<Option<Actions>> {
-        match event {
-            Event::Key(key) => self.handle_key_event(key),
-            Event::Mouse(key) => self.handle_mouse_event(key),
-            _ => Ok(None),
-        }
-    }
-
-    fn handle_events(
-        &mut self,
-        events: Events,
-        tx: tokio::sync::mpsc::UnboundedSender<Events>,
-    ) -> Result<()> {
-        let _ = tx;
+    fn handle_events(&mut self, events: Events, tx: UnboundedSender<Events>) -> Result<()> {
         match events {
-            Events::CrosstermEvent(event) => {
-                self.handle_term_events(event)?;
+            Events::KeyEvent(event) => {
+                self.handle_key_event(event, tx)?;
             }
             _ => {}
         }

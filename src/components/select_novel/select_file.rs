@@ -5,9 +5,10 @@ use ratatui::{
     widgets::Scrollbar,
 };
 use std::path::PathBuf;
+use tokio::sync::mpsc::UnboundedSender;
 use tui_tree_widget::{Tree, TreeItem, TreeState};
 
-use crate::{actions::Actions, components::Component};
+use crate::{components::Component, events::Events, routes::Route};
 
 use super::empty::Empty;
 
@@ -44,7 +45,11 @@ impl<'a> Component for SelectFile<'a> {
         Ok(())
     }
 
-    fn handle_key_event(&mut self, key: crossterm::event::KeyEvent) -> Result<Option<Actions>> {
+    fn handle_key_event(
+        &mut self,
+        key: crossterm::event::KeyEvent,
+        tx: UnboundedSender<Events>,
+    ) -> Result<()> {
         if key.kind == KeyEventKind::Press {
             match key.code {
                 KeyCode::Char('\n' | ' ') => {
@@ -67,9 +72,9 @@ impl<'a> Component for SelectFile<'a> {
                 }
                 KeyCode::Enter => {
                     let res = self.state.selected().last();
-                    if let Some(res) = res {
-                        if res.is_file() {
-                            return Ok(Some(Actions::SelectedFile(res.clone())));
+                    if let Some(path) = res {
+                        if path.is_file() {
+                            tx.send(Events::PushRoute(Route::ReadNovel(path.clone())))?;
                         } else {
                             self.state.toggle_selected();
                         }
@@ -78,6 +83,6 @@ impl<'a> Component for SelectFile<'a> {
                 _ => {}
             }
         }
-        Ok(None)
+        Ok(())
     }
 }
