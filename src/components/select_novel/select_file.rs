@@ -27,7 +27,7 @@ impl<'a> SelectFile<'a> {
     }
 }
 
-impl<'a> Component for SelectFile<'a> {
+impl Component for SelectFile<'_> {
     fn draw(
         &mut self,
         frame: &mut ratatui::Frame,

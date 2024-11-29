@@ -49,7 +49,7 @@ impl Mode {
     }
 }
 
-impl<'a> Component for SelectNovel<'a> {
+impl Component for SelectNovel<'_> {
     fn draw(
         &mut self,
         frame: &mut ratatui::Frame,
