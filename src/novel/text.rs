@@ -17,8 +17,7 @@ pub struct TxtNovelCache {
     pub chapter_offset: Vec<(String, usize)>,
     pub encoding: &'static encoding_rs::Encoding,
     pub current_chapter: usize,
-    pub current_line: usize,
-    pub content_lines: usize,
+    pub line_percent: f64,
     pub path: PathBuf,
 }
 
@@ -51,8 +50,7 @@ impl From<&mut TxtNovel> for TxtNovelCache {
             encoding: value.encoding,
             current_chapter: value.current_chapter,
             path: value.path.clone(),
-            current_line: value.current_line,
-            content_lines: value.content_lines,
+            line_percent: value.line_percent,
         }
     }
 }
@@ -63,8 +61,7 @@ pub struct TxtNovel {
     pub chapter_offset: Vec<(String, usize)>,
     pub encoding: &'static encoding_rs::Encoding,
     pub current_chapter: usize,
-    pub current_line: usize,
-    pub content_lines: usize,
+    pub line_percent: f64,
     pub path: PathBuf,
 }
 
@@ -77,8 +74,7 @@ impl TxtNovel {
             encoding: value.encoding,
             current_chapter: value.current_chapter,
             path: value.path,
-            current_line: value.current_line,
-            content_lines: value.content_lines,
+            line_percent: value.line_percent,
         })
     }
 
@@ -106,8 +102,7 @@ impl TxtNovel {
             encoding,
             current_chapter: 0,
             path,
-            current_line: 0,
-            content_lines: 0,
+            line_percent: 0.0,
         })
     }
 
@@ -187,18 +182,15 @@ impl TxtNovel {
             return Err(anyhow::anyhow!("解码错误"));
         }
 
-        self.content_lines = str.lines().count();
-
         Ok(str.to_string())
     }
 
-    pub fn next_chapter(&mut self) -> Result<String> {
+    pub fn next_chapter(&mut self) -> Result<()> {
         if self.current_chapter + 1 >= self.chapter_offset.len() {
             Err(anyhow::anyhow!("已经是最后一章"))
         } else {
             self.current_chapter += 1;
-            self.current_line = 0;
-            Ok(self.get_content()?)
+            Ok(())
         }
     }
 
@@ -208,19 +200,17 @@ impl TxtNovel {
         } else {
             if self.current_chapter != chapter {
                 self.current_chapter = chapter;
-                self.current_line = 0;
             }
             Ok(())
         }
     }
 
-    pub fn prev_chapter(&mut self) -> Result<String> {
+    pub fn prev_chapter(&mut self) -> Result<()> {
         if self.current_chapter == 0 {
             Err(anyhow::anyhow!("已经是第一章"))
         } else {
             self.current_chapter -= 1;
-            self.current_line = 0;
-            Ok(self.get_content()?)
+            Ok(())
         }
     }
 }
