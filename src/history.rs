@@ -3,7 +3,10 @@ use chrono::{DateTime, Local};
 use serde::{Deserialize, Serialize};
 use std::{fs::File, path::PathBuf};
 
-use crate::{novel::{TxtNovel, TxtNovelCache}, utils::novel_catch_dir};
+use crate::{
+    novel::{TxtNovel, TxtNovelCache},
+    utils::novel_catch_dir,
+};
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct History {

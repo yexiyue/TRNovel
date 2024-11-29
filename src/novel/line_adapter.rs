@@ -18,20 +18,20 @@ pub struct LineAdapter<'a> {
     pub paragraph: Paragraph<'a>,
 }
 
-impl<'a> Deref for LineAdapter<'a> {
+impl Deref for LineAdapter<'_> {
     type Target = TxtNovel;
     fn deref(&self) -> &Self::Target {
         &self.inner
     }
 }
 
-impl<'a> DerefMut for LineAdapter<'a> {
+impl DerefMut for LineAdapter<'_> {
     fn deref_mut(&mut self) -> &mut Self::Target {
         &mut self.inner
     }
 }
 
-impl<'a> LineAdapter<'a> {
+impl LineAdapter<'_> {
     pub fn new(mut inner: TxtNovel, size: Size) -> Result<Self> {
         let paragraph = Paragraph::new(Text::from(inner.get_content()?.trim_end().to_string()))
             .wrap(Wrap { trim: true });
@@ -99,7 +99,7 @@ impl<'a> LineAdapter<'a> {
     }
 }
 
-impl<'a> Drop for LineAdapter<'a> {
+impl Drop for LineAdapter<'_> {
     fn drop(&mut self) {
         let percent = self.current_line as f64 / self.content_lines as f64;
         self.inner.line_percent = percent;

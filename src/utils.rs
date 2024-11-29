@@ -1,5 +1,8 @@
 use anyhow::{anyhow, Result};
-use std::{env, path::{Path, PathBuf}};
+use std::{
+    env,
+    path::{Path, PathBuf},
+};
 /// 获取小说缓存目录
 pub fn novel_catch_dir() -> Result<PathBuf> {
     let home = match env::var("HOME") {

@@ -1,6 +1,6 @@
 use std::path::PathBuf;
 
-use anyhow::{anyhow, Result};
+use anyhow::Result;
 use crossterm::event::{KeyCode, KeyEventKind};
 use ratatui::{
     layout::{Constraint, Layout, Rect, Size},
@@ -283,12 +283,7 @@ impl Router for LoadingPage<ReadNovel, PathBuf> {
         tokio::spawn(async move {
             match (|| {
                 let tx_novel = TxtNovel::from_path(path)?;
-                let size = state
-                    .size
-                    .lock()
-                    .unwrap()
-                    .clone()
-                    .ok_or(anyhow!("No terminal size found"))?;
+                let size = (*state.size.lock().unwrap()).unwrap();
 
                 *inner.try_lock()? = Some(ReadNovel::new(LineAdapter::new(
                     tx_novel,
