@@ -1,6 +1,6 @@
 use anyhow::Result;
 use crossterm::event::{KeyCode, KeyEventKind, KeyModifiers};
-use ratatui::{DefaultTerminal, Frame};
+use ratatui::{layout::Size, DefaultTerminal, Frame};
 use state::State;
 use std::{
     path::PathBuf,
@@ -36,6 +36,7 @@ impl App {
         tx.send(Events::PushRoute(Route::SelectNovel(path)))?;
         let state = State {
             history: Arc::new(Mutex::new(History::load()?)),
+            size: Arc::new(Mutex::new(None)),
         };
         Ok(Self {
             event_tx: tx.clone(),
@@ -49,6 +50,9 @@ impl App {
     }
 
     pub async fn run(mut self, mut terminal: DefaultTerminal) -> Result<()> {
+        let size = terminal.size()?;
+        self.state.size.lock().unwrap().replace(size);
+
         while !self.show_exit {
             match self.handle_events(&mut terminal).await {
                 Ok(_) => {}
@@ -103,6 +107,14 @@ impl App {
                 })?;
             }
             Events::Error(e) => self.warning = Some(e),
+            Events::Resize(width, height) => {
+                self.state
+                    .size
+                    .lock()
+                    .unwrap()
+                    .replace(Size::new(width, height));
+            }
+
             _ => {}
         }
 
