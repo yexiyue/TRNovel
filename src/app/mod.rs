@@ -1,72 +1,60 @@
 use anyhow::Result;
-use crossterm::event::{Event, KeyCode, KeyEventKind, KeyModifiers};
-use futures::{stream::StreamExt, FutureExt};
-use ratatui::{DefaultTerminal, Frame};
-use std::{path::PathBuf, time::Duration};
-
-mod mode;
-use mode::Mode;
+use crossterm::event::{KeyCode, KeyEventKind, KeyModifiers};
+use ratatui::{layout::Size, DefaultTerminal, Frame};
+use state::State;
+use std::{
+    path::PathBuf,
+    sync::{Arc, Mutex},
+};
+use tokio::sync::mpsc::{UnboundedReceiver, UnboundedSender};
+use tokio_util::sync::CancellationToken;
+pub mod state;
 
 use crate::{
-    components::{
-        select_novel::{select_file::SelectFile, select_history::SelectHistory, SelectNovel},
-        warning::Warning,
-        Component,
-    },
-    events::Events,
+    components::{warning::Warning, Component},
+    events::{event_loop, Events},
+    history::History,
+    routes::{Route, Routes},
 };
 
-pub struct App<'a> {
-    pub mode: Mode<'a>,
-    pub prev_mode: Option<Mode<'a>>,
+pub struct App {
+    pub state: State,
+    pub routes: Routes,
     pub show_exit: bool,
-    pub event_rx: tokio::sync::mpsc::UnboundedReceiver<Events>,
-    pub event_tx: tokio::sync::mpsc::UnboundedSender<Events>,
+    pub event_rx: UnboundedReceiver<Events>,
+    pub event_tx: UnboundedSender<Events>,
     pub warning: Option<String>,
+    pub cancellation_token: CancellationToken,
 }
 
-impl<'a> App<'a> {
+impl App {
     pub fn new(path: PathBuf) -> Result<Self> {
         let (tx, rx) = tokio::sync::mpsc::unbounded_channel();
+        let cancellation_token = CancellationToken::new();
 
-        tx.send(Events::Init(path))?;
-        let tx_clone = tx.clone();
-        let tx_clone2 = tx.clone();
-
-        tokio::spawn(async move {
-            let mut events = crossterm::event::EventStream::new();
-            while let Some(Ok(event)) = events.next().fuse().await {
-                tx_clone.send(Events::CrosstermEvent(event)).unwrap();
-            }
-        });
-
-        tokio::spawn(async move {
-            let mut time = tokio::time::interval(Duration::from_millis(300));
-            loop {
-                time.tick().await;
-                tx_clone2.send(Events::Tick).unwrap();
-            }
-        });
-
+        event_loop(tx.clone(), cancellation_token.clone());
+        tx.send(Events::PushRoute(Route::SelectNovel(path)))?;
+        let state = State {
+            history: Arc::new(Mutex::new(History::load()?)),
+            size: Arc::new(Mutex::new(None)),
+        };
         Ok(Self {
-            mode: Mode::default(),
-            prev_mode: None,
-            show_exit: false,
+            event_tx: tx.clone(),
             event_rx: rx,
-            event_tx: tx,
+            show_exit: false,
             warning: None,
+            routes: Routes::new(tx, state.clone()),
+            state,
+            cancellation_token,
         })
     }
 
     pub async fn run(mut self, mut terminal: DefaultTerminal) -> Result<()> {
+        let size = terminal.size()?;
+        self.state.size.lock().unwrap().replace(size);
+
         while !self.show_exit {
-            terminal.draw(|frame| match self.draw(frame) {
-                Ok(_) => {}
-                Err(e) => {
-                    self.warning = Some(e.to_string());
-                }
-            })?;
-            match self.handle_events().await {
+            match self.handle_events(&mut terminal).await {
                 Ok(_) => {}
                 Err(e) => {
                     self.warning = Some(e.to_string());
@@ -76,72 +64,65 @@ impl<'a> App<'a> {
         Ok(())
     }
 
-    pub async fn handle_events(&mut self) -> Result<()> {
+    pub async fn handle_events(&mut self, terminal: &mut DefaultTerminal) -> Result<()> {
         let Some(event) = self.event_rx.recv().await else {
             return Ok(());
         };
 
-        if let Some(_) = &self.warning {
-            match event {
-                Events::CrosstermEvent(event) => match event {
-                    Event::Key(key) => {
-                        if key.kind == KeyEventKind::Press {
-                            match key.code {
-                                KeyCode::Esc => self.warning = None,
-                                _ => {}
-                            }
-                        }
-                    }
-                    _ => {}
-                },
-                _ => {}
-            }
-            return Ok(());
+        if self.warning.is_none() {
+            self.routes
+                .handle_events(event.clone(), self.event_tx.clone(), self.state.clone())?;
         }
 
-        self.mode
-            .handle_events(event.clone(), self.event_tx.clone())?;
-
         match event {
-            Events::CrosstermEvent(event) => match event {
-                Event::Key(key) => {
-                    if key.kind == KeyEventKind::Press {
+            Events::KeyEvent(key) => {
+                if key.kind == KeyEventKind::Press {
+                    if self.warning.is_some() {
+                        if key.code == KeyCode::Esc {
+                            self.warning = None
+                        }
+                    } else {
                         match key.code {
-                            KeyCode::Char('q') | KeyCode::Esc => self.show_exit = true,
+                            KeyCode::Char('q') => {
+                                self.cancellation_token.cancel();
+                                self.show_exit = true;
+                            }
                             KeyCode::Char('c') => {
                                 if key.modifiers.contains(KeyModifiers::CONTROL) {
+                                    self.cancellation_token.cancel();
                                     self.show_exit = true;
-                                }
-                            }
-                            KeyCode::Backspace => {
-                                if let Mode::Read(_) = self.mode {
-                                    if self.prev_mode.is_some() {
-                                        self.mode = self.prev_mode.clone().unwrap();
-                                    }
                                 }
                             }
                             _ => {}
                         }
                     }
                 }
-                _ => {}
-            },
-            Events::SelectNovel((tree, history)) => {
-                self.prev_mode = Some(Mode::Select(SelectNovel::new(
-                    SelectFile::new(tree)?,
-                    SelectHistory::new(history.histories),
-                )?));
             }
-            Events::Error(e) => {
-                self.warning = Some(e);
+            Events::Render => {
+                terminal.draw(|frame| match self.draw(frame) {
+                    Ok(_) => {}
+                    Err(e) => {
+                        self.warning = Some(e.to_string());
+                    }
+                })?;
             }
+            Events::Error(e) => self.warning = Some(e),
+            Events::Resize(width, height) => {
+                self.state
+                    .size
+                    .lock()
+                    .unwrap()
+                    .replace(Size::new(width, height));
+            }
+
             _ => {}
         }
+
         Ok(())
     }
 
     pub fn draw(&mut self, frame: &mut Frame<'_>) -> anyhow::Result<()> {
-        self.mode.draw(frame, frame.area())?;
+        self.routes.draw(frame, frame.area())?;
 
         if let Some(warning) = &self.warning {
             frame.render_widget(Warning::new(warning), frame.area());

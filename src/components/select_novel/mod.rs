@@ -1,21 +1,30 @@
-use super::Component;
+use super::{Component, LoadingPage};
+use crate::{
+    app::state::State,
+    events::Events,
+    file_list::NovelFiles,
+    routes::{Route, Router},
+};
 use anyhow::Result;
-use crossterm::event::{Event, KeyCode};
+use crossterm::event::KeyCode;
 use ratatui::{
     layout::{Constraint, Layout},
     style::{Style, Stylize},
     text::Line,
     widgets::{Block, Tabs},
 };
-pub use select_file::SelectFile;
-pub use select_history::SelectHistory;
+use tokio::sync::mpsc::UnboundedSender;
+
+use std::path::PathBuf;
 use strum::{Display, EnumCount, EnumIter, FromRepr, IntoEnumIterator};
 
 mod empty;
 pub mod select_file;
 pub mod select_history;
+pub use select_file::SelectFile;
+pub use select_history::SelectHistory;
 
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub struct SelectNovel<'a> {
     pub select_file: SelectFile<'a>,
     pub select_history: SelectHistory,
@@ -40,7 +49,7 @@ impl Mode {
     }
 }
 
-impl<'a> Component for SelectNovel<'a> {
+impl Component for SelectNovel<'_> {
     fn draw(
         &mut self,
         frame: &mut ratatui::Frame,
@@ -56,26 +65,12 @@ impl<'a> Component for SelectNovel<'a> {
         Ok(())
     }
 
-    fn handle_term_events(
-        &mut self,
-        event: crossterm::event::Event,
-    ) -> anyhow::Result<Option<crate::actions::Actions>> {
-        match event {
-            Event::Key(key) => {
-                self.handle_key_event(key)?;
-            }
-            _ => {}
-        };
-        match self.mode {
-            Mode::SelectFile => self.select_file.handle_term_events(event),
-            Mode::SelectHistory => self.select_history.handle_term_events(event),
-        }
-    }
-
     fn handle_key_event(
         &mut self,
         key: crossterm::event::KeyEvent,
-    ) -> anyhow::Result<Option<crate::actions::Actions>> {
+        _tx: UnboundedSender<Events>,
+        _state: State,
+    ) -> anyhow::Result<()> {
         match key.code {
             KeyCode::Tab => {
                 self.mode = self.mode.toggle();
@@ -85,7 +80,25 @@ impl<'a> Component for SelectNovel<'a> {
             }
             _ => {}
         }
-        Ok(None)
+        Ok(())
+    }
+
+    fn handle_events(
+        &mut self,
+        events: crate::events::Events,
+        tx: UnboundedSender<Events>,
+        state: State,
+    ) -> Result<()> {
+        if let Events::KeyEvent(key) = events.clone() {
+            self.handle_key_event(key, tx.clone(), state.clone())?
+        }
+
+        match self.mode {
+            Mode::SelectFile => self.select_file.handle_events(events, tx, state)?,
+            Mode::SelectHistory => self.select_history.handle_events(events, tx, state)?,
+        }
+
+        Ok(())
     }
 }
 
@@ -116,5 +129,38 @@ impl<'a> SelectNovel<'a> {
             Mode::SelectFile => self.select_file.draw(frame, area),
             Mode::SelectHistory => self.select_history.draw(frame, area),
         }
+    }
+}
+
+impl Router for LoadingPage<SelectNovel<'static>, PathBuf> {
+    fn init(&mut self, tx: UnboundedSender<Events>, state: State) -> Result<()> {
+        let path = self.args.to_path_buf();
+        let inner = self.inner.clone();
+        let history = state.history.clone();
+        tokio::spawn(async move {
+            match (|| {
+                let novel_files = NovelFiles::from_path(path)?;
+
+                match novel_files {
+                    NovelFiles::File(path) => {
+                        tx.send(Events::ReplaceRoute(Route::ReadNovel(path)))?;
+                    }
+                    NovelFiles::FileTree(tree) => {
+                        let select_file = SelectFile::new(tree)?;
+                        let select_history = SelectHistory::new(history);
+
+                        *inner.try_lock()? = Some(SelectNovel::new(select_file, select_history)?);
+                    }
+                }
+                Ok::<_, anyhow::Error>(())
+            })() {
+                Ok(_) => {}
+                Err(e) => {
+                    tx.send(Events::Error(e.to_string())).unwrap();
+                }
+            }
+        });
+
+        Ok(())
     }
 }

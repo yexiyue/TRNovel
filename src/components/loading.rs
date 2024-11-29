@@ -30,6 +30,7 @@ impl Widget for &mut Loading {
             .areas(vertical);
 
         Clear.render(area, buf);
+
         let block = Block::bordered().border_style(Style::new().blue());
         let inner_area = block.inner(horizontal);
         block.render(horizontal, buf);
@@ -37,7 +38,7 @@ impl Widget for &mut Loading {
         Throbber::default()
             .label(self.tip.as_str())
             .throbber_set(throbber_widgets_tui::ASCII)
-            .to_line(&mut self.state)
+            .to_line(&self.state)
             .bold()
             .centered()
             .light_blue()

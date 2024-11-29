@@ -2,11 +2,11 @@ pub mod app;
 pub mod components;
 use std::path::PathBuf;
 
-pub mod actions;
 pub mod events;
 pub mod file_list;
 pub mod history;
 pub mod novel;
+pub mod routes;
 pub mod utils;
 
 use app::App;

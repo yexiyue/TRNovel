@@ -1,3 +1,5 @@
+use std::sync::{Arc, Mutex};
+
 use anyhow::anyhow;
 use crossterm::event::{KeyCode, KeyEventKind};
 use ratatui::{
@@ -5,28 +7,31 @@ use ratatui::{
     text::{Line, Text},
     widgets::{Block, Padding, Paragraph},
 };
-use std::path::PathBuf;
+use tokio::sync::mpsc::UnboundedSender;
 use tui_widget_list::{ListBuilder, ListState, ListView};
 
 use super::empty::Empty;
-use crate::{actions::Actions, components::Component, history::HistoryItem};
+use crate::{
+    app::state::State, components::Component, events::Events, history::History, routes::Route,
+};
 
-#[derive(Debug, Default, Clone)]
+#[derive(Debug, Clone)]
 pub struct SelectHistory {
     pub state: ListState,
-    pub item: Vec<(PathBuf, HistoryItem)>,
+    pub history: Arc<Mutex<History>>,
 }
 
 impl SelectHistory {
-    pub fn new(item: Vec<(PathBuf, HistoryItem)>) -> Self {
+    pub fn new(history: Arc<Mutex<History>>) -> Self {
         Self {
             state: ListState::default(),
-            item,
+            history,
         }
     }
 
     fn render_list(&mut self, frame: &mut ratatui::Frame, area: ratatui::prelude::Rect) {
-        let list_items = self.item.clone();
+        let list_items = self.history.lock().unwrap().histories.clone();
+        let length = list_items.len();
         let builder = ListBuilder::new(move |context| {
             let (_path, item) = &list_items[context.index];
 
@@ -55,7 +60,7 @@ impl SelectHistory {
 
             (paragraph, 5)
         });
-        let widget = ListView::new(builder, self.item.len()).infinite_scrolling(false);
+        let widget = ListView::new(builder, length).infinite_scrolling(false);
         frame.render_stateful_widget(widget, area, &mut self.state);
     }
 }
@@ -66,7 +71,7 @@ impl Component for SelectHistory {
         frame: &mut ratatui::Frame,
         area: ratatui::prelude::Rect,
     ) -> anyhow::Result<()> {
-        if self.item.is_empty() {
+        if self.history.lock().unwrap().histories.is_empty() {
             frame.render_widget(Empty::new("暂无历史记录"), area);
             return Ok(());
         }
@@ -77,9 +82,11 @@ impl Component for SelectHistory {
     fn handle_key_event(
         &mut self,
         key: crossterm::event::KeyEvent,
-    ) -> anyhow::Result<Option<crate::actions::Actions>> {
+        tx: UnboundedSender<Events>,
+        _state: State,
+    ) -> anyhow::Result<()> {
         if key.kind != KeyEventKind::Press {
-            return Ok(None);
+            return Ok(());
         }
         match key.code {
             KeyCode::Char('h') | KeyCode::Left => {
@@ -95,10 +102,11 @@ impl Component for SelectHistory {
                 let Some(index) = self.state.selected else {
                     return Err(anyhow!("No selected item"));
                 };
-                return Ok(Some(Actions::SelectedFile(self.item[index].0.clone())));
+                let (path, _) = &self.history.lock().unwrap().histories[index];
+                tx.send(Events::PushRoute(Route::ReadNovel(path.clone())))?;
             }
             _ => {}
         }
-        Ok(None)
+        Ok(())
     }
 }

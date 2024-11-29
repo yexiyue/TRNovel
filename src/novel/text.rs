@@ -4,7 +4,7 @@ use serde::{Deserialize, Serialize};
 use std::{
     fs::File,
     io::{BufRead, BufReader, Read, Seek, SeekFrom},
-    path::{Path, PathBuf}, sync::{Arc, RwLock},
+    path::{Path, PathBuf},
 };
 
 use crate::{
@@ -17,8 +17,7 @@ pub struct TxtNovelCache {
     pub chapter_offset: Vec<(String, usize)>,
     pub encoding: &'static encoding_rs::Encoding,
     pub current_chapter: usize,
-    pub current_line: usize,
-    pub content_lines: usize,
+    pub line_percent: f64,
     pub path: PathBuf,
 }
 
@@ -51,20 +50,18 @@ impl From<&mut TxtNovel> for TxtNovelCache {
             encoding: value.encoding,
             current_chapter: value.current_chapter,
             path: value.path.clone(),
-            current_line: value.current_line,
-            content_lines: value.content_lines,
+            line_percent: value.line_percent,
         }
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub struct TxtNovel {
-    pub file: Arc<RwLock<File>>,
+    pub file: File,
     pub chapter_offset: Vec<(String, usize)>,
     pub encoding: &'static encoding_rs::Encoding,
     pub current_chapter: usize,
-    pub current_line: usize,
-    pub content_lines: usize,
+    pub line_percent: f64,
     pub path: PathBuf,
 }
 
@@ -72,13 +69,12 @@ impl TxtNovel {
     pub fn from(value: TxtNovelCache) -> Result<Self> {
         let file = File::open(&value.path)?;
         Ok(Self {
-            file: Arc::new(RwLock::new(file)),
+            file,
             chapter_offset: value.chapter_offset,
             encoding: value.encoding,
             current_chapter: value.current_chapter,
             path: value.path,
-            current_line: value.current_line,
-            content_lines: value.content_lines,
+            line_percent: value.line_percent,
         })
     }
 
@@ -101,13 +97,12 @@ impl TxtNovel {
         let chapter_offset = Self::get_chapter_offset(&mut file, encoding)?;
 
         Ok(Self {
-            file: Arc::new(RwLock::new(file)),
+            file,
             chapter_offset,
             encoding,
             current_chapter: 0,
             path,
-            current_line: 0,
-            content_lines: 0,
+            line_percent: 0.0,
         })
     }
 
@@ -116,11 +111,11 @@ impl TxtNovel {
 
         file.read_to_end(&mut buffer)?;
         if let (_, encoding, false) = encoding_rs::UTF_8.decode(&buffer) {
-            return Ok(&encoding);
+            return Ok(encoding);
         }
 
         if let (_, encoding, false) = encoding_rs::GBK.decode(&buffer) {
-            return Ok(&encoding);
+            return Ok(encoding);
         }
 
         Err(std::io::Error::new(
@@ -134,22 +129,30 @@ impl TxtNovel {
         encoding: &'static Encoding,
     ) -> Result<Vec<(String, usize)>> {
         let mut buf_reader = BufReader::new(file);
-        let regexp = regex::Regex::new(r"^第.+章.*").unwrap();
+        let regexp = regex::Regex::new(r"第.+章").unwrap();
         let mut chapter_offset = Vec::new();
         let mut offset = 0;
 
         let mut line = vec![];
 
+        let mut first_line = String::new();
         while let Ok(chunk_size) = buf_reader.read_until(b'\n', &mut line) {
             if chunk_size == 0 {
                 break;
             }
             let (new_line, _, _) = encoding.decode(&line);
+            if first_line.is_empty() {
+                first_line = new_line.to_string();
+            }
             if regexp.is_match(&new_line) {
-                chapter_offset.push((new_line.to_string(), offset));
+                chapter_offset.push((new_line.trim().to_string(), offset));
             }
             line.clear();
             offset += chunk_size;
+        }
+
+        if chapter_offset.is_empty() {
+            chapter_offset = vec![(first_line, 0)];
         }
 
         Ok(chapter_offset)
@@ -164,33 +167,30 @@ impl TxtNovel {
         };
 
         let end = if self.current_chapter + 1 >= self.chapter_offset.len() {
-            self.file.read().unwrap().metadata()?.len() as usize
+            self.file.metadata()?.len() as usize
         } else {
             let (_, end) = &self.chapter_offset[self.current_chapter + 1];
             end.to_owned()
         };
 
         let mut buffer = vec![0; end - start];
-        self.file.write().unwrap().seek(SeekFrom::Start(start as u64))?;
-        self.file.write().unwrap().read(&mut buffer)?;
+        self.file.seek(SeekFrom::Start(start as u64))?;
+        self.file.read_exact(&mut buffer)?;
 
         let (str, _, has_error) = self.encoding.decode(&buffer);
         if has_error {
             return Err(anyhow::anyhow!("解码错误"));
         }
 
-        self.content_lines = str.lines().count();
-
         Ok(str.to_string())
     }
 
-    pub fn next_chapter(&mut self) -> Result<String> {
+    pub fn next_chapter(&mut self) -> Result<()> {
         if self.current_chapter + 1 >= self.chapter_offset.len() {
             Err(anyhow::anyhow!("已经是最后一章"))
         } else {
             self.current_chapter += 1;
-            self.current_line = 0;
-            Ok(self.get_content()?)
+            Ok(())
         }
     }
 
@@ -200,19 +200,17 @@ impl TxtNovel {
         } else {
             if self.current_chapter != chapter {
                 self.current_chapter = chapter;
-                self.current_line = 0;
             }
             Ok(())
         }
     }
 
-    pub fn prev_chapter(&mut self) -> Result<String> {
-        if self.current_chapter <= 0 {
+    pub fn prev_chapter(&mut self) -> Result<()> {
+        if self.current_chapter == 0 {
             Err(anyhow::anyhow!("已经是第一章"))
         } else {
             self.current_chapter -= 1;
-            self.current_line = 0;
-            Ok(self.get_content()?)
+            Ok(())
         }
     }
 }
@@ -220,7 +218,7 @@ impl TxtNovel {
 impl Drop for TxtNovel {
     fn drop(&mut self) {
         let txt_novel_cache: TxtNovelCache = self.into();
-        let mut histories = History::default().expect("历史记录加载失败");
+        let mut histories = History::load().expect("历史记录加载失败");
         histories.add(txt_novel_cache.path.clone(), txt_novel_cache.clone().into());
         histories.save().expect("历史记录保存失败");
         txt_novel_cache.save().expect("小说缓存失败");

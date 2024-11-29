@@ -5,9 +5,10 @@ use ratatui::{
     widgets::Scrollbar,
 };
 use std::path::PathBuf;
+use tokio::sync::mpsc::UnboundedSender;
 use tui_tree_widget::{Tree, TreeItem, TreeState};
 
-use crate::{actions::Actions, components::Component};
+use crate::{app::state::State, components::Component, events::Events, routes::Route};
 
 use super::empty::Empty;
 
@@ -15,15 +16,6 @@ use super::empty::Empty;
 pub struct SelectFile<'a> {
     pub state: TreeState<PathBuf>,
     pub items: Vec<TreeItem<'a, PathBuf>>,
-}
-
-impl<'a> Clone for SelectFile<'a> {
-    fn clone(&self) -> Self {
-        Self {
-            state: TreeState::default(),
-            items: self.items.clone(),
-        }
-    }
 }
 
 impl<'a> SelectFile<'a> {
@@ -35,7 +27,7 @@ impl<'a> SelectFile<'a> {
     }
 }
 
-impl<'a> Component for SelectFile<'a> {
+impl Component for SelectFile<'_> {
     fn draw(
         &mut self,
         frame: &mut ratatui::Frame,
@@ -53,7 +45,12 @@ impl<'a> Component for SelectFile<'a> {
         Ok(())
     }
 
-    fn handle_key_event(&mut self, key: crossterm::event::KeyEvent) -> Result<Option<Actions>> {
+    fn handle_key_event(
+        &mut self,
+        key: crossterm::event::KeyEvent,
+        tx: UnboundedSender<Events>,
+        _state: State,
+    ) -> Result<()> {
         if key.kind == KeyEventKind::Press {
             match key.code {
                 KeyCode::Char('\n' | ' ') => {
@@ -76,9 +73,9 @@ impl<'a> Component for SelectFile<'a> {
                 }
                 KeyCode::Enter => {
                     let res = self.state.selected().last();
-                    if let Some(res) = res {
-                        if res.is_file() {
-                            return Ok(Some(Actions::SelectedFile(res.clone())));
+                    if let Some(path) = res {
+                        if path.is_file() {
+                            tx.send(Events::PushRoute(Route::ReadNovel(path.clone())))?;
                         } else {
                             self.state.toggle_selected();
                         }
@@ -87,6 +84,6 @@ impl<'a> Component for SelectFile<'a> {
                 _ => {}
             }
         }
-        Ok(None)
+        Ok(())
     }
 }
