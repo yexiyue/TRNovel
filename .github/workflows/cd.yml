@@ -3,13 +3,17 @@ name: CD # Continuous Deployment
 on:
   push:
     tags:
-      - '[v]?[0-9]+.[0-9]+.[0-9]+'
+      - "[v]?[0-9]+.[0-9]+.[0-9]+"
 
 jobs:
   publish:
-
     name: Publishing for ${{ matrix.os }}
     runs-on: ${{ matrix.os }}
+
+    permissions:
+      contents: write
+    concurrency:
+      group: ${{ github.workflow }}-${{ github.ref }}
 
     strategy:
       matrix:
@@ -81,7 +85,6 @@ jobs:
 
           args: --release --target ${{ matrix.target }}
 
-
       - name: install strip command
         shell: bash
         run: |
@@ -132,9 +135,7 @@ jobs:
             target/${{ matrix.target }}/release/${{ matrix.binary-name }}-*.sha256
 
         env:
-
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
 
   publish-cargo:
     name: Publishing to Cargo
@@ -147,6 +148,4 @@ jobs:
       - uses: Swatinem/rust-cache@v2
       - run: cargo publish
         env:
-
           CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
-
