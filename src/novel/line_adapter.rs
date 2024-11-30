@@ -36,7 +36,9 @@ impl LineAdapter<'_> {
         let paragraph = Paragraph::new(Text::from(inner.get_content()?.trim_end().to_string()))
             .wrap(Wrap { trim: true });
         let lines = paragraph.line_count(size.width);
-        let content_lines = lines.saturating_sub(size.height as usize).max(lines);
+        let content_lines = lines
+            .saturating_sub(size.height as usize)
+            .max(size.height as usize);
         let current_line = (content_lines as f64 * inner.line_percent).round() as usize;
 
         Ok(Self {
@@ -53,7 +55,9 @@ impl LineAdapter<'_> {
         let content = self.inner.get_content()?.trim_end().to_string();
         self.paragraph = Paragraph::new(Text::from(content)).wrap(Wrap { trim: true });
         let lines = self.paragraph.line_count(self.size.width);
-        self.content_lines = lines.saturating_sub(self.size.height as usize).max(lines);
+        self.content_lines = lines
+            .saturating_sub(self.size.height as usize)
+            .max(self.size.height as usize);
         Ok(())
     }
 
@@ -61,7 +65,9 @@ impl LineAdapter<'_> {
         self.size = size;
         let percent = self.current_line as f64 / self.content_lines as f64;
         let lines = self.paragraph.line_count(size.width);
-        self.content_lines = lines.saturating_sub(size.height as usize).max(lines);
+        self.content_lines = lines
+            .saturating_sub(size.height as usize)
+            .max(self.size.height as usize);
         self.current_line = (self.content_lines as f64 * percent).round() as usize;
     }
 
