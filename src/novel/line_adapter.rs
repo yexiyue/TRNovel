@@ -35,7 +35,8 @@ impl LineAdapter<'_> {
     pub fn new(mut inner: TxtNovel, size: Size) -> Result<Self> {
         let paragraph = Paragraph::new(Text::from(inner.get_content()?.trim_end().to_string()))
             .wrap(Wrap { trim: true });
-        let content_lines = paragraph.line_count(size.width) - size.height as usize;
+        let lines = paragraph.line_count(size.width);
+        let content_lines = lines.saturating_sub(size.height as usize).max(lines);
         let current_line = (content_lines as f64 * inner.line_percent).round() as usize;
 
         Ok(Self {
@@ -51,14 +52,16 @@ impl LineAdapter<'_> {
     pub fn get_content(&mut self) -> Result<()> {
         let content = self.inner.get_content()?.trim_end().to_string();
         self.paragraph = Paragraph::new(Text::from(content)).wrap(Wrap { trim: true });
-        self.content_lines = self.paragraph.line_count(self.size.width) - self.size.height as usize;
+        let lines = self.paragraph.line_count(self.size.width);
+        self.content_lines = lines.saturating_sub(self.size.height as usize).max(lines);
         Ok(())
     }
 
     pub fn resize(&mut self, size: Size) {
         self.size = size;
         let percent = self.current_line as f64 / self.content_lines as f64;
-        self.content_lines = self.paragraph.line_count(size.width) - size.height as usize;
+        let lines = self.paragraph.line_count(size.width);
+        self.content_lines = lines.saturating_sub(size.height as usize).max(lines);
         self.current_line = (self.content_lines as f64 * percent).round() as usize;
     }
 

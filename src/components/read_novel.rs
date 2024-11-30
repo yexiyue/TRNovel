@@ -1,6 +1,5 @@
 use std::path::PathBuf;
 
-use anyhow::Result;
 use crossterm::event::{KeyCode, KeyEventKind};
 use ratatui::{
     layout::{Constraint, Layout, Rect, Size},
@@ -12,6 +11,7 @@ use tokio::sync::mpsc::UnboundedSender;
 
 use crate::{
     app::state::State,
+    errors::{Errors, Result},
     events::Events,
     history::HistoryItem,
     novel::{LineAdapter, TxtNovel},
@@ -124,11 +124,7 @@ impl ReadNovel {
 }
 
 impl Component for ReadNovel {
-    fn draw(
-        &mut self,
-        frame: &mut ratatui::Frame,
-        area: ratatui::prelude::Rect,
-    ) -> anyhow::Result<()> {
+    fn draw(&mut self, frame: &mut ratatui::Frame, area: ratatui::prelude::Rect) -> Result<()> {
         frame.render_widget(Clear, area);
 
         if self.show_sidebar {
@@ -169,7 +165,7 @@ impl Component for ReadNovel {
         key: crossterm::event::KeyEvent,
         _tx: UnboundedSender<Events>,
         _state: State,
-    ) -> anyhow::Result<()> {
+    ) -> Result<()> {
         if key.kind != KeyEventKind::Press {
             return Ok(());
         }
@@ -290,7 +286,7 @@ impl Router for LoadingPage<ReadNovel, PathBuf> {
                     Size::new(size.width - 4, size.height - 5),
                 )?)?);
 
-                Ok::<_, anyhow::Error>(())
+                Ok::<_, Errors>(())
             })() {
                 Ok(_) => {}
                 Err(e) => {

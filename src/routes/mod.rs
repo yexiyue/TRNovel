@@ -1,5 +1,5 @@
+use crate::errors::Result;
 use crate::{app::state::State, components::Component, events::Events};
-use anyhow::Result;
 
 use crossterm::event::{KeyCode, KeyEvent, KeyEventKind};
 
