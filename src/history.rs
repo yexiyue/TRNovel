@@ -64,10 +64,15 @@ pub struct HistoryItem {
 
 impl From<TxtNovelCache> for HistoryItem {
     fn from(value: TxtNovelCache) -> Self {
-        let current_chapter = value.chapter_offset[value.current_chapter].0.clone();
-
-        let percent =
-            ((value.current_chapter as f64 / value.chapter_offset.len() as f64) * 100.0).round();
+        let (current_chapter, percent) = if value.chapter_offset.is_empty() {
+            ("".to_string(), value.line_percent * 100.0)
+        } else {
+            (
+                value.chapter_offset[value.current_chapter].0.clone(),
+                ((value.current_chapter as f64 / value.chapter_offset.len() as f64) * 100.0)
+                    .round(),
+            )
+        };
 
         Self {
             current_chapter,
@@ -85,10 +90,15 @@ impl From<TxtNovelCache> for HistoryItem {
 
 impl From<&TxtNovel> for HistoryItem {
     fn from(value: &TxtNovel) -> Self {
-        let current_chapter = value.chapter_offset[value.current_chapter].0.clone();
-
-        let percent =
-            ((value.current_chapter as f64 / value.chapter_offset.len() as f64) * 100.0).round();
+        let (current_chapter, percent) = if value.chapter_offset.is_empty() {
+            ("".to_string(), value.line_percent * 100.0)
+        } else {
+            (
+                value.chapter_offset[value.current_chapter].0.clone(),
+                ((value.current_chapter as f64 / value.chapter_offset.len() as f64) * 100.0)
+                    .round(),
+            )
+        };
 
         Self {
             current_chapter,
