@@ -6,6 +6,7 @@ mod loading_page;
 use crate::{app::state::State, events::Events};
 pub use loading_page::LoadingPage;
 
+pub mod confirm;
 pub mod loading;
 pub mod read_novel;
 pub mod select_novel;
@@ -15,6 +16,7 @@ pub use loading::Loading;
 pub use read_novel::ReadNovel;
 pub use select_novel::SelectNovel;
 pub use warning::Warning;
+pub use confirm::*;
 
 pub trait Component {
     fn draw(&mut self, frame: &mut Frame, area: Rect) -> Result<()>;

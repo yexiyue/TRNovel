@@ -52,6 +52,10 @@ impl History {
             self.histories.remove(index);
         }
     }
+
+    pub fn remove_index(&mut self, index: usize) {
+        self.histories.remove(index);
+    }
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -111,5 +115,11 @@ impl From<&TxtNovel> for HistoryItem {
                 .to_string_lossy()
                 .to_string(),
         }
+    }
+}
+
+impl Drop for History {
+    fn drop(&mut self) {
+        self.save().expect("历史记录保存失败");
     }
 }
