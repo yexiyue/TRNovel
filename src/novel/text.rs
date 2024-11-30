@@ -151,10 +151,6 @@ impl TxtNovel {
             offset += chunk_size;
         }
 
-        if chapter_offset.is_empty() {
-            chapter_offset = vec![(first_line, 0)];
-        }
-
         Ok(chapter_offset)
     }
 
@@ -166,7 +162,9 @@ impl TxtNovel {
             start.to_owned()
         };
 
-        let end = if self.current_chapter + 1 >= self.chapter_offset.len() {
+        let end = if self.chapter_offset.is_empty()
+            || self.current_chapter + 1 >= self.chapter_offset.len()
+        {
             self.file.metadata()?.len() as usize
         } else {
             let (_, end) = &self.chapter_offset[self.current_chapter + 1];

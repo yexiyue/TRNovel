@@ -2,7 +2,7 @@ use std::path::PathBuf;
 
 use crossterm::event::{KeyCode, KeyEventKind};
 use ratatui::{
-    layout::{Constraint, Layout, Rect, Size},
+    layout::{Constraint, Flex, Layout, Rect, Size},
     style::{Style, Stylize},
     text::{Line, Text},
     widgets::{Block, Clear, List, ListState, Padding, Scrollbar, ScrollbarState},
@@ -48,9 +48,13 @@ impl ReadNovel {
     }
 
     fn render_content(&mut self, frame: &mut ratatui::Frame, area: ratatui::prelude::Rect) {
-        let current_chapter = self.novel.chapter_offset[self.novel.current_chapter]
-            .0
-            .clone();
+        let current_chapter = if self.novel.chapter_offset.is_empty() {
+            "".to_string()
+        } else {
+            self.novel.chapter_offset[self.novel.current_chapter]
+                .0
+                .clone()
+        };
 
         let paragraph = self
             .novel
@@ -106,20 +110,29 @@ impl ReadNovel {
             .border_style(Style::new().dim())
             .padding(Padding::horizontal(1));
 
-        let items = self
-            .novel
-            .chapter_offset
-            .iter()
-            .map(|item| Text::from(item.0.as_str()))
-            .collect::<Vec<_>>();
-        let mut scrollbar_state =
-            ScrollbarState::new(items.len()).position(self.list_state.selected().unwrap_or(0));
-        let list = List::new(items)
-            .highlight_style(Style::new().bold().on_light_cyan())
-            .block(block);
+        let [vertical] = Layout::vertical([Constraint::Max(3)])
+            .flex(Flex::Center)
+            .areas(block.inner(area));
 
-        frame.render_stateful_widget(list, area, &mut self.list_state);
-        frame.render_stateful_widget(Scrollbar::default(), area, &mut scrollbar_state);
+        if self.novel.chapter_offset.is_empty() {
+            frame.render_widget(Line::from("暂无章节").yellow().centered(), vertical);
+            frame.render_widget(block, area);
+        } else {
+            let items = self
+                .novel
+                .chapter_offset
+                .iter()
+                .map(|item| Text::from(item.0.as_str()))
+                .collect::<Vec<_>>();
+            let mut scrollbar_state =
+                ScrollbarState::new(items.len()).position(self.list_state.selected().unwrap_or(0));
+            let list = List::new(items)
+                .highlight_style(Style::new().bold().on_light_cyan())
+                .block(block);
+
+            frame.render_stateful_widget(list, area, &mut self.list_state);
+            frame.render_stateful_widget(Scrollbar::default(), area, &mut scrollbar_state);
+        }
     }
 }
 
@@ -181,11 +194,14 @@ impl Component for ReadNovel {
                     self.show_sidebar = false;
                 }
                 KeyCode::Enter => {
-                    if let Some(chapter) = self.list_state.selected() {
-                        self.novel.set_chapter(chapter)?;
-                        self.novel.get_content()?;
-                        self.update_scrollbar();
+                    if !self.novel.chapter_offset.is_empty() {
+                        if let Some(chapter) = self.list_state.selected() {
+                            self.novel.set_chapter(chapter)?;
+                            self.novel.get_content()?;
+                            self.update_scrollbar();
+                        }
                     }
+
                     self.show_sidebar = false;
                 }
                 KeyCode::Tab => {
