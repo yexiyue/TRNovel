@@ -1,6 +1,7 @@
 use crate::{
     app::state::State,
     components::{Component, Loading},
+    errors::Result,
     events::Events,
 };
 use std::sync::Arc;
@@ -35,11 +36,7 @@ impl<T, A> Component for LoadingPage<T, A>
 where
     T: Component,
 {
-    fn draw(
-        &mut self,
-        frame: &mut ratatui::Frame,
-        area: ratatui::prelude::Rect,
-    ) -> anyhow::Result<()> {
+    fn draw(&mut self, frame: &mut ratatui::Frame, area: ratatui::prelude::Rect) -> Result<()> {
         if let Some(inner) = self.inner.try_lock()?.as_mut() {
             inner.draw(frame, area)?;
             return Ok(());
@@ -55,7 +52,7 @@ where
         events: Events,
         tx: UnboundedSender<Events>,
         state: State,
-    ) -> anyhow::Result<()> {
+    ) -> Result<()> {
         if let Some(inner) = self.inner.try_lock()?.as_mut() {
             inner.handle_events(events, tx, state)?;
             return Ok(());

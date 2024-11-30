@@ -1,4 +1,3 @@
-use anyhow::Result;
 use crossterm::event::{KeyCode, KeyEventKind};
 use ratatui::{
     style::{Style, Stylize},
@@ -8,7 +7,9 @@ use std::path::PathBuf;
 use tokio::sync::mpsc::UnboundedSender;
 use tui_tree_widget::{Tree, TreeItem, TreeState};
 
-use crate::{app::state::State, components::Component, events::Events, routes::Route};
+use crate::{
+    app::state::State, components::Component, errors::Result, events::Events, routes::Route,
+};
 
 use super::empty::Empty;
 
@@ -28,11 +29,7 @@ impl<'a> SelectFile<'a> {
 }
 
 impl Component for SelectFile<'_> {
-    fn draw(
-        &mut self,
-        frame: &mut ratatui::Frame,
-        area: ratatui::prelude::Rect,
-    ) -> anyhow::Result<()> {
+    fn draw(&mut self, frame: &mut ratatui::Frame, area: ratatui::prelude::Rect) -> Result<()> {
         if self.items.is_empty() {
             frame.render_widget(Empty::new("该目录下未搜索到小说文件"), area);
             return Ok(());

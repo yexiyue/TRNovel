@@ -2,6 +2,7 @@ pub mod app;
 pub mod components;
 use std::path::PathBuf;
 
+pub mod errors;
 pub mod events;
 pub mod file_list;
 pub mod history;

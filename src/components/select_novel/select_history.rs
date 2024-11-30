@@ -1,5 +1,3 @@
-use std::sync::{Arc, Mutex};
-
 use anyhow::anyhow;
 use crossterm::event::{KeyCode, KeyEventKind};
 use ratatui::{
@@ -7,12 +5,14 @@ use ratatui::{
     text::{Line, Text},
     widgets::{Block, Padding, Paragraph},
 };
+use std::sync::{Arc, Mutex};
 use tokio::sync::mpsc::UnboundedSender;
 use tui_widget_list::{ListBuilder, ListState, ListView};
 
 use super::empty::Empty;
 use crate::{
-    app::state::State, components::Component, events::Events, history::History, routes::Route,
+    app::state::State, components::Component, errors::Result, events::Events, history::History,
+    routes::Route,
 };
 
 #[derive(Debug, Clone)]
@@ -66,11 +66,7 @@ impl SelectHistory {
 }
 
 impl Component for SelectHistory {
-    fn draw(
-        &mut self,
-        frame: &mut ratatui::Frame,
-        area: ratatui::prelude::Rect,
-    ) -> anyhow::Result<()> {
+    fn draw(&mut self, frame: &mut ratatui::Frame, area: ratatui::prelude::Rect) -> Result<()> {
         if self.history.lock().unwrap().histories.is_empty() {
             frame.render_widget(Empty::new("暂无历史记录"), area);
             return Ok(());
@@ -84,7 +80,7 @@ impl Component for SelectHistory {
         key: crossterm::event::KeyEvent,
         tx: UnboundedSender<Events>,
         _state: State,
-    ) -> anyhow::Result<()> {
+    ) -> Result<()> {
         if key.kind != KeyEventKind::Press {
             return Ok(());
         }
@@ -100,7 +96,7 @@ impl Component for SelectHistory {
             }
             KeyCode::Char('l') | KeyCode::Right | KeyCode::Enter => {
                 let Some(index) = self.state.selected else {
-                    return Err(anyhow!("No selected item"));
+                    return Err(anyhow!("No selected item").into());
                 };
                 let (path, _) = &self.history.lock().unwrap().histories[index];
                 tx.send(Events::PushRoute(Route::ReadNovel(path.clone())))?;

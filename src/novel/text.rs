@@ -1,4 +1,4 @@
-use anyhow::Result;
+use crate::errors::Result;
 use encoding_rs::Encoding;
 use serde::{Deserialize, Serialize};
 use std::{
@@ -179,7 +179,7 @@ impl TxtNovel {
 
         let (str, _, has_error) = self.encoding.decode(&buffer);
         if has_error {
-            return Err(anyhow::anyhow!("解码错误"));
+            return Err(anyhow::anyhow!("解码错误").into());
         }
 
         Ok(str.to_string())
@@ -187,7 +187,7 @@ impl TxtNovel {
 
     pub fn next_chapter(&mut self) -> Result<()> {
         if self.current_chapter + 1 >= self.chapter_offset.len() {
-            Err(anyhow::anyhow!("已经是最后一章"))
+            Err("已经是最后一章".into())
         } else {
             self.current_chapter += 1;
             Ok(())
@@ -196,7 +196,7 @@ impl TxtNovel {
 
     pub fn set_chapter(&mut self, chapter: usize) -> Result<()> {
         if chapter >= self.chapter_offset.len() {
-            Err(anyhow::anyhow!("章节不存在"))
+            Err("章节不存在".into())
         } else {
             if self.current_chapter != chapter {
                 self.current_chapter = chapter;
@@ -207,7 +207,7 @@ impl TxtNovel {
 
     pub fn prev_chapter(&mut self) -> Result<()> {
         if self.current_chapter == 0 {
-            Err(anyhow::anyhow!("已经是第一章"))
+            Err("已经是第一章".into())
         } else {
             self.current_chapter -= 1;
             Ok(())

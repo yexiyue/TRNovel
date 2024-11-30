@@ -1,11 +1,11 @@
 use super::{Component, LoadingPage};
+use crate::errors::{Errors, Result};
 use crate::{
     app::state::State,
     events::Events,
     file_list::NovelFiles,
     routes::{Route, Router},
 };
-use anyhow::Result;
 use crossterm::event::KeyCode;
 use ratatui::{
     layout::{Constraint, Layout},
@@ -50,11 +50,7 @@ impl Mode {
 }
 
 impl Component for SelectNovel<'_> {
-    fn draw(
-        &mut self,
-        frame: &mut ratatui::Frame,
-        area: ratatui::prelude::Rect,
-    ) -> anyhow::Result<()> {
+    fn draw(&mut self, frame: &mut ratatui::Frame, area: ratatui::prelude::Rect) -> Result<()> {
         let [title, content_area] =
             Layout::vertical(vec![Constraint::Length(1), Constraint::Min(1)]).areas(area);
         self.render_tabs(frame, title);
@@ -70,7 +66,7 @@ impl Component for SelectNovel<'_> {
         key: crossterm::event::KeyEvent,
         _tx: UnboundedSender<Events>,
         _state: State,
-    ) -> anyhow::Result<()> {
+    ) -> Result<()> {
         match key.code {
             KeyCode::Tab => {
                 self.mode = self.mode.toggle();
@@ -124,7 +120,7 @@ impl<'a> SelectNovel<'a> {
         &mut self,
         frame: &mut ratatui::Frame,
         area: ratatui::prelude::Rect,
-    ) -> anyhow::Result<()> {
+    ) -> Result<()> {
         match self.mode {
             Mode::SelectFile => self.select_file.draw(frame, area),
             Mode::SelectHistory => self.select_history.draw(frame, area),
@@ -152,7 +148,7 @@ impl Router for LoadingPage<SelectNovel<'static>, PathBuf> {
                         *inner.try_lock()? = Some(SelectNovel::new(select_file, select_history)?);
                     }
                 }
-                Ok::<_, anyhow::Error>(())
+                Ok::<_, Errors>(())
             })() {
                 Ok(_) => {}
                 Err(e) => {

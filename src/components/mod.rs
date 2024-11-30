@@ -1,4 +1,4 @@
-use anyhow::Result;
+use crate::errors::Result;
 use crossterm::event::KeyEvent;
 use ratatui::{layout::Rect, Frame};
 use tokio::sync::mpsc::UnboundedSender;
