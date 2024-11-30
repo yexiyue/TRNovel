@@ -218,7 +218,6 @@ impl Drop for TxtNovel {
         let txt_novel_cache: TxtNovelCache = self.into();
         let mut histories = History::load().expect("历史记录加载失败");
         histories.add(txt_novel_cache.path.clone(), txt_novel_cache.clone().into());
-        histories.save().expect("历史记录保存失败");
         txt_novel_cache.save().expect("小说缓存失败");
     }
 }
