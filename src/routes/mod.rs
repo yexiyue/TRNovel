@@ -1,11 +1,9 @@
 use crate::errors::Result;
 use crate::{app::state::State, components::Component, events::Events};
-
 use crossterm::event::{KeyCode, KeyEvent, KeyEventKind};
-
-mod route;
-pub use route::Route;
 use tokio::sync::mpsc::UnboundedSender;
+mod route;
+pub use route::*;
 
 pub struct Routes {
     pub current_router: usize,
@@ -53,8 +51,10 @@ impl Routes {
     }
 
     pub fn pop(&mut self) {
-        self.routes.pop();
-        self.current_router = self.routes.len().saturating_sub(1);
+        if self.routes.len() > 1 {
+            self.routes.pop();
+            self.current_router = self.routes.len().saturating_sub(1);
+        }
     }
 
     pub fn go(&mut self) {

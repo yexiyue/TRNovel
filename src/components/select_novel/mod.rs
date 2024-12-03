@@ -1,4 +1,4 @@
-use super::{Component, LoadingPage};
+use super::{Component, Info, KeyShortcutInfo, Page};
 use crate::errors::{Errors, Result};
 use crate::{
     app::state::State,
@@ -6,7 +6,7 @@ use crate::{
     file_list::NovelFiles,
     routes::{Route, Router},
 };
-use crossterm::event::KeyCode;
+use crossterm::event::{KeyCode, KeyEventKind};
 use ratatui::{
     layout::{Constraint, Layout},
     style::{Style, Stylize},
@@ -29,7 +29,6 @@ pub struct SelectNovel<'a> {
     pub select_file: SelectFile<'a>,
     pub select_history: SelectHistory,
     pub mode: Mode,
-    pub show_info: bool,
 }
 
 #[derive(Debug, Clone, EnumIter, FromRepr, Default, Copy, Display, EnumCount)]
@@ -67,14 +66,8 @@ impl Component for SelectNovel<'_> {
         _tx: UnboundedSender<Events>,
         _state: State,
     ) -> Result<()> {
-        match key.code {
-            KeyCode::Tab => {
-                self.mode = self.mode.toggle();
-            }
-            KeyCode::Char('i') => {
-                self.show_info = !self.show_info;
-            }
-            _ => {}
+        if key.code == KeyCode::Tab && key.kind == KeyEventKind::Press {
+            self.mode = self.mode.toggle();
         }
         Ok(())
     }
@@ -104,7 +97,6 @@ impl<'a> SelectNovel<'a> {
             select_file,
             select_history,
             mode: Mode::default(),
-            show_info: false,
         })
     }
     fn render_tabs(&mut self, frame: &mut ratatui::Frame, area: ratatui::prelude::Rect) {
@@ -128,7 +120,7 @@ impl<'a> SelectNovel<'a> {
     }
 }
 
-impl Router for LoadingPage<SelectNovel<'static>, PathBuf> {
+impl Router for Page<SelectNovel<'static>, PathBuf> {
     fn init(&mut self, tx: UnboundedSender<Events>, state: State) -> Result<()> {
         let path = self.args.to_path_buf();
         let inner = self.inner.clone();
@@ -158,5 +150,14 @@ impl Router for LoadingPage<SelectNovel<'static>, PathBuf> {
         });
 
         Ok(())
+    }
+}
+
+impl Info for SelectNovel<'_> {
+    fn key_shortcut_info(&self) -> KeyShortcutInfo {
+        match self.mode {
+            Mode::SelectFile => self.select_file.key_shortcut_info(),
+            Mode::SelectHistory => self.select_history.key_shortcut_info(),
+        }
     }
 }

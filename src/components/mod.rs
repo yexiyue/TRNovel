@@ -2,21 +2,17 @@ use crate::errors::Result;
 use crossterm::event::KeyEvent;
 use ratatui::{layout::Rect, Frame};
 use tokio::sync::mpsc::UnboundedSender;
-mod loading_page;
+mod page;
 use crate::{app::state::State, events::Events};
-pub use loading_page::LoadingPage;
+pub use page::Page;
 
-pub mod confirm;
-pub mod loading;
+pub mod modal;
 pub mod read_novel;
 pub mod select_novel;
-pub mod warning;
 
-pub use loading::Loading;
-pub use read_novel::ReadNovel;
-pub use select_novel::SelectNovel;
-pub use warning::Warning;
-pub use confirm::*;
+pub use modal::*;
+pub use read_novel::*;
+pub use select_novel::*;
 
 pub trait Component {
     fn draw(&mut self, frame: &mut Frame, area: Rect) -> Result<()>;
@@ -43,4 +39,8 @@ pub trait Component {
 
         Ok(())
     }
+}
+
+pub trait Info {
+    fn key_shortcut_info(&self) -> KeyShortcutInfo;
 }

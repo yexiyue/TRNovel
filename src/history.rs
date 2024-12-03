@@ -73,8 +73,7 @@ impl From<TxtNovelCache> for HistoryItem {
         } else {
             (
                 value.chapter_offset[value.current_chapter].0.clone(),
-                ((value.current_chapter as f64 / value.chapter_offset.len() as f64) * 100.0)
-                    .round(),
+                (value.current_chapter as f64 / value.chapter_offset.len() as f64) * 100.0,
             )
         };
 
@@ -99,8 +98,7 @@ impl From<&TxtNovel> for HistoryItem {
         } else {
             (
                 value.chapter_offset[value.current_chapter].0.clone(),
-                ((value.current_chapter as f64 / value.chapter_offset.len() as f64) * 100.0)
-                    .round(),
+                (value.current_chapter as f64 / value.chapter_offset.len() as f64) * 100.0,
             )
         };
 
@@ -115,11 +113,5 @@ impl From<&TxtNovel> for HistoryItem {
                 .to_string_lossy()
                 .to_string(),
         }
-    }
-}
-
-impl Drop for History {
-    fn drop(&mut self) {
-        self.save().expect("历史记录保存失败");
     }
 }
