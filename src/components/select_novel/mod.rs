@@ -1,4 +1,4 @@
-use super::{Component, LoadingPage, ShortcutInfo, ShortcutInfoState};
+use super::{Component, Info, KeyShortcutInfo, Page};
 use crate::errors::{Errors, Result};
 use crate::{
     app::state::State,
@@ -6,7 +6,7 @@ use crate::{
     file_list::NovelFiles,
     routes::{Route, Router},
 };
-use crossterm::event::KeyCode;
+use crossterm::event::{KeyCode, KeyEventKind};
 use ratatui::{
     layout::{Constraint, Layout},
     style::{Style, Stylize},
@@ -29,7 +29,6 @@ pub struct SelectNovel<'a> {
     pub select_file: SelectFile<'a>,
     pub select_history: SelectHistory,
     pub mode: Mode,
-    pub shortcut_info: ShortcutInfoState,
 }
 
 #[derive(Debug, Clone, EnumIter, FromRepr, Default, Copy, Display, EnumCount)]
@@ -58,10 +57,6 @@ impl Component for SelectNovel<'_> {
         let inner_area = block.inner(content_area);
         frame.render_widget(block, content_area);
         self.render_tab(frame, inner_area)?;
-
-        let shortcut = ShortcutInfo::new(vec![("打开文件", "Tab")].into());
-
-        frame.render_stateful_widget(shortcut, area, &mut self.shortcut_info);
         Ok(())
     }
 
@@ -71,26 +66,8 @@ impl Component for SelectNovel<'_> {
         _tx: UnboundedSender<Events>,
         _state: State,
     ) -> Result<()> {
-        match key.code {
-            KeyCode::Tab => {
-                self.mode = self.mode.toggle();
-            }
-            KeyCode::Char('i') => {
-                self.shortcut_info.toggle();
-            }
-            KeyCode::Char('j') | KeyCode::Down => {
-                self.shortcut_info.scroll_down();
-            }
-            KeyCode::Char('k') | KeyCode::Up => {
-                self.shortcut_info.scroll_up();
-            }
-            KeyCode::PageDown => {
-                self.shortcut_info.scroll_page_down();
-            }
-            KeyCode::PageUp => {
-                self.shortcut_info.scroll_page_up();
-            }
-            _ => {}
+        if key.code == KeyCode::Tab && key.kind == KeyEventKind::Press {
+            self.mode = self.mode.toggle();
         }
         Ok(())
     }
@@ -103,10 +80,6 @@ impl Component for SelectNovel<'_> {
     ) -> Result<()> {
         if let Events::KeyEvent(key) = events.clone() {
             self.handle_key_event(key, tx.clone(), state.clone())?
-        }
-
-        if self.shortcut_info.show {
-            return Ok(());
         }
 
         match self.mode {
@@ -124,7 +97,6 @@ impl<'a> SelectNovel<'a> {
             select_file,
             select_history,
             mode: Mode::default(),
-            shortcut_info: ShortcutInfoState::new(),
         })
     }
     fn render_tabs(&mut self, frame: &mut ratatui::Frame, area: ratatui::prelude::Rect) {
@@ -148,7 +120,7 @@ impl<'a> SelectNovel<'a> {
     }
 }
 
-impl Router for LoadingPage<SelectNovel<'static>, PathBuf> {
+impl Router for Page<SelectNovel<'static>, PathBuf> {
     fn init(&mut self, tx: UnboundedSender<Events>, state: State) -> Result<()> {
         let path = self.args.to_path_buf();
         let inner = self.inner.clone();
@@ -178,5 +150,14 @@ impl Router for LoadingPage<SelectNovel<'static>, PathBuf> {
         });
 
         Ok(())
+    }
+}
+
+impl Info for SelectNovel<'_> {
+    fn key_shortcut_info(&self) -> KeyShortcutInfo {
+        match self.mode {
+            Mode::SelectFile => self.select_file.key_shortcut_info(),
+            Mode::SelectHistory => self.select_history.key_shortcut_info(),
+        }
     }
 }

@@ -30,16 +30,13 @@ impl ConfirmState {
         self.confirm = true;
     }
 
-    pub fn cancel(&mut self) {
-        self.confirm = false;
-    }
-
     pub fn toggle(&mut self) {
         self.confirm = !self.confirm;
     }
 
     pub fn hide(&mut self) {
         self.show = false;
+        self.confirm = false;
     }
 
     pub fn is_confirm(&self) -> bool {

@@ -18,7 +18,7 @@ use crate::{
     routes::Router,
 };
 
-use super::{Component, LoadingPage};
+use super::{Component, Info, KeyShortcutInfo, Page};
 
 #[derive(Debug)]
 pub struct ReadNovel {
@@ -81,8 +81,7 @@ impl ReadNovel {
             Layout::horizontal([Constraint::Fill(1), Constraint::Fill(1)]).areas(area);
 
         let percent =
-            ((self.novel.current_chapter as f64 / self.novel.chapter_offset.len() as f64) * 100.0)
-                .round();
+            (self.novel.current_chapter as f64 / self.novel.chapter_offset.len() as f64) * 100.0;
 
         let current_time = chrono::Local::now().format("%H:%M").to_string();
 
@@ -97,7 +96,7 @@ impl ReadNovel {
             left_area,
         );
         frame.render_widget(
-            Line::from(format!("{}% {}", percent, current_time))
+            Line::from(format!("{:.2}% {}", percent, current_time))
                 .right_aligned()
                 .dim(),
             right_area,
@@ -190,9 +189,6 @@ impl Component for ReadNovel {
                 KeyCode::Char('k') | KeyCode::Up => {
                     self.list_state.select_previous();
                 }
-                KeyCode::Esc => {
-                    self.show_sidebar = false;
-                }
                 KeyCode::Enter => {
                     if !self.novel.chapter_offset.is_empty() {
                         if let Some(chapter) = self.list_state.selected() {
@@ -204,7 +200,7 @@ impl Component for ReadNovel {
 
                     self.show_sidebar = false;
                 }
-                KeyCode::Tab => {
+                KeyCode::Tab | KeyCode::Esc => {
                     self.show_sidebar = false;
                 }
                 _ => {}
@@ -288,7 +284,7 @@ impl Component for ReadNovel {
     }
 }
 
-impl Router for LoadingPage<ReadNovel, PathBuf> {
+impl Router for Page<ReadNovel, PathBuf> {
     fn init(&mut self, tx: UnboundedSender<Events>, state: State) -> Result<()> {
         let path = self.args.to_path_buf();
         let inner = self.inner.clone();
@@ -311,5 +307,29 @@ impl Router for LoadingPage<ReadNovel, PathBuf> {
             }
         });
         Ok(())
+    }
+}
+
+impl Info for ReadNovel {
+    fn key_shortcut_info(&self) -> crate::components::KeyShortcutInfo {
+        let data = if self.show_sidebar {
+            vec![
+                ("选择下一个", "J / ▼"),
+                ("选择上一个", "K / ▲"),
+                ("切换阅读模式", "Tab / Esc"),
+                ("阅读选中章节", "Enter"),
+            ]
+        } else {
+            vec![
+                ("切换选择章节模式", "Tab"),
+                ("下一行", "J / ▼ / Space"),
+                ("上一行", "K / ▲"),
+                ("下一章", "L / ►"),
+                ("上一章", "H / ◄"),
+                ("下一页", "PageDown"),
+                ("上一页", "PageUp"),
+            ]
+        };
+        KeyShortcutInfo::new(data)
     }
 }

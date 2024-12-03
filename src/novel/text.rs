@@ -213,11 +213,13 @@ impl TxtNovel {
     }
 }
 
+/// 当小说被释放时，将小说缓存到历史记录中
 impl Drop for TxtNovel {
     fn drop(&mut self) {
         let txt_novel_cache: TxtNovelCache = self.into();
-        let mut histories = History::load().expect("历史记录加载失败");
-        histories.add(txt_novel_cache.path.clone(), txt_novel_cache.clone().into());
         txt_novel_cache.save().expect("小说缓存失败");
+        let mut histories = History::load().expect("历史记录加载失败");
+        histories.add(txt_novel_cache.path.clone(), txt_novel_cache.into());
+        histories.save().expect("历史记录保存失败");
     }
 }

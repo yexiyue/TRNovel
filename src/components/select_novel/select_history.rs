@@ -11,7 +11,7 @@ use tui_widget_list::{ListBuilder, ListState, ListView};
 use super::empty::Empty;
 use crate::{
     app::state::State,
-    components::{Component, Confirm, ConfirmState},
+    components::{Component, Confirm, ConfirmState, Info, KeyShortcutInfo},
     errors::Result,
     events::Events,
     history::History,
@@ -53,7 +53,7 @@ impl SelectHistory {
                 Line::from(item.current_chapter.clone()).centered(),
                 Line::from(
                     format!(
-                        "{}% {}",
+                        "{:.2}% {}",
                         item.percent,
                         item.last_read_at.format("%Y-%m-%d %H:%M:%S")
                     )
@@ -101,24 +101,17 @@ impl Component for SelectHistory {
                 KeyCode::Char('y') => {
                     self.confirm_state.confirm();
                 }
-                KeyCode::Char('n') => {
-                    self.confirm_state.cancel();
-                }
-                KeyCode::Left | KeyCode::Right => {
+                KeyCode::Left | KeyCode::Right | KeyCode::Char('h') | KeyCode::Char('l') => {
                     self.confirm_state.toggle();
-                }
-                KeyCode::Esc | KeyCode::Tab => {
-                    self.confirm_state.cancel();
-                    self.confirm_state.hide();
                 }
                 KeyCode::Enter => {
                     if let Some(index) = self.state.selected {
-                        if self.confirm_state.is_confirm() {
-                            self.history.lock().unwrap().remove_index(index);
-                            self.state.select(None);
-                        }
+                        self.history.lock().unwrap().remove_index(index);
+                        self.state.select(None);
                     }
-
+                    self.confirm_state.hide();
+                }
+                KeyCode::Char('n') => {
                     self.confirm_state.hide();
                 }
                 _ => {}
@@ -152,5 +145,29 @@ impl Component for SelectHistory {
             }
         }
         Ok(())
+    }
+}
+
+impl Info for SelectHistory {
+    fn key_shortcut_info(&self) -> crate::components::KeyShortcutInfo {
+        let data = if self.confirm_state.show {
+            vec![
+                ("确认删除", "Y"),
+                ("取消删除", "N"),
+                ("切换确定/取消", "H / ◄ / L / ► "),
+                ("确认选中", "Enter"),
+                ("切换到选择文件", "Tab"),
+            ]
+        } else {
+            vec![
+                ("选择下一个", "J / ▼"),
+                ("选择上一个", "K / ▲"),
+                ("取消选择", "H / ◄"),
+                ("确认选择", "L / ► / Enter"),
+                ("删除选中的历史记录", "D"),
+                ("切换到选择文件", "Tab"),
+            ]
+        };
+        KeyShortcutInfo::new(data)
     }
 }

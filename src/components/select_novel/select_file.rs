@@ -8,7 +8,11 @@ use tokio::sync::mpsc::UnboundedSender;
 use tui_tree_widget::{Tree, TreeItem, TreeState};
 
 use crate::{
-    app::state::State, components::Component, errors::Result, events::Events, routes::Route,
+    app::state::State,
+    components::{Component, Info, KeyShortcutInfo},
+    errors::Result,
+    events::Events,
+    routes::Route,
 };
 
 use super::empty::Empty;
@@ -50,14 +54,8 @@ impl Component for SelectFile<'_> {
     ) -> Result<()> {
         if key.kind == KeyEventKind::Press {
             match key.code {
-                KeyCode::Char('\n' | ' ') => {
-                    self.state.toggle_selected();
-                }
                 KeyCode::Char('h') | KeyCode::Left => {
                     self.state.key_left();
-                }
-                KeyCode::Char('l') | KeyCode::Right => {
-                    self.state.key_right();
                 }
                 KeyCode::Char('j') | KeyCode::Down => {
                     self.state.key_down();
@@ -65,10 +63,7 @@ impl Component for SelectFile<'_> {
                 KeyCode::Char('k') | KeyCode::Up => {
                     self.state.key_up();
                 }
-                KeyCode::Esc => {
-                    self.state.select(Vec::new());
-                }
-                KeyCode::Enter => {
+                KeyCode::Char('l') | KeyCode::Right | KeyCode::Enter => {
                     let res = self.state.selected().last();
                     if let Some(path) = res {
                         if path.is_file() {
@@ -82,5 +77,17 @@ impl Component for SelectFile<'_> {
             }
         }
         Ok(())
+    }
+}
+
+impl Info for SelectFile<'_> {
+    fn key_shortcut_info(&self) -> KeyShortcutInfo {
+        KeyShortcutInfo::new(vec![
+            ("选择下一个", "J / ▼"),
+            ("选择上一个", "K / ▲"),
+            ("取消选择", "H / ◄"),
+            ("确认选择", "L / ► / Enter"),
+            ("切换到历史记录", "Tab"),
+        ])
     }
 }
