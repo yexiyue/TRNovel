@@ -1,4 +1,4 @@
-use super::{Component, LoadingPage};
+use super::{Component, LoadingPage, ShortcutInfo, ShortcutInfoState};
 use crate::errors::{Errors, Result};
 use crate::{
     app::state::State,
@@ -29,7 +29,7 @@ pub struct SelectNovel<'a> {
     pub select_file: SelectFile<'a>,
     pub select_history: SelectHistory,
     pub mode: Mode,
-    pub show_info: bool,
+    pub shortcut_info: ShortcutInfoState,
 }
 
 #[derive(Debug, Clone, EnumIter, FromRepr, Default, Copy, Display, EnumCount)]
@@ -58,6 +58,10 @@ impl Component for SelectNovel<'_> {
         let inner_area = block.inner(content_area);
         frame.render_widget(block, content_area);
         self.render_tab(frame, inner_area)?;
+
+        let shortcut = ShortcutInfo::new(vec![("打开文件", "Tab")].into());
+
+        frame.render_stateful_widget(shortcut, area, &mut self.shortcut_info);
         Ok(())
     }
 
@@ -72,7 +76,19 @@ impl Component for SelectNovel<'_> {
                 self.mode = self.mode.toggle();
             }
             KeyCode::Char('i') => {
-                self.show_info = !self.show_info;
+                self.shortcut_info.toggle();
+            }
+            KeyCode::Char('j') | KeyCode::Down => {
+                self.shortcut_info.scroll_down();
+            }
+            KeyCode::Char('k') | KeyCode::Up => {
+                self.shortcut_info.scroll_up();
+            }
+            KeyCode::PageDown => {
+                self.shortcut_info.scroll_page_down();
+            }
+            KeyCode::PageUp => {
+                self.shortcut_info.scroll_page_up();
             }
             _ => {}
         }
@@ -87,6 +103,10 @@ impl Component for SelectNovel<'_> {
     ) -> Result<()> {
         if let Events::KeyEvent(key) = events.clone() {
             self.handle_key_event(key, tx.clone(), state.clone())?
+        }
+
+        if self.shortcut_info.show {
+            return Ok(());
         }
 
         match self.mode {
@@ -104,7 +124,7 @@ impl<'a> SelectNovel<'a> {
             select_file,
             select_history,
             mode: Mode::default(),
-            show_info: false,
+            shortcut_info: ShortcutInfoState::new(),
         })
     }
     fn render_tabs(&mut self, frame: &mut ratatui::Frame, area: ratatui::prelude::Rect) {
