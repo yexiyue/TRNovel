@@ -1,13 +1,13 @@
 [package]
 name = "trnovel"
-version = "0.2.0"
+version = "0.2.1"
 edition = "2021"
 default-run = "trnovel"
 description = "Terminal reader for novel"
 authors = ["yexiyue <yexiyue666@qq.com>"]
 license = "MIT"
 keywords = ["CLI", "Terminal", "Novel", "Reader"]
-repository = "https://github.com/yexiyue/yexiyue/cargo-actions"
+repository = "https://github.com/yexiyue/TRNovel"
 
 [dependencies]
 anyhow = "1.0.93"

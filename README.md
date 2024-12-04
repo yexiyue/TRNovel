@@ -1,4 +1,5 @@
-# TRNovel
+## TRNovel
 
-一个终端小说阅读器
+> TRNovel(Terminal reader for novel)，一个终端小说阅读器
+>
 

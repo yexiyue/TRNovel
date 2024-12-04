@@ -106,8 +106,11 @@ impl Component for SelectHistory {
                 }
                 KeyCode::Enter => {
                     if let Some(index) = self.state.selected {
-                        self.history.lock().unwrap().remove_index(index);
-                        self.state.select(None);
+                        if self.confirm_state.is_confirm() {
+                            self.history.lock().unwrap().remove_index(index);
+                            self.history.lock().unwrap().save()?;
+                            self.state.select(None);
+                        }
                     }
                     self.confirm_state.hide();
                 }

@@ -67,7 +67,7 @@ impl StatefulWidget for Confirm {
                 .flex(Flex::Center)
                 .areas(horizontal);
 
-            Clear.render(horizontal, buf);
+            Clear.render(block_area, buf);
 
             let block = Block::bordered()
                 .title(self.title.as_str())
