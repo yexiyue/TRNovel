@@ -13,8 +13,9 @@ pub mod utils;
 use app::App;
 use clap::{Parser, Subcommand};
 use utils::novel_catch_dir;
+
 pub async fn run() -> anyhow::Result<()> {
-    let args = NovelTUI::parse();
+    let args = TRNovel::parse();
 
     if let Some(Commands::Clear) = args.subcommand {
         fs::remove_dir_all(novel_catch_dir()?)?;
@@ -32,7 +33,7 @@ pub async fn run() -> anyhow::Result<()> {
 
 #[derive(Parser, Debug)]
 #[command(author, version, about, long_about = None)]
-pub struct NovelTUI {
+pub struct TRNovel {
     /// 小说文件夹路径，默认为当前目录
     #[arg(default_value = "./")]
     pub path: PathBuf,
