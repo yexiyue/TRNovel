@@ -7,10 +7,12 @@ use crate::{app::state::State, events::Events};
 pub use page::Page;
 
 pub mod modal;
+pub mod network_novel;
 pub mod read_novel;
 pub mod select_novel;
 
 pub use modal::*;
+pub use network_novel::*;
 pub use read_novel::*;
 pub use select_novel::*;
 
