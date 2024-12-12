@@ -6,6 +6,7 @@ pub mod errors;
 pub mod events;
 pub mod file_list;
 pub mod history;
+pub mod network_app;
 pub mod novel;
 pub mod routes;
 pub mod utils;
@@ -24,7 +25,11 @@ pub async fn run() -> anyhow::Result<()> {
 
     let terminal = ratatui::init();
 
-    App::new(args.path)?.run(terminal).await?;
+    if matches!(args.subcommand, Some(Commands::Network)) {
+        network_app::App::new()?.run(terminal).await?;
+    } else {
+        App::new(args.path)?.run(terminal).await?;
+    }
 
     ratatui::restore();
 
@@ -51,4 +56,8 @@ pub enum Commands {
     /// 清空历史记录和小说缓存
     #[command(short_flag = 'c')]
     Clear,
+
+    /// 网络模式，使用网络小说源
+    #[command(short_flag = 'n')]
+    Network,
 }
