@@ -1,12 +1,11 @@
-use anyhow::Result;
-use chrono::{DateTime, Local};
-use serde::{Deserialize, Serialize};
-use std::{fs::File, path::PathBuf};
-
 use crate::{
     novel::{TxtNovel, TxtNovelCache},
     utils::novel_catch_dir,
 };
+use anyhow::Result;
+use chrono::{DateTime, Local};
+use serde::{Deserialize, Serialize};
+use std::{fs::File, path::PathBuf};
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct History {

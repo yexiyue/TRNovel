@@ -1,24 +1,18 @@
-use std::path::PathBuf;
-
-use crossterm::event::{KeyCode, KeyEventKind};
+use crate::{
+    app::State,
+    components::{loading_wrapper::LoadingWrapperInit, Component, KeyShortcutInfo},
+    novel::{LineAdapter, TxtNovel},
+    Events, Navigator, Result,
+};
+use async_trait::async_trait;
+use crossterm::event::{KeyCode, KeyEvent, KeyEventKind};
 use ratatui::{
     layout::{Constraint, Flex, Layout, Rect, Size},
     style::{Style, Stylize},
     text::{Line, Text},
     widgets::{Block, Clear, List, ListState, Padding, Scrollbar, ScrollbarState},
 };
-use tokio::sync::mpsc::UnboundedSender;
-
-use crate::{
-    app::state::State,
-    errors::{Errors, Result},
-    events::Events,
-    history::HistoryItem,
-    novel::{LineAdapter, TxtNovel},
-    routes::Router,
-};
-
-use super::{Component, Info, KeyShortcutInfo, Page};
+use std::path::PathBuf;
 
 #[derive(Debug)]
 pub struct ReadNovel {
@@ -136,7 +130,7 @@ impl ReadNovel {
 }
 
 impl Component for ReadNovel {
-    fn draw(&mut self, frame: &mut ratatui::Frame, area: ratatui::prelude::Rect) -> Result<()> {
+    fn render(&mut self, frame: &mut ratatui::Frame, area: ratatui::prelude::Rect) -> Result<()> {
         frame.render_widget(Clear, area);
 
         if self.show_sidebar {
@@ -172,22 +166,19 @@ impl Component for ReadNovel {
         Ok(())
     }
 
-    fn handle_key_event(
-        &mut self,
-        key: crossterm::event::KeyEvent,
-        _tx: UnboundedSender<Events>,
-        _state: State,
-    ) -> Result<()> {
+    fn handle_key_event(&mut self, key: KeyEvent, _state: State) -> Result<Option<KeyEvent>> {
         if key.kind != KeyEventKind::Press {
-            return Ok(());
+            return Ok(Some(key));
         }
         if self.show_sidebar {
             match key.code {
                 KeyCode::Char('j') | KeyCode::Down => {
                     self.list_state.select_next();
+                    Ok(None)
                 }
                 KeyCode::Char('k') | KeyCode::Up => {
                     self.list_state.select_previous();
+                    Ok(None)
                 }
                 KeyCode::Enter => {
                     if !self.novel.chapter_offset.is_empty() {
@@ -199,11 +190,13 @@ impl Component for ReadNovel {
                     }
 
                     self.show_sidebar = false;
+                    Ok(None)
                 }
                 KeyCode::Tab | KeyCode::Esc => {
                     self.show_sidebar = false;
+                    Ok(None)
                 }
-                _ => {}
+                _ => Ok(Some(key)),
             }
         } else {
             match key.code {
@@ -217,6 +210,7 @@ impl Component for ReadNovel {
                         self.novel.scroll_down();
                         self.update_scrollbar();
                     }
+                    Ok(None)
                 }
                 KeyCode::Char('k') | KeyCode::Up => {
                     if self.novel.is_top() {
@@ -228,89 +222,63 @@ impl Component for ReadNovel {
                         self.novel.scroll_up();
                         self.update_scrollbar();
                     }
+                    Ok(None)
                 }
                 KeyCode::Char('h') | KeyCode::Left => {
                     self.novel.prev_chapter()?;
                     self.novel.get_content()?;
                     self.novel.current_line = 0;
                     self.update_scrollbar();
+                    Ok(None)
                 }
                 KeyCode::Char('l') | KeyCode::Right => {
                     self.novel.next_chapter()?;
                     self.novel.get_content()?;
                     self.novel.current_line = 0;
                     self.update_scrollbar();
+                    Ok(None)
                 }
                 KeyCode::PageDown => {
                     self.novel.scroll_page_down();
                     self.update_scrollbar();
+                    Ok(None)
                 }
                 KeyCode::PageUp => {
                     self.novel.scroll_page_up();
                     self.update_scrollbar();
+                    Ok(None)
                 }
                 KeyCode::Tab => {
                     self.list_state.select(Some(self.novel.current_chapter));
                     self.show_sidebar = true;
+                    Ok(None)
                 }
 
-                _ => {}
+                _ => Ok(Some(key)),
             }
         }
-        Ok(())
     }
 
-    fn handle_events(
-        &mut self,
-        events: Events,
-        tx: UnboundedSender<Events>,
-        state: State,
-    ) -> Result<()> {
+    fn handle_events(&mut self, events: Events, state: State) -> Result<Option<Events>> {
         match events {
-            Events::KeyEvent(key) => self.handle_key_event(key, tx, state)?,
-            Events::Back | Events::Pop => {
-                state.history.lock().unwrap().add(
-                    self.novel.path.clone(),
-                    HistoryItem::from(&self.novel.inner),
-                );
-            }
+            Events::KeyEvent(key) => self
+                .handle_key_event(key, state)
+                .map(|item| item.map(Events::KeyEvent)),
+            // Events::Back | Events::Pop => {
+            //     state.history.lock().unwrap().add(
+            //         self.novel.path.clone(),
+            //         HistoryItem::from(&self.novel.inner),
+            //     );
+            // }
             Events::Resize(width, height) => {
                 self.novel.resize(Size::new(width - 4, height - 5));
                 self.update_scrollbar();
+                Ok(Some(events))
             }
-            _ => {}
+            _ => Ok(Some(events)),
         }
-        Ok(())
     }
-}
 
-impl Router for Page<ReadNovel, PathBuf> {
-    fn init(&mut self, tx: UnboundedSender<Events>, state: State) -> Result<()> {
-        let path = self.args.to_path_buf();
-        let inner = self.inner.clone();
-        tokio::spawn(async move {
-            match (|| {
-                let tx_novel = TxtNovel::from_path(path)?;
-                let size = (*state.size.lock().unwrap()).unwrap();
-
-                *inner.try_lock()? = Some(ReadNovel::new(LineAdapter::new(
-                    tx_novel,
-                    Size::new(size.width - 4, size.height - 5),
-                )?)?);
-
-                Ok::<_, Errors>(())
-            })() {
-                Ok(_) => {}
-                Err(e) => {
-                    tx.send(Events::Error(e.to_string())).unwrap();
-                }
-            }
-        });
-        Ok(())
-    }
-}
-
-impl Info for ReadNovel {
     fn key_shortcut_info(&self) -> crate::components::KeyShortcutInfo {
         let data = if self.show_sidebar {
             vec![
@@ -331,5 +299,18 @@ impl Info for ReadNovel {
             ]
         };
         KeyShortcutInfo::new(data)
+    }
+}
+
+#[async_trait]
+impl LoadingWrapperInit for ReadNovel {
+    type Arg = PathBuf;
+    async fn init(args: Self::Arg, _navigator: Navigator, state: State) -> Result<Option<Self>> {
+        let tx_novel = TxtNovel::from_path(args)?;
+        let size = (*state.size.lock().unwrap()).unwrap();
+        Ok(Some(ReadNovel::new(LineAdapter::new(
+            tx_novel,
+            Size::new(size.width - 4, size.height - 5),
+        )?)?))
     }
 }

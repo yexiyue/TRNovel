@@ -1,19 +1,23 @@
+use app::App;
+use clap::{Parser, Subcommand};
+use std::{fs, path::PathBuf};
+use utils::novel_catch_dir;
+
 pub mod app;
 pub mod components;
-use std::{fs, path::PathBuf};
-
 pub mod errors;
 pub mod events;
 pub mod file_list;
 pub mod history;
-pub mod network_app;
 pub mod novel;
+pub mod pages;
+pub mod router;
 pub mod routes;
 pub mod utils;
 
-use app::App;
-use clap::{Parser, Subcommand};
-use utils::novel_catch_dir;
+pub use errors::Result;
+pub use events::Events;
+pub use router::*;
 
 pub async fn run() -> anyhow::Result<()> {
     let args = TRNovel::parse();
@@ -25,11 +29,7 @@ pub async fn run() -> anyhow::Result<()> {
 
     let terminal = ratatui::init();
 
-    if matches!(args.subcommand, Some(Commands::Network)) {
-        network_app::App::new()?.run(terminal).await?;
-    } else {
-        App::new(args.path)?.run(terminal).await?;
-    }
+    App::new(args.path)?.run(terminal).await?;
 
     ratatui::restore();
 

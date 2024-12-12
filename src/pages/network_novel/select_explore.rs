@@ -1,7 +1,5 @@
 use std::ops::{Deref, DerefMut};
 
-use crate::errors::Result;
-use crossterm::event::{KeyCode, KeyEventKind};
 use parse_book_source::Explores;
 use ratatui::{
     layout::{Constraint, Flex, Layout},
@@ -12,8 +10,6 @@ use ratatui::{
         StatefulWidgetRef, Widget,
     },
 };
-
-use crate::components::Component;
 
 #[derive(Debug, Default)]
 pub struct SelectExploreState {
@@ -104,42 +100,5 @@ impl SelectExplore<'_> {
             state: Default::default(),
             widget: SelectExploreWidget::new(explore),
         }
-    }
-}
-
-impl Component for SelectExplore<'_> {
-    fn draw(&mut self, frame: &mut ratatui::Frame, area: ratatui::prelude::Rect) -> Result<()> {
-        self.widget
-            .render_ref(area, frame.buffer_mut(), &mut self.state);
-        Ok(())
-    }
-
-    fn handle_key_event(
-        &mut self,
-        key: crossterm::event::KeyEvent,
-        _tx: tokio::sync::mpsc::UnboundedSender<crate::events::Events>,
-        _state: crate::app::state::State,
-    ) -> Result<()> {
-        if key.kind != KeyEventKind::Press {
-            return Ok(());
-        }
-
-        match key.code {
-            KeyCode::Char('j') | KeyCode::Down => {
-                self.state.select_next();
-            }
-            KeyCode::Char('k') | KeyCode::Up => {
-                self.state.select_previous();
-            }
-            KeyCode::Enter => {
-                // self.state.toggle();
-                todo!("发送事件，然后上一层接受该事件，然后加载loading，最后展示数据")
-            }
-            KeyCode::Tab => {
-                self.state.toggle();
-            }
-            _ => {}
-        }
-        Ok(())
     }
 }

@@ -4,17 +4,10 @@ use std::time::Duration;
 use tokio::{sync::mpsc::UnboundedSender, time::interval};
 use tokio_util::sync::CancellationToken;
 
-use crate::routes::Route;
-
 #[derive(Debug, Clone)]
 pub enum Events {
     Tick,
     Render,
-    Go,
-    Back,
-    Pop,
-    PushRoute(Route),
-    ReplaceRoute(Route),
     KeyEvent(crossterm::event::KeyEvent),
     Resize(u16, u16),
     Error(String),

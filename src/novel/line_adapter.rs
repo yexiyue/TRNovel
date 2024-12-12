@@ -1,5 +1,3 @@
-use std::ops::{Deref, DerefMut};
-
 use super::TxtNovel;
 use anyhow::Result;
 use ratatui::{
@@ -7,6 +5,7 @@ use ratatui::{
     text::Text,
     widgets::{Paragraph, Wrap},
 };
+use std::ops::{Deref, DerefMut};
 
 #[derive(Debug)]
 pub struct LineAdapter<'a> {

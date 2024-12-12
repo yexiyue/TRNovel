@@ -2,6 +2,7 @@ use super::{RoutePage, RouterMsg};
 use anyhow::Result;
 use tokio::sync::mpsc::Sender;
 
+/// 一个包装器，用于传递路由消息
 #[derive(Debug, Clone)]
 pub struct Navigator {
     pub tx: Sender<RouterMsg>,

@@ -1,15 +1,14 @@
 use crate::errors::Result;
+use crate::{
+    history::History,
+    utils::{get_path_md5, novel_catch_dir},
+};
 use encoding_rs::Encoding;
 use serde::{Deserialize, Serialize};
 use std::{
     fs::File,
     io::{BufRead, BufReader, Read, Seek, SeekFrom},
     path::{Path, PathBuf},
-};
-
-use crate::{
-    history::History,
-    utils::{get_path_md5, novel_catch_dir},
 };
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
