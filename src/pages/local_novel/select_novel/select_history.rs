@@ -1,36 +1,37 @@
-use crossterm::event::{KeyCode, KeyEventKind};
+use crate::{
+    app::State,
+    components::{Component, Confirm, ConfirmState, Empty, KeyShortcutInfo, LoadingWrapper},
+    history::History,
+    pages::local_novel::ReadNovel,
+    Navigator, Result,
+};
+use crossterm::event::{KeyCode, KeyEvent, KeyEventKind};
 use ratatui::{
     style::Stylize,
     text::{Line, Text},
     widgets::{Block, Padding, Paragraph},
 };
-use std::sync::{Arc, Mutex};
-use tokio::sync::mpsc::UnboundedSender;
-use tui_widget_list::{ListBuilder, ListState, ListView};
-
-use super::empty::Empty;
-use crate::{
-    app::state::State,
-    components::{Component, Confirm, ConfirmState, Info, KeyShortcutInfo},
-    errors::Result,
-    events::Events,
-    history::History,
-    routes::Route,
+use std::{
+    path::PathBuf,
+    sync::{Arc, Mutex},
 };
+use tui_widget_list::{ListBuilder, ListState, ListView};
 
 #[derive(Debug, Clone)]
 pub struct SelectHistory {
     pub state: ListState,
     pub confirm_state: ConfirmState,
     pub history: Arc<Mutex<History>>,
+    pub navigator: Navigator,
 }
 
 impl SelectHistory {
-    pub fn new(history: Arc<Mutex<History>>) -> Self {
+    pub fn new(history: Arc<Mutex<History>>, navigator: Navigator) -> Self {
         Self {
             history,
             state: ListState::default(),
             confirm_state: ConfirmState::default(),
+            navigator,
         }
     }
 
@@ -71,7 +72,7 @@ impl SelectHistory {
 }
 
 impl Component for SelectHistory {
-    fn draw(&mut self, frame: &mut ratatui::Frame, area: ratatui::prelude::Rect) -> Result<()> {
+    fn render(&mut self, frame: &mut ratatui::Frame, area: ratatui::prelude::Rect) -> Result<()> {
         if self.history.lock().unwrap().histories.is_empty() {
             frame.render_widget(Empty::new("暂无历史记录"), area);
             return Ok(());
@@ -90,19 +91,20 @@ impl Component for SelectHistory {
     fn handle_key_event(
         &mut self,
         key: crossterm::event::KeyEvent,
-        tx: UnboundedSender<Events>,
-        _state: State,
-    ) -> Result<()> {
+        state: State,
+    ) -> Result<Option<KeyEvent>> {
         if key.kind != KeyEventKind::Press {
-            return Ok(());
+            return Ok(Some(key));
         }
         if self.confirm_state.show {
             match key.code {
                 KeyCode::Char('y') => {
                     self.confirm_state.confirm();
+                    Ok(None)
                 }
                 KeyCode::Left | KeyCode::Right | KeyCode::Char('h') | KeyCode::Char('l') => {
                     self.confirm_state.toggle();
+                    Ok(None)
                 }
                 KeyCode::Enter => {
                     if let Some(index) = self.state.selected {
@@ -113,29 +115,43 @@ impl Component for SelectHistory {
                         }
                     }
                     self.confirm_state.hide();
+                    Ok(None)
                 }
                 KeyCode::Char('n') => {
                     self.confirm_state.hide();
+                    Ok(None)
                 }
-                _ => {}
+                _ => Ok(Some(key)),
             }
         } else {
             match key.code {
                 KeyCode::Char('h') | KeyCode::Left => {
                     self.state.select(None);
+                    Ok(None)
                 }
                 KeyCode::Char('j') | KeyCode::Down => {
                     self.state.next();
+                    Ok(None)
                 }
                 KeyCode::Char('k') | KeyCode::Up => {
                     self.state.previous();
+                    Ok(None)
                 }
                 KeyCode::Char('l') | KeyCode::Right | KeyCode::Enter => {
                     let Some(index) = self.state.selected else {
                         return Err("请选择历史记录".into());
                     };
                     let (path, _) = &self.history.lock().unwrap().histories[index];
-                    tx.send(Events::PushRoute(Route::ReadNovel(path.clone())))?;
+
+                    self.navigator
+                        .push(LoadingWrapper::<ReadNovel, PathBuf>::route_page(
+                            "加载小说中...",
+                            self.navigator.clone(),
+                            state,
+                            path.to_path_buf(),
+                        )?)?;
+
+                    Ok(None)
                 }
                 KeyCode::Char('d') => {
                     if self.state.selected.is_none() {
@@ -143,15 +159,13 @@ impl Component for SelectHistory {
                     }
 
                     self.confirm_state.show();
+                    Ok(None)
                 }
-                _ => {}
+                _ => Ok(Some(key)),
             }
         }
-        Ok(())
     }
-}
 
-impl Info for SelectHistory {
     fn key_shortcut_info(&self) -> crate::components::KeyShortcutInfo {
         let data = if self.confirm_state.show {
             vec![

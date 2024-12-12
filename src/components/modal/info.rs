@@ -1,5 +1,3 @@
-use std::ops::{Deref, DerefMut};
-
 use ratatui::{
     buffer::Buffer,
     layout::{Constraint, Flex, Layout, Margin, Size},
@@ -7,6 +5,7 @@ use ratatui::{
     text::Line,
     widgets::{Block, Clear, Row, StatefulWidget, Table, Widget},
 };
+use std::ops::{Deref, DerefMut};
 use tui_scrollview::{ScrollView, ScrollViewState, ScrollbarVisibility};
 
 #[derive(Debug, Clone, Default)]
@@ -40,6 +39,7 @@ impl DerefMut for ShortcutInfoState {
     }
 }
 
+#[derive(Debug, Clone, Default)]
 pub struct KeyShortcutInfo(pub Vec<(String, String)>);
 
 impl Deref for KeyShortcutInfo {

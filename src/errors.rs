@@ -1,4 +1,4 @@
-use crate::events::Events;
+use crate::Events;
 use thiserror::Error;
 use tokio::sync::mpsc::error::SendError;
 

@@ -1,9 +1,10 @@
-use super::{components::Component, Events, RoutePage, RouterMsg};
-use crate::{app::state::State, errors::Result};
+use crate::{app::State, components::Component, Events, Result, RoutePage, RouterMsg};
 use anyhow::anyhow;
 use crossterm::event::{KeyCode, KeyEventKind};
 use tokio::sync::mpsc::{Receiver, Sender};
 
+/// 路由
+/// 模式跟page模式很像，但为了防止嵌套路由，所以就单独实现消息处理
 pub struct Routes {
     pub routes: Vec<Box<dyn RoutePage>>,
     pub tx: Sender<RouterMsg>,
@@ -13,21 +14,13 @@ pub struct Routes {
 }
 
 impl Routes {
-    pub fn new(routes: Vec<Box<dyn RoutePage>>, current_router: usize, state: State) -> Self {
-        let (tx, rx) = tokio::sync::mpsc::channel(1);
-        Self {
-            current_router,
-            routes,
-            state,
-            tx,
-            rx,
-        }
-    }
     pub fn push_router(&mut self, mut router: Box<dyn RoutePage>) -> Result<()> {
         if self.current_router < self.routes.len().saturating_sub(1) {
             self.routes.drain(self.current_router + 1..);
         }
-        router.as_mut().init((&self.tx).into())?;
+        router
+            .as_mut()
+            .init((&self.tx).into(), self.state.clone())?;
 
         self.routes.push(router);
         self.current_router = self.routes.len().saturating_sub(1);
@@ -36,7 +29,9 @@ impl Routes {
     }
 
     pub fn replace_router(&mut self, mut router: Box<dyn RoutePage>) -> Result<()> {
-        router.as_mut().init((&self.tx).into())?;
+        router
+            .as_mut()
+            .init((&self.tx).into(), self.state.clone())?;
 
         self.routes[self.current_router] = router;
 
