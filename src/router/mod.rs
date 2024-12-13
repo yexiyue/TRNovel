@@ -15,23 +15,6 @@ pub enum RouterMsg {
 
 #[async_trait]
 pub trait Router: Send + Sync + Component {
-    /// 路由初始化，传递路由和全局状态
-    /// 这里为什么是方法而不是函数，因为在 [crate::routes::Routes] 中用的是Trait object，如果用函数就得知道具体的类型了
-    /// 例如：[crate::components::LoadingWrapper] 的 `route_page`方法，
-    /// ```rust
-    /// LoadingWrapper::<SelectNovel, PathBuf>::route_page(
-    ///    "扫描文件中...",
-    ///    navigator.clone(),
-    ///    state,
-    ///    path,
-    ///)
-    /// ```
-    async fn init(&mut self, navigator: Navigator, state: State) -> Result<()> {
-        let _ = navigator;
-        let _ = state;
-        Ok(())
-    }
-
     /// 路由切换到后台时调用
     async fn on_hide(&mut self, state: State) -> Result<()> {
         let _ = state;
@@ -56,5 +39,21 @@ pub trait Router: Send + Sync + Component {
 /// 在[crate::pages::PageWrapper]中，实现异步消息的处理
 #[async_trait]
 pub trait RoutePage: Router {
+    /// 路由初始化，传递路由和全局状态
+    /// 这里为什么是方法而不是函数，因为在 [crate::routes::Routes] 中用的是Trait object，如果用函数就得知道具体的类型了
+    /// 例如：[crate::components::LoadingWrapper] 的 `route_page`方法，
+    /// ```rust,ignore
+    /// LoadingWrapper::<SelectNovel, PathBuf>::route_page(
+    ///    "扫描文件中...",
+    ///    navigator.clone(),
+    ///    state,
+    ///    path,
+    ///)
+    /// ```
+    async fn init(&mut self, navigator: Navigator, state: State) -> Result<()> {
+        let _ = navigator;
+        let _ = state;
+        Ok(())
+    }
     async fn update(&mut self) -> Result<()>;
 }

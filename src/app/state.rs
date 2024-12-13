@@ -1,5 +1,6 @@
 use std::sync::{Arc, Mutex};
 
+use parse_book_source::JsonSource;
 use ratatui::layout::Size;
 
 use crate::history::History;
@@ -8,4 +9,5 @@ use crate::history::History;
 pub struct State {
     pub history: Arc<Mutex<History>>,
     pub size: Arc<Mutex<Option<Size>>>,
+    pub book_source: Arc<Mutex<Option<JsonSource>>>,
 }

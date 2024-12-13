@@ -29,7 +29,7 @@ pub async fn run() -> anyhow::Result<()> {
 
     let terminal = ratatui::init();
 
-    App::new(args.path)?.run(terminal).await?;
+    App::new(args.path).await?.run(terminal).await?;
 
     ratatui::restore();
 

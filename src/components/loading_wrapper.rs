@@ -24,70 +24,82 @@ where
     async fn init(args: Self::Arg, navigator: Navigator, state: State) -> Result<Option<Self>>;
 }
 
-pub enum LoadingWrapperMsg<T, A>
+pub enum LoadingWrapperMsg<T>
 where
     T: Send + Sync,
-    A: Send + Sync,
 {
     Inner(T),
-    InitArgs(A),
     Error(Errors),
 }
 
 /// 用于包装组件，需要进行耗时初始化时使用，比如扫描文件等。
-pub struct LoadingWrapper<T, A>
+pub struct LoadingWrapper<T>
 where
     T: Send + Sync,
-    A: Send + Sync,
 {
     pub inner: Option<T>,
     pub loading: Loading,
-    pub sender: tokio::sync::mpsc::Sender<LoadingWrapperMsg<T, A>>,
-    pub state: State,
-    pub navigator: Navigator,
 }
 
-unsafe impl<T, A> Send for LoadingWrapper<T, A>
+unsafe impl<T> Send for LoadingWrapper<T> where T: Send + Sync {}
+
+impl<T, A> LoadingWrapper<T>
 where
-    T: Send + Sync,
-    A: Send + Sync,
+    T: Send + Sync + LoadingWrapperInit<Arg = A> + 'static + Router,
+    A: Send + Sync + 'static + Clone,
 {
+    pub fn route_page(tip: &'static str, args: A, buffer: Option<usize>) -> Box<dyn RoutePage> {
+        let res: PageWrapper<LoadingWrapper<T>, (&'static str, A), LoadingWrapperMsg<T>> =
+            PageWrapper::new((tip, args), buffer);
+        Box::new(res)
+    }
 }
 
 #[async_trait]
-impl<T, A> Page for LoadingWrapper<T, A>
+impl<T, A> Page<(&'static str, A)> for LoadingWrapper<T>
 where
     T: Send + Sync + LoadingWrapperInit<Arg = A> + 'static,
     A: Send + Sync + 'static,
 {
-    type Msg = LoadingWrapperMsg<T, A>;
+    type Msg = LoadingWrapperMsg<T>;
+
+    async fn init(
+        arg: (&'static str, A),
+        sender: mpsc::Sender<Self::Msg>,
+        navigator: Navigator,
+        state: State,
+    ) -> Result<Self> {
+        let (title, args) = arg;
+
+        tokio::spawn(async move {
+            if let Err(err) = (async {
+                if let Some(inner) = T::init(args, navigator, state).await? {
+                    // 等待500毫秒防止闪屏
+                    sleep(Duration::from_millis(500)).await;
+
+                    sender
+                        .send(LoadingWrapperMsg::Inner(inner))
+                        .await
+                        .map_err(|e| anyhow!(e))?;
+                }
+                Ok::<(), Errors>(())
+            })
+            .await
+            {
+                sender.send(LoadingWrapperMsg::Error(err)).await.unwrap();
+            }
+        });
+
+        Ok(Self {
+            inner: None,
+            loading: Loading::new(title),
+        })
+    }
+
     async fn update(&mut self, msg: Self::Msg) -> Result<()> {
         match msg {
             LoadingWrapperMsg::Inner(inner) => {
                 self.inner = Some(inner);
-            }
-            LoadingWrapperMsg::InitArgs(args) => {
-                let sender = self.sender.clone();
-                let state = self.state.clone();
-                let navigator = self.navigator.clone();
-                tokio::spawn(async move {
-                    if let Err(err) = (async {
-                        if let Some(inner) = T::init(args, navigator, state).await? {
-                            // 等待500毫秒防止闪屏
-                            sleep(Duration::from_millis(500)).await;
-
-                            sender
-                                .send(LoadingWrapperMsg::Inner(inner))
-                                .await
-                                .map_err(|e| anyhow!(e))?;
-                        }
-                        Ok::<(), Errors>(())
-                    })
-                    .await
-                    {
-                        sender.send(LoadingWrapperMsg::Error(err)).await.unwrap();
-                    }
-                });
             }
             LoadingWrapperMsg::Error(err) => {
                 return Err(err);
@@ -97,62 +109,12 @@ where
     }
 }
 
-impl<T, A> LoadingWrapper<T, A>
-where
-    T: Send + Sync + 'static + LoadingWrapperInit<Arg = A> + Component + Router,
-    A: Send + Sync + 'static,
-{
-    /// 大部分new 是在事件中，或者路由首页，这些都可以直接拿到state参数和navigator参数
-    pub fn new(
-        sender: tokio::sync::mpsc::Sender<LoadingWrapperMsg<T, A>>,
-        tip: &str,
-        navigator: Navigator,
-        state: State,
-    ) -> Self {
-        Self {
-            inner: None,
-            loading: Loading::new(tip),
-            sender,
-            state,
-            navigator,
-        }
-    }
-
-    pub fn init_args(&self, args: A) -> anyhow::Result<()> {
-        self.sender.try_send(LoadingWrapperMsg::InitArgs(args))?;
-        Ok(())
-    }
-
-    /// 快速创建路由页面
-    pub fn route_page(
-        tip: &str,
-        navigator: Navigator,
-        state: State,
-        args: A,
-    ) -> Result<Box<dyn RoutePage>> {
-        let (tx, rx) = mpsc::channel(1);
-
-        let loading_wrapper: Self = LoadingWrapper::new(tx, tip, navigator.clone(), state);
-        loading_wrapper.init_args(args)?;
-
-        Ok(Box::new(PageWrapper::new(loading_wrapper, Some(rx))))
-    }
-}
-
 #[async_trait]
 /// 不在router中init是因为会用到Option，比较麻烦
-impl<T, A> Router for LoadingWrapper<T, A>
+impl<T> Router for LoadingWrapper<T>
 where
     T: Send + Sync + 'static + Component + Router,
-    A: Send + Sync + 'static,
 {
-    async fn init(&mut self, navigator: Navigator, state: State) -> Result<()> {
-        if let Some(inner) = &mut self.inner {
-            inner.init(navigator, state).await?;
-        }
-        Ok(())
-    }
-
     async fn on_show(&mut self, state: State) -> Result<()> {
         if let Some(inner) = &mut self.inner {
             inner.on_show(state).await?;
@@ -177,10 +139,9 @@ where
 }
 
 #[async_trait]
-impl<T, A> Component for LoadingWrapper<T, A>
+impl<T> Component for LoadingWrapper<T>
 where
     T: Send + Sync + 'static + Component,
-    A: Send + Sync + 'static,
 {
     fn render(&mut self, frame: &mut ratatui::Frame, area: ratatui::prelude::Rect) -> Result<()> {
         if let Some(inner) = &mut self.inner {

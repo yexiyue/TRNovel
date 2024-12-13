@@ -21,6 +21,9 @@ pub enum Errors {
 
     #[error(transparent)]
     Json(#[from] serde_json::Error),
+
+    #[error(transparent)]
+    ParseBookSource(#[from] parse_book_source::ParseError),
 }
 
 impl From<String> for Errors {

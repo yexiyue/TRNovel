@@ -7,12 +7,14 @@ use crate::{
     routes::Routes,
 };
 use crossterm::event::{KeyCode, KeyEventKind, KeyModifiers};
+use parse_book_source::BookSource;
 use ratatui::{layout::Size, DefaultTerminal, Frame};
 use std::{
+    fs::File,
     path::PathBuf,
     sync::{Arc, Mutex},
 };
-use tokio::sync::mpsc::{self, UnboundedReceiver, UnboundedSender};
+use tokio::sync::mpsc::{UnboundedReceiver, UnboundedSender};
 use tokio_util::sync::CancellationToken;
 
 pub mod state;
@@ -30,33 +32,29 @@ pub struct App {
 }
 
 impl App {
-    pub fn new(path: PathBuf) -> Result<Self> {
+    pub async fn new(path: PathBuf) -> Result<Self> {
         let (tx, rx) = tokio::sync::mpsc::unbounded_channel();
         let cancellation_token = CancellationToken::new();
+
+        let book_source: BookSource =
+            serde_json::from_reader(File::open("test-novels/test.json")?)?;
 
         event_loop(tx.clone(), cancellation_token.clone());
 
         let state = State {
             history: Arc::new(Mutex::new(History::load()?)),
             size: Arc::new(Mutex::new(None)),
+            book_source: Arc::new(Mutex::new(Some(book_source.try_into()?))),
         };
 
-        let (router_tx, router_rx) = mpsc::channel(1);
-
-        let local_novel_router = local_novel_first_page(path, (&router_tx).into(), state.clone())?;
+        let local_novel_router = local_novel_first_page(path)?;
         Ok(Self {
             event_tx: tx.clone(),
             event_rx: rx,
             show_exit: false,
             error: None,
             warning: None,
-            routes: Routes {
-                routes: vec![local_novel_router],
-                tx: router_tx,
-                rx: router_rx,
-                current_router: 0,
-                state: state.clone(),
-            },
+            routes: Routes::new(local_novel_router, 0, state.clone()).await?,
             state,
             cancellation_token,
         })

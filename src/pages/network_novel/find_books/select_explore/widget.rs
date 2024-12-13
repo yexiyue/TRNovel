@@ -1,40 +1,15 @@
-use std::ops::{Deref, DerefMut};
-
 use parse_book_source::Explores;
 use ratatui::{
     layout::{Constraint, Flex, Layout},
     style::{Style, Stylize},
     text::Line,
     widgets::{
-        Block, Clear, List, ListState, Padding, Scrollbar, ScrollbarState, StatefulWidget,
-        StatefulWidgetRef, Widget,
+        Block, Clear, List, Padding, Scrollbar, ScrollbarState, StatefulWidget, StatefulWidgetRef,
+        Widget,
     },
 };
 
-#[derive(Debug, Default)]
-pub struct SelectExploreState {
-    pub state: ListState,
-    pub show: bool,
-}
-
-impl SelectExploreState {
-    pub fn toggle(&mut self) {
-        self.show = !self.show;
-    }
-}
-
-impl Deref for SelectExploreState {
-    type Target = ListState;
-    fn deref(&self) -> &Self::Target {
-        &self.state
-    }
-}
-
-impl DerefMut for SelectExploreState {
-    fn deref_mut(&mut self) -> &mut Self::Target {
-        &mut self.state
-    }
-}
+use super::state::SelectExploreState;
 
 pub struct SelectExploreWidget<'a> {
     pub explore: Explores,
@@ -85,20 +60,6 @@ impl StatefulWidgetRef for SelectExploreWidget<'_> {
                 .position(state.state.selected().unwrap_or(0));
 
             Scrollbar::default().render(block_area, buf, &mut scrollbar_state);
-        }
-    }
-}
-
-pub struct SelectExplore<'a> {
-    pub state: SelectExploreState,
-    pub widget: SelectExploreWidget<'a>,
-}
-
-impl SelectExplore<'_> {
-    pub fn new(explore: Explores) -> Self {
-        Self {
-            state: Default::default(),
-            widget: SelectExploreWidget::new(explore),
         }
     }
 }

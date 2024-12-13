@@ -11,8 +11,20 @@ pub mod local_novel;
 pub mod network_novel;
 
 #[async_trait]
-pub trait Page {
+pub trait Page<Arg>
+where
+    Self: Sized,
+    Arg: Send + Sync + 'static,
+{
     type Msg: Send + Sync;
+
+    async fn init(
+        arg: Arg,
+        sender: mpsc::Sender<Self::Msg>,
+        navigator: Navigator,
+        state: State,
+    ) -> Result<Self>;
+
     async fn update(&mut self, _msg: Self::Msg) -> Result<()> {
         Ok(())
     }
@@ -20,39 +32,52 @@ pub trait Page {
 
 /// 实现自定义Msg，方便后面异步获取数据场景
 /// [crate::components::LoadingWrapper] 就是典型例子
-pub struct PageWrapper<T, Msg = ()>
+pub struct PageWrapper<T, A, Msg = ()>
 where
-    T: Page<Msg = Msg> + Router,
+    T: Page<A, Msg = Msg> + Router,
+    A: Send + Sync + 'static,
 {
-    pub inner: T,
-    pub msg_rx: Option<mpsc::Receiver<Msg>>,
+    pub inner: Option<T>,
+    pub msg_rx: mpsc::Receiver<Msg>,
+    pub msg_tx: mpsc::Sender<Msg>,
     pub shortcut_info_state: ShortcutInfoState,
+    pub arg: A,
 }
 
-impl<T, Msg> PageWrapper<T, Msg>
+impl<T, A, Msg> PageWrapper<T, A, Msg>
 where
-    T: Page<Msg = Msg> + Router,
+    T: Page<A, Msg = Msg> + Router,
+    A: Send + Sync + 'static,
 {
-    pub fn new(inner: T, msg_rx: Option<mpsc::Receiver<Msg>>) -> Self {
+    pub fn new(arg: A, buffer: Option<usize>) -> Self {
+        let (msg_tx, msg_rx) = mpsc::channel(buffer.unwrap_or(1));
+
         Self {
-            inner,
+            inner: None,
             msg_rx,
+            msg_tx,
             shortcut_info_state: ShortcutInfoState::default(),
+            arg,
         }
     }
 }
 
 #[async_trait]
-impl<T, Msg> RoutePage for PageWrapper<T, Msg>
+impl<T, A, Msg> RoutePage for PageWrapper<T, A, Msg>
 where
-    T: Page<Msg = Msg> + Router,
+    T: Page<A, Msg = Msg> + Router,
     Msg: Send + Sync,
+    A: Send + Sync + 'static + Clone,
 {
+    async fn init(&mut self, navigator: Navigator, state: State) -> Result<()> {
+        let inner = T::init(self.arg.clone(), self.msg_tx.clone(), navigator, state).await?;
+        self.inner = Some(inner);
+        Ok(())
+    }
+
     async fn update(&mut self) -> Result<()> {
-        if let Some(rx) = self.msg_rx.as_mut() {
-            if let Ok(msg) = rx.try_recv() {
-                self.inner.update(msg).await?;
-            }
+        if let Ok(msg) = self.msg_rx.try_recv() {
+            self.inner.as_mut().unwrap().update(msg).await?;
         }
 
         Ok(())
@@ -60,40 +85,38 @@ where
 }
 
 #[async_trait]
-impl<T, Msg> Router for PageWrapper<T, Msg>
+impl<T, A, Msg> Router for PageWrapper<T, A, Msg>
 where
-    T: Page<Msg = Msg> + Router,
+    T: Page<A, Msg = Msg> + Router,
     Msg: Send + Sync,
+    A: Send + Sync + 'static,
 {
-    async fn init(&mut self, navigator: Navigator, state: State) -> crate::errors::Result<()> {
-        self.inner.init(navigator, state).await
-    }
-
     async fn on_show(&mut self, state: State) -> crate::errors::Result<()> {
-        self.inner.on_show(state).await
+        self.inner.as_mut().unwrap().on_show(state).await
     }
 
     async fn on_hide(&mut self, state: State) -> crate::errors::Result<()> {
-        self.inner.on_hide(state).await
+        self.inner.as_mut().unwrap().on_hide(state).await
     }
 
     async fn on_unmounted(&mut self, state: State) -> crate::errors::Result<()> {
-        self.inner.on_unmounted(state).await
+        self.inner.as_mut().unwrap().on_unmounted(state).await
     }
 }
 
 #[async_trait]
-impl<T, Msg> Component for PageWrapper<T, Msg>
+impl<T, A, Msg> Component for PageWrapper<T, A, Msg>
 where
-    T: Page<Msg = Msg> + Router,
+    T: Page<A, Msg = Msg> + Router,
     Msg: Send + Sync,
+    A: Send + Sync + 'static,
 {
     fn render(&mut self, frame: &mut ratatui::Frame, area: ratatui::prelude::Rect) -> Result<()> {
-        self.inner.render(frame, area)?;
+        self.inner.as_mut().unwrap().render(frame, area)?;
 
         if self.shortcut_info_state.show {
             frame.render_stateful_widget(
-                ShortcutInfo::new(self.inner.key_shortcut_info()),
+                ShortcutInfo::new(self.inner.as_ref().unwrap().key_shortcut_info()),
                 area,
                 &mut self.shortcut_info_state,
             );
@@ -159,7 +182,11 @@ where
             if self.shortcut_info_state.show {
                 Ok(Some(events))
             } else {
-                self.inner.handle_events(events, state).await
+                self.inner
+                    .as_mut()
+                    .unwrap()
+                    .handle_events(events, state)
+                    .await
             }
         } else {
             Ok(None)
