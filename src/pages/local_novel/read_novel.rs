@@ -1,8 +1,9 @@
 use crate::{
     app::State,
     components::{loading_wrapper::LoadingWrapperInit, Component, KeyShortcutInfo},
+    history::HistoryItem,
     novel::{LineAdapter, TxtNovel},
-    Events, Navigator, Result,
+    Events, Navigator, Result, Router,
 };
 use async_trait::async_trait;
 use crossterm::event::{KeyCode, KeyEvent, KeyEventKind};
@@ -74,8 +75,11 @@ impl ReadNovel {
         let [left_area, right_area] =
             Layout::horizontal([Constraint::Fill(1), Constraint::Fill(1)]).areas(area);
 
-        let percent =
-            (self.novel.current_chapter as f64 / self.novel.chapter_offset.len() as f64) * 100.0;
+        let percent = if self.novel.chapter_offset.is_empty() {
+            (self.novel.current_line as f64 / self.novel.content_lines as f64) * 100.0
+        } else {
+            (self.novel.current_chapter as f64 / self.novel.chapter_offset.len() as f64) * 100.0
+        };
 
         let current_time = chrono::Local::now().format("%H:%M").to_string();
 
@@ -129,6 +133,7 @@ impl ReadNovel {
     }
 }
 
+#[async_trait]
 impl Component for ReadNovel {
     fn render(&mut self, frame: &mut ratatui::Frame, area: ratatui::prelude::Rect) -> Result<()> {
         frame.render_widget(Clear, area);
@@ -166,7 +171,7 @@ impl Component for ReadNovel {
         Ok(())
     }
 
-    fn handle_key_event(&mut self, key: KeyEvent, _state: State) -> Result<Option<KeyEvent>> {
+    async fn handle_key_event(&mut self, key: KeyEvent, _state: State) -> Result<Option<KeyEvent>> {
         if key.kind != KeyEventKind::Press {
             return Ok(Some(key));
         }
@@ -259,17 +264,12 @@ impl Component for ReadNovel {
         }
     }
 
-    fn handle_events(&mut self, events: Events, state: State) -> Result<Option<Events>> {
+    async fn handle_events(&mut self, events: Events, state: State) -> Result<Option<Events>> {
         match events {
             Events::KeyEvent(key) => self
                 .handle_key_event(key, state)
+                .await
                 .map(|item| item.map(Events::KeyEvent)),
-            // Events::Back | Events::Pop => {
-            //     state.history.lock().unwrap().add(
-            //         self.novel.path.clone(),
-            //         HistoryItem::from(&self.novel.inner),
-            //     );
-            // }
             Events::Resize(width, height) => {
                 self.novel.resize(Size::new(width - 4, height - 5));
                 self.update_scrollbar();
@@ -312,5 +312,21 @@ impl LoadingWrapperInit for ReadNovel {
             tx_novel,
             Size::new(size.width - 4, size.height - 5),
         )?)?))
+    }
+}
+
+#[async_trait]
+impl Router for ReadNovel {
+    // 在回退时添加进历史记录
+    async fn on_hide(&mut self, state: State) -> Result<()> {
+        // 这里需要更新行数进度
+        let percent = self.novel.current_line as f64 / self.novel.content_lines as f64;
+        self.novel.inner.line_percent = percent;
+
+        state.history.lock().unwrap().add(
+            self.novel.path.clone(),
+            HistoryItem::from(&self.novel.inner),
+        );
+        Ok(())
     }
 }

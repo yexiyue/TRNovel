@@ -88,7 +88,8 @@ impl App {
         // 消耗型事件，如果返回了None就默认不进行消耗，如果不返回Render事件，就会导致不能渲染
         let events = if self.error.is_none() && self.warning.is_none() {
             self.routes
-                .handle_events(events.clone(), self.state.clone())?
+                .handle_events(events.clone(), self.state.clone())
+                .await?
                 .unwrap_or(events)
         } else {
             events

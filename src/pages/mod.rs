@@ -59,16 +59,30 @@ where
     }
 }
 
+#[async_trait]
 impl<T, Msg> Router for PageWrapper<T, Msg>
 where
     T: Page<Msg = Msg> + Router,
     Msg: Send + Sync,
 {
-    fn init(&mut self, navigator: Navigator, state: State) -> crate::errors::Result<()> {
-        self.inner.init(navigator, state)
+    async fn init(&mut self, navigator: Navigator, state: State) -> crate::errors::Result<()> {
+        self.inner.init(navigator, state).await
+    }
+
+    async fn on_show(&mut self, state: State) -> crate::errors::Result<()> {
+        self.inner.on_show(state).await
+    }
+
+    async fn on_hide(&mut self, state: State) -> crate::errors::Result<()> {
+        self.inner.on_hide(state).await
+    }
+
+    async fn on_unmounted(&mut self, state: State) -> crate::errors::Result<()> {
+        self.inner.on_unmounted(state).await
     }
 }
 
+#[async_trait]
 impl<T, Msg> Component for PageWrapper<T, Msg>
 where
     T: Page<Msg = Msg> + Router,
@@ -87,7 +101,7 @@ where
         Ok(())
     }
 
-    fn handle_key_event(&mut self, key: KeyEvent, _state: State) -> Result<Option<KeyEvent>> {
+    async fn handle_key_event(&mut self, key: KeyEvent, _state: State) -> Result<Option<KeyEvent>> {
         if key.kind != KeyEventKind::Press {
             return Ok(Some(key));
         }
@@ -134,17 +148,18 @@ where
         }
     }
 
-    fn handle_events(&mut self, events: Events, state: State) -> Result<Option<Events>> {
+    async fn handle_events(&mut self, events: Events, state: State) -> Result<Option<Events>> {
         if let Some(events) = match events {
             Events::KeyEvent(key) => self
                 .handle_key_event(key, state.clone())
+                .await
                 .map(|item| item.map(Events::KeyEvent)),
             _ => Ok(Some(events)),
         }? {
             if self.shortcut_info_state.show {
                 Ok(Some(events))
             } else {
-                self.inner.handle_events(events, state)
+                self.inner.handle_events(events, state).await
             }
         } else {
             Ok(None)

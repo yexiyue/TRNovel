@@ -5,6 +5,7 @@ use crate::{
     pages::local_novel::ReadNovel,
     Navigator, Result,
 };
+use async_trait::async_trait;
 use crossterm::event::{KeyCode, KeyEvent, KeyEventKind};
 use ratatui::{
     style::Stylize,
@@ -71,6 +72,7 @@ impl SelectHistory {
     }
 }
 
+#[async_trait]
 impl Component for SelectHistory {
     fn render(&mut self, frame: &mut ratatui::Frame, area: ratatui::prelude::Rect) -> Result<()> {
         if self.history.lock().unwrap().histories.is_empty() {
@@ -88,7 +90,7 @@ impl Component for SelectHistory {
         Ok(())
     }
 
-    fn handle_key_event(
+    async fn handle_key_event(
         &mut self,
         key: crossterm::event::KeyEvent,
         state: State,

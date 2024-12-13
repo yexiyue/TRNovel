@@ -3,7 +3,7 @@ use crate::{
     app::State,
     components::{Component, KeyShortcutInfo, LoadingWrapper, LoadingWrapperInit},
     file_list::NovelFiles,
-    Events, Navigator, Result,
+    Events, Navigator, Result, Router,
 };
 use async_trait::async_trait;
 use crossterm::event::{KeyCode, KeyEvent, KeyEventKind};
@@ -45,6 +45,7 @@ impl Mode {
     }
 }
 
+#[async_trait]
 impl Component for SelectNovel<'_> {
     fn render(&mut self, frame: &mut ratatui::Frame, area: ratatui::prelude::Rect) -> Result<()> {
         let [title, content_area] =
@@ -57,7 +58,7 @@ impl Component for SelectNovel<'_> {
         Ok(())
     }
 
-    fn handle_key_event(
+    async fn handle_key_event(
         &mut self,
         key: crossterm::event::KeyEvent,
         _state: State,
@@ -74,10 +75,18 @@ impl Component for SelectNovel<'_> {
         }
     }
 
-    fn handle_events(&mut self, events: Events, state: State) -> Result<Option<Events>> {
+    async fn handle_events(&mut self, events: Events, state: State) -> Result<Option<Events>> {
         let Some(events) = (match self.mode {
-            Mode::SelectFile => self.select_file.handle_events(events, state.clone())?,
-            Mode::SelectHistory => self.select_history.handle_events(events, state.clone())?,
+            Mode::SelectFile => {
+                self.select_file
+                    .handle_events(events, state.clone())
+                    .await?
+            }
+            Mode::SelectHistory => {
+                self.select_history
+                    .handle_events(events, state.clone())
+                    .await?
+            }
         }) else {
             return Ok(None);
         };
@@ -85,6 +94,7 @@ impl Component for SelectNovel<'_> {
         match events {
             Events::KeyEvent(key) => self
                 .handle_key_event(key, state)
+                .await
                 .map(|item| item.map(Events::KeyEvent)),
             _ => Ok(Some(events)),
         }
@@ -152,3 +162,5 @@ impl LoadingWrapperInit for SelectNovel<'static> {
         }
     }
 }
+
+impl Router for SelectNovel<'_> {}
