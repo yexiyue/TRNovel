@@ -99,7 +99,7 @@ where
 
 impl<T, A> LoadingWrapper<T, A>
 where
-    T: Send + Sync + 'static + LoadingWrapperInit<Arg = A> + Component,
+    T: Send + Sync + 'static + LoadingWrapperInit<Arg = A> + Component + Router,
     A: Send + Sync + 'static,
 {
     /// 大部分new 是在事件中，或者路由首页，这些都可以直接拿到state参数和navigator参数
@@ -139,14 +139,44 @@ where
     }
 }
 
+#[async_trait]
 /// 不在router中init是因为会用到Option，比较麻烦
 impl<T, A> Router for LoadingWrapper<T, A>
 where
-    T: Send + Sync + 'static + Component,
+    T: Send + Sync + 'static + Component + Router,
     A: Send + Sync + 'static,
 {
+    async fn init(&mut self, navigator: Navigator, state: State) -> Result<()> {
+        if let Some(inner) = &mut self.inner {
+            inner.init(navigator, state).await?;
+        }
+        Ok(())
+    }
+
+    async fn on_show(&mut self, state: State) -> Result<()> {
+        if let Some(inner) = &mut self.inner {
+            inner.on_show(state).await?;
+        }
+        Ok(())
+    }
+
+    async fn on_hide(&mut self, state: State) -> Result<()> {
+        if let Some(inner) = &mut self.inner {
+            inner.on_hide(state).await?;
+        }
+        Ok(())
+    }
+
+    async fn on_unmounted(&mut self, state: State) -> Result<()> {
+        self.on_hide(state.clone()).await?;
+        if let Some(inner) = &mut self.inner {
+            inner.on_unmounted(state).await?;
+        }
+        Ok(())
+    }
 }
 
+#[async_trait]
 impl<T, A> Component for LoadingWrapper<T, A>
 where
     T: Send + Sync + 'static + Component,
@@ -169,18 +199,18 @@ where
         }
     }
 
-    fn handle_events(&mut self, events: Events, state: State) -> Result<Option<Events>> {
+    async fn handle_events(&mut self, events: Events, state: State) -> Result<Option<Events>> {
         if let Some(inner) = &mut self.inner {
-            inner.handle_events(events, state)
+            inner.handle_events(events, state).await
         } else {
             if matches!(events, Events::Tick) {
-                self.handle_tick(state)?;
+                self.handle_tick(state).await?;
             }
             Ok(Some(events))
         }
     }
 
-    fn handle_tick(&mut self, _state: State) -> Result<()> {
+    async fn handle_tick(&mut self, _state: State) -> Result<()> {
         self.loading.state.calc_next();
         Ok(())
     }
