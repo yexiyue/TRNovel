@@ -9,5 +9,5 @@ use crate::history::History;
 pub struct State {
     pub history: Arc<Mutex<History>>,
     pub size: Arc<Mutex<Option<Size>>>,
-    pub book_source: Arc<Mutex<Option<JsonSource>>>,
+    pub book_source: Arc<futures::lock::Mutex<Option<JsonSource>>>,
 }

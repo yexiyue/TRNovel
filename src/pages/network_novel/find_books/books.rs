@@ -11,6 +11,8 @@ use tui_widget_list::{ListBuilder, ListState, ListView};
 use crate::{
     app::State,
     components::{Component, Empty, Loading},
+    pages::network_novel::book_detail::BookDetail,
+    Navigator,
 };
 
 pub struct Books {
@@ -21,6 +23,7 @@ pub struct Books {
     pub loading: Loading,
     pub is_loading: bool,
     pub page: usize,
+    pub navigator: Navigator,
 }
 
 impl Books {
@@ -28,7 +31,13 @@ impl Books {
         self.books = Some(books);
     }
 
-    pub fn new(title: &str, empty_tip: &str, loading: Loading, is_loading: bool) -> Self {
+    pub fn new(
+        navigator: Navigator,
+        title: &str,
+        empty_tip: &str,
+        loading: Loading,
+        is_loading: bool,
+    ) -> Self {
         Self {
             state: ListState::default(),
             books: None,
@@ -37,6 +46,7 @@ impl Books {
             loading,
             is_loading,
             page: 0,
+            navigator,
         }
     }
 
@@ -142,6 +152,18 @@ impl Component for Books {
             }
             KeyCode::Char('k') | KeyCode::Up => {
                 self.state.previous();
+                Ok(None)
+            }
+            KeyCode::Enter => {
+                let index = self.state.selected.ok_or("请选择书籍")?;
+                let book_list_item = self
+                    .books
+                    .as_ref()
+                    .ok_or("暂无书籍可以阅读")?
+                    .get(index)
+                    .ok_or("您选择的书籍不存在")?;
+                self.navigator
+                    .push(BookDetail::to_page_route(book_list_item.clone()))?;
                 Ok(None)
             }
             _ => Ok(Some(key)),
