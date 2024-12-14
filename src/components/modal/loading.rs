@@ -20,7 +20,7 @@ impl Loading {
     }
 }
 
-impl Widget for &mut Loading {
+impl Widget for &Loading {
     fn render(self, area: ratatui::prelude::Rect, buf: &mut ratatui::prelude::Buffer) {
         let [vertical] = Layout::vertical([Constraint::Length(5)])
             .flex(Flex::Center)

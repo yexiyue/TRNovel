@@ -43,6 +43,7 @@ tokio = { version = "1.41.1", features = [
 ] }
 tokio-util = "0.7.12"
 tui-scrollview = "0.5.1"
+tui-textarea = "0.7.0"
 tui-tree-widget = "0.23.0"
 tui-widget-list = "0.13.0"
 walkdir = "2.5.0"

@@ -3,7 +3,7 @@ use crate::{
     errors::{Errors, Result},
     events::{event_loop, Events},
     history::History,
-    pages::local_novel::local_novel_first_page,
+    pages::{local_novel::local_novel_first_page, network_novel::network_novel_first_page},
     routes::Routes,
 };
 use crossterm::event::{KeyCode, KeyEventKind, KeyModifiers};
@@ -47,14 +47,15 @@ impl App {
             book_source: Arc::new(Mutex::new(Some(book_source.try_into()?))),
         };
 
-        let local_novel_router = local_novel_first_page(path)?;
+        // let local_novel_router = local_novel_first_page(path)?;
+        let first_page = network_novel_first_page()?;
         Ok(Self {
             event_tx: tx.clone(),
             event_rx: rx,
             show_exit: false,
             error: None,
             warning: None,
-            routes: Routes::new(local_novel_router, 0, state.clone()).await?,
+            routes: Routes::new(first_page, 0, state.clone()).await?,
             state,
             cancellation_token,
         })

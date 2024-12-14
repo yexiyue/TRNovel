@@ -72,6 +72,7 @@ impl Component for SelectExplore<'_> {
                             .await
                             .map_err(|e| anyhow!("Send message error: {}", e))?;
                     }
+                    self.state.toggle();
                     Ok(None)
                 }
                 KeyCode::Tab | KeyCode::Esc => {

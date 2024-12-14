@@ -45,8 +45,8 @@ unsafe impl<T> Send for LoadingWrapper<T> where T: Send + Sync {}
 
 impl<T, A> LoadingWrapper<T>
 where
-    T: Send + Sync + LoadingWrapperInit<Arg = A> + 'static + Router,
-    A: Send + Sync + 'static + Clone,
+    T: Send + Sync + LoadingWrapperInit<Arg = A> + Router + 'static,
+    A: Send + Sync + Clone + 'static,
 {
     pub fn route_page(tip: &'static str, args: A, buffer: Option<usize>) -> Box<dyn RoutePage> {
         let res: PageWrapper<LoadingWrapper<T>, (&'static str, A), LoadingWrapperMsg<T>> =
@@ -147,7 +147,7 @@ where
         if let Some(inner) = &mut self.inner {
             inner.render(frame, area)?;
         } else {
-            frame.render_widget(&mut self.loading, area);
+            frame.render_widget(&self.loading, area);
         }
         Ok(())
     }

@@ -172,21 +172,20 @@ where
     }
 
     async fn handle_events(&mut self, events: Events, state: State) -> Result<Option<Events>> {
-        if let Some(events) = match events {
-            Events::KeyEvent(key) => self
-                .handle_key_event(key, state.clone())
-                .await
-                .map(|item| item.map(Events::KeyEvent)),
-            _ => Ok(Some(events)),
-        }? {
-            if self.shortcut_info_state.show {
-                Ok(Some(events))
-            } else {
-                self.inner
-                    .as_mut()
-                    .unwrap()
-                    .handle_events(events, state)
+        let events = self
+            .inner
+            .as_mut()
+            .unwrap()
+            .handle_events(events, state.clone())
+            .await?;
+
+        if let Some(events) = events {
+            match events {
+                Events::KeyEvent(key) => self
+                    .handle_key_event(key, state)
                     .await
+                    .map(|item| item.map(Events::KeyEvent)),
+                other => Ok(Some(other)),
             }
         } else {
             Ok(None)
