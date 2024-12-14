@@ -145,12 +145,11 @@ impl LoadingWrapperInit for SelectNovel<'static> {
 
         match novel_files {
             NovelFiles::File(path) => {
-                navigator.replace(LoadingWrapper::<ReadNovel, PathBuf>::route_page(
+                navigator.replace(LoadingWrapper::<ReadNovel>::route_page(
                     "加载小说中...",
-                    navigator.clone(),
-                    state,
                     path,
-                )?)?;
+                    None,
+                ))?;
                 Ok(None)
             }
             NovelFiles::FileTree(tree) => {

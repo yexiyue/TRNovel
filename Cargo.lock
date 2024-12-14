@@ -2161,6 +2161,7 @@ dependencies = [
  "tokio",
  "tokio-util",
  "tui-scrollview",
+ "tui-textarea",
  "tui-tree-widget",
  "tui-widget-list",
  "walkdir",
@@ -2181,6 +2182,17 @@ dependencies = [
  "indoc",
  "ratatui",
  "rstest",
+]
+
+[[package]]
+name = "tui-textarea"
+version = "0.7.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "0a5318dd619ed73c52a9417ad19046724effc1287fb75cdcc4eca1d6ac1acbae"
+dependencies = [
+ "crossterm",
+ "ratatui",
+ "unicode-width 0.2.0",
 ]
 
 [[package]]

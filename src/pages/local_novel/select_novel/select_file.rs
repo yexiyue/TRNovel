@@ -48,7 +48,7 @@ impl Component for SelectFile<'_> {
     async fn handle_key_event(
         &mut self,
         key: crossterm::event::KeyEvent,
-        state: State,
+        _state: State,
     ) -> Result<Option<KeyEvent>> {
         if key.kind == KeyEventKind::Press {
             match key.code {
@@ -68,14 +68,12 @@ impl Component for SelectFile<'_> {
                     let res = self.state.selected().last();
                     if let Some(path) = res {
                         if path.is_file() {
-                            self.navigator.push(
-                                LoadingWrapper::<ReadNovel, PathBuf>::route_page(
+                            self.navigator
+                                .push(LoadingWrapper::<ReadNovel>::route_page(
                                     "加载小说中...",
-                                    self.navigator.clone(),
-                                    state,
                                     path.to_path_buf(),
-                                )?,
-                            )?;
+                                    None,
+                                ))?;
                         } else {
                             self.state.toggle_selected();
                         }
