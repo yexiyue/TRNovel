@@ -11,7 +11,7 @@ use tokio::sync::mpsc;
 
 use crate::{
     app::State,
-    components::{Component, Search},
+    components::{Component, Empty, Search},
     Result,
 };
 
@@ -26,8 +26,9 @@ pub struct SelectChapter<'a> {
 }
 
 impl SelectChapter<'_> {
-    pub fn new(sender: mpsc::Sender<ReadNovelMsg>, chapters: ChapterList) -> Self {
+    pub fn new(sender: mpsc::Sender<ReadNovelMsg>, chapters: Option<ChapterList>) -> Self {
         let sender_clone = sender.clone();
+        let chapters = chapters.unwrap_or_default();
 
         Self {
             list: List::new(
@@ -36,13 +37,7 @@ impl SelectChapter<'_> {
                     .map(|x| Line::from(x.chapter_name.clone()))
                     .collect::<Vec<_>>(),
             )
-            .highlight_style(Style::new().bold().on_light_cyan().black())
-            .block(
-                Block::bordered()
-                    .title(Line::from("目录").centered())
-                    .border_style(Style::new().dim())
-                    .padding(Padding::horizontal(1)),
-            ),
+            .highlight_style(Style::new().bold().on_light_cyan().black()),
             state: ListState::default(),
             search: Search::new("搜索章节", move |query| {
                 sender_clone
@@ -71,13 +66,25 @@ impl Component for SelectChapter<'_> {
     fn render(&mut self, frame: &mut ratatui::Frame, area: ratatui::prelude::Rect) -> Result<()> {
         let [top, content] =
             Layout::vertical([Constraint::Length(3), Constraint::Fill(1)]).areas(area);
+
+        let block = Block::bordered()
+            .title(Line::from("目录").centered())
+            .border_style(Style::new().dim())
+            .padding(Padding::horizontal(1));
         self.search.render(frame, top)?;
 
-        frame.render_stateful_widget(&self.list, content, &mut self.state);
+        if self.list.is_empty() {
+            frame.render_widget(Empty::new("暂无章节"), block.inner(content));
+        } else {
+            frame.render_stateful_widget(&self.list, block.inner(content), &mut self.state);
+        }
+
+        frame.render_widget(block, content);
 
         self.scrollbar_state = self
             .scrollbar_state
             .position(self.state.selected().unwrap_or(0));
+
         frame.render_stateful_widget(Scrollbar::default(), content, &mut self.scrollbar_state);
         Ok(())
     }

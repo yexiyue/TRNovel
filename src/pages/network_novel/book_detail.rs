@@ -17,6 +17,8 @@ use crate::{
     Navigator, Result, RoutePage, Router,
 };
 
+use super::read_novel::ReadNovel;
+
 pub struct BookDetail {
     pub book_info: BookInfo,
     pub navigator: Navigator,
@@ -123,15 +125,17 @@ impl Component for BookDetail {
             return Ok(Some(key));
         }
         match key.code {
-            KeyCode::Enter | KeyCode::Char('\n') => Ok(None),
+            KeyCode::Enter | KeyCode::Char('\n' | ' ') => {
+                self.navigator
+                    .push(Box::new(ReadNovel::to_page_route(self.book_info.clone())))?;
+                Ok(None)
+            }
             KeyCode::Char('j') | KeyCode::Down => {
                 self.state.scroll_down();
-
                 Ok(None)
             }
             KeyCode::Char('k') | KeyCode::Up => {
                 self.state.scroll_up();
-
                 Ok(None)
             }
             _ => Ok(Some(key)),
