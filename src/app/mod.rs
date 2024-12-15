@@ -32,7 +32,7 @@ pub struct App {
 }
 
 impl App {
-    pub async fn new(path: PathBuf) -> Result<Self> {
+    pub async fn new(path: PathBuf, is_network: bool) -> Result<Self> {
         let (tx, rx) = tokio::sync::mpsc::unbounded_channel();
         let cancellation_token = CancellationToken::new();
 
@@ -47,8 +47,12 @@ impl App {
             book_source: Arc::new(futures::lock::Mutex::new(Some(book_source.try_into()?))),
         };
 
-        // let local_novel_router = local_novel_first_page(path)?;
-        let first_page = network_novel_first_page()?;
+        let first_page = if is_network {
+            network_novel_first_page()?
+        } else {
+            local_novel_first_page(path)?
+        };
+
         Ok(Self {
             event_tx: tx.clone(),
             event_rx: rx,

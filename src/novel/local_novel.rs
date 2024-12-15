@@ -1,51 +1,18 @@
+use crate::cache::LocalNovelCache;
 use crate::errors::Result;
-use crate::{
-    history::History,
-    utils::{get_path_md5, novel_catch_dir},
-};
+use crate::history::History;
 use encoding_rs::Encoding;
-use serde::{Deserialize, Serialize};
+
 use std::{
     fs::File,
     io::{BufRead, BufReader, Read, Seek, SeekFrom},
     path::{Path, PathBuf},
 };
 
-#[derive(Debug, Serialize, Deserialize, Clone)]
-pub struct TxtNovelCache {
-    pub chapter_offset: Vec<(String, usize)>,
-    pub encoding: &'static encoding_rs::Encoding,
-    pub current_chapter: usize,
-    pub line_percent: f64,
-    pub path: PathBuf,
-}
-
-impl TxtNovelCache {
-    pub fn from<T: AsRef<Path>>(value: T) -> Result<Self> {
-        let cache_path = Self::path_to_catch(value)?;
-        let file = File::open(cache_path)?;
-        Ok(serde_json::from_reader(file)?)
-    }
-
-    pub fn save(&self) -> Result<()> {
-        let cache_path = Self::path_to_catch(&self.path)?;
-        let file = File::create(cache_path)?;
-        serde_json::to_writer_pretty(file, self)?;
-        Ok(())
-    }
-
-    pub fn path_to_catch<T: AsRef<Path>>(path: T) -> Result<PathBuf> {
-        Ok(PathBuf::new()
-            .join(novel_catch_dir()?)
-            .join(get_path_md5(path)?)
-            .with_extension("json"))
-    }
-}
-
-impl From<&mut TxtNovel> for TxtNovelCache {
-    fn from(value: &mut TxtNovel) -> Self {
+impl From<&mut LocalNovel> for LocalNovelCache {
+    fn from(value: &mut LocalNovel) -> Self {
         Self {
-            chapter_offset: value.chapter_offset.clone(),
+            chapters: value.chapters.clone(),
             encoding: value.encoding,
             current_chapter: value.current_chapter,
             path: value.path.clone(),
@@ -55,21 +22,21 @@ impl From<&mut TxtNovel> for TxtNovelCache {
 }
 
 #[derive(Debug)]
-pub struct TxtNovel {
+pub struct LocalNovel {
     pub file: File,
-    pub chapter_offset: Vec<(String, usize)>,
+    pub chapters: Vec<(String, usize)>,
     pub encoding: &'static encoding_rs::Encoding,
     pub current_chapter: usize,
     pub line_percent: f64,
     pub path: PathBuf,
 }
 
-impl TxtNovel {
-    pub fn from(value: TxtNovelCache) -> Result<Self> {
+impl LocalNovel {
+    pub fn from(value: LocalNovelCache) -> Result<Self> {
         let file = File::open(&value.path)?;
         Ok(Self {
             file,
-            chapter_offset: value.chapter_offset,
+            chapters: value.chapters,
             encoding: value.encoding,
             current_chapter: value.current_chapter,
             path: value.path,
@@ -79,7 +46,7 @@ impl TxtNovel {
 
     pub fn from_path<T: AsRef<Path>>(path: T) -> Result<Self> {
         let path = path.as_ref().to_path_buf().canonicalize()?;
-        match TxtNovelCache::from(&path) {
+        match LocalNovelCache::from(&path) {
             Ok(cache) => Self::from(cache),
             Err(_) => Self::new(path),
         }
@@ -97,7 +64,7 @@ impl TxtNovel {
 
         Ok(Self {
             file,
-            chapter_offset,
+            chapters: chapter_offset,
             encoding,
             current_chapter: 0,
             path,
@@ -157,16 +124,14 @@ impl TxtNovel {
         let start = if self.current_chapter == 0 {
             0
         } else {
-            let (_, start) = &self.chapter_offset[self.current_chapter];
+            let (_, start) = &self.chapters[self.current_chapter];
             start.to_owned()
         };
 
-        let end = if self.chapter_offset.is_empty()
-            || self.current_chapter + 1 >= self.chapter_offset.len()
-        {
+        let end = if self.chapters.is_empty() || self.current_chapter + 1 >= self.chapters.len() {
             self.file.metadata()?.len() as usize
         } else {
-            let (_, end) = &self.chapter_offset[self.current_chapter + 1];
+            let (_, end) = &self.chapters[self.current_chapter + 1];
             end.to_owned()
         };
 
@@ -183,7 +148,7 @@ impl TxtNovel {
     }
 
     pub fn next_chapter(&mut self) -> Result<()> {
-        if self.current_chapter + 1 >= self.chapter_offset.len() {
+        if self.current_chapter + 1 >= self.chapters.len() {
             Err("已经是最后一章".into())
         } else {
             self.current_chapter += 1;
@@ -192,7 +157,7 @@ impl TxtNovel {
     }
 
     pub fn set_chapter(&mut self, chapter: usize) -> Result<()> {
-        if chapter >= self.chapter_offset.len() {
+        if chapter >= self.chapters.len() {
             Err("章节不存在".into())
         } else {
             if self.current_chapter != chapter {
@@ -213,9 +178,9 @@ impl TxtNovel {
 }
 
 /// 当小说被释放时，将小说缓存到历史记录中
-impl Drop for TxtNovel {
+impl Drop for LocalNovel {
     fn drop(&mut self) {
-        let txt_novel_cache: TxtNovelCache = self.into();
+        let txt_novel_cache: LocalNovelCache = self.into();
         txt_novel_cache.save().expect("小说缓存失败");
         let mut histories = History::load().expect("历史记录加载失败");
         histories.add(txt_novel_cache.path.clone(), txt_novel_cache.into());

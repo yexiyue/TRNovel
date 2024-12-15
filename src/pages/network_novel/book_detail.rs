@@ -1,7 +1,9 @@
+use crate::{
+    app::State, components::{Component, LoadingWrapper, LoadingWrapperInit}, novel::network_novel::NetworkNovel, pages::ReadNovel, Navigator, Result, RoutePage, Router
+};
 use async_trait::async_trait;
-
 use crossterm::event::{KeyCode, KeyEvent, KeyEventKind};
-use parse_book_source::{BookInfo, BookListItem};
+use parse_book_source::BookInfo;
 use ratatui::{
     buffer::Buffer,
     layout::{Constraint, Layout, Margin, Size},
@@ -11,16 +13,9 @@ use ratatui::{
 };
 use tui_scrollview::{ScrollView, ScrollViewState, ScrollbarVisibility};
 
-use crate::{
-    app::State,
-    components::{Component, LoadingWrapper, LoadingWrapperInit},
-    Navigator, Result, RoutePage, Router,
-};
-
-use super::read_novel::ReadNovel;
-
 pub struct BookDetail {
     pub book_info: BookInfo,
+    pub novel: NetworkNovel,
     pub navigator: Navigator,
     pub other_paragraph: Paragraph<'static>,
     pub intro_paragraph: Paragraph<'static>,
@@ -28,7 +23,7 @@ pub struct BookDetail {
 }
 
 impl BookDetail {
-    pub fn new(book_info: BookInfo, navigator: Navigator) -> Self {
+    pub fn new(book_info: BookInfo, navigator: Navigator, mut novel: NetworkNovel) -> Self {
         let title = vec![
             Span::from("名称：").yellow(),
             Span::from(book_info.name.clone()),
@@ -67,16 +62,19 @@ impl BookDetail {
 
         let intro = Paragraph::new(book_info.intro.clone()).wrap(Wrap { trim: true });
 
+        novel.set_book_info(&book_info);
+
         Self {
             book_info,
             navigator,
             other_paragraph: paragraph,
             intro_paragraph: intro,
             state: ScrollViewState::default(),
+            novel,
         }
     }
-    pub fn to_page_route(book_list_item: BookListItem) -> Box<dyn RoutePage> {
-        LoadingWrapper::<BookDetail>::route_page("加载书籍详情中...", book_list_item, None)
+    pub fn to_page_route(novel: NetworkNovel) -> Box<dyn RoutePage> {
+        LoadingWrapper::<BookDetail>::route_page("加载书籍详情中...", novel, None)
     }
 
     fn render_content(&mut self, buf: &mut Buffer) {
@@ -127,7 +125,7 @@ impl Component for BookDetail {
         match key.code {
             KeyCode::Enter | KeyCode::Char('\n' | ' ') => {
                 self.navigator
-                    .push(Box::new(ReadNovel::to_page_route(self.book_info.clone())))?;
+                    .push(Box::new(ReadNovel::to_page_route(self.novel.clone())))?;
                 Ok(None)
             }
             KeyCode::Char('j') | KeyCode::Down => {
@@ -145,18 +143,16 @@ impl Component for BookDetail {
 
 #[async_trait]
 impl LoadingWrapperInit for BookDetail {
-    type Arg = BookListItem;
-    async fn init(args: Self::Arg, navigator: Navigator, state: State) -> Result<Option<Self>> {
-        let book_info = state
+    type Arg = NetworkNovel;
+    async fn init(novel: Self::Arg, navigator: Navigator, _state: State) -> Result<Option<Self>> {
+        let book_info = novel
             .book_source
             .lock()
             .await
-            .as_mut()
-            .unwrap()
-            .book_info(&args)
+            .book_info(&novel.book_list_item)
             .await?;
 
-        Ok(Some(BookDetail::new(book_info, navigator)))
+        Ok(Some(BookDetail::new(book_info, navigator, novel)))
     }
 }
 

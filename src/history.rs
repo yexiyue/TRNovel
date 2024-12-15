@@ -1,7 +1,4 @@
-use crate::{
-    novel::{TxtNovel, TxtNovelCache},
-    utils::novel_catch_dir,
-};
+use crate::{cache::LocalNovelCache, novel::LocalNovel, utils::novel_catch_dir};
 use anyhow::Result;
 use chrono::{DateTime, Local};
 use serde::{Deserialize, Serialize};
@@ -65,14 +62,14 @@ pub struct HistoryItem {
     pub file_name: String,
 }
 
-impl From<TxtNovelCache> for HistoryItem {
-    fn from(value: TxtNovelCache) -> Self {
-        let (current_chapter, percent) = if value.chapter_offset.is_empty() {
+impl From<LocalNovelCache> for HistoryItem {
+    fn from(value: LocalNovelCache) -> Self {
+        let (current_chapter, percent) = if value.chapters.is_empty() {
             ("".to_string(), value.line_percent * 100.0)
         } else {
             (
-                value.chapter_offset[value.current_chapter].0.clone(),
-                (value.current_chapter as f64 / value.chapter_offset.len() as f64) * 100.0,
+                value.chapters[value.current_chapter].0.clone(),
+                (value.current_chapter as f64 / value.chapters.len() as f64) * 100.0,
             )
         };
 
@@ -90,14 +87,14 @@ impl From<TxtNovelCache> for HistoryItem {
     }
 }
 
-impl From<&TxtNovel> for HistoryItem {
-    fn from(value: &TxtNovel) -> Self {
-        let (current_chapter, percent) = if value.chapter_offset.is_empty() {
+impl From<&LocalNovel> for HistoryItem {
+    fn from(value: &LocalNovel) -> Self {
+        let (current_chapter, percent) = if value.chapters.is_empty() {
             ("".to_string(), value.line_percent * 100.0)
         } else {
             (
-                value.chapter_offset[value.current_chapter].0.clone(),
-                (value.current_chapter as f64 / value.chapter_offset.len() as f64) * 100.0,
+                value.chapters[value.current_chapter].0.clone(),
+                (value.current_chapter as f64 / value.chapters.len() as f64) * 100.0,
             )
         };
 

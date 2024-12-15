@@ -1,8 +1,9 @@
-use super::read_novel::ReadNovel;
 use crate::{
     app::State,
-    components::{Component, KeyShortcutInfo, LoadingWrapper, LoadingWrapperInit},
+    components::{Component, KeyShortcutInfo, LoadingWrapperInit},
     file_list::NovelFiles,
+    novel::new_local_novel::NewLocalNovel,
+    pages::ReadNovel,
     Events, Navigator, Result, Router,
 };
 use async_trait::async_trait;
@@ -145,11 +146,8 @@ impl LoadingWrapperInit for SelectNovel<'static> {
 
         match novel_files {
             NovelFiles::File(path) => {
-                navigator.replace(LoadingWrapper::<ReadNovel>::route_page(
-                    "加载小说中...",
-                    path,
-                    None,
-                ))?;
+                let novel = NewLocalNovel::from_path(path)?;
+                navigator.push(Box::new(ReadNovel::to_page_route(novel)))?;
                 Ok(None)
             }
             NovelFiles::FileTree(tree) => {

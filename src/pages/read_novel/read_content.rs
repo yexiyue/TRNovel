@@ -1,6 +1,5 @@
 use async_trait::async_trait;
 use crossterm::event::{KeyCode, KeyEvent, KeyEventKind};
-use parse_book_source::Chapter;
 use ratatui::{
     layout::{Constraint, Layout, Rect, Size},
     style::{Style, Stylize},
@@ -12,26 +11,42 @@ use tokio::sync::mpsc;
 use crate::{
     app::State,
     components::{Component, Loading},
+    novel::Novel,
     Events, Result,
 };
 
 use super::ReadNovelMsg;
 
-pub struct ReadContent<'a> {
+pub struct ReadContent<'a, T>
+where
+    T: Novel,
+{
+    // 是否正在加载
     pub loading: Loading,
     pub is_loading: bool,
+
+    // 当前章节
+    pub current_chapter: Option<String>,
+    pub chapter_percent: f64,
+    pub sender: mpsc::Sender<ReadNovelMsg<T>>,
+
+    // 内容行数
     pub content_lines: usize,
     pub current_line: usize,
     pub size: Size,
     pub page_size: usize,
     pub paragraph: Option<Paragraph<'a>>,
-    pub current_chapter: Option<Chapter>,
-    pub chapter_percent: f64,
-    pub sender: mpsc::Sender<ReadNovelMsg>,
 }
 
-impl ReadContent<'_> {
-    pub fn new(size: Size, sender: mpsc::Sender<ReadNovelMsg>, is_loading: bool) -> Result<Self> {
+impl<T> ReadContent<'_, T>
+where
+    T: Novel,
+{
+    pub fn new(
+        size: Size,
+        sender: mpsc::Sender<ReadNovelMsg<T>>,
+        is_loading: bool,
+    ) -> Result<Self> {
         Ok(Self {
             paragraph: None,
             content_lines: 0,
@@ -58,7 +73,7 @@ impl ReadContent<'_> {
         self.current_line = current_line;
     }
 
-    pub fn set_current_chapter(&mut self, chapter: Chapter) {
+    pub fn set_current_chapter(&mut self, chapter: String) {
         self.current_chapter = Some(chapter);
     }
 
@@ -126,11 +141,7 @@ impl ReadContent<'_> {
     }
 
     fn render_content(&mut self, frame: &mut ratatui::Frame, area: ratatui::prelude::Rect) {
-        let current_chapter = self
-            .current_chapter
-            .clone()
-            .map(|item| item.chapter_name)
-            .unwrap_or_default();
+        let current_chapter = self.current_chapter.clone().unwrap_or_default();
 
         let paragraph = self
             .paragraph
@@ -177,7 +188,10 @@ impl ReadContent<'_> {
 }
 
 #[async_trait]
-impl Component for ReadContent<'_> {
+impl<T> Component for ReadContent<'_, T>
+where
+    T: Novel,
+{
     fn render(&mut self, frame: &mut ratatui::Frame, area: ratatui::prelude::Rect) -> Result<()> {
         if self.is_loading {
             frame.render_widget(&self.loading, area);
@@ -218,11 +232,8 @@ impl Component for ReadContent<'_> {
                 Ok(None)
             }
             KeyCode::Char('k') | KeyCode::Up => {
-                if self.is_top() {
-                    self.sender.send(ReadNovelMsg::ScrollToPrev).await.unwrap();
-                } else {
-                    self.scroll_up();
-                }
+                self.scroll_up();
+
                 Ok(None)
             }
             KeyCode::Char('h') | KeyCode::Left => {
@@ -259,7 +270,7 @@ impl Component for ReadContent<'_> {
                 Ok(Some(Events::Tick))
             }
             Events::Resize(w, h) => {
-                self.resize(Size::new(w, h));
+                self.resize(Size::new(w - 4, h - 5));
                 Ok(Some(Events::Resize(w, h)))
             }
             _ => Ok(Some(events)),

@@ -1,7 +1,8 @@
 use crate::{
     app::State,
-    components::{Component, Empty, KeyShortcutInfo, LoadingWrapper},
-    pages::local_novel::ReadNovel,
+    components::{Component, Empty, KeyShortcutInfo},
+    novel::new_local_novel::NewLocalNovel,
+    pages::ReadNovel,
     Navigator, Result,
 };
 use async_trait::async_trait;
@@ -68,12 +69,9 @@ impl Component for SelectFile<'_> {
                     let res = self.state.selected().last();
                     if let Some(path) = res {
                         if path.is_file() {
+                            let novel = NewLocalNovel::from_path(path)?;
                             self.navigator
-                                .push(LoadingWrapper::<ReadNovel>::route_page(
-                                    "加载小说中...",
-                                    path.to_path_buf(),
-                                    None,
-                                ))?;
+                                .push(Box::new(ReadNovel::to_page_route(novel)))?;
                         } else {
                             self.state.toggle_selected();
                         }

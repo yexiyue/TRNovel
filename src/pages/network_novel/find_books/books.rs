@@ -1,3 +1,5 @@
+use std::sync::Arc;
+
 use async_trait::async_trait;
 use crossterm::event::{KeyCode, KeyEvent, KeyEventKind};
 use parse_book_source::BookList;
@@ -6,11 +8,13 @@ use ratatui::{
     text::{Line, Span},
     widgets::{Block, Padding, Paragraph, Scrollbar, ScrollbarState, Wrap},
 };
+use tokio::sync::Mutex;
 use tui_widget_list::{ListBuilder, ListState, ListView};
 
 use crate::{
     app::State,
     components::{Component, Empty, Loading},
+    novel::network_novel::NetworkNovel,
     pages::network_novel::book_detail::BookDetail,
     Navigator,
 };
@@ -140,7 +144,7 @@ impl Component for Books {
     async fn handle_key_event(
         &mut self,
         key: KeyEvent,
-        _state: State,
+        state: State,
     ) -> crate::Result<Option<KeyEvent>> {
         if key.kind != KeyEventKind::Press {
             return Ok(Some(key));
@@ -163,7 +167,10 @@ impl Component for Books {
                     .get(index)
                     .ok_or("您选择的书籍不存在")?;
                 self.navigator
-                    .push(BookDetail::to_page_route(book_list_item.clone()))?;
+                    .push(BookDetail::to_page_route(NetworkNovel::new(
+                        book_list_item.clone(),
+                        Arc::new(Mutex::new(state.book_source.lock().await.clone().unwrap())),
+                    )))?;
                 Ok(None)
             }
             _ => Ok(Some(key)),
