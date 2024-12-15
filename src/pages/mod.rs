@@ -9,6 +9,8 @@ use tokio::sync::mpsc;
 
 pub mod local_novel;
 pub mod network_novel;
+pub mod read_novel;
+pub use read_novel::ReadNovel;
 
 #[async_trait]
 pub trait Page<Arg>
@@ -172,12 +174,15 @@ where
     }
 
     async fn handle_events(&mut self, events: Events, state: State) -> Result<Option<Events>> {
-        let events = self
-            .inner
-            .as_mut()
-            .unwrap()
-            .handle_events(events, state.clone())
-            .await?;
+        let events = if self.shortcut_info_state.show {
+            Some(events)
+        } else {
+            self.inner
+                .as_mut()
+                .unwrap()
+                .handle_events(events, state.clone())
+                .await?
+        };
 
         if let Some(events) = events {
             match events {

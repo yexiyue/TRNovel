@@ -1,8 +1,9 @@
 use crate::{
     app::State,
-    components::{Component, Confirm, ConfirmState, Empty, KeyShortcutInfo, LoadingWrapper},
+    components::{Component, Confirm, ConfirmState, Empty, KeyShortcutInfo},
     history::History,
-    pages::local_novel::ReadNovel,
+    novel::new_local_novel::NewLocalNovel,
+    pages::ReadNovel,
     Navigator, Result,
 };
 use async_trait::async_trait;
@@ -142,12 +143,9 @@ impl Component for SelectHistory {
                     };
                     let (path, _) = &self.history.lock().unwrap().histories[index];
 
+                    let novel = NewLocalNovel::from_path(path)?;
                     self.navigator
-                        .push(LoadingWrapper::<ReadNovel>::route_page(
-                            "加载小说中...",
-                            path.to_path_buf(),
-                            None,
-                        ))?;
+                        .push(Box::new(ReadNovel::to_page_route(novel)))?;
 
                     Ok(None)
                 }

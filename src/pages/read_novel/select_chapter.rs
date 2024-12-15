@@ -1,6 +1,5 @@
 use async_trait::async_trait;
 use crossterm::event::{KeyCode, KeyEvent};
-use parse_book_source::ChapterList;
 use ratatui::{
     layout::{Constraint, Layout},
     style::{Style, Stylize},
@@ -12,32 +11,34 @@ use tokio::sync::mpsc;
 use crate::{
     app::State,
     components::{Component, Empty, Search},
+    novel::Novel,
     Result,
 };
 
 use super::ReadNovelMsg;
 
-pub struct SelectChapter<'a> {
+pub struct SelectChapter<'a, T>
+where
+    T: Novel + 'static,
+{
     pub state: ListState,
     pub list: List<'a>,
     pub search: Search<'a>,
-    pub sender: mpsc::Sender<ReadNovelMsg>,
+    pub sender: mpsc::Sender<ReadNovelMsg<T>>,
     pub scrollbar_state: ScrollbarState,
 }
 
-impl SelectChapter<'_> {
-    pub fn new(sender: mpsc::Sender<ReadNovelMsg>, chapters: Option<ChapterList>) -> Self {
+impl<T> SelectChapter<'_, T>
+where
+    T: Novel,
+{
+    pub fn new(sender: mpsc::Sender<ReadNovelMsg<T>>, chapters: Option<Vec<String>>) -> Self {
         let sender_clone = sender.clone();
         let chapters = chapters.unwrap_or_default();
 
         Self {
-            list: List::new(
-                chapters
-                    .iter()
-                    .map(|x| Line::from(x.chapter_name.clone()))
-                    .collect::<Vec<_>>(),
-            )
-            .highlight_style(Style::new().bold().on_light_cyan().black()),
+            scrollbar_state: ScrollbarState::new(chapters.len()),
+            list: List::new(chapters).highlight_style(Style::new().bold().on_light_cyan().black()),
             state: ListState::default(),
             search: Search::new("搜索章节", move |query| {
                 sender_clone
@@ -45,24 +46,21 @@ impl SelectChapter<'_> {
                     .unwrap();
             }),
             sender,
-            scrollbar_state: ScrollbarState::new(chapters.len()),
         }
     }
 
-    pub fn set_list(&mut self, chapters: ChapterList) {
+    pub fn set_list(&mut self, chapters: Vec<String>) {
         self.state = ListState::default();
-        self.list = self.list.clone().items(
-            chapters
-                .iter()
-                .map(|x| Line::from(x.chapter_name.clone()))
-                .collect::<Vec<_>>(),
-        );
         self.scrollbar_state = ScrollbarState::new(chapters.len());
+        self.list = self.list.clone().items(chapters);
     }
 }
 
 #[async_trait]
-impl Component for SelectChapter<'_> {
+impl<T> Component for SelectChapter<'_, T>
+where
+    T: Novel,
+{
     fn render(&mut self, frame: &mut ratatui::Frame, area: ratatui::prelude::Rect) -> Result<()> {
         let [top, content] =
             Layout::vertical([Constraint::Length(3), Constraint::Fill(1)]).areas(area);

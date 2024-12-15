@@ -1,8 +1,6 @@
 use crate::{components::LoadingWrapper, Result, RoutePage};
 use std::path::PathBuf;
 
-pub mod read_novel;
-pub use read_novel::ReadNovel;
 pub mod select_novel;
 pub use select_novel::SelectNovel;
 

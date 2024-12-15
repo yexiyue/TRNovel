@@ -4,6 +4,7 @@ use std::{fs, path::PathBuf};
 use utils::novel_catch_dir;
 
 pub mod app;
+pub mod cache;
 pub mod components;
 pub mod errors;
 pub mod events;
@@ -29,7 +30,13 @@ pub async fn run() -> anyhow::Result<()> {
 
     let terminal = ratatui::init();
 
-    App::new(args.path).await?.run(terminal).await?;
+    App::new(
+        args.path,
+        matches!(args.subcommand, Some(Commands::Network)),
+    )
+    .await?
+    .run(terminal)
+    .await?;
 
     ratatui::restore();
 
