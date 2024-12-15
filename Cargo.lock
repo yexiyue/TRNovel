@@ -1213,8 +1213,6 @@ dependencies = [
 [[package]]
 name = "parse-book-source"
 version = "0.1.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0556fa0f7fedd1301ced46261edf19f238722dcf165e786f984e5186f83a284b"
 dependencies = [
  "anyhow",
  "jsonpath-rust",

@@ -1,6 +1,6 @@
 use crate::{
     app::State,
-    components::{Component, Loading},
+    components::{Component, Loading, Search},
     errors::Errors,
     pages::Page,
     Events, Result, Router,
@@ -13,10 +13,9 @@ use ratatui::layout::{Constraint, Layout};
 use tokio::sync::mpsc::Sender;
 
 pub mod books;
-pub mod search;
+
 pub mod select_explore;
 pub use books::*;
-pub use search::Search;
 pub use select_explore::*;
 
 pub enum FindBooksMsg {
@@ -52,7 +51,7 @@ impl Page<()> for FindBooks<'_> {
         navigator: crate::Navigator,
         state: State,
     ) -> Result<Self> {
-        let json_source = state.book_source.lock().unwrap().clone().unwrap();
+        let json_source = state.book_source.lock().await.clone().unwrap();
 
         let (explore, book_list) = if let Some(explores) = json_source.explores {
             if let Some(first) = explores.first() {
@@ -62,12 +61,19 @@ impl Page<()> for FindBooks<'_> {
                     .map_err(|_| anyhow!("发送消息失败"))?;
                 (
                     Some(SelectExplore::new(explores, sender.clone())),
-                    Books::new("频道列表", "暂无书籍", Loading::new("加载中..."), true),
+                    Books::new(
+                        navigator.clone(),
+                        "频道列表",
+                        "暂无书籍",
+                        Loading::new("加载中..."),
+                        true,
+                    ),
                 )
             } else {
                 (
                     None,
                     Books::new(
+                        navigator.clone(),
                         "搜索结果",
                         "请输入搜索内容",
                         Loading::new("搜索中..."),
@@ -79,6 +85,7 @@ impl Page<()> for FindBooks<'_> {
             (
                 None,
                 Books::new(
+                    navigator.clone(),
                     "搜索结果",
                     "请输入搜索内容",
                     Loading::new("搜索中..."),
@@ -87,7 +94,10 @@ impl Page<()> for FindBooks<'_> {
             )
         };
 
-        let search = Search::new(sender.clone());
+        let sender_clone = sender.clone();
+        let search = Search::new("请输入关键字", move |query| {
+            sender_clone.try_send(FindBooksMsg::Search(query)).unwrap();
+        });
 
         Ok(Self {
             state,
@@ -144,7 +154,6 @@ impl Router for FindBooks<'_> {}
 
 impl FindBooks<'_> {
     fn get_book_list(&mut self) {
-        let mut book_source = self.state.book_source.lock().unwrap().clone().unwrap();
         let sender = self.sender.clone();
 
         let page = self.book_list.page;
@@ -173,12 +182,16 @@ impl FindBooks<'_> {
             self.book_list.is_loading = true;
 
             let explore = self.current_explore.clone();
-
+            let book_source = self.state.book_source.clone();
             tokio::spawn(async move {
                 if let Err(e) = (async {
                     let book_list = match current {
                         Current::Search(key) => {
                             book_source
+                                .lock()
+                                .await
+                                .as_mut()
+                                .unwrap()
                                 .search_books(
                                     Params::new().key(&key).page(page).page_size(page_size),
                                 )
@@ -186,6 +199,10 @@ impl FindBooks<'_> {
                         }
                         Current::Explore => {
                             book_source
+                                .lock()
+                                .await
+                                .as_mut()
+                                .unwrap()
                                 .explore_books(
                                     &explore.unwrap(),
                                     Params::new().page(page).page_size(page_size),

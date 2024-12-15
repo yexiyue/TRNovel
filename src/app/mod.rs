@@ -44,7 +44,7 @@ impl App {
         let state = State {
             history: Arc::new(Mutex::new(History::load()?)),
             size: Arc::new(Mutex::new(None)),
-            book_source: Arc::new(Mutex::new(Some(book_source.try_into()?))),
+            book_source: Arc::new(futures::lock::Mutex::new(Some(book_source.try_into()?))),
         };
 
         // let local_novel_router = local_novel_first_page(path)?;

@@ -1,33 +1,28 @@
-use anyhow::anyhow;
+use crate::{app::State, components::Component};
 use async_trait::async_trait;
 use crossterm::event::{KeyCode, KeyEvent, KeyEventKind};
 use ratatui::{
     style::{Style, Stylize},
     widgets::Block,
 };
-use tokio::sync::mpsc;
 use tui_textarea::{Input, Key, TextArea};
-
-use crate::{app::State, components::Component};
-
-use super::FindBooksMsg;
 
 pub struct Search<'a> {
     pub textarea: TextArea<'a>,
     pub is_focus: bool,
-    pub sender: mpsc::Sender<FindBooksMsg>,
+    pub on_search: Box<dyn FnMut(String) + Send + Sync + 'static>,
 }
 
 impl Search<'_> {
-    pub fn new(sender: mpsc::Sender<FindBooksMsg>) -> Self {
+    pub fn new<T: FnMut(String) + Send + Sync + 'static>(place_holder: &str, on_search: T) -> Self {
         let mut textarea = TextArea::default();
         textarea.set_cursor_line_style(Style::default());
-        textarea.set_placeholder_text("请输入搜索内容");
+        textarea.set_placeholder_text(place_holder);
 
         Self {
-            sender,
             textarea,
             is_focus: false,
+            on_search: Box::new(on_search),
         }
     }
 }
@@ -68,10 +63,8 @@ impl Component for Search<'_> {
                     key: Key::Enter, ..
                 } => {
                     self.is_focus = false;
-                    self.sender
-                        .send(FindBooksMsg::Search(self.textarea.lines()[0].to_string()))
-                        .await
-                        .map_err(|e| anyhow!(e))?;
+                    let res = self.textarea.lines()[0].clone();
+                    (self.on_search)(res);
                     Ok(None)
                 }
                 input => {
