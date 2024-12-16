@@ -1,9 +1,8 @@
-use anyhow::anyhow;
-
 use crate::errors::Result;
 use crate::history::History;
 use crate::{cache::LocalNovelCache, errors::Errors};
 
+use std::ops::{Deref, DerefMut};
 use std::{
     fs::File,
     io::{BufRead, BufReader, Read, Seek, SeekFrom},
@@ -12,16 +11,17 @@ use std::{
 };
 use tokio::sync::Mutex;
 
-use super::Novel;
+use super::{Novel, NovelChapters};
 
 impl From<&mut NewLocalNovel> for LocalNovelCache {
     fn from(value: &mut NewLocalNovel) -> Self {
+        let novel_chapters = value.novel_chapters.clone();
         Self {
-            chapters: value.chapters.clone().unwrap(),
+            chapters: novel_chapters.chapters.clone().unwrap(),
             encoding: value.encoding,
-            current_chapter: value.current_chapter,
+            current_chapter: novel_chapters.current_chapter,
             path: value.path.clone(),
-            line_percent: value.line_percent,
+            line_percent: novel_chapters.line_percent,
         }
     }
 }
@@ -29,11 +29,22 @@ impl From<&mut NewLocalNovel> for LocalNovelCache {
 #[derive(Debug, Clone)]
 pub struct NewLocalNovel {
     pub file: Arc<Mutex<File>>,
-    pub chapters: Option<Vec<(String, usize)>>,
+    pub novel_chapters: NovelChapters<(String, usize)>,
     pub encoding: &'static encoding_rs::Encoding,
-    pub current_chapter: usize,
-    pub line_percent: f64,
     pub path: PathBuf,
+}
+
+impl Deref for NewLocalNovel {
+    type Target = NovelChapters<(String, usize)>;
+    fn deref(&self) -> &Self::Target {
+        &self.novel_chapters
+    }
+}
+
+impl DerefMut for NewLocalNovel {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.novel_chapters
+    }
 }
 
 impl NewLocalNovel {
@@ -41,11 +52,13 @@ impl NewLocalNovel {
         let file = File::open(&value.path)?;
         Ok(Self {
             file: Arc::new(Mutex::new(file)),
-            chapters: Some(value.chapters),
+            novel_chapters: NovelChapters {
+                chapters: Some(value.chapters),
+                current_chapter: value.current_chapter,
+                line_percent: value.line_percent,
+            },
             encoding: value.encoding,
-            current_chapter: value.current_chapter,
             path: value.path,
-            line_percent: value.line_percent,
         })
     }
 
@@ -70,11 +83,9 @@ impl NewLocalNovel {
 
         Ok(Self {
             file: Arc::new(Mutex::new(file)),
-            chapters: None,
+            novel_chapters: NovelChapters::new(),
             encoding,
-            current_chapter: 0,
             path,
-            line_percent: 0.0,
         })
     }
 
@@ -99,16 +110,6 @@ impl NewLocalNovel {
 
 impl Novel for NewLocalNovel {
     type Chapter = (String, usize);
-    fn get_chapters_result(&self) -> Result<&Vec<(String, usize)>> {
-        self.chapters.as_ref().ok_or(anyhow!("没有章节信息").into())
-    }
-
-    fn get_chapters(&self) -> Option<&Vec<Self::Chapter>> {
-        self.chapters.as_ref()
-    }
-    fn chapter_percent(&self) -> Result<f64> {
-        Ok(self.current_chapter as f64 / self.get_chapters_result()?.len() as f64 * 100.0)
-    }
 
     fn request_chapters<T: FnMut(Result<Vec<Self::Chapter>>) + Send + 'static>(
         &self,
@@ -153,19 +154,19 @@ impl Novel for NewLocalNovel {
         &mut self,
         mut callback: T,
     ) -> Result<()> {
-        let start = if self.current_chapter == 0 {
+        let start = if self.get_current_chapter_index() == 0 {
             0
         } else {
-            let (_, start) = self.get_chapters_result()?[self.current_chapter];
+            let (_, start) = self.get_chapters_result()?[self.get_current_chapter_index()];
             start.to_owned()
         };
 
         let end = if self.get_chapters_result()?.is_empty()
-            || self.current_chapter + 1 >= self.get_chapters_result()?.len()
+            || self.get_current_chapter_index() + 1 >= self.get_chapters_result()?.len()
         {
             self.file.try_lock()?.metadata()?.len() as usize
         } else {
-            let (_, end) = self.get_chapters_result()?[self.current_chapter + 1];
+            let (_, end) = self.get_chapters_result()?[self.get_current_chapter_index() + 1];
             end.to_owned()
         };
 
@@ -188,49 +189,6 @@ impl Novel for NewLocalNovel {
             callback(res);
         });
         Ok(())
-    }
-
-    fn next_chapter(&mut self) -> Result<()> {
-        if self.current_chapter + 1 >= self.get_chapters_result()?.len() {
-            Err("已经是最后一章了".into())
-        } else {
-            self.current_chapter += 1;
-            Ok(())
-        }
-    }
-
-    fn set_chapter(&mut self, chapter: usize) -> Result<()> {
-        if chapter >= self.get_chapters_result()?.len() {
-            Err("章节不存在".into())
-        } else {
-            if self.current_chapter != chapter {
-                self.current_chapter = chapter;
-            }
-            Ok(())
-        }
-    }
-
-    fn prev_chapter(&mut self) -> Result<()> {
-        if self.current_chapter == 0 {
-            Err("已经是第一章了".into())
-        } else {
-            self.current_chapter -= 1;
-            Ok(())
-        }
-    }
-
-    fn set_chapters(&mut self, chapters: &[Self::Chapter]) {
-        self.chapters = Some(chapters.to_vec());
-    }
-
-    fn get_current_chapter(&self) -> Result<Self::Chapter> {
-        Ok(self
-            .chapters
-            .as_ref()
-            .ok_or(anyhow!("章节列表为空"))?
-            .get(self.current_chapter)
-            .ok_or(anyhow!("当前章节不存在"))?
-            .clone())
     }
 
     fn get_current_chapter_name(&self) -> Result<String> {
