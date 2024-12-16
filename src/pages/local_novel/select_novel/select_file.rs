@@ -1,7 +1,8 @@
 use crate::{
     app::State,
-    components::{Component, Empty, KeyShortcutInfo, LoadingWrapper},
-    pages::local_novel::ReadNovel,
+    components::{Component, Empty, KeyShortcutInfo},
+    novel::new_local_novel::NewLocalNovel,
+    pages::ReadNovel,
     Navigator, Result,
 };
 use async_trait::async_trait;
@@ -48,7 +49,7 @@ impl Component for SelectFile<'_> {
     async fn handle_key_event(
         &mut self,
         key: crossterm::event::KeyEvent,
-        state: State,
+        _state: State,
     ) -> Result<Option<KeyEvent>> {
         if key.kind == KeyEventKind::Press {
             match key.code {
@@ -68,14 +69,9 @@ impl Component for SelectFile<'_> {
                     let res = self.state.selected().last();
                     if let Some(path) = res {
                         if path.is_file() {
-                            self.navigator.push(
-                                LoadingWrapper::<ReadNovel, PathBuf>::route_page(
-                                    "加载小说中...",
-                                    self.navigator.clone(),
-                                    state,
-                                    path.to_path_buf(),
-                                )?,
-                            )?;
+                            let novel = NewLocalNovel::from_path(path)?;
+                            self.navigator
+                                .push(Box::new(ReadNovel::to_page_route(novel)))?;
                         } else {
                             self.state.toggle_selected();
                         }

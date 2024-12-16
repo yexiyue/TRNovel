@@ -9,6 +9,8 @@ pub mod modal;
 pub use modal::*;
 pub mod empty;
 pub use empty::*;
+pub mod search;
+pub use search::*;
 
 #[async_trait]
 pub trait Component {

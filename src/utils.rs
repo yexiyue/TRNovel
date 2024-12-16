@@ -25,3 +25,8 @@ pub fn get_path_md5<T: AsRef<Path>>(path: T) -> Result<String> {
     let md5 = md5::compute(path.as_ref().canonicalize()?.to_string_lossy().as_bytes());
     Ok(format!("{:x}", md5))
 }
+
+pub fn get_md5_string<T: ToString>(value: T) -> String {
+    let md5 = md5::compute(value.to_string());
+    format!("{:x}", md5)
+}

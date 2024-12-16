@@ -1,0 +1,27 @@
+[package]
+name = "parse-book-source"
+version = "0.1.1"
+edition = "2021"
+description = "Terminal reader for novel"
+authors = ["yexiyue <yexiyue666@qq.com>"]
+license = "MIT"
+keywords = ["CLI", "Terminal", "Novel", "Reader"]
+repository = "https://github.com/yexiyue/parse-book-source"
+
+[dependencies]
+anyhow = "1.0.94"
+jsonpath-rust = "0.7.3"
+regex = "1.11.1"
+reqwest = { version = "0.12.9", features = ["json", "rustls-tls"] }
+serde = { version = "1.0.215", features = ["derive"] }
+serde_json = "1.0.133"
+thiserror = "2.0.4"
+
+
+# scraper = "0.21.0"
+# chrono = { version = "0.4.38", features = ["serde"] }
+# base64 = "0.22.1"
+# cbc = "0.1.2"
+# ring = { version = "0.17.8", features = ["std"] }
+# aes = { version = "0.8.4", features = ["hazmat"] }
+

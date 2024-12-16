@@ -2,7 +2,7 @@ use crate::{app::State, components::Component, Events, Result, RoutePage, Router
 use anyhow::anyhow;
 use async_trait::async_trait;
 use crossterm::event::{KeyCode, KeyEventKind};
-use tokio::sync::mpsc::{Receiver, Sender};
+use tokio::sync::mpsc::{self, Receiver, Sender};
 
 /// 路由
 /// 模式跟page模式很像，但为了防止嵌套路由，所以就单独实现消息处理
@@ -15,6 +15,26 @@ pub struct Routes {
 }
 
 impl Routes {
+    pub async fn new(
+        mut first: Box<dyn RoutePage>,
+        current_router: usize,
+        state: State,
+    ) -> Result<Self> {
+        let (tx, rx) = mpsc::channel(1);
+
+        // 第一个路由初始化
+        first.as_mut().init((&tx).into(), state.clone()).await?;
+        first.as_mut().on_show(state.clone()).await?;
+
+        Ok(Self {
+            routes: vec![first],
+            tx,
+            rx,
+            current_router,
+            state,
+        })
+    }
+
     pub async fn push_router(&mut self, mut router: Box<dyn RoutePage>) -> Result<()> {
         let state = self.state.clone();
         self.current()?.on_hide(state.clone()).await?;

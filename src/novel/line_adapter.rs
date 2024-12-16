@@ -1,4 +1,4 @@
-use super::TxtNovel;
+use super::LocalNovel;
 use anyhow::Result;
 use ratatui::{
     layout::Size,
@@ -9,7 +9,7 @@ use std::ops::{Deref, DerefMut};
 
 #[derive(Debug)]
 pub struct LineAdapter<'a> {
-    pub inner: TxtNovel,
+    pub inner: LocalNovel,
     pub content_lines: usize,
     pub current_line: usize,
     pub size: Size,
@@ -18,7 +18,7 @@ pub struct LineAdapter<'a> {
 }
 
 impl Deref for LineAdapter<'_> {
-    type Target = TxtNovel;
+    type Target = LocalNovel;
     fn deref(&self) -> &Self::Target {
         &self.inner
     }
@@ -31,7 +31,7 @@ impl DerefMut for LineAdapter<'_> {
 }
 
 impl LineAdapter<'_> {
-    pub fn new(mut inner: TxtNovel, size: Size) -> Result<Self> {
+    pub fn new(mut inner: LocalNovel, size: Size) -> Result<Self> {
         let paragraph = Paragraph::new(Text::from(inner.get_content()?.trim_end().to_string()))
             .wrap(Wrap { trim: true });
         let lines = paragraph.line_count(size.width);

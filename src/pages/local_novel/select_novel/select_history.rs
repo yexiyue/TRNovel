@@ -1,8 +1,9 @@
 use crate::{
     app::State,
-    components::{Component, Confirm, ConfirmState, Empty, KeyShortcutInfo, LoadingWrapper},
+    components::{Component, Confirm, ConfirmState, Empty, KeyShortcutInfo},
     history::History,
-    pages::local_novel::ReadNovel,
+    novel::new_local_novel::NewLocalNovel,
+    pages::ReadNovel,
     Navigator, Result,
 };
 use async_trait::async_trait;
@@ -12,10 +13,7 @@ use ratatui::{
     text::{Line, Text},
     widgets::{Block, Padding, Paragraph},
 };
-use std::{
-    path::PathBuf,
-    sync::{Arc, Mutex},
-};
+use std::sync::{Arc, Mutex};
 use tui_widget_list::{ListBuilder, ListState, ListView};
 
 #[derive(Debug, Clone)]
@@ -93,7 +91,7 @@ impl Component for SelectHistory {
     async fn handle_key_event(
         &mut self,
         key: crossterm::event::KeyEvent,
-        state: State,
+        _state: State,
     ) -> Result<Option<KeyEvent>> {
         if key.kind != KeyEventKind::Press {
             return Ok(Some(key));
@@ -145,13 +143,9 @@ impl Component for SelectHistory {
                     };
                     let (path, _) = &self.history.lock().unwrap().histories[index];
 
+                    let novel = NewLocalNovel::from_path(path)?;
                     self.navigator
-                        .push(LoadingWrapper::<ReadNovel, PathBuf>::route_page(
-                            "加载小说中...",
-                            self.navigator.clone(),
-                            state,
-                            path.to_path_buf(),
-                        )?)?;
+                        .push(Box::new(ReadNovel::to_page_route(novel)))?;
 
                     Ok(None)
                 }
