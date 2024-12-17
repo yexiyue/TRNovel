@@ -1,4 +1,5 @@
 use anyhow::{anyhow, Result};
+use chrono::{DateTime, NaiveDateTime};
 use std::{
     env,
     path::{Path, PathBuf},
@@ -31,4 +32,12 @@ pub fn get_path_md5<T: AsRef<Path>>(path: T) -> Result<String> {
 pub fn get_md5_string<T: ToString>(value: T) -> String {
     let md5 = md5::compute(value.to_string());
     format!("{:x}", md5)
+}
+
+pub fn time_to_string(timestamp: u64) -> anyhow::Result<String> {
+    // 将时间戳转换为NaiveDateTime
+    let naive = DateTime::from_timestamp_millis(timestamp as i64).unwrap();
+
+    // 格式化为指定的字符串格式
+    Ok(naive.format("%Y-%m-%d %H:%M:%S").to_string())
 }
