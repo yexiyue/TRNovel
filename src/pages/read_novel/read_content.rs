@@ -81,13 +81,17 @@ where
         self.chapter_percent = chapter_percent;
     }
 
-    pub fn set_content(&mut self, content: String) {
+    pub fn set_content(&mut self, content: String, percent: Option<f64>) {
         let paragraph = Paragraph::new(Text::from(content)).wrap(Wrap { trim: true });
 
         let lines = paragraph.line_count(self.size.width);
         self.content_lines = lines
             .saturating_sub(self.size.height as usize)
             .max(self.size.height as usize);
+
+        if let Some(percent) = percent {
+            self.current_line = (self.content_lines as f64 * percent).round() as usize;
+        }
 
         self.paragraph = Some(paragraph);
     }

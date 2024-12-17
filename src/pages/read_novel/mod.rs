@@ -34,6 +34,7 @@ pub struct ReadNovel<T: Novel + 'static> {
     pub read_content: ReadContent<'static, T>,
     pub show_select_chapter: bool,
     pub novel: T,
+    pub init_line_percent: Option<f64>,
 }
 
 impl<T> ReadNovel<T>
@@ -92,6 +93,7 @@ where
         let size = state.size.lock().unwrap().unwrap();
 
         Ok(Self {
+            init_line_percent: Some(novel.line_percent),
             loading: Loading::new("加载小说中..."),
             select_chapter: SelectChapter::new(sender.clone(), novel.get_chapters_names().ok()),
             read_content: ReadContent::new(
@@ -139,7 +141,8 @@ where
                 self.get_content()?;
             }
             ReadNovelMsg::Content(content) => {
-                self.read_content.set_content(content);
+                self.read_content
+                    .set_content(content, self.init_line_percent.take());
 
                 self.read_content
                     .set_current_chapter(self.novel.get_current_chapter_name()?);
@@ -174,9 +177,6 @@ where
         Ok(())
     }
 }
-
-#[async_trait]
-impl<T> Router for ReadNovel<T> where T: Novel + Send + Sync {}
 
 #[async_trait]
 impl<T> Component for ReadNovel<T>
@@ -287,18 +287,23 @@ where
 }
 
 // todo 添加历史记录
-// #[async_trait]
-// impl Router for ReadNovel {
-//     // 在回退时添加进历史记录
-//     async fn on_hide(&mut self, state: State) -> Result<()> {
-//         // 这里需要更新行数进度
-//         let percent = self.novel.current_line as f64 / self.novel.content_lines as f64;
-//         self.novel.inner.line_percent = percent;
+#[async_trait]
+impl<T> Router for ReadNovel<T>
+where
+    T: Novel + Send + Sync,
+{
+    // 在回退时添加进历史记录
+    async fn on_hide(&mut self, state: State) -> Result<()> {
+        // 这里需要更新行数进度
+        let percent =
+            self.read_content.current_line as f64 / self.read_content.content_lines as f64;
+        self.novel.line_percent = percent;
 
-//         state.history.lock().unwrap().add(
-//             self.novel.path.clone(),
-//             HistoryItem::from(&self.novel.inner),
-//         );
-//         Ok(())
-//     }
-// }
+        state
+            .history
+            .lock()
+            .unwrap()
+            .add(&self.novel.get_id(), self.novel.to_history_item()?);
+        Ok(())
+    }
+}

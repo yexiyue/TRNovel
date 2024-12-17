@@ -65,9 +65,12 @@ impl App {
         })
     }
 
-    pub fn exit(&mut self) {
+    pub async fn exit(&mut self) -> Result<()> {
+        self.routes.on_exit().await?;
+        self.state.history.lock().unwrap().save()?;
         self.cancellation_token.cancel();
         self.show_exit = true;
+        Ok(())
     }
 
     pub fn render(&mut self, frame: &mut Frame<'_>) -> Result<()> {
@@ -103,7 +106,7 @@ impl App {
                 if key.kind == KeyEventKind::Press {
                     if self.error.is_some() {
                         if key.code == KeyCode::Char('q') {
-                            self.exit();
+                            self.exit().await?;
                         }
                     } else if self.warning.is_some() {
                         if key.code == KeyCode::Esc {
@@ -112,11 +115,11 @@ impl App {
                     } else {
                         match key.code {
                             KeyCode::Char('q') => {
-                                self.exit();
+                                self.exit().await?;
                             }
                             KeyCode::Char('c') => {
                                 if key.modifiers.contains(KeyModifiers::CONTROL) {
-                                    self.exit();
+                                    self.exit().await?;
                                 }
                             }
                             _ => {}
