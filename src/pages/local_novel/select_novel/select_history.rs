@@ -13,7 +13,8 @@ use ratatui::{
     text::{Line, Text},
     widgets::{Block, Padding, Paragraph},
 };
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
+use tokio::sync::Mutex;
 use tui_widget_list::{ListBuilder, ListState, ListView};
 
 #[derive(Debug, Clone)]
@@ -35,7 +36,7 @@ impl SelectHistory {
     }
 
     fn render_list(&mut self, frame: &mut ratatui::Frame, area: ratatui::prelude::Rect) {
-        let list_items = self.history.lock().unwrap().histories.clone();
+        let list_items = self.history.try_lock().unwrap().histories.clone();
         let length = list_items.len();
         let builder = ListBuilder::new(move |context| {
             let (_path, item) = &list_items[context.index];
@@ -89,7 +90,7 @@ impl SelectHistory {
 #[async_trait]
 impl Component for SelectHistory {
     fn render(&mut self, frame: &mut ratatui::Frame, area: ratatui::prelude::Rect) -> Result<()> {
-        if self.history.lock().unwrap().histories.is_empty() {
+        if self.history.try_lock().unwrap().histories.is_empty() {
             frame.render_widget(Empty::new("暂无历史记录"), area);
             return Ok(());
         }
@@ -125,8 +126,8 @@ impl Component for SelectHistory {
                 KeyCode::Enter => {
                     if let Some(index) = self.state.selected {
                         if self.confirm_state.is_confirm() {
-                            self.history.lock().unwrap().remove_index(index);
-                            self.history.lock().unwrap().save()?;
+                            self.history.lock().await.remove_index(index);
+                            self.history.lock().await.save()?;
                             self.state.select(None);
                         }
                     }
@@ -157,7 +158,7 @@ impl Component for SelectHistory {
                     let Some(index) = self.state.selected else {
                         return Err("请选择历史记录".into());
                     };
-                    let (path, item) = &self.history.lock().unwrap().histories[index];
+                    let (path, item) = &self.history.lock().await.histories[index];
 
                     match item {
                         HistoryItem::Local(_) => {

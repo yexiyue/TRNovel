@@ -1,4 +1,8 @@
-use std::{fs::File, ops::{Deref, DerefMut}, path::PathBuf};
+use std::{
+    fs::File,
+    ops::{Deref, DerefMut},
+    path::PathBuf,
+};
 
 use crate::{utils::novel_catch_dir, Result};
 use parse_book_source::BookSource;
@@ -8,9 +12,8 @@ use serde::{Deserialize, Serialize};
 /// 本地文件导入
 /// 网络链接导入，考虑网络是每次都走请求还是走缓存
 /// 可以是数组也可以是一个对象
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct BookSourceCache {
-    #[serde(flatten)]
     pub book_sources: Vec<BookSource>,
 }
 
@@ -21,13 +24,11 @@ impl BookSourceCache {
             .join("book_sources.json"))
     }
 
-    pub fn load() -> Result<Self> {
-        match File::open(Self::get_cache_file_path()?) {
-            Ok(file) => Ok(serde_json::from_reader(file)?),
-            Err(_) => Ok(Self {
-                book_sources: vec![],
-            }),
+    pub fn load(&mut self) -> Result<()> {
+        if let Ok(file) = File::open(Self::get_cache_file_path()?) {
+            *self = serde_json::from_reader(file)?;
         }
+        Ok(())
     }
 
     pub fn save(&self) -> Result<()> {
@@ -36,14 +37,24 @@ impl BookSourceCache {
         Ok(())
     }
 
-    pub fn find_book_source(
+    pub fn find_book_source_index(
         &self,
         book_source_url: &str,
         book_source_name: &str,
-    ) -> Option<&BookSource> {
-        self.book_sources.iter().find(|item| {
+    ) -> Option<usize> {
+        self.book_sources.iter().position(|item| {
             item.book_source_url == book_source_url && item.book_source_name == book_source_name
         })
+    }
+
+    pub fn add_book_source(&mut self, book_source: BookSource) {
+        if let Some(index) =
+            self.find_book_source_index(&book_source.book_source_url, &book_source.book_source_name)
+        {
+            self.book_sources.remove(index);
+        }
+
+        self.book_sources.push(book_source);
     }
 }
 
@@ -58,5 +69,11 @@ impl Deref for BookSourceCache {
 impl DerefMut for BookSourceCache {
     fn deref_mut(&mut self) -> &mut Self::Target {
         &mut self.book_sources
+    }
+}
+
+impl Drop for BookSourceCache {
+    fn drop(&mut self) {
+        self.save().expect("save book source cache failed");
     }
 }

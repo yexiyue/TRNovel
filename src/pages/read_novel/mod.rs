@@ -89,7 +89,7 @@ where
             })?;
         }
 
-        let size = state.size.lock().unwrap().unwrap();
+        let size = state.size.lock().await.unwrap();
 
         Ok(Self {
             init_line_percent: Some(novel.line_percent),
@@ -318,7 +318,7 @@ where
         state
             .history
             .lock()
-            .unwrap()
+            .await
             .add(&self.novel.get_id(), self.novel.to_history_item()?);
         Ok(())
     }

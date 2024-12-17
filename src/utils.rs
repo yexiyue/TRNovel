@@ -1,5 +1,5 @@
 use anyhow::{anyhow, Result};
-use chrono::{DateTime, NaiveDateTime};
+use chrono::DateTime;
 use std::{
     env,
     path::{Path, PathBuf},

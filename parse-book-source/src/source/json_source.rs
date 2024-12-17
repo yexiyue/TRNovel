@@ -1,4 +1,7 @@
-use super::{BookSource, JsonRule, JsonRuleBookInfo, JsonRuleContent, JsonRuleExplore, JsonRuleSearch, JsonRuleToc};
+use super::{
+    BookSource, JsonRule, JsonRuleBookInfo, JsonRuleContent, JsonRuleExplore, JsonRuleSearch,
+    JsonRuleToc,
+};
 use crate::{
     utils::Params, BookInfo, BookList, BookListItem, Chapter, ChapterList, ExploreItem, Result,
     Variables,
