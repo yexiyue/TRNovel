@@ -1,4 +1,5 @@
 use crate::{
+    book_source::BookSourceCache,
     components::{Component, Warning},
     errors::{Errors, Result},
     events::{event_loop, Events},
@@ -7,14 +8,10 @@ use crate::{
     routes::Routes,
 };
 use crossterm::event::{KeyCode, KeyEventKind, KeyModifiers};
-use parse_book_source::BookSource;
 use ratatui::{layout::Size, DefaultTerminal, Frame};
-use std::{
-    fs::File,
-    path::PathBuf,
-    sync::{Arc, Mutex},
-};
+use std::{path::PathBuf, sync::Arc};
 use tokio::sync::mpsc::{UnboundedReceiver, UnboundedSender};
+use tokio::sync::Mutex;
 use tokio_util::sync::CancellationToken;
 
 pub mod state;
@@ -36,15 +33,12 @@ impl App {
         let (tx, rx) = tokio::sync::mpsc::unbounded_channel();
         let cancellation_token = CancellationToken::new();
 
-        let book_source: BookSource =
-            serde_json::from_reader(File::open("test-novels/test.json")?)?;
-
         event_loop(tx.clone(), cancellation_token.clone());
 
         let state = State {
             history: Arc::new(Mutex::new(History::load()?)),
             size: Arc::new(Mutex::new(None)),
-            book_source: Arc::new(futures::lock::Mutex::new(Some(book_source.try_into()?))),
+            book_sources: Arc::new(Mutex::new(BookSourceCache::default())),
         };
 
         let first_page = if is_network {
@@ -67,7 +61,7 @@ impl App {
 
     pub async fn exit(&mut self) -> Result<()> {
         self.routes.on_exit().await?;
-        self.state.history.lock().unwrap().save()?;
+        self.state.history.lock().await.save()?;
         self.cancellation_token.cancel();
         self.show_exit = true;
         Ok(())
@@ -140,7 +134,7 @@ impl App {
                 self.state
                     .size
                     .lock()
-                    .unwrap()
+                    .await
                     .replace(Size::new(width, height));
             }
             _ => {}
@@ -152,7 +146,7 @@ impl App {
     /// 主循环
     pub async fn run(mut self, mut terminal: DefaultTerminal) -> Result<()> {
         let size = terminal.size()?;
-        self.state.size.lock().unwrap().replace(size);
+        self.state.size.lock().await.replace(size);
 
         while !self.show_exit {
             // 先处理时间

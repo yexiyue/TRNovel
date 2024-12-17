@@ -1,10 +1,3 @@
-use async_trait::async_trait;
-use crossterm::event::{KeyCode, KeyEvent, KeyEventKind};
-use ratatui::layout::{Constraint, Layout, Size};
-use read_content::ReadContent;
-use select_chapter::SelectChapter;
-use tokio::sync::mpsc;
-
 use crate::{
     app::State,
     components::{Component, KeyShortcutInfo, Loading},
@@ -13,6 +6,12 @@ use crate::{
     pages::{Page, PageWrapper},
     Events, Navigator, Result, Router,
 };
+use async_trait::async_trait;
+use crossterm::event::{KeyCode, KeyEvent, KeyEventKind};
+use ratatui::layout::{Constraint, Layout, Size};
+use read_content::ReadContent;
+use select_chapter::SelectChapter;
+use tokio::sync::mpsc;
 
 pub mod read_content;
 pub mod select_chapter;
@@ -90,12 +89,16 @@ where
             })?;
         }
 
-        let size = state.size.lock().unwrap().unwrap();
+        let size = state.size.lock().await.unwrap();
 
         Ok(Self {
             init_line_percent: Some(novel.line_percent),
             loading: Loading::new("加载小说中..."),
-            select_chapter: SelectChapter::new(sender.clone(), novel.get_chapters_names().ok()),
+            select_chapter: SelectChapter::new(
+                sender.clone(),
+                novel.get_chapters_names().ok(),
+                novel.current_chapter,
+            ),
             read_content: ReadContent::new(
                 Size::new(size.width - 4, size.height - 5),
                 sender.clone(),
@@ -132,6 +135,12 @@ where
             }
             ReadNovelMsg::SelectChapter(index) => {
                 self.show_select_chapter = false;
+
+                // 如果是当前章节，直接返回
+                if index == self.novel.current_chapter {
+                    return Ok(());
+                }
+
                 self.novel.set_chapter(index)?;
 
                 self.read_content.set_loading(true);
@@ -213,6 +222,13 @@ where
         match key.code {
             KeyCode::Tab => {
                 self.show_select_chapter = !self.show_select_chapter;
+
+                // 选中当前正在阅读的章节
+                if self.show_select_chapter {
+                    self.select_chapter
+                        .state
+                        .select(Some(self.novel.current_chapter));
+                }
                 Ok(None)
             }
             _ => Ok(Some(key)),
@@ -302,7 +318,7 @@ where
         state
             .history
             .lock()
-            .unwrap()
+            .await
             .add(&self.novel.get_id(), self.novel.to_history_item()?);
         Ok(())
     }

@@ -1,5 +1,5 @@
-use std::ops::{Deref, DerefMut};
 use ratatui::widgets::ListState;
+use std::ops::{Deref, DerefMut};
 
 #[derive(Debug, Default)]
 pub struct SelectExploreState {

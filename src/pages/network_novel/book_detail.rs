@@ -1,5 +1,9 @@
 use crate::{
-    app::State, components::{Component, LoadingWrapper, LoadingWrapperInit}, novel::network_novel::NetworkNovel, pages::ReadNovel, Navigator, Result, RoutePage, Router
+    app::State,
+    components::{Component, LoadingWrapper, LoadingWrapperInit},
+    novel::network_novel::NetworkNovel,
+    pages::ReadNovel,
+    Navigator, Result, RoutePage, Router,
 };
 use async_trait::async_trait;
 use crossterm::event::{KeyCode, KeyEvent, KeyEventKind};

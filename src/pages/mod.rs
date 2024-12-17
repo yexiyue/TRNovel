@@ -13,7 +13,7 @@ pub mod read_novel;
 pub use read_novel::ReadNovel;
 
 #[async_trait]
-pub trait Page<Arg>
+pub trait Page<Arg = ()>
 where
     Self: Sized,
     Arg: Send + Sync + 'static,
