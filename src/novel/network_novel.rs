@@ -1,8 +1,7 @@
-use crate::{errors::Errors, Result};
+use crate::{cache::NetworkNovelCache, errors::Errors, history::HistoryItem, Result};
 use parse_book_source::{BookInfo, BookListItem, Chapter, JsonSource};
 use std::{
-    ops::{Deref, DerefMut},
-    sync::Arc,
+    fmt::Display, ops::{Deref, DerefMut}, sync::Arc
 };
 use tokio::sync::Mutex;
 
@@ -17,6 +16,15 @@ pub struct NetworkNovel {
 }
 
 impl NetworkNovel {
+
+    pub fn from_path<T: Display>(path: T) -> Result<Self> {
+        // let path = path.as_ref().to_path_buf().canonicalize()?;
+        // match LocalNovelCache::try_from(path.as_path()) {
+        //     Ok(cache) => Self::try_from(cache),
+        //     Err(_) => Self::new(path),
+        // }
+        todo!()
+    }
     pub fn new(book_list_item: BookListItem, book_source: Arc<Mutex<JsonSource>>) -> Self {
         Self {
             book_list_item,
@@ -99,5 +107,15 @@ impl Novel for NetworkNovel {
             callback(res);
         });
         Ok(())
+    }
+
+    fn to_history_item(&self) -> Result<HistoryItem> {
+        let network_novel_cache = NetworkNovelCache::try_from(self)?;
+        network_novel_cache.save()?;
+        Ok(network_novel_cache.into())
+    }
+
+    fn get_id(&self) -> String {
+        self.book_list_item.book_url.clone()
     }
 }

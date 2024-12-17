@@ -125,6 +125,15 @@ impl Routes {
 
         Ok(())
     }
+
+    pub async fn on_exit(&mut self) -> Result<()> {
+        for i in self.routes.iter_mut().rev() {
+            i.on_hide(self.state.clone()).await?;
+            i.on_unmounted(self.state.clone()).await?;
+        }
+
+        Ok(())
+    }
 }
 
 #[async_trait]

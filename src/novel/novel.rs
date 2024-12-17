@@ -1,4 +1,4 @@
-use crate::Result;
+use crate::{history::HistoryItem, Result};
 use anyhow::anyhow;
 use serde::{Deserialize, Serialize};
 use std::ops::{Deref, DerefMut};
@@ -40,19 +40,8 @@ pub trait Novel: Deref<Target = NovelChapters<Self::Chapter>> + DerefMut {
             .clone())
     }
 
-    fn get_current_chapter_index(&self) -> usize {
-        self.current_chapter
-    }
-
-    fn get_line_percent(&self) -> f64 {
-        self.line_percent
-    }
-
     fn chapter_percent(&self) -> Result<f64> {
-        Ok(
-            self.get_current_chapter_index() as f64 / self.get_chapters_result()?.len() as f64
-                * 100.0,
-        )
+        Ok(self.current_chapter as f64 / self.get_chapters_result()?.len() as f64 * 100.0)
     }
 
     fn get_chapters_result(&self) -> Result<&Vec<Self::Chapter>> {
@@ -104,4 +93,8 @@ pub trait Novel: Deref<Target = NovelChapters<Self::Chapter>> + DerefMut {
     ) -> Result<()>;
 
     fn get_current_chapter_name(&self) -> Result<String>;
+
+    fn to_history_item(&self) -> Result<HistoryItem>;
+
+    fn get_id(&self) -> String;
 }

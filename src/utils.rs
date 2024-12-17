@@ -3,6 +3,7 @@ use std::{
     env,
     path::{Path, PathBuf},
 };
+
 /// 获取小说缓存目录
 pub fn novel_catch_dir() -> Result<PathBuf> {
     let home = match env::var("HOME") {
@@ -14,6 +15,7 @@ pub fn novel_catch_dir() -> Result<PathBuf> {
     };
 
     let novel_catch_path = PathBuf::new().join(&home).join(".novel");
+
     if !novel_catch_path.exists() {
         std::fs::create_dir(&novel_catch_path)?;
     }

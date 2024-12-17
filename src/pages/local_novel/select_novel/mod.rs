@@ -2,7 +2,7 @@ use crate::{
     app::State,
     components::{Component, KeyShortcutInfo, LoadingWrapperInit},
     file_list::NovelFiles,
-    novel::new_local_novel::NewLocalNovel,
+    novel::local_novel::LocalNovel,
     pages::ReadNovel,
     Events, Navigator, Result, Router,
 };
@@ -146,7 +146,7 @@ impl LoadingWrapperInit for SelectNovel<'static> {
 
         match novel_files {
             NovelFiles::File(path) => {
-                let novel = NewLocalNovel::from_path(path)?;
+                let novel = LocalNovel::from_path(path)?;
                 navigator.push(Box::new(ReadNovel::to_page_route(novel)))?;
                 Ok(None)
             }
