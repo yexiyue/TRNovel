@@ -62,6 +62,6 @@ pub enum Commands {
     #[command(short_flag = 'n')]
     Network,
 
-    #[command()]
+    /// 历史记录模式，查看阅读记录
     History,
 }
