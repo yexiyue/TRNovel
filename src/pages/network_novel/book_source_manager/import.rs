@@ -12,11 +12,65 @@ use crossterm::event::{KeyCode, KeyEvent, KeyEventKind};
 use parse_book_source::BookSource;
 use ratatui::{
     layout::{Constraint, Layout},
-    style::Stylize,
-    text::{Line, Text},
-    widgets::{Block, Clear, Padding, Paragraph},
+    style::{Style, Stylize},
+    text::{Line, Span, Text},
+    widgets::{Block, Clear, Padding, Paragraph, Scrollbar, ScrollbarState, Widget},
 };
 use tui_widget_list::{ListBuilder, ListState, ListView};
+
+pub struct ListItem {
+    pub book_source: BookSource,
+    pub selected: bool,
+    pub height_light: bool,
+}
+
+impl ListItem {
+    pub fn new(book_source: BookSource, selected: bool, height_light: bool) -> Self {
+        Self {
+            book_source,
+            selected,
+            height_light,
+        }
+    }
+}
+
+impl Widget for ListItem {
+    fn render(self, area: ratatui::prelude::Rect, buf: &mut ratatui::prelude::Buffer) {
+        let block = if self.height_light {
+            Block::bordered()
+                .padding(Padding::horizontal(2))
+                .light_cyan()
+        } else if self.selected {
+            Block::bordered().padding(Padding::horizontal(2)).green()
+        } else {
+            Block::bordered().padding(Padding::horizontal(2))
+        };
+        let [left, right] = Layout::horizontal([Constraint::Length(1), Constraint::Fill(1)])
+            .areas(block.inner(area));
+
+        block.render(area, buf);
+
+        Paragraph::new(Text::from(vec![
+            Line::from(self.book_source.book_source_name.clone()).centered(),
+            Line::from(
+                format!(
+                    "{} {}",
+                    self.book_source.book_source_url,
+                    time_to_string(self.book_source.last_update_time).unwrap()
+                )
+                .dim(),
+            )
+            .right_aligned(),
+        ]))
+        .render(right, buf);
+
+        if self.selected {
+            Span::from("✔").render(left, buf);
+        } else {
+            Span::from("☐").render(left, buf);
+        }
+    }
+}
 
 pub struct Import {
     pub loading: Loading,
@@ -63,29 +117,11 @@ impl Import {
         let builder = ListBuilder::new(move |context| {
             let item = &list_items[context.index];
 
-            let block = if context.is_selected {
-                Block::bordered()
-                    .padding(Padding::horizontal(2))
-                    .light_cyan()
-            } else if selected.contains(&context.index) {
-                Block::bordered().padding(Padding::horizontal(2)).green()
-            } else {
-                Block::bordered().padding(Padding::horizontal(2))
-            };
-
-            let paragraph = Paragraph::new(Text::from(vec![
-                Line::from(item.book_source_name.clone()).centered(),
-                Line::from(
-                    format!(
-                        "{} {}",
-                        item.book_source_url,
-                        time_to_string(item.last_update_time).unwrap()
-                    )
-                    .dim(),
-                )
-                .right_aligned(),
-            ]))
-            .block(block);
+            let paragraph = ListItem::new(
+                item.clone(),
+                selected.contains(&context.index),
+                context.is_selected,
+            );
 
             (paragraph, 4)
         });
@@ -111,7 +147,27 @@ impl Component for Import {
             Layout::vertical([Constraint::Length(3), Constraint::Fill(1)]).areas(area);
 
         self.search.render(frame, top)?;
-        self.render_list(frame, bottom);
+
+        let len = self.book_sources.len();
+        let current = self.list_state.selected.unwrap_or(0);
+
+        let mut block = Block::bordered()
+            .title(Line::from("请选择要导入的书源").centered())
+            .border_style(Style::new().dim());
+
+        if len != 0 {
+            block = block.title_bottom(format!(" {}/{}", current + 1, len));
+        }
+
+        let list_area = block.inner(bottom);
+        self.render_list(frame, list_area);
+
+        frame.render_widget(block, bottom);
+
+        if len * 4 > list_area.height as usize {
+            let mut scrollbar_state = ScrollbarState::new(len).position(current);
+            frame.render_stateful_widget(Scrollbar::default(), bottom, &mut scrollbar_state);
+        }
 
         Ok(())
     }
