@@ -15,7 +15,7 @@ use parse_book_source::BookSource;
 use ratatui::{
     style::{Style, Stylize},
     text::{Line, Text},
-    widgets::{Block, Padding, Paragraph},
+    widgets::{Block, Padding, Paragraph, Scrollbar, ScrollbarState},
 };
 use std::sync::Arc;
 use tokio::sync::{mpsc::Sender, Mutex};
@@ -149,7 +149,7 @@ impl Page for BookSourceManager {
                 let sender = self.sender.clone();
                 tokio::spawn(async move {
                     match if query.starts_with("http") {
-                        BookSource::from_url(&query.trim()).await
+                        BookSource::from_url(query.trim()).await
                     } else {
                         BookSource::from_path(query.trim())
                     } {
@@ -194,28 +194,39 @@ impl Component for BookSourceManager {
             )
             .border_style(Style::new().dim());
 
-        frame.render_widget(&block, area);
-
-        let area = block.inner(area);
+        let container_area = block.inner(area);
 
         if self.is_loading {
-            frame.render_widget(&self.loading, area);
+            frame.render_widget(&self.loading, container_area);
             return Ok(());
         }
 
         if self.book_sources.try_lock().unwrap().is_empty() {
-            frame.render_widget(Empty::new("暂无书源，请添加书源"), area);
+            frame.render_widget(Empty::new("暂无书源，请添加书源"), container_area);
+            frame.render_widget(block, area);
+        } else if self.show_import {
+            self.import.render(frame, container_area)?;
+            frame.render_widget(block, area);
         } else {
-            self.render_list(frame, area);
-        }
+            self.render_list(frame, container_area);
 
-        if self.show_import {
-            self.import.render(frame, area)?;
+            let len = self.book_sources.try_lock()?.len();
+            let current = self.state.selected.unwrap_or(0);
+
+            frame.render_widget(
+                block.title_bottom(format!(" {}/{}", current + 1, len)),
+                area,
+            );
+
+            if len * 5 > container_area.height as usize {
+                let mut scrollbar_state = ScrollbarState::new(len).position(current);
+                frame.render_stateful_widget(Scrollbar::default(), area, &mut scrollbar_state);
+            }
         }
 
         frame.render_stateful_widget(
             Confirm::new("警告", "确认删除该书源吗？"),
-            area,
+            container_area,
             &mut self.confirm_state,
         );
         Ok(())

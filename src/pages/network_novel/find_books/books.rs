@@ -122,11 +122,13 @@ impl Books {
             let widget = ListView::new(builder, books.len()).infinite_scrolling(false);
             frame.render_stateful_widget(widget, inner_area, &mut self.state);
 
-            let mut scrollbar_state =
-                ScrollbarState::new(books.len()).position(self.state.selected.unwrap_or(0));
-
             frame.render_widget(block, area);
-            frame.render_stateful_widget(Scrollbar::default(), area, &mut scrollbar_state);
+
+            if books.len() * 5 > inner_area.height as usize {
+                let mut scrollbar_state =
+                    ScrollbarState::new(books.len()).position(self.state.selected.unwrap_or(0));
+                frame.render_stateful_widget(Scrollbar::default(), area, &mut scrollbar_state);
+            }
         } else {
             frame.render_widget(Empty::new(&self.empty_tip), inner_area);
             frame.render_widget(block, area);
