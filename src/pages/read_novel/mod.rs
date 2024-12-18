@@ -26,6 +26,7 @@ pub enum ReadNovelMsg<T: Novel> {
     Content(String),
 }
 
+// todo 优化选择章节逻辑，如果为0就展示章节选择
 pub struct ReadNovel<T: Novel + 'static> {
     pub loading: Loading,
     pub select_chapter: SelectChapter<'static, T>,

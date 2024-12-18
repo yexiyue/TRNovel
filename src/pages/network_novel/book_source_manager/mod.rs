@@ -1,7 +1,7 @@
 use crate::{
     app::State,
     book_source::BookSourceCache,
-    components::{Component, Confirm, ConfirmState, Empty, KeyShortcutInfo, Loading},
+    components::{Component, Confirm, ConfirmState, Empty, KeyShortcutInfo},
     errors::Errors,
     pages::Page,
     utils::time_to_string,
@@ -25,7 +25,6 @@ use super::find_books::FindBooks;
 pub mod import;
 
 pub enum BookSourceManagerMsg {
-    Loaded,
     Error(Errors),
     ParseResult(Vec<BookSource>),
     Parse(String),
@@ -33,8 +32,6 @@ pub enum BookSourceManagerMsg {
 }
 
 pub struct BookSourceManager {
-    pub is_loading: bool,
-    pub loading: Loading,
     pub state: ListState,
     pub confirm_state: ConfirmState,
     pub book_sources: Arc<Mutex<BookSourceCache>>,
@@ -45,21 +42,19 @@ pub struct BookSourceManager {
 }
 
 impl BookSourceManager {
-    pub fn new(
+    pub async fn new(
         book_sources: Arc<Mutex<BookSourceCache>>,
         navigator: Navigator,
         sender: Sender<BookSourceManagerMsg>,
     ) -> Self {
         Self {
-            is_loading: true,
-            book_sources,
             state: ListState::default(),
             confirm_state: ConfirmState::default(),
             navigator,
-            loading: Loading::new("加载中..."),
             import: Import::new(sender.clone()),
             sender,
-            show_import: false,
+            show_import: book_sources.clone().lock().await.is_empty(),
+            book_sources,
         }
     }
 
@@ -108,35 +103,11 @@ impl Page for BookSourceManager {
         navigator: Navigator,
         state: State,
     ) -> Result<Self> {
-        let book_source = state.book_sources.clone();
-        let sender_clone = sender.clone();
-
-        tokio::spawn(async move {
-            if let Err(e) = book_source.lock().await.load() {
-                sender_clone
-                    .send(BookSourceManagerMsg::Error(e))
-                    .await
-                    .unwrap();
-            }
-            sender_clone
-                .send(BookSourceManagerMsg::Loaded)
-                .await
-                .unwrap();
-        });
-
-        Ok(Self::new(state.book_sources.clone(), navigator, sender))
+        Ok(Self::new(state.book_sources.clone(), navigator, sender).await)
     }
 
     async fn update(&mut self, msg: Self::Msg) -> Result<()> {
         match msg {
-            BookSourceManagerMsg::Loaded => {
-                self.is_loading = false;
-
-                // 加载完成后，如果为空自动打开导入页面
-                if self.book_sources.lock().await.is_empty() {
-                    self.show_import = true;
-                }
-            }
             BookSourceManagerMsg::Error(e) => {
                 return Err(e);
             }
@@ -195,11 +166,6 @@ impl Component for BookSourceManager {
             .border_style(Style::new().dim());
 
         let container_area = block.inner(area);
-
-        if self.is_loading {
-            frame.render_widget(&self.loading, container_area);
-            return Ok(());
-        }
 
         if self.show_import {
             self.import.render(frame, container_area)?;
@@ -335,13 +301,6 @@ impl Component for BookSourceManager {
         KeyShortcutInfo::new(data)
     }
 
-    async fn handle_tick(&mut self, _state: State) -> Result<()> {
-        if self.is_loading {
-            self.loading.state.calc_next();
-        }
-        Ok(())
-    }
-
     async fn handle_events(&mut self, events: Events, state: State) -> Result<Option<Events>> {
         let Some(events) = (if self.show_import {
             self.import.handle_events(events, state.clone()).await?
@@ -356,12 +315,6 @@ impl Component for BookSourceManager {
                 .handle_key_event(key, state)
                 .await
                 .map(|item| item.map(Events::KeyEvent)),
-
-            Events::Tick => {
-                self.handle_tick(state).await?;
-
-                Ok(Some(Events::Tick))
-            }
             _ => Ok(Some(events)),
         }
     }

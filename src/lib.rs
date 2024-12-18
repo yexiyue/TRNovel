@@ -30,13 +30,7 @@ pub async fn run() -> anyhow::Result<()> {
 
     let terminal = ratatui::init();
 
-    App::new(
-        args.path,
-        matches!(args.subcommand, Some(Commands::Network)),
-    )
-    .await?
-    .run(terminal)
-    .await?;
+    App::new(args).await?.run(terminal).await?;
 
     ratatui::restore();
 
@@ -67,4 +61,7 @@ pub enum Commands {
     /// 网络模式，使用网络小说源
     #[command(short_flag = 'n')]
     Network,
+
+    #[command()]
+    History,
 }

@@ -47,7 +47,7 @@ impl BookSource {
             Ok(value
                 .as_array()
                 .unwrap()
-                .into_iter()
+                .iter()
                 .filter_map(|item| serde_json::from_value(item.clone()).ok())
                 .collect())
         } else {
