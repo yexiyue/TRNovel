@@ -44,7 +44,12 @@ impl BookSource {
         if value.is_object() {
             Ok(vec![serde_json::from_value(value)?])
         } else if value.is_array() {
-            Ok(serde_json::from_value(value)?)
+            Ok(value
+                .as_array()
+                .unwrap()
+                .into_iter()
+                .filter_map(|item| serde_json::from_value(item.clone()).ok())
+                .collect())
         } else {
             Err(anyhow!("value is not object or array").into())
         }

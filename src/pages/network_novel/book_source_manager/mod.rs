@@ -201,11 +201,11 @@ impl Component for BookSourceManager {
             return Ok(());
         }
 
-        if self.book_sources.try_lock().unwrap().is_empty() {
-            frame.render_widget(Empty::new("暂无书源，请添加书源"), container_area);
-            frame.render_widget(block, area);
-        } else if self.show_import {
+        if self.show_import {
             self.import.render(frame, container_area)?;
+            frame.render_widget(block, area);
+        } else if self.book_sources.try_lock().unwrap().is_empty() {
+            frame.render_widget(Empty::new("暂无书源，请添加书源"), container_area);
             frame.render_widget(block, area);
         } else {
             self.render_list(frame, container_area);
@@ -281,6 +281,10 @@ impl Component for BookSourceManager {
                     Ok(None)
                 }
                 KeyCode::Char('l') | KeyCode::Right | KeyCode::Enter => {
+                    if self.book_sources.try_lock()?.is_empty() {
+                        return Err("请按Tab键添加书源".into());
+                    }
+
                     let Some(index) = self.state.selected else {
                         return Err("请选择书源".into());
                     };
