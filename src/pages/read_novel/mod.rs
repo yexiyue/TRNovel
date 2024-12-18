@@ -26,7 +26,6 @@ pub enum ReadNovelMsg<T: Novel> {
     Content(String),
 }
 
-// todo 优化选择章节逻辑，如果为0就展示章节选择
 pub struct ReadNovel<T: Novel + 'static> {
     pub loading: Loading,
     pub select_chapter: SelectChapter<'static, T>,
@@ -118,6 +117,10 @@ where
 
                 self.select_chapter
                     .set_list(self.novel.get_chapters_names()?);
+
+                self.select_chapter
+                    .state
+                    .select(Some(self.novel.current_chapter));
 
                 self.read_content.set_loading(true);
 

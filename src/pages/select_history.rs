@@ -12,13 +12,84 @@ use async_trait::async_trait;
 use crossterm::event::{KeyCode, KeyEvent, KeyEventKind};
 use parse_book_source::JsonSource;
 use ratatui::{
+    layout::{Constraint, Layout},
     style::{Style, Stylize},
-    text::{Line, Text},
-    widgets::{Block, Padding, Paragraph, Scrollbar, ScrollbarState},
+    text::{Line, Span, Text},
+    widgets::{Block, Padding, Paragraph, Scrollbar, ScrollbarState, Widget},
 };
 use std::sync::Arc;
 use tokio::sync::{mpsc::Sender, Mutex};
 use tui_widget_list::{ListBuilder, ListState, ListView};
+
+struct ListItem {
+    pub history: HistoryItem,
+    pub selected: bool,
+}
+
+impl Widget for ListItem {
+    fn render(self, area: ratatui::prelude::Rect, buf: &mut ratatui::prelude::Buffer) {
+        let block = if self.selected {
+            Block::bordered()
+                .padding(Padding::horizontal(0))
+                .light_cyan()
+        } else {
+            Block::bordered().padding(Padding::horizontal(0))
+        };
+
+        let [top, bottom] =
+            Layout::vertical([Constraint::Fill(1), Constraint::Length(1)]).areas(block.inner(area));
+        block.render(area, buf);
+
+        let [bottom_left, bottom_right] =
+            Layout::horizontal([Constraint::Percentage(50), Constraint::Percentage(50)])
+                .areas(bottom);
+
+        match self.history {
+            HistoryItem::Local(item) => {
+                Paragraph::new(Text::from(vec![
+                    Line::from(item.title.clone()),
+                    Line::from(item.current_chapter.clone()).centered(),
+                ]))
+                .render(top, buf);
+
+                Span::from("本地小说").dim().render(bottom_left, buf);
+
+                Text::from(
+                    format!(
+                        "{:.2}% {}",
+                        item.percent,
+                        item.last_read_at.format("%Y-%m-%d %H:%M:%S")
+                    )
+                    .dim(),
+                )
+                .right_aligned()
+                .render(bottom_right, buf);
+            }
+            HistoryItem::Network(item) => {
+                Paragraph::new(Text::from(vec![
+                    Line::from(item.title.clone()),
+                    Line::from(item.current_chapter.clone()).centered(),
+                ]))
+                .render(top, buf);
+
+                Span::from(format!("书源：{}", item.book_source))
+                    .dim()
+                    .render(bottom_left, buf);
+
+                Text::from(
+                    format!(
+                        "{:.2}% {}",
+                        item.percent,
+                        item.last_read_at.format("%Y-%m-%d %H:%M:%S")
+                    )
+                    .dim(),
+                )
+                .right_aligned()
+                .render(bottom_right, buf);
+            }
+        };
+    }
+}
 
 #[derive(Debug, Clone)]
 pub struct SelectHistory {
@@ -47,48 +118,14 @@ impl SelectHistory {
         let list_items = self.history.try_lock().unwrap().histories.clone();
         let length = list_items.len();
         let builder = ListBuilder::new(move |context| {
-            let (_path, item) = &list_items[context.index];
-
-            let block = if context.is_selected {
-                Block::bordered()
-                    .padding(Padding::horizontal(2))
-                    .light_cyan()
-            } else {
-                Block::bordered().padding(Padding::horizontal(2))
-            };
-
-            let paragraph = match item {
-                HistoryItem::Local(item) => Paragraph::new(Text::from(vec![
-                    Line::from(item.title.clone()),
-                    Line::from(item.current_chapter.clone()).centered(),
-                    Line::from(
-                        format!(
-                            "{:.2}% {}",
-                            item.percent,
-                            item.last_read_at.format("%Y-%m-%d %H:%M:%S")
-                        )
-                        .dim(),
-                    )
-                    .right_aligned(),
-                ]))
-                .block(block.title_bottom(Line::from("本地小说"))),
-                HistoryItem::Network(item) => Paragraph::new(Text::from(vec![
-                    Line::from(item.title.clone()),
-                    Line::from(item.current_chapter.clone()).centered(),
-                    Line::from(
-                        format!(
-                            "{:.2}% {}",
-                            item.percent,
-                            item.last_read_at.format("%Y-%m-%d %H:%M:%S")
-                        )
-                        .dim(),
-                    )
-                    .right_aligned(),
-                ]))
-                .block(block.title_bottom(Line::from(format!("书源：{}", item.book_source)))),
-            };
-
-            (paragraph, 5)
+            let (_, item) = &list_items[context.index];
+            (
+                ListItem {
+                    history: item.clone(),
+                    selected: context.is_selected,
+                },
+                5,
+            )
         });
         let widget = ListView::new(builder, length).infinite_scrolling(false);
         frame.render_stateful_widget(widget, area, &mut self.state);
@@ -219,8 +256,7 @@ impl Component for SelectHistory {
                                 },
                             };
 
-                            self.navigator
-                                .push(BookDetail::to_page_route(novel))?;
+                            self.navigator.push(BookDetail::to_page_route(novel))?;
                         }
                     }
 
