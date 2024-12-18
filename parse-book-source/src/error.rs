@@ -4,17 +4,25 @@ use thiserror::Error;
 pub enum ParseError {
     #[error(transparent)]
     Json(#[from] serde_json::Error),
+
     #[error(transparent)]
     Reqwest(#[from] reqwest::Error),
+
     #[error(transparent)]
     Regex(#[from] regex::Error),
+
     #[error(transparent)]
     JsonPath(#[from] jsonpath_rust::JsonPathParserError),
 
     #[error(transparent)]
+    IO(#[from] std::io::Error),
+
+    #[error(transparent)]
     ParseError(#[from] std::num::ParseIntError),
+
     #[error(transparent)]
     OtherError(#[from] anyhow::Error),
+
     #[error("{0}")]
     Warning(String),
 }

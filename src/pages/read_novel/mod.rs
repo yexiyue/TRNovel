@@ -1,10 +1,3 @@
-use async_trait::async_trait;
-use crossterm::event::{KeyCode, KeyEvent, KeyEventKind};
-use ratatui::layout::{Constraint, Layout, Size};
-use read_content::ReadContent;
-use select_chapter::SelectChapter;
-use tokio::sync::mpsc;
-
 use crate::{
     app::State,
     components::{Component, KeyShortcutInfo, Loading},
@@ -13,6 +6,12 @@ use crate::{
     pages::{Page, PageWrapper},
     Events, Navigator, Result, Router,
 };
+use async_trait::async_trait;
+use crossterm::event::{KeyCode, KeyEvent, KeyEventKind};
+use ratatui::layout::{Constraint, Layout, Size};
+use read_content::ReadContent;
+use select_chapter::SelectChapter;
+use tokio::sync::mpsc;
 
 pub mod read_content;
 pub mod select_chapter;
@@ -34,6 +33,7 @@ pub struct ReadNovel<T: Novel + 'static> {
     pub read_content: ReadContent<'static, T>,
     pub show_select_chapter: bool,
     pub novel: T,
+    pub init_line_percent: Option<f64>,
 }
 
 impl<T> ReadNovel<T>
@@ -89,11 +89,16 @@ where
             })?;
         }
 
-        let size = state.size.lock().unwrap().unwrap();
+        let size = state.size.lock().await.unwrap();
 
         Ok(Self {
+            init_line_percent: Some(novel.line_percent),
             loading: Loading::new("加载小说中..."),
-            select_chapter: SelectChapter::new(sender.clone(), novel.get_chapters_names().ok()),
+            select_chapter: SelectChapter::new(
+                sender.clone(),
+                novel.get_chapters_names().ok(),
+                novel.current_chapter,
+            ),
             read_content: ReadContent::new(
                 Size::new(size.width - 4, size.height - 5),
                 sender.clone(),
@@ -113,6 +118,10 @@ where
                 self.select_chapter
                     .set_list(self.novel.get_chapters_names()?);
 
+                self.select_chapter
+                    .state
+                    .select(Some(self.novel.current_chapter));
+
                 self.read_content.set_loading(true);
 
                 self.read_content.set_current_line(0);
@@ -130,6 +139,12 @@ where
             }
             ReadNovelMsg::SelectChapter(index) => {
                 self.show_select_chapter = false;
+
+                // 如果是当前章节，直接返回
+                if index == self.novel.current_chapter {
+                    return Ok(());
+                }
+
                 self.novel.set_chapter(index)?;
 
                 self.read_content.set_loading(true);
@@ -139,7 +154,8 @@ where
                 self.get_content()?;
             }
             ReadNovelMsg::Content(content) => {
-                self.read_content.set_content(content);
+                self.read_content
+                    .set_content(content, self.init_line_percent.take());
 
                 self.read_content
                     .set_current_chapter(self.novel.get_current_chapter_name()?);
@@ -176,9 +192,6 @@ where
 }
 
 #[async_trait]
-impl<T> Router for ReadNovel<T> where T: Novel + Send + Sync {}
-
-#[async_trait]
 impl<T> Component for ReadNovel<T>
 where
     T: Novel + Send,
@@ -213,6 +226,13 @@ where
         match key.code {
             KeyCode::Tab => {
                 self.show_select_chapter = !self.show_select_chapter;
+
+                // 选中当前正在阅读的章节
+                if self.show_select_chapter {
+                    self.select_chapter
+                        .state
+                        .select(Some(self.novel.current_chapter));
+                }
                 Ok(None)
             }
             _ => Ok(Some(key)),
@@ -287,18 +307,23 @@ where
 }
 
 // todo 添加历史记录
-// #[async_trait]
-// impl Router for ReadNovel {
-//     // 在回退时添加进历史记录
-//     async fn on_hide(&mut self, state: State) -> Result<()> {
-//         // 这里需要更新行数进度
-//         let percent = self.novel.current_line as f64 / self.novel.content_lines as f64;
-//         self.novel.inner.line_percent = percent;
+#[async_trait]
+impl<T> Router for ReadNovel<T>
+where
+    T: Novel + Send + Sync,
+{
+    // 在回退时添加进历史记录
+    async fn on_hide(&mut self, state: State) -> Result<()> {
+        // 这里需要更新行数进度
+        let percent =
+            self.read_content.current_line as f64 / self.read_content.content_lines as f64;
+        self.novel.line_percent = percent;
 
-//         state.history.lock().unwrap().add(
-//             self.novel.path.clone(),
-//             HistoryItem::from(&self.novel.inner),
-//         );
-//         Ok(())
-//     }
-// }
+        state
+            .history
+            .lock()
+            .await
+            .add(&self.novel.get_id(), self.novel.to_history_item()?);
+        Ok(())
+    }
+}

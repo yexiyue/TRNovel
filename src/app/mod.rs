@@ -1,20 +1,21 @@
 use crate::{
+    book_source::BookSourceCache,
     components::{Component, Warning},
     errors::{Errors, Result},
     events::{event_loop, Events},
     history::History,
-    pages::{local_novel::local_novel_first_page, network_novel::network_novel_first_page},
+    pages::{
+        local_novel::local_novel_first_page, network_novel::network_novel_first_page,
+        select_history::SelectHistory,
+    },
     routes::Routes,
+    Commands, TRNovel,
 };
 use crossterm::event::{KeyCode, KeyEventKind, KeyModifiers};
-use parse_book_source::BookSource;
 use ratatui::{layout::Size, DefaultTerminal, Frame};
-use std::{
-    fs::File,
-    path::PathBuf,
-    sync::{Arc, Mutex},
-};
+use std::sync::Arc;
 use tokio::sync::mpsc::{UnboundedReceiver, UnboundedSender};
+use tokio::sync::Mutex;
 use tokio_util::sync::CancellationToken;
 
 pub mod state;
@@ -32,25 +33,22 @@ pub struct App {
 }
 
 impl App {
-    pub async fn new(path: PathBuf, is_network: bool) -> Result<Self> {
+    pub async fn new(args: TRNovel) -> Result<Self> {
         let (tx, rx) = tokio::sync::mpsc::unbounded_channel();
         let cancellation_token = CancellationToken::new();
-
-        let book_source: BookSource =
-            serde_json::from_reader(File::open("test-novels/test.json")?)?;
 
         event_loop(tx.clone(), cancellation_token.clone());
 
         let state = State {
             history: Arc::new(Mutex::new(History::load()?)),
             size: Arc::new(Mutex::new(None)),
-            book_source: Arc::new(futures::lock::Mutex::new(Some(book_source.try_into()?))),
+            book_sources: Arc::new(Mutex::new(BookSourceCache::load()?)),
         };
 
-        let first_page = if is_network {
-            network_novel_first_page()?
-        } else {
-            local_novel_first_page(path)?
+        let first_page = match args.subcommand {
+            Some(Commands::Network) => network_novel_first_page()?,
+            Some(Commands::History) => SelectHistory::to_page_route(),
+            _ => local_novel_first_page(args.path)?,
         };
 
         Ok(Self {
@@ -65,9 +63,12 @@ impl App {
         })
     }
 
-    pub fn exit(&mut self) {
+    pub async fn exit(&mut self) -> Result<()> {
+        self.routes.on_exit().await?;
+        self.state.history.lock().await.save()?;
         self.cancellation_token.cancel();
         self.show_exit = true;
+        Ok(())
     }
 
     pub fn render(&mut self, frame: &mut Frame<'_>) -> Result<()> {
@@ -103,7 +104,7 @@ impl App {
                 if key.kind == KeyEventKind::Press {
                     if self.error.is_some() {
                         if key.code == KeyCode::Char('q') {
-                            self.exit();
+                            self.exit().await?;
                         }
                     } else if self.warning.is_some() {
                         if key.code == KeyCode::Esc {
@@ -112,11 +113,11 @@ impl App {
                     } else {
                         match key.code {
                             KeyCode::Char('q') => {
-                                self.exit();
+                                self.exit().await?;
                             }
                             KeyCode::Char('c') => {
                                 if key.modifiers.contains(KeyModifiers::CONTROL) {
-                                    self.exit();
+                                    self.exit().await?;
                                 }
                             }
                             _ => {}
@@ -137,7 +138,7 @@ impl App {
                 self.state
                     .size
                     .lock()
-                    .unwrap()
+                    .await
                     .replace(Size::new(width, height));
             }
             _ => {}
@@ -149,7 +150,7 @@ impl App {
     /// 主循环
     pub async fn run(mut self, mut terminal: DefaultTerminal) -> Result<()> {
         let size = terminal.size()?;
-        self.state.size.lock().unwrap().replace(size);
+        self.state.size.lock().await.replace(size);
 
         while !self.show_exit {
             // 先处理时间

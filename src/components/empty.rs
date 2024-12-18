@@ -22,17 +22,15 @@ impl Widget for Empty {
     where
         Self: Sized,
     {
-        let [vertical] = Layout::vertical([Constraint::Percentage(50)])
+        let [vertical] = Layout::vertical([Constraint::Length(1)])
             .flex(Flex::Center)
             .areas(area);
-        let [horizontal] = Layout::horizontal([Constraint::Percentage(50)])
-            .flex(Flex::Center)
-            .areas(vertical);
+
         Paragraph::new(self.text)
             .yellow()
             .bold()
             .centered()
             .wrap(Wrap { trim: true })
-            .render(horizontal, buf);
+            .render(vertical, buf);
     }
 }

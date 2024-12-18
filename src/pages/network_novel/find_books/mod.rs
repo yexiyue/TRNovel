@@ -2,20 +2,21 @@ use crate::{
     app::State,
     components::{Component, Loading, Search},
     errors::Errors,
-    pages::Page,
+    pages::{Page, PageWrapper},
     Events, Result, Router,
 };
 use anyhow::anyhow;
 use async_trait::async_trait;
 use crossterm::event::{KeyCode, KeyEvent, KeyEventKind};
-use parse_book_source::{utils::Params, BookList, ExploreItem};
+use parse_book_source::{utils::Params, BookList, BookSource, ExploreItem, JsonSource};
 use ratatui::layout::{Constraint, Layout};
+use std::sync::Arc;
 use tokio::sync::mpsc::Sender;
+use tokio::sync::Mutex;
 
 pub mod books;
-
-pub mod select_explore;
 pub use books::*;
+pub mod select_explore;
 pub use select_explore::*;
 
 pub enum FindBooksMsg {
@@ -32,7 +33,7 @@ pub enum Current {
 }
 
 pub struct FindBooks<'a> {
-    pub state: State,
+    pub book_source: Arc<Mutex<JsonSource>>,
     pub explore: Option<SelectExplore<'a>>,
     pub search: Search<'a>,
     pub book_list: Books,
@@ -43,17 +44,18 @@ pub struct FindBooks<'a> {
 }
 
 #[async_trait]
-impl Page<()> for FindBooks<'_> {
+impl Page<JsonSource> for FindBooks<'_> {
     type Msg = FindBooksMsg;
     async fn init(
-        _arg: (),
+        json_source: JsonSource,
         sender: Sender<Self::Msg>,
         navigator: crate::Navigator,
-        state: State,
+        _state: State,
     ) -> Result<Self> {
-        let json_source = state.book_source.lock().await.clone().unwrap();
+        let explores = json_source.explores.clone();
+        let book_source = Arc::new(Mutex::new(json_source));
 
-        let (explore, book_list) = if let Some(explores) = json_source.explores {
+        let (explore, book_list) = if let Some(explores) = explores {
             if let Some(first) = explores.first() {
                 sender
                     .send(FindBooksMsg::SelectExplore(first.clone()))
@@ -67,6 +69,7 @@ impl Page<()> for FindBooks<'_> {
                         "暂无书籍",
                         Loading::new("加载中..."),
                         true,
+                        book_source.clone(),
                     ),
                 )
             } else {
@@ -78,6 +81,7 @@ impl Page<()> for FindBooks<'_> {
                         "请输入搜索内容",
                         Loading::new("搜索中..."),
                         false,
+                        book_source.clone(),
                     ),
                 )
             }
@@ -90,6 +94,7 @@ impl Page<()> for FindBooks<'_> {
                     "请输入搜索内容",
                     Loading::new("搜索中..."),
                     false,
+                    book_source.clone(),
                 ),
             )
         };
@@ -100,7 +105,7 @@ impl Page<()> for FindBooks<'_> {
         });
 
         Ok(Self {
-            state,
+            book_source,
             explore,
             search,
             book_list,
@@ -153,6 +158,13 @@ impl Page<()> for FindBooks<'_> {
 impl Router for FindBooks<'_> {}
 
 impl FindBooks<'_> {
+    pub fn to_page_route(
+        book_source: BookSource,
+    ) -> Result<PageWrapper<FindBooks<'static>, JsonSource, FindBooksMsg>> {
+        let json_source = JsonSource::try_from(book_source)?;
+        Ok(PageWrapper::new(json_source, None))
+    }
+
     fn get_book_list(&mut self) {
         let sender = self.sender.clone();
 
@@ -182,7 +194,7 @@ impl FindBooks<'_> {
             self.book_list.is_loading = true;
 
             let explore = self.current_explore.clone();
-            let book_source = self.state.book_source.clone();
+            let book_source = self.book_source.clone();
             tokio::spawn(async move {
                 if let Err(e) = (async {
                     let book_list = match current {
@@ -190,8 +202,6 @@ impl FindBooks<'_> {
                             book_source
                                 .lock()
                                 .await
-                                .as_mut()
-                                .unwrap()
                                 .search_books(
                                     Params::new().key(&key).page(page).page_size(page_size),
                                 )
@@ -201,8 +211,6 @@ impl FindBooks<'_> {
                             book_source
                                 .lock()
                                 .await
-                                .as_mut()
-                                .unwrap()
                                 .explore_books(
                                     &explore.unwrap(),
                                     Params::new().page(page).page_size(page_size),

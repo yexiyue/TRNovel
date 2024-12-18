@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use async_trait::async_trait;
 use crossterm::event::{KeyCode, KeyEvent, KeyEventKind};
-use parse_book_source::BookList;
+use parse_book_source::{BookList, JsonSource};
 use ratatui::{
     style::{Style, Stylize},
     text::{Line, Span},
@@ -28,6 +28,7 @@ pub struct Books {
     pub is_loading: bool,
     pub page: usize,
     pub navigator: Navigator,
+    pub book_source: Arc<Mutex<JsonSource>>,
 }
 
 impl Books {
@@ -41,6 +42,7 @@ impl Books {
         empty_tip: &str,
         loading: Loading,
         is_loading: bool,
+        book_source: Arc<Mutex<JsonSource>>,
     ) -> Self {
         Self {
             state: ListState::default(),
@@ -51,6 +53,7 @@ impl Books {
             is_loading,
             page: 0,
             navigator,
+            book_source,
         }
     }
 
@@ -119,11 +122,13 @@ impl Books {
             let widget = ListView::new(builder, books.len()).infinite_scrolling(false);
             frame.render_stateful_widget(widget, inner_area, &mut self.state);
 
-            let mut scrollbar_state =
-                ScrollbarState::new(books.len()).position(self.state.selected.unwrap_or(0));
-
             frame.render_widget(block, area);
-            frame.render_stateful_widget(Scrollbar::default(), area, &mut scrollbar_state);
+
+            if books.len() * 5 > inner_area.height as usize {
+                let mut scrollbar_state =
+                    ScrollbarState::new(books.len()).position(self.state.selected.unwrap_or(0));
+                frame.render_stateful_widget(Scrollbar::default(), area, &mut scrollbar_state);
+            }
         } else {
             frame.render_widget(Empty::new(&self.empty_tip), inner_area);
             frame.render_widget(block, area);
@@ -144,7 +149,7 @@ impl Component for Books {
     async fn handle_key_event(
         &mut self,
         key: KeyEvent,
-        state: State,
+        _state: State,
     ) -> crate::Result<Option<KeyEvent>> {
         if key.kind != KeyEventKind::Press {
             return Ok(Some(key));
@@ -169,7 +174,7 @@ impl Component for Books {
                 self.navigator
                     .push(BookDetail::to_page_route(NetworkNovel::new(
                         book_list_item.clone(),
-                        Arc::new(Mutex::new(state.book_source.lock().await.clone().unwrap())),
+                        self.book_source.clone(),
                     )))?;
                 Ok(None)
             }

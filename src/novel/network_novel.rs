@@ -1,19 +1,19 @@
-use crate::{errors::Errors, Result};
-use anyhow::anyhow;
+use crate::{cache::NetworkNovelCache, errors::Errors, history::HistoryItem, Result};
 use parse_book_source::{BookInfo, BookListItem, Chapter, JsonSource};
-use std::sync::Arc;
+use std::{
+    ops::{Deref, DerefMut},
+    sync::Arc,
+};
 use tokio::sync::Mutex;
 
-use super::Novel;
+use super::{Novel, NovelChapters};
 
 #[derive(Debug, Clone)]
 pub struct NetworkNovel {
     pub book_list_item: BookListItem,
     pub book_source: Arc<Mutex<JsonSource>>,
-    pub current_chapter: usize,
-    pub line_percent: f64,
     pub book_info: Option<BookInfo>,
-    pub chapters: Option<Vec<Chapter>>,
+    pub novel_chapters: NovelChapters<Chapter>,
 }
 
 impl NetworkNovel {
@@ -21,10 +21,8 @@ impl NetworkNovel {
         Self {
             book_list_item,
             book_source,
-            current_chapter: 0,
-            line_percent: 0.0,
             book_info: None,
-            chapters: None,
+            novel_chapters: NovelChapters::new(),
         }
     }
 
@@ -33,30 +31,25 @@ impl NetworkNovel {
     }
 }
 
+impl Deref for NetworkNovel {
+    type Target = NovelChapters<Chapter>;
+    fn deref(&self) -> &Self::Target {
+        &self.novel_chapters
+    }
+}
+
+impl DerefMut for NetworkNovel {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.novel_chapters
+    }
+}
+
 impl Novel for NetworkNovel {
     type Chapter = Chapter;
-
-    fn set_chapters(&mut self, chapters: &[Self::Chapter]) {
-        self.chapters = Some(chapters.to_vec());
-    }
-
-    fn get_current_chapter(&self) -> Result<Chapter> {
-        Ok(self
-            .chapters
-            .as_ref()
-            .ok_or(anyhow!("章节列表为空"))?
-            .get(self.current_chapter)
-            .ok_or(anyhow!("当前章节不存在"))?
-            .clone())
-    }
 
     fn get_current_chapter_name(&self) -> Result<String> {
         self.get_current_chapter()
             .map(|chapter| chapter.chapter_name)
-    }
-
-    fn chapter_percent(&self) -> Result<f64> {
-        Ok(self.current_chapter as f64 / self.get_chapters_result()?.len() as f64 * 100.0)
     }
 
     fn request_chapters<T: FnMut(Result<Vec<Self::Chapter>>) + Send + 'static>(
@@ -88,14 +81,6 @@ impl Novel for NetworkNovel {
             .collect())
     }
 
-    fn get_chapters_result(&self) -> Result<&Vec<Chapter>> {
-        self.chapters.as_ref().ok_or(anyhow!("没有章节信息").into())
-    }
-
-    fn get_chapters(&self) -> Option<&Vec<Self::Chapter>> {
-        self.chapters.as_ref()
-    }
-
     fn get_content<T: FnMut(Result<String>) + Send + 'static>(
         &mut self,
         mut callback: T,
@@ -116,32 +101,13 @@ impl Novel for NetworkNovel {
         Ok(())
     }
 
-    fn next_chapter(&mut self) -> Result<()> {
-        if self.current_chapter + 1 >= self.get_chapters_result()?.len() {
-            Err("已经是最后一章了".into())
-        } else {
-            self.current_chapter += 1;
-            Ok(())
-        }
+    fn to_history_item(&self) -> Result<HistoryItem> {
+        let network_novel_cache = NetworkNovelCache::try_from(self)?;
+        network_novel_cache.save()?;
+        Ok(network_novel_cache.into())
     }
 
-    fn set_chapter(&mut self, chapter: usize) -> Result<()> {
-        if chapter >= self.get_chapters_result()?.len() {
-            Err("章节不存在".into())
-        } else {
-            if self.current_chapter != chapter {
-                self.current_chapter = chapter;
-            }
-            Ok(())
-        }
-    }
-
-    fn prev_chapter(&mut self) -> Result<()> {
-        if self.current_chapter == 0 {
-            Err("已经是第一章了".into())
-        } else {
-            self.current_chapter -= 1;
-            Ok(())
-        }
+    fn get_id(&self) -> String {
+        self.book_list_item.book_url.clone()
     }
 }

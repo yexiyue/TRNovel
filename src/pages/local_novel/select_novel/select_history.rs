@@ -1,8 +1,8 @@
 use crate::{
     app::State,
     components::{Component, Confirm, ConfirmState, Empty, KeyShortcutInfo},
-    history::History,
-    novel::new_local_novel::NewLocalNovel,
+    history::{History, HistoryItem},
+    novel::{local_novel::LocalNovel, network_novel::NetworkNovel},
     pages::ReadNovel,
     Navigator, Result,
 };
@@ -13,7 +13,8 @@ use ratatui::{
     text::{Line, Text},
     widgets::{Block, Padding, Paragraph},
 };
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
+use tokio::sync::Mutex;
 use tui_widget_list::{ListBuilder, ListState, ListView};
 
 #[derive(Debug, Clone)]
@@ -35,7 +36,7 @@ impl SelectHistory {
     }
 
     fn render_list(&mut self, frame: &mut ratatui::Frame, area: ratatui::prelude::Rect) {
-        let list_items = self.history.lock().unwrap().histories.clone();
+        let list_items = self.history.try_lock().unwrap().histories.clone();
         let length = list_items.len();
         let builder = ListBuilder::new(move |context| {
             let (_path, item) = &list_items[context.index];
@@ -48,20 +49,36 @@ impl SelectHistory {
                 Block::bordered().padding(Padding::horizontal(2))
             };
 
-            let paragraph = Paragraph::new(Text::from(vec![
-                Line::from(item.file_name.clone()),
-                Line::from(item.current_chapter.clone()).centered(),
-                Line::from(
-                    format!(
-                        "{:.2}% {}",
-                        item.percent,
-                        item.last_read_at.format("%Y-%m-%d %H:%M:%S")
+            let paragraph = match item {
+                HistoryItem::Local(item) => Paragraph::new(Text::from(vec![
+                    Line::from(item.title.clone()),
+                    Line::from(item.current_chapter.clone()).centered(),
+                    Line::from(
+                        format!(
+                            "{:.2}% {}",
+                            item.percent,
+                            item.last_read_at.format("%Y-%m-%d %H:%M:%S")
+                        )
+                        .dim(),
                     )
-                    .dim(),
-                )
-                .right_aligned(),
-            ]))
-            .block(block);
+                    .right_aligned(),
+                ]))
+                .block(block.title("本地小说")),
+                HistoryItem::Network(item) => Paragraph::new(Text::from(vec![
+                    Line::from(item.title.clone()),
+                    Line::from(item.current_chapter.clone()).centered(),
+                    Line::from(
+                        format!(
+                            "{:.2}% {}",
+                            item.percent,
+                            item.last_read_at.format("%Y-%m-%d %H:%M:%S")
+                        )
+                        .dim(),
+                    )
+                    .right_aligned(),
+                ]))
+                .block(block.title(format!("书源：{}", item.book_source))),
+            };
 
             (paragraph, 5)
         });
@@ -73,7 +90,7 @@ impl SelectHistory {
 #[async_trait]
 impl Component for SelectHistory {
     fn render(&mut self, frame: &mut ratatui::Frame, area: ratatui::prelude::Rect) -> Result<()> {
-        if self.history.lock().unwrap().histories.is_empty() {
+        if self.history.try_lock().unwrap().histories.is_empty() {
             frame.render_widget(Empty::new("暂无历史记录"), area);
             return Ok(());
         }
@@ -109,8 +126,8 @@ impl Component for SelectHistory {
                 KeyCode::Enter => {
                     if let Some(index) = self.state.selected {
                         if self.confirm_state.is_confirm() {
-                            self.history.lock().unwrap().remove_index(index);
-                            self.history.lock().unwrap().save()?;
+                            self.history.lock().await.remove_index(index);
+                            self.history.lock().await.save()?;
                             self.state.select(None);
                         }
                     }
@@ -141,11 +158,20 @@ impl Component for SelectHistory {
                     let Some(index) = self.state.selected else {
                         return Err("请选择历史记录".into());
                     };
-                    let (path, _) = &self.history.lock().unwrap().histories[index];
+                    let (path, item) = &self.history.lock().await.histories[index];
 
-                    let novel = NewLocalNovel::from_path(path)?;
-                    self.navigator
-                        .push(Box::new(ReadNovel::to_page_route(novel)))?;
+                    match item {
+                        HistoryItem::Local(_) => {
+                            let novel = LocalNovel::from_path(path)?;
+                            self.navigator
+                                .push(Box::new(ReadNovel::to_page_route(novel)))?;
+                        }
+                        HistoryItem::Network(_) => {
+                            // TODO: 网络小说
+                            // let novel = NetworkNovel::try_from(path.as_str())?;
+                            // self.navigator.push(ReadNovel::to_page_route(novel))?;
+                        }
+                    }
 
                     Ok(None)
                 }

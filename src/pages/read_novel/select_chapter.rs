@@ -1,3 +1,10 @@
+use super::ReadNovelMsg;
+use crate::{
+    app::State,
+    components::{Component, Empty, Search},
+    novel::Novel,
+    Result,
+};
 use async_trait::async_trait;
 use crossterm::event::{KeyCode, KeyEvent};
 use ratatui::{
@@ -7,15 +14,6 @@ use ratatui::{
     widgets::{Block, List, ListState, Padding, Scrollbar, ScrollbarState},
 };
 use tokio::sync::mpsc;
-
-use crate::{
-    app::State,
-    components::{Component, Empty, Search},
-    novel::Novel,
-    Result,
-};
-
-use super::ReadNovelMsg;
 
 pub struct SelectChapter<'a, T>
 where
@@ -32,14 +30,22 @@ impl<T> SelectChapter<'_, T>
 where
     T: Novel,
 {
-    pub fn new(sender: mpsc::Sender<ReadNovelMsg<T>>, chapters: Option<Vec<String>>) -> Self {
+    pub fn new(
+        sender: mpsc::Sender<ReadNovelMsg<T>>,
+        chapters: Option<Vec<String>>,
+        current_chapter: usize,
+    ) -> Self {
         let sender_clone = sender.clone();
         let chapters = chapters.unwrap_or_default();
+
+        // 创建时指点当前选择的章节
+        let mut state = ListState::default();
+        state.select(Some(current_chapter));
 
         Self {
             scrollbar_state: ScrollbarState::new(chapters.len()),
             list: List::new(chapters).highlight_style(Style::new().bold().on_light_cyan().black()),
-            state: ListState::default(),
+            state,
             search: Search::new("搜索章节", move |query| {
                 sender_clone
                     .try_send(ReadNovelMsg::QueryChapters(query))

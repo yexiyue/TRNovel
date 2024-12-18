@@ -9,13 +9,13 @@ pub mod components;
 pub mod errors;
 pub mod events;
 pub mod file_list;
-pub mod history;
 pub mod novel;
 pub mod pages;
 pub mod router;
 pub mod routes;
 pub mod utils;
 
+pub use cache::*;
 pub use errors::Result;
 pub use events::Events;
 pub use router::*;
@@ -30,13 +30,7 @@ pub async fn run() -> anyhow::Result<()> {
 
     let terminal = ratatui::init();
 
-    App::new(
-        args.path,
-        matches!(args.subcommand, Some(Commands::Network)),
-    )
-    .await?
-    .run(terminal)
-    .await?;
+    App::new(args).await?.run(terminal).await?;
 
     ratatui::restore();
 
@@ -67,4 +61,7 @@ pub enum Commands {
     /// 网络模式，使用网络小说源
     #[command(short_flag = 'n')]
     Network,
+
+    #[command()]
+    History,
 }

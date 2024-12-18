@@ -1,4 +1,6 @@
-use crate::errors::Result;
+use crate::errors::{Errors, Result};
+use crate::novel::local_novel::LocalNovel;
+use crate::novel::Novel;
 use crate::utils::{get_path_md5, novel_catch_dir};
 
 use serde::{Deserialize, Serialize};
@@ -17,23 +19,47 @@ pub struct LocalNovelCache {
 }
 
 impl LocalNovelCache {
-    pub fn from<T: AsRef<Path>>(value: T) -> Result<Self> {
-        let cache_path = Self::path_to_catch(value)?;
-        let file = File::open(cache_path)?;
-        Ok(serde_json::from_reader(file)?)
-    }
-
     pub fn save(&self) -> Result<()> {
-        let cache_path = Self::path_to_catch(&self.path)?;
+        let cache_path = Self::cache_path(&self.path)?;
         let file = File::create(cache_path)?;
         serde_json::to_writer_pretty(file, self)?;
         Ok(())
     }
 
-    pub fn path_to_catch<T: AsRef<Path>>(path: T) -> Result<PathBuf> {
-        Ok(PathBuf::new()
-            .join(novel_catch_dir()?)
+    pub fn cache_path<T: AsRef<Path>>(path: T) -> Result<PathBuf> {
+        let novel_catch_dir = PathBuf::new().join(novel_catch_dir()?).join("local");
+
+        if !novel_catch_dir.exists() {
+            std::fs::create_dir_all(&novel_catch_dir)?;
+        }
+
+        Ok(novel_catch_dir
             .join(get_path_md5(path)?)
             .with_extension("json"))
+    }
+}
+
+// 从本地小说创建缓存
+impl TryFrom<&LocalNovel> for LocalNovelCache {
+    type Error = Errors;
+    fn try_from(value: &LocalNovel) -> Result<Self> {
+        let novel_chapters = value.novel_chapters.clone();
+        Ok(Self {
+            chapters: value.get_chapters_result()?.to_vec(),
+            encoding: value.encoding,
+            current_chapter: novel_chapters.current_chapter,
+            path: value.path.clone(),
+            line_percent: novel_chapters.line_percent,
+        })
+    }
+}
+
+// 从路径加载缓存
+impl TryFrom<&Path> for LocalNovelCache {
+    type Error = Errors;
+    fn try_from(value: &Path) -> Result<Self> {
+        let cache_path = Self::cache_path(value)?;
+        let file = File::open(cache_path)?;
+        Ok(serde_json::from_reader(file)?)
     }
 }

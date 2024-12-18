@@ -1,15 +1,17 @@
 use crate::{
     app::State,
-    components::{Component, Empty, KeyShortcutInfo},
-    novel::new_local_novel::NewLocalNovel,
+    components::{Component, Empty, KeyShortcutInfo, LoadingWrapperInit},
+    file_list::NovelFiles,
+    novel::local_novel::LocalNovel,
     pages::ReadNovel,
-    Navigator, Result,
+    Navigator, Result, Router,
 };
 use async_trait::async_trait;
 use crossterm::event::{KeyCode, KeyEvent, KeyEventKind};
 use ratatui::{
     style::{Style, Stylize},
-    widgets::Scrollbar,
+    text::Line,
+    widgets::{Block, Scrollbar},
 };
 use std::path::PathBuf;
 use tui_tree_widget::{Tree, TreeItem, TreeState};
@@ -34,15 +36,22 @@ impl<'a> SelectFile<'a> {
 #[async_trait]
 impl Component for SelectFile<'_> {
     fn render(&mut self, frame: &mut ratatui::Frame, area: ratatui::prelude::Rect) -> Result<()> {
+        let block = Block::bordered()
+            .title(Line::from("本地小说").centered())
+            .border_style(Style::new().dim());
+
+        let inner_area = block.inner(area);
+        frame.render_widget(block, area);
+
         if self.items.is_empty() {
-            frame.render_widget(Empty::new("该目录下未搜索到小说文件"), area);
+            frame.render_widget(Empty::new("该目录下未搜索到小说文件"), inner_area);
             return Ok(());
         }
         let tree_widget = Tree::new(&self.items)?
             .highlight_style(Style::new().bold().on_light_cyan())
             .experimental_scrollbar(Some(Scrollbar::default()));
 
-        frame.render_stateful_widget(tree_widget, area, &mut self.state);
+        frame.render_stateful_widget(tree_widget, inner_area, &mut self.state);
         Ok(())
     }
 
@@ -69,7 +78,7 @@ impl Component for SelectFile<'_> {
                     let res = self.state.selected().last();
                     if let Some(path) = res {
                         if path.is_file() {
-                            let novel = NewLocalNovel::from_path(path)?;
+                            let novel = LocalNovel::from_path(path)?;
                             self.navigator
                                 .push(Box::new(ReadNovel::to_page_route(novel)))?;
                         } else {
@@ -96,3 +105,25 @@ impl Component for SelectFile<'_> {
         ])
     }
 }
+
+#[async_trait]
+impl LoadingWrapperInit for SelectFile<'static> {
+    type Arg = PathBuf;
+    async fn init(args: Self::Arg, navigator: Navigator, _state: State) -> Result<Option<Self>> {
+        let novel_files = NovelFiles::from_path(args)?;
+
+        match novel_files {
+            NovelFiles::File(path) => {
+                let novel = LocalNovel::from_path(path)?;
+                navigator.push(Box::new(ReadNovel::to_page_route(novel)))?;
+                Ok(None)
+            }
+            NovelFiles::FileTree(tree) => {
+                let select_file = SelectFile::new(tree, navigator.clone())?;
+                Ok(Some(select_file))
+            }
+        }
+    }
+}
+
+impl Router for SelectFile<'_> {}
