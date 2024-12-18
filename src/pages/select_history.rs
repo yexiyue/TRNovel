@@ -240,7 +240,7 @@ impl Component for SelectHistory {
                                     &network_cache.book_source_url,
                                     &network_cache.book_source_name,
                                 )
-                                .map(|i| i.clone())
+                                .cloned()
                                 .ok_or(anyhow!("book source not found"))?;
 
                             let novel = NetworkNovel {
