@@ -118,6 +118,10 @@ where
                 self.select_chapter
                     .set_list(self.novel.get_chapters_names()?);
 
+                self.select_chapter
+                    .state
+                    .select(Some(self.novel.current_chapter));
+
                 self.read_content.set_loading(true);
 
                 self.read_content.set_current_line(0);

@@ -4,12 +4,16 @@ use crate::{
     errors::{Errors, Result},
     events::{event_loop, Events},
     history::History,
-    pages::{local_novel::local_novel_first_page, network_novel::network_novel_first_page},
+    pages::{
+        local_novel::local_novel_first_page, network_novel::network_novel_first_page,
+        select_history::SelectHistory,
+    },
     routes::Routes,
+    Commands, TRNovel,
 };
 use crossterm::event::{KeyCode, KeyEventKind, KeyModifiers};
 use ratatui::{layout::Size, DefaultTerminal, Frame};
-use std::{path::PathBuf, sync::Arc};
+use std::sync::Arc;
 use tokio::sync::mpsc::{UnboundedReceiver, UnboundedSender};
 use tokio::sync::Mutex;
 use tokio_util::sync::CancellationToken;
@@ -29,7 +33,7 @@ pub struct App {
 }
 
 impl App {
-    pub async fn new(path: PathBuf, is_network: bool) -> Result<Self> {
+    pub async fn new(args: TRNovel) -> Result<Self> {
         let (tx, rx) = tokio::sync::mpsc::unbounded_channel();
         let cancellation_token = CancellationToken::new();
 
@@ -38,13 +42,13 @@ impl App {
         let state = State {
             history: Arc::new(Mutex::new(History::load()?)),
             size: Arc::new(Mutex::new(None)),
-            book_sources: Arc::new(Mutex::new(BookSourceCache::default())),
+            book_sources: Arc::new(Mutex::new(BookSourceCache::load()?)),
         };
 
-        let first_page = if is_network {
-            network_novel_first_page()?
-        } else {
-            local_novel_first_page(path)?
+        let first_page = match args.subcommand {
+            Some(Commands::Network) => network_novel_first_page()?,
+            Some(Commands::History) => SelectHistory::to_page_route(),
+            _ => local_novel_first_page(args.path)?,
         };
 
         Ok(Self {

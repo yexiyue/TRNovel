@@ -18,20 +18,10 @@ use ratatui::{
 };
 use tui_widget_list::{ListBuilder, ListState, ListView};
 
-pub struct ListItem {
+struct ListItem {
     pub book_source: BookSource,
     pub selected: bool,
     pub height_light: bool,
-}
-
-impl ListItem {
-    pub fn new(book_source: BookSource, selected: bool, height_light: bool) -> Self {
-        Self {
-            book_source,
-            selected,
-            height_light,
-        }
-    }
 }
 
 impl Widget for ListItem {
@@ -117,13 +107,13 @@ impl Import {
         let builder = ListBuilder::new(move |context| {
             let item = &list_items[context.index];
 
-            let paragraph = ListItem::new(
-                item.clone(),
-                selected.contains(&context.index),
-                context.is_selected,
-            );
+            let list_item = ListItem {
+                book_source: item.clone(),
+                selected: selected.contains(&context.index),
+                height_light: context.is_selected,
+            };
 
-            (paragraph, 4)
+            (list_item, 4)
         });
         let widget = ListView::new(builder, length).infinite_scrolling(false);
         frame.render_stateful_widget(widget, area, &mut self.list_state);

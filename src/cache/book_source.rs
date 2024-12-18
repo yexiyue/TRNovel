@@ -24,11 +24,11 @@ impl BookSourceCache {
             .join("book_sources.json"))
     }
 
-    pub fn load(&mut self) -> Result<()> {
-        if let Ok(file) = File::open(Self::get_cache_file_path()?) {
-            *self = serde_json::from_reader(file)?;
+    pub fn load() -> Result<Self> {
+        match File::open(Self::get_cache_file_path()?) {
+            Ok(file) => Ok(serde_json::from_reader(file)?),
+            Err(_) => Ok(Default::default()),
         }
-        Ok(())
     }
 
     pub fn save(&self) -> Result<()> {
@@ -55,6 +55,16 @@ impl BookSourceCache {
         }
 
         self.book_sources.push(book_source);
+    }
+
+    pub fn find_book_source(
+        &self,
+        book_source_url: &str,
+        book_source_name: &str,
+    ) -> Option<&BookSource> {
+        self.book_sources.iter().find(|bs| {
+            bs.book_source_url == book_source_url && bs.book_source_name == book_source_name
+        })
     }
 }
 
