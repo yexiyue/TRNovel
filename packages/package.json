@@ -12,8 +12,8 @@
     }
   },
   "bin": {
-    "trnovel": "./bin/trnovel.js",
-    "trn": "./bin/trn.js"
+    "trn": "./bin/trn.js",
+    "trnovel": "./bin/trnovel.js"
   },
   "license": "MIT",
   "devDependencies": {
