@@ -1,6 +1,6 @@
 use app::App;
 use clap::{Parser, Subcommand};
-use std::{fs, path::PathBuf};
+use std::{env, ffi::OsString, fmt::Debug, fs, path::PathBuf};
 use utils::novel_catch_dir;
 
 pub mod app;
@@ -20,25 +20,33 @@ pub use errors::Result;
 pub use events::Events;
 pub use router::*;
 
-pub async fn run() -> anyhow::Result<()> {
-    let args = TRNovel::parse();
+pub async fn run() -> Result<()> {
+    try_run(env::args()).await
+}
 
-    if let Some(Commands::Clear) = args.subcommand {
+pub async fn try_run<I, A>(args: I) -> Result<()>
+where
+    I: IntoIterator<Item = A> + Debug,
+    A: Into<OsString> + Clone,
+{
+    let trnovel = TRNovel::parse_from(args);
+
+    if let Some(Commands::Clear) = trnovel.subcommand {
         fs::remove_dir_all(novel_catch_dir()?)?;
         return Ok(());
     }
 
     let terminal = ratatui::init();
 
-    App::new(args).await?.run(terminal).await?;
+    App::new(trnovel).await?.run(terminal).await?;
 
     ratatui::restore();
 
     Ok(())
 }
-
+/// TRNovel(Terminal reader for novel)，一个终端小说阅读器
 #[derive(Parser, Debug)]
-#[command(author, version, about, long_about = None)]
+#[command(author, version)]
 pub struct TRNovel {
     /// 小说文件夹路径，默认为当前目录
     #[arg(default_value = "./")]

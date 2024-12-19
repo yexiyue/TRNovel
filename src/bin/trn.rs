@@ -1,4 +1,4 @@
 #[tokio::main]
-async fn main() -> anyhow::Result<()> {
+async fn main() -> trnovel::Result<()> {
     trnovel::run().await
 }

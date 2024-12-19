@@ -51,6 +51,7 @@ thiserror = { workspace = true }
 
 [workspace]
 members = ["parse-book-source"]
+exclude = ["packages"]
 
 [workspace.dependencies]
 serde = { version = "1.0.215", features = ["derive"] }
