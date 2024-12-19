@@ -84,7 +84,11 @@ jobs:
           toolchain: stable
 
           args: --release --target ${{ matrix.target }}
-
+      - name: Install Openssl
+        if: matrix.target == 'x86_64-unknown-linux-gnu'
+        run: |
+          sudo apt-get update
+          sudo apt-get install pkg-config libssl-dev openssl
       - name: install strip command
         shell: bash
         run: |
