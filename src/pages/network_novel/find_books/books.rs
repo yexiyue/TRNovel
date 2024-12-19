@@ -171,6 +171,7 @@ impl Component for Books {
                     .ok_or("暂无书籍可以阅读")?
                     .get(index)
                     .ok_or("您选择的书籍不存在")?;
+
                 self.navigator
                     .push(BookDetail::to_page_route(NetworkNovel::new(
                         book_list_item.clone(),
