@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 
-const { run } = require("./packages/trnovel/index");
+const { run } = require("../index.js");
 const path = require("path");
 const [_bin, script, ...args] = process.argv;
 
