@@ -4,6 +4,7 @@ on:
   push:
     tags:
       - "[v]?[0-9]+.[0-9]+.[0-9]+"
+  workflow_dispatch:
 
 jobs:
   publish:
@@ -73,6 +74,11 @@ jobs:
 
           profile: minimal
           override: true
+      - name: Install Openssl
+        if: matrix.target == 'x86_64-unknown-linux-gnu'
+        run: |
+          sudo apt-get update
+          sudo apt-get install pkg-config libssl-dev openssl
       - uses: Swatinem/rust-cache@v2
       - name: Cargo build
         uses: actions-rs/cargo@v1
@@ -84,11 +90,7 @@ jobs:
           toolchain: stable
 
           args: --release --target ${{ matrix.target }}
-      - name: Install Openssl
-        if: matrix.target == 'x86_64-unknown-linux-gnu'
-        run: |
-          sudo apt-get update
-          sudo apt-get install pkg-config libssl-dev openssl
+
       - name: install strip command
         shell: bash
         run: |
