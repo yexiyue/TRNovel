@@ -280,25 +280,25 @@ impl Component for BookSourceManager {
     }
 
     fn key_shortcut_info(&self) -> crate::components::KeyShortcutInfo {
-        let data = if self.confirm_state.show {
-            vec![
+        if self.confirm_state.show {
+            KeyShortcutInfo::new(vec![
                 ("确认删除", "Y"),
                 ("取消删除", "N"),
                 ("切换确定/取消", "H / ◄ / L / ► "),
                 ("确认选中", "Enter"),
-                ("切换到选择文件", "Tab"),
-            ]
+                ("切换到导入书源", "Tab"),
+            ])
+        } else if self.show_import {
+            self.import.key_shortcut_info()
         } else {
-            vec![
+            KeyShortcutInfo::new(vec![
                 ("选择下一个", "J / ▼"),
                 ("选择上一个", "K / ▲"),
-                ("取消选择", "H / ◄"),
-                ("确认选择", "L / ► / Enter"),
-                ("删除选中的书源", "D"),
-                ("切换到选择文件", "Tab"),
-            ]
-        };
-        KeyShortcutInfo::new(data)
+                ("查看书源", "L / ► / Enter"),
+                ("删除书源", "D"),
+                ("切换到导入书源", "Tab"),
+            ])
+        }
     }
 
     async fn handle_events(&mut self, events: Events, state: State) -> Result<Option<Events>> {

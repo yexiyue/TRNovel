@@ -280,6 +280,7 @@ where
     fn key_shortcut_info(&self) -> KeyShortcutInfo {
         let data = if self.show_select_chapter {
             vec![
+                ("搜索章节", "S"),
                 ("选择下一个", "J / ▼"),
                 ("选择上一个", "K / ▲"),
                 ("切换阅读模式", "Tab / Esc"),

@@ -119,7 +119,7 @@ impl ShortcutInfo {
         ])
         .areas(area);
 
-        let widths = [Constraint::Fill(1), Constraint::Length(15)];
+        let widths = [Constraint::Fill(1), Constraint::Fill(1)];
         let header = Row::new(vec!["描述", "快捷键"]).light_cyan().bold();
 
         let table = Table::new(self.key_shortcut_info.rows(), widths)
@@ -159,7 +159,7 @@ impl StatefulWidget for ShortcutInfo {
         let [vertical] = Layout::vertical([Constraint::Percentage(80)])
             .flex(Flex::Center)
             .areas(area);
-        let [horizontal] = Layout::horizontal([Constraint::Length(40)])
+        let [horizontal] = Layout::horizontal([Constraint::Length(50)])
             .flex(Flex::Center)
             .areas(vertical);
 

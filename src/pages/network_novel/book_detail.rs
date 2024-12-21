@@ -1,6 +1,6 @@
 use crate::{
     app::State,
-    components::{Component, LoadingWrapper, LoadingWrapperInit},
+    components::{Component, KeyShortcutInfo, LoadingWrapper, LoadingWrapperInit},
     novel::network_novel::NetworkNovel,
     pages::ReadNovel,
     Navigator, Result, RoutePage, Router,
@@ -142,6 +142,13 @@ impl Component for BookDetail {
             }
             _ => Ok(Some(key)),
         }
+    }
+    fn key_shortcut_info(&self) -> crate::components::KeyShortcutInfo {
+        KeyShortcutInfo::new(vec![
+            ("向下滚动", "J / ▼"),
+            ("向上滚动", "K / ▲"),
+            ("进入阅读模式", "Enter"),
+        ])
     }
 }
 

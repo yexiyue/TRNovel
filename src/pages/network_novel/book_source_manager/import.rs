@@ -240,4 +240,14 @@ impl Component for Import {
             _ => Ok(Some(events)),
         }
     }
+
+    fn key_shortcut_info(&self) -> crate::components::KeyShortcutInfo {
+        crate::components::KeyShortcutInfo::new(vec![
+            ("输入书源路径", "S"),
+            ("解析书源/确定选择", "Enter"),
+            ("移动", "J / ▼ / K / ▲"),
+            ("选择", "Space"),
+            ("切换到书源管理", "Tab"),
+        ])
+    }
 }

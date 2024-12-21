@@ -9,7 +9,10 @@ use state::SelectExploreState;
 use tokio::sync::mpsc;
 use widget::SelectExploreWidget;
 
-use crate::{app::State, components::Component};
+use crate::{
+    app::State,
+    components::{Component, KeyShortcutInfo},
+};
 
 use super::FindBooksMsg;
 
@@ -93,6 +96,11 @@ impl Component for SelectExplore<'_> {
     }
 
     fn key_shortcut_info(&self) -> crate::components::KeyShortcutInfo {
-        todo!()
+        KeyShortcutInfo::new(vec![
+            ("选择下一个频道", "J / ▼"),
+            ("选择上一个频道", "K / ▲"),
+            ("确认选择", "Enter"),
+            ("退出选择频道", "Esc/Tab"),
+        ])
     }
 }

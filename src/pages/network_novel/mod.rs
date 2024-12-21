@@ -1,5 +1,4 @@
 pub mod book_detail;
-pub mod book_history;
 pub mod book_source_manager;
 pub mod find_books;
 use super::PageWrapper;

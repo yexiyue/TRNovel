@@ -195,7 +195,6 @@ impl Component for SelectFile<'_> {
             ("选择上一个", "K / ▲"),
             ("取消选择", "H / ◄"),
             ("确认选择", "L / ► / Enter"),
-            ("切换到历史记录", "Tab"),
         ])
     }
 }

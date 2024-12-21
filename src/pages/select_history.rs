@@ -283,7 +283,6 @@ impl Component for SelectHistory {
                 ("取消删除", "N"),
                 ("切换确定/取消", "H / ◄ / L / ► "),
                 ("确认选中", "Enter"),
-                ("切换到选择文件", "Tab"),
             ]
         } else {
             vec![
@@ -292,7 +291,6 @@ impl Component for SelectHistory {
                 ("取消选择", "H / ◄"),
                 ("确认选择", "L / ► / Enter"),
                 ("删除选中的历史记录", "D"),
-                ("切换到选择文件", "Tab"),
             ]
         };
         KeyShortcutInfo::new(data)

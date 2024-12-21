@@ -1,6 +1,6 @@
 use crate::{
     app::State,
-    components::{Component, Loading, Search},
+    components::{info, Component, KeyShortcutInfo, Loading, Search},
     errors::Errors,
     pages::{Page, PageWrapper},
     Events, Result, Router,
@@ -264,12 +264,12 @@ impl Component for FindBooks<'_> {
             return Ok(Some(key));
         }
         match key.code {
-            KeyCode::Left => {
+            KeyCode::Left | KeyCode::Char('h') => {
                 self.book_list.page = self.book_list.page.saturating_sub(1).max(1);
                 self.get_book_list();
                 Ok(None)
             }
-            KeyCode::Right => {
+            KeyCode::Right | KeyCode::Char('l') => {
                 self.book_list.page = self.book_list.page.saturating_add(1);
                 self.get_book_list();
                 Ok(None)
@@ -309,5 +309,37 @@ impl Component for FindBooks<'_> {
                 .map(|item| item.map(Events::KeyEvent)),
             other => Ok(Some(other)),
         }
+    }
+
+    fn key_shortcut_info(&self) -> crate::components::KeyShortcutInfo {
+        let mut info = KeyShortcutInfo::new(vec![
+            ("选择下一个书籍", "J / ▼"),
+            ("选择上一个书籍", "K / ▲"),
+            ("下一页", "L / ►"),
+            ("上一页", "H / ◄"),
+        ]);
+
+        if let Some(explore) = &self.explore {
+            let explore_info = explore.key_shortcut_info();
+
+            if explore.state.show {
+                info = explore_info;
+            } else {
+                info.append(&mut KeyShortcutInfo::new(vec![
+                    ("进入频道列表", "Tab"),
+                    ("进入搜索模式", "S"),
+                    ("退出搜索模式", "ESC"),
+                    ("搜索/进入阅读模式", "Enter"),
+                ]));
+            }
+        } else {
+            info.append(&mut KeyShortcutInfo::new(vec![
+                ("进入搜索模式", "S"),
+                ("退出搜索模式", "ESC"),
+                ("搜索/进入阅读模式", "Enter"),
+            ]));
+        }
+
+        info
     }
 }

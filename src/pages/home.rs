@@ -8,7 +8,10 @@ use ratatui::{
 };
 use tui_big_text::{BigText, PixelSize};
 
-use crate::{components::Component, RoutePage, Router};
+use crate::{
+    components::{Component, KeyShortcutInfo},
+    RoutePage, Router,
+};
 
 use super::{
     local_novel::local_novel_first_page, network_novel::network_novel_first_page,
@@ -112,6 +115,14 @@ impl Component for Home {
                 return Ok(Some(key));
             }
         }
+    }
+
+    fn key_shortcut_info(&self) -> crate::components::KeyShortcutInfo {
+        KeyShortcutInfo::new(vec![
+            ("选择下一个", "J / ▼"),
+            ("选择上一个", "K / ▲"),
+            ("确认选择", "Enter"),
+        ])
     }
 }
 
