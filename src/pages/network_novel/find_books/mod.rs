@@ -1,6 +1,6 @@
 use crate::{
     app::State,
-    components::{info, Component, KeyShortcutInfo, Loading, Search},
+    components::{Component, KeyShortcutInfo, Loading, Search},
     errors::Errors,
     pages::{Page, PageWrapper},
     Events, Result, Router,
