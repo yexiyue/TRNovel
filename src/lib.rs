@@ -44,14 +44,33 @@ where
 
     Ok(())
 }
-/// TRNovel(Terminal reader for novel)，一个终端小说阅读器
-#[derive(Parser, Debug)]
-#[command(author, version)]
-pub struct TRNovel {
-    /// 小说文件夹路径，默认为当前目录
-    #[arg(default_value = "./")]
-    pub path: PathBuf,
 
+#[derive(Parser, Debug)]
+#[command(
+    author,
+    version,
+    about = r#"
+  _______ _____  _   _                _ 
+ |__   __|  __ \| \ | |              | |
+    | |  | |__) |  \| | _____   _____| |
+    | |  |  _  /| . ` |/ _ \ \ / / _ \ |
+    | |  | | \ \| |\  | (_) \ V /  __/ |
+    |_|  |_|  \_\_| \_|\___/ \_/ \___|_|
+                                            
+  终端小说阅读器 (Terminal reader for novel)
+  ==========================================
+
+  TRNovel 是一个终端小说阅读器，支持以下功能。
+    - 本地小说
+    - 网络小说
+    - 历史记录
+
+  GitHub: https://github.com/yexiyue/trnovel
+  
+  如果您觉得还不错，请考虑给项目点个 star，谢谢！
+"#
+)]
+pub struct TRNovel {
     #[command(subcommand)]
     pub subcommand: Option<Commands>,
 }
@@ -69,6 +88,14 @@ pub enum Commands {
     /// 网络模式，使用网络小说源
     #[command(short_flag = 'n')]
     Network,
+
+    /// 本地小说
+    #[command(short_flag = 'l')]
+    Local {
+        /// 小说文件夹路径，默认为当前目录
+        #[arg(default_value = "./")]
+        path: PathBuf,
+    },
 
     /// 历史记录模式，查看阅读记录
     History,
