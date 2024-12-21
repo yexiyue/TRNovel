@@ -48,7 +48,7 @@ impl App {
         let first_page = match args.subcommand {
             Some(Commands::Network) => network_novel_first_page()?,
             Some(Commands::History) => SelectHistory::to_page_route(),
-            Some(Commands::Local { path }) => local_novel_first_page(path)?,
+            Some(Commands::Local { path }) => local_novel_first_page(path),
             _ => Home::to_page_route(),
         };
 

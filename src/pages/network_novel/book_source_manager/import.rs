@@ -76,11 +76,15 @@ impl Import {
     pub fn new(sender: tokio::sync::mpsc::Sender<BookSourceManagerMsg>) -> Self {
         let sender_clone = sender.clone();
         Self {
-            search: Search::new("请输入书源链接或文件地址", move |query| {
-                sender_clone
-                    .try_send(BookSourceManagerMsg::Parse(query))
-                    .unwrap()
-            }),
+            search: Search::new(
+                "请输入书源链接或文件地址",
+                move |query| {
+                    sender_clone
+                        .try_send(BookSourceManagerMsg::Parse(query))
+                        .unwrap()
+                },
+                |_| (true, ""),
+            ),
             loading: Loading::new("解析中..."),
             is_loading: false,
             sender,

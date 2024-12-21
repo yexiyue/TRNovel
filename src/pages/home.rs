@@ -1,5 +1,3 @@
-use std::path::PathBuf;
-
 use async_trait::async_trait;
 use crossterm::event::KeyCode;
 use ratatui::{
@@ -96,8 +94,7 @@ impl Component for Home {
                 if let Some(index) = self.state.selected() {
                     match index {
                         0 => {
-                            self.navigator
-                                .push(local_novel_first_page(PathBuf::from("./"))?)?;
+                            self.navigator.push(local_novel_first_page(None))?;
                         }
                         1 => {
                             self.navigator.push(network_novel_first_page()?)?;

@@ -3,6 +3,7 @@ use async_trait::async_trait;
 use crossterm::event::{KeyCode, KeyEvent, KeyEventKind};
 use ratatui::{
     style::{Style, Stylize},
+    text::Line,
     widgets::Block,
 };
 use tui_textarea::{Input, Key, TextArea};
@@ -11,19 +12,50 @@ pub struct Search<'a> {
     pub textarea: TextArea<'a>,
     pub is_focus: bool,
     pub on_search: Box<dyn FnMut(String) + Send + Sync + 'static>,
+    pub validator: Box<dyn for<'b> FnMut(&'b str) -> (bool, &str) + Send + Sync + 'static>,
+    pub is_valid: bool,
+    pub error_msg: String,
 }
 
 impl Search<'_> {
-    pub fn new<T: FnMut(String) + Send + Sync + 'static>(place_holder: &str, on_search: T) -> Self {
+    pub fn new<T, V>(place_holder: &str, on_search: T, mut validator: V) -> Self
+    where
+        T: FnMut(String) + Send + Sync + 'static,
+        for<'b> V: FnMut(&'b str) -> (bool, &str) + Send + Sync + 'static,
+    {
         let mut textarea = TextArea::default();
         textarea.set_cursor_line_style(Style::default());
         textarea.set_placeholder_text(place_holder);
 
+        let (is_valid, error_msg) = validator("");
         Self {
             textarea,
             is_focus: false,
             on_search: Box::new(on_search),
+            is_valid,
+            validator: Box::new(validator),
+            error_msg: error_msg.into(),
         }
+    }
+
+    pub fn set_value(&mut self, value: &str) {
+        let (is_valid, error_msg) = (self.validator)(value);
+        self.is_valid = is_valid;
+        self.error_msg = error_msg.into();
+
+        self.textarea.set_yank_text(value);
+        self.textarea.paste();
+    }
+
+    pub fn validate_input(&mut self) -> bool {
+        let (is_valid, error_msg) = (self.validator)(self.textarea.lines()[0].as_str());
+        self.is_valid = is_valid;
+        self.error_msg = error_msg.into();
+        self.is_valid
+    }
+
+    pub fn get_value(&self) -> &str {
+        self.textarea.lines()[0].as_str()
     }
 }
 
@@ -35,8 +67,16 @@ impl Component for Search<'_> {
         area: ratatui::prelude::Rect,
     ) -> crate::Result<()> {
         if self.is_focus {
-            self.textarea
-                .set_block(Block::bordered().border_style(Style::default().light_green()));
+            if !self.is_valid {
+                self.textarea.set_block(
+                    Block::bordered()
+                        .title(Line::from(format!("{}", self.error_msg)))
+                        .border_style(Style::default().red()),
+                );
+            } else {
+                self.textarea
+                    .set_block(Block::bordered().border_style(Style::default().light_green()));
+            }
             self.textarea
                 .set_cursor_style(Style::default().on_dark_gray());
         } else {
@@ -44,6 +84,7 @@ impl Component for Search<'_> {
                 .set_block(Block::bordered().border_style(Style::default().dim()));
             self.textarea.set_cursor_style(Style::default());
         }
+
         frame.render_widget(&self.textarea, area);
         Ok(())
     }
@@ -62,13 +103,16 @@ impl Component for Search<'_> {
                 Input {
                     key: Key::Enter, ..
                 } => {
-                    self.is_focus = false;
-                    let res = self.textarea.lines()[0].clone();
-                    (self.on_search)(res);
+                    if self.is_valid {
+                        self.is_focus = false;
+                        let res = self.textarea.lines()[0].clone();
+                        (self.on_search)(res);
+                    }
                     Ok(None)
                 }
                 input => {
                     self.textarea.input(input);
+                    self.validate_input();
                     Ok(None)
                 }
             }

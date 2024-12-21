@@ -92,11 +92,11 @@ pub enum Commands {
     /// 本地小说
     #[command(short_flag = 'l')]
     Local {
-        /// 小说文件夹路径，默认为当前目录
-        #[arg(default_value = "./")]
-        path: PathBuf,
+        /// 小说文件夹路径
+        path: Option<PathBuf>,
     },
 
     /// 历史记录模式，查看阅读记录
+    #[command(short_flag = 'H')]
     History,
 }

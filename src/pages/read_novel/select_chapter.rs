@@ -46,11 +46,15 @@ where
             scrollbar_state: ScrollbarState::new(chapters.len()),
             list: List::new(chapters).highlight_style(Style::new().bold().on_light_cyan().black()),
             state,
-            search: Search::new("搜索章节", move |query| {
-                sender_clone
-                    .try_send(ReadNovelMsg::QueryChapters(query))
-                    .unwrap();
-            }),
+            search: Search::new(
+                "搜索章节",
+                move |query| {
+                    sender_clone
+                        .try_send(ReadNovelMsg::QueryChapters(query))
+                        .unwrap();
+                },
+                |_| (true, ""),
+            ),
             sender,
         }
     }
