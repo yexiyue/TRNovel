@@ -8,11 +8,14 @@ use ratatui::{
 };
 use tui_textarea::{Input, Key, TextArea};
 
+type SearchFn = Box<dyn FnMut(String) + Send + Sync + 'static>;
+type ValidatorFn = Box<dyn FnMut(&str) -> (bool, &str) + Send + Sync + 'static>;
+
 pub struct Search<'a> {
     pub textarea: TextArea<'a>,
     pub is_focus: bool,
-    pub on_search: Box<dyn FnMut(String) + Send + Sync + 'static>,
-    pub validator: Box<dyn for<'b> FnMut(&'b str) -> (bool, &str) + Send + Sync + 'static>,
+    pub on_search: SearchFn,
+    pub validator: ValidatorFn,
     pub is_valid: bool,
     pub error_msg: String,
 }
@@ -21,7 +24,7 @@ impl Search<'_> {
     pub fn new<T, V>(place_holder: &str, on_search: T, mut validator: V) -> Self
     where
         T: FnMut(String) + Send + Sync + 'static,
-        for<'b> V: FnMut(&'b str) -> (bool, &str) + Send + Sync + 'static,
+        V: FnMut(&str) -> (bool, &str) + Send + Sync + 'static,
     {
         let mut textarea = TextArea::default();
         textarea.set_cursor_line_style(Style::default());
@@ -70,7 +73,7 @@ impl Component for Search<'_> {
             if !self.is_valid {
                 self.textarea.set_block(
                     Block::bordered()
-                        .title(Line::from(format!("{}", self.error_msg)))
+                        .title(Line::from(self.error_msg.clone()))
                         .border_style(Style::default().red()),
                 );
             } else {
