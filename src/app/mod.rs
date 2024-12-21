@@ -5,7 +5,7 @@ use crate::{
     events::{event_loop, Events},
     history::History,
     pages::{
-        local_novel::local_novel_first_page, network_novel::network_novel_first_page,
+        home::Home, local_novel::local_novel_first_page, network_novel::network_novel_first_page,
         select_history::SelectHistory,
     },
     routes::Routes,
@@ -48,7 +48,8 @@ impl App {
         let first_page = match args.subcommand {
             Some(Commands::Network) => network_novel_first_page()?,
             Some(Commands::History) => SelectHistory::to_page_route(),
-            _ => local_novel_first_page(args.path)?,
+            Some(Commands::Local { path }) => local_novel_first_page(path)?,
+            _ => Home::to_page_route(),
         };
 
         Ok(Self {
