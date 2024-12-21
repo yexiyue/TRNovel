@@ -30,6 +30,16 @@ impl<'a> NovelFiles<'a> {
             Ok(NovelFiles::FileTree(find_novels(path, &FILE_EXTS)?))
         }
     }
+
+    pub fn into_tree_item(self) -> Vec<TreeItem<'a, PathBuf>> {
+        match self {
+            NovelFiles::File(path) => vec![TreeItem::new_leaf(
+                path.clone(),
+                path.file_name().unwrap().to_string_lossy().to_string(),
+            )],
+            NovelFiles::FileTree(items) => items,
+        }
+    }
 }
 
 fn find_novels<'a>(path: PathBuf, file_exts: &[&str]) -> Result<Vec<TreeItem<'a, PathBuf>>> {

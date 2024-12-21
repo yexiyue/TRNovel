@@ -249,13 +249,6 @@ where
                 return Ok(None);
             };
 
-            let Some(events) = self
-                .read_content
-                .handle_events(events, state.clone())
-                .await?
-            else {
-                return Ok(None);
-            };
             events
         } else {
             let Some(events) = self
@@ -265,6 +258,7 @@ where
             else {
                 return Ok(None);
             };
+
             events
         };
 
@@ -306,7 +300,6 @@ where
     }
 }
 
-// todo 添加历史记录
 #[async_trait]
 impl<T> Router for ReadNovel<T>
 where

@@ -143,6 +143,7 @@ impl Component for SelectHistory {
 
         if self.history.try_lock().unwrap().histories.is_empty() {
             frame.render_widget(Empty::new("暂无历史记录"), container_area);
+            frame.render_widget(block, area);
             return Ok(());
         }
 

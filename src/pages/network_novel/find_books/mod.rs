@@ -100,9 +100,13 @@ impl Page<JsonSource> for FindBooks<'_> {
         };
 
         let sender_clone = sender.clone();
-        let search = Search::new("请输入关键字", move |query| {
-            sender_clone.try_send(FindBooksMsg::Search(query)).unwrap();
-        });
+        let search = Search::new(
+            "请输入关键字",
+            move |query| {
+                sender_clone.try_send(FindBooksMsg::Search(query)).unwrap();
+            },
+            |_| (true, ""),
+        );
 
         Ok(Self {
             book_source,
