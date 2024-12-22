@@ -1,5 +1,6 @@
 use app::App;
 use clap::{Parser, Subcommand};
+use crossterm::style::Stylize;
 use std::{env, ffi::OsString, fmt::Debug, fs, path::PathBuf};
 use utils::novel_catch_dir;
 
@@ -11,6 +12,7 @@ pub mod events;
 pub mod file_list;
 pub mod novel;
 pub mod pages;
+pub mod quick_start;
 pub mod router;
 pub mod routes;
 pub mod utils;
@@ -37,11 +39,21 @@ where
     }
 
     let terminal = ratatui::init();
+    let size = terminal.size()?;
 
-    App::new(trnovel).await?.run(terminal).await?;
-
-    ratatui::restore();
-
+    match App::new(trnovel, size).await {
+        Ok(app) => {
+            app.run(terminal).await?;
+            ratatui::restore();
+        }
+        Err(e) => {
+            ratatui::restore();
+            eprintln!(
+                "{}",
+                format!("{}: {}", "Error".red().bold(), e.to_string().red())
+            );
+        }
+    }
     Ok(())
 }
 

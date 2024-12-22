@@ -3,14 +3,12 @@ use crate::{
     app::State,
     components::{Component, Confirm, ConfirmState, Empty, KeyShortcutInfo},
     history::{History, HistoryItem},
-    novel::{local_novel::LocalNovel, network_novel::NetworkNovel, NovelChapters},
+    novel::{local_novel::LocalNovel, network_novel::NetworkNovel},
     pages::ReadNovel,
-    Navigator, NetworkNovelCache, Result, RoutePage, Router,
+    Navigator, Result, RoutePage, Router,
 };
-use anyhow::anyhow;
 use async_trait::async_trait;
 use crossterm::event::{KeyCode, KeyEvent, KeyEventKind};
-use parse_book_source::JsonSource;
 use ratatui::{
     layout::{Constraint, Layout},
     style::{Style, Stylize},
@@ -232,31 +230,7 @@ impl Component for SelectHistory {
                                 .push(Box::new(ReadNovel::to_page_route(novel)))?;
                         }
                         HistoryItem::Network(_) => {
-                            let network_cache = NetworkNovelCache::try_from(path.as_str())?;
-                            let json_source = state
-                                .book_sources
-                                .lock()
-                                .await
-                                .find_book_source(
-                                    &network_cache.book_source_url,
-                                    &network_cache.book_source_name,
-                                )
-                                .cloned()
-                                .ok_or(anyhow!("book source not found"))?;
-
-                            let novel = NetworkNovel {
-                                book_list_item: network_cache.book_list_item,
-                                book_source: Arc::new(Mutex::new(JsonSource::try_from(
-                                    json_source,
-                                )?)),
-                                book_info: None,
-                                novel_chapters: NovelChapters {
-                                    current_chapter: network_cache.current_chapter,
-                                    line_percent: network_cache.line_percent,
-                                    chapters: None,
-                                },
-                            };
-
+                            let novel = NetworkNovel::from_url(path, state.book_sources)?;
                             self.navigator.push(BookDetail::to_page_route(novel))?;
                         }
                     }
