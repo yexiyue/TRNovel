@@ -48,10 +48,7 @@ where
         }
         Err(e) => {
             ratatui::restore();
-            eprintln!(
-                "{}",
-                format!("{}: {}", "Error".red().bold(), e.to_string().red())
-            );
+            eprintln!("{}: {}", "Error".red().bold(), e.to_string().red());
         }
     }
     Ok(())
