@@ -8,6 +8,7 @@ use crate::{
         home::Home, local_novel::local_novel_first_page, network_novel::network_novel_first_page,
         select_history::SelectHistory,
     },
+    quick_start::quick_start,
     routes::Routes,
     Commands, TRNovel,
 };
@@ -33,23 +34,30 @@ pub struct App {
 }
 
 impl App {
-    pub async fn new(args: TRNovel) -> Result<Self> {
+    pub async fn new(args: TRNovel, size: Size) -> Result<Self> {
         let (tx, rx) = tokio::sync::mpsc::unbounded_channel();
         let cancellation_token = CancellationToken::new();
 
         event_loop(tx.clone(), cancellation_token.clone());
 
+        let history = History::load()?;
+        let book_sources = Arc::new(Mutex::new(BookSourceCache::load()?));
+
         let state = State {
-            history: Arc::new(Mutex::new(History::load()?)),
-            size: Arc::new(Mutex::new(None)),
-            book_sources: Arc::new(Mutex::new(BookSourceCache::load()?)),
+            book_sources: book_sources.clone(),
+            history: Arc::new(Mutex::new(history.clone())),
+            size: Arc::new(Mutex::new(Some(size))),
         };
 
-        let first_page = match args.subcommand {
-            Some(Commands::Network) => network_novel_first_page()?,
-            Some(Commands::History) => SelectHistory::to_page_route(),
-            Some(Commands::Local { path }) => local_novel_first_page(path),
-            _ => Home::to_page_route(),
+        let (first_pages, current_route) = match args.subcommand {
+            Some(Commands::Network) => (vec![network_novel_first_page()?], 0),
+            Some(Commands::History) => (vec![SelectHistory::to_page_route()], 0),
+            Some(Commands::Local { path }) => (vec![local_novel_first_page(path)], 0),
+            Some(Commands::Quick) => (
+                vec![Home::to_page_route(), quick_start(history, book_sources)?],
+                1,
+            ),
+            _ => (vec![Home::to_page_route()], 0),
         };
 
         Ok(Self {
@@ -58,7 +66,7 @@ impl App {
             show_exit: false,
             error: None,
             warning: None,
-            routes: Routes::new(first_page, 0, state.clone()).await?,
+            routes: Routes::new(first_pages, current_route, state.clone()).await?,
             state,
             cancellation_token,
         })
@@ -150,9 +158,6 @@ impl App {
 
     /// 主循环
     pub async fn run(mut self, mut terminal: DefaultTerminal) -> Result<()> {
-        let size = terminal.size()?;
-        self.state.size.lock().await.replace(size);
-
         while !self.show_exit {
             // 先处理时间
             match self.handle_events(&mut terminal).await {

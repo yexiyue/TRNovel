@@ -1,12 +1,15 @@
-use crate::{cache::NetworkNovelCache, errors::Errors, history::HistoryItem, Result};
+use super::{Novel, NovelChapters};
+use crate::{
+    book_source::BookSourceCache, cache::NetworkNovelCache, errors::Errors, history::HistoryItem,
+    Result,
+};
+use anyhow::anyhow;
 use parse_book_source::{BookInfo, BookListItem, Chapter, JsonSource};
 use std::{
     ops::{Deref, DerefMut},
     sync::Arc,
 };
 use tokio::sync::Mutex;
-
-use super::{Novel, NovelChapters};
 
 #[derive(Debug, Clone)]
 pub struct NetworkNovel {
@@ -17,6 +20,30 @@ pub struct NetworkNovel {
 }
 
 impl NetworkNovel {
+    pub fn from_url(url: &str, book_sources: Arc<Mutex<BookSourceCache>>) -> Result<Self> {
+        let network_cache = NetworkNovelCache::try_from(url)?;
+        let json_source = book_sources
+            .try_lock()?
+            .find_book_source(
+                &network_cache.book_source_url,
+                &network_cache.book_source_name,
+            )
+            .cloned()
+            .ok_or(anyhow!("book source not found"))?;
+
+        let novel = NetworkNovel {
+            book_list_item: network_cache.book_list_item,
+            book_source: Arc::new(Mutex::new(JsonSource::try_from(json_source)?)),
+            book_info: None,
+            novel_chapters: NovelChapters {
+                current_chapter: network_cache.current_chapter,
+                line_percent: network_cache.line_percent,
+                chapters: None,
+            },
+        };
+        Ok(novel)
+    }
+
     pub fn new(book_list_item: BookListItem, book_source: Arc<Mutex<JsonSource>>) -> Self {
         Self {
             book_list_item,

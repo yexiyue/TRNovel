@@ -16,18 +16,24 @@ pub struct Routes {
 
 impl Routes {
     pub async fn new(
-        mut first: Box<dyn RoutePage>,
+        mut first: Vec<Box<dyn RoutePage>>,
         current_router: usize,
         state: State,
     ) -> Result<Self> {
         let (tx, rx) = mpsc::channel(1);
 
-        // 第一个路由初始化
-        first.as_mut().init((&tx).into(), state.clone()).await?;
-        first.as_mut().on_show(state.clone()).await?;
+        // 路由初始化
+        for i in first.iter_mut() {
+            i.init((&tx).into(), state.clone()).await?;
+        }
+        // 指定路由on show
+        first[current_router]
+            .as_mut()
+            .on_show(state.clone())
+            .await?;
 
         Ok(Self {
-            routes: vec![first],
+            routes: first,
             tx,
             rx,
             current_router,
