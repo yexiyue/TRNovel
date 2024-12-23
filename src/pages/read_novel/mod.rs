@@ -30,7 +30,7 @@ pub struct ReadNovel<T: Novel + 'static> {
     pub loading: Loading,
     pub select_chapter: SelectChapter<'static, T>,
     pub sender: mpsc::Sender<ReadNovelMsg<T>>,
-    pub read_content: ReadContent<'static, T>,
+    pub read_content: ReadContent<T>,
     pub show_select_chapter: bool,
     pub novel: T,
     pub init_line_percent: Option<f64>,
@@ -157,8 +157,9 @@ where
                 self.read_content
                     .set_content(content, self.init_line_percent.take());
 
-                self.read_content
-                    .set_current_chapter(self.novel.get_current_chapter_name()?);
+                if let Ok(chapter_name) = self.novel.get_current_chapter_name() {
+                    self.read_content.set_current_chapter(chapter_name);
+                }
 
                 self.read_content
                     .set_chapter_percent(self.novel.chapter_percent()?);
@@ -248,6 +249,10 @@ where
             else {
                 return Ok(None);
             };
+
+            if matches!(events, Events::Tick) {
+                self.read_content.handle_tick(state.clone()).await?;
+            }
 
             events
         } else {

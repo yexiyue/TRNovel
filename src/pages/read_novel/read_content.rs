@@ -3,7 +3,7 @@ use crossterm::event::{KeyCode, KeyEvent, KeyEventKind};
 use ratatui::{
     layout::{Constraint, Layout, Rect, Size},
     style::{Style, Stylize},
-    text::{Line, Text},
+    text::Line,
     widgets::{Block, Padding, Paragraph, Scrollbar, ScrollbarState, Wrap},
 };
 use tokio::sync::mpsc;
@@ -17,7 +17,7 @@ use crate::{
 
 use super::ReadNovelMsg;
 
-pub struct ReadContent<'a, T>
+pub struct ReadContent<T>
 where
     T: Novel,
 {
@@ -35,10 +35,10 @@ where
     pub current_line: usize,
     pub size: Size,
     pub page_size: usize,
-    pub paragraph: Option<Paragraph<'a>>,
+    pub content: String,
 }
 
-impl<T> ReadContent<'_, T>
+impl<T> ReadContent<T>
 where
     T: Novel,
 {
@@ -48,7 +48,6 @@ where
         is_loading: bool,
     ) -> Result<Self> {
         Ok(Self {
-            paragraph: None,
             content_lines: 0,
             current_line: 0,
             size,
@@ -58,6 +57,7 @@ where
             current_chapter: None,
             chapter_percent: 0.0,
             sender,
+            content: String::new(),
         })
     }
 
@@ -82,7 +82,8 @@ where
     }
 
     pub fn set_content(&mut self, content: String, percent: Option<f64>) {
-        let paragraph = Paragraph::new(Text::from(content)).wrap(Wrap { trim: true });
+        self.content = content;
+        let paragraph = Paragraph::new(self.content.as_str()).wrap(Wrap { trim: true });
 
         let lines = paragraph.line_count(self.size.width);
         self.content_lines = lines
@@ -92,20 +93,17 @@ where
         if let Some(percent) = percent {
             self.current_line = (self.content_lines as f64 * percent).round() as usize;
         }
-
-        self.paragraph = Some(paragraph);
     }
 
     pub fn resize(&mut self, size: Size) {
         self.size = size;
-        if let Some(paragraph) = &self.paragraph {
-            let percent = self.current_line as f64 / self.content_lines as f64;
-            let lines = paragraph.line_count(size.width);
-            self.content_lines = lines
-                .saturating_sub(size.height as usize)
-                .max(self.size.height as usize);
-            self.current_line = (self.content_lines as f64 * percent).round() as usize;
-        }
+        let paragraph = Paragraph::new(self.content.as_str()).wrap(Wrap { trim: true });
+        let percent = self.current_line as f64 / self.content_lines as f64;
+        let lines = paragraph.line_count(size.width);
+        self.content_lines = lines
+            .saturating_sub(size.height as usize)
+            .max(self.size.height as usize);
+        self.current_line = (self.content_lines as f64 * percent).round() as usize;
     }
 
     pub fn scroll_down(&mut self) {
@@ -147,10 +145,8 @@ where
     fn render_content(&mut self, frame: &mut ratatui::Frame, area: ratatui::prelude::Rect) {
         let current_chapter = self.current_chapter.clone().unwrap_or_default();
 
-        let paragraph = self
-            .paragraph
-            .clone()
-            .unwrap()
+        let paragraph = Paragraph::new(self.content.as_str())
+            .wrap(Wrap { trim: true })
             .scroll((self.current_line as u16, 0))
             .block(
                 Block::bordered()
@@ -182,8 +178,14 @@ where
             .dim(),
             left_area,
         );
+        let percent = if self.chapter_percent.is_nan() {
+            self.current_line as f64 / self.content_lines as f64 * 100.0
+        } else {
+            self.chapter_percent
+        };
+
         frame.render_widget(
-            Line::from(format!("{:.2}% {}", self.chapter_percent, current_time))
+            Line::from(format!("{:.2}% {}", percent, current_time))
                 .right_aligned()
                 .dim(),
             right_area,
@@ -192,7 +194,7 @@ where
 }
 
 #[async_trait]
-impl<T> Component for ReadContent<'_, T>
+impl<T> Component for ReadContent<T>
 where
     T: Novel,
 {

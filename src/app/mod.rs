@@ -134,14 +134,6 @@ impl App {
                     }
                 }
             }
-            Events::Render => {
-                terminal.draw(|frame| match self.render(frame) {
-                    Ok(_) => {}
-                    Err(e) => {
-                        self.error = Some(e.to_string());
-                    }
-                })?;
-            }
             Events::Error(e) => self.error = Some(e),
             Events::Resize(width, height) => {
                 self.state
@@ -153,13 +145,20 @@ impl App {
             _ => {}
         }
 
+        terminal.draw(|frame| match self.render(frame) {
+            Ok(_) => {}
+            Err(e) => {
+                self.error = Some(e.to_string());
+            }
+        })?;
+
         Ok(())
     }
 
     /// 主循环
     pub async fn run(mut self, mut terminal: DefaultTerminal) -> Result<()> {
         while !self.show_exit {
-            // 先处理时间
+            // 先处理事件
             match self.handle_events(&mut terminal).await {
                 Ok(_) => {}
                 Err(e) => {

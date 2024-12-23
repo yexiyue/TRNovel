@@ -4,10 +4,10 @@ use std::time::Duration;
 use tokio::{sync::mpsc::UnboundedSender, time::interval};
 use tokio_util::sync::CancellationToken;
 
+// 不需要Render事件是因为每次事件结束后会render一次，之前是一秒render60次会导致在小说文件比较大的情况下会导致事件响应卡顿
 #[derive(Debug, Clone)]
 pub enum Events {
     Tick,
-    Render,
     KeyEvent(crossterm::event::KeyEvent),
     Resize(u16, u16),
     Error(String),
@@ -17,14 +17,10 @@ pub fn event_loop(event_tx: UnboundedSender<Events>, cancellation_token: Cancell
     tokio::spawn(async move {
         let mut events = EventStream::new();
         let mut tick_interval = interval(Duration::from_secs_f64(1.0 / 4.0));
-        let mut render_interval = interval(Duration::from_secs_f64(1.0 / 60.0));
         loop {
             let event = tokio::select! {
                 _ = tick_interval.tick()=>{
                     Events::Tick
-                }
-                _ = render_interval.tick()=>{
-                    Events::Render
                 }
                 _ = cancellation_token.cancelled()=>{
                     break;
