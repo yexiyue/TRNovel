@@ -2,13 +2,16 @@ use crate::errors::Result;
 use crate::history::HistoryItem;
 use crate::{cache::LocalNovelCache, errors::Errors};
 
+use anyhow::anyhow;
+use async_trait::async_trait;
 use std::ops::{Deref, DerefMut};
 use std::{
-    fs::File,
-    io::{BufRead, BufReader, Read, Seek, SeekFrom},
+    io::SeekFrom,
     path::{Path, PathBuf},
     sync::Arc,
 };
+use tokio::fs::File;
+use tokio::io::{AsyncBufReadExt, AsyncReadExt, AsyncSeekExt, BufReader};
 use tokio::sync::Mutex;
 
 use super::{Novel, NovelChapters};
@@ -35,24 +38,38 @@ impl DerefMut for LocalNovel {
 }
 
 impl LocalNovel {
-    pub fn from_path<T: AsRef<Path>>(path: T) -> Result<Self> {
+    async fn from_cache(value: LocalNovelCache) -> Result<Self> {
+        let file = File::open(&value.path).await?;
+        Ok(Self {
+            file: Arc::new(Mutex::new(file)),
+            novel_chapters: NovelChapters {
+                chapters: Some(value.chapters),
+                current_chapter: value.current_chapter,
+                line_percent: value.line_percent,
+            },
+            encoding: value.encoding,
+            path: value.path,
+        })
+    }
+
+    pub async fn from_path<T: AsRef<Path>>(path: T) -> Result<Self> {
         let path = path.as_ref().to_path_buf().canonicalize()?;
         match LocalNovelCache::try_from(path.as_path()) {
-            Ok(cache) => Self::try_from(cache),
-            Err(_) => Self::new(path),
+            Ok(cache) => Self::from_cache(cache).await,
+            Err(_) => Self::new(path).await,
         }
     }
 
-    pub fn new<T>(path: T) -> Result<Self>
+    pub async fn new<T>(path: T) -> Result<Self>
     where
         T: AsRef<Path>,
     {
         let path = path.as_ref().to_path_buf().canonicalize()?;
 
-        let file = File::open(&path)?;
-        let encoding = Self::get_file_encoding(file)?;
+        let file = File::open(&path).await?;
+        let encoding = Self::get_file_encoding(file).await?;
 
-        let file = File::open(&path)?;
+        let file = File::open(&path).await?;
 
         Ok(Self {
             file: Arc::new(Mutex::new(file)),
@@ -62,10 +79,10 @@ impl LocalNovel {
         })
     }
 
-    fn get_file_encoding(mut file: File) -> std::io::Result<&'static encoding_rs::Encoding> {
+    async fn get_file_encoding(mut file: File) -> std::io::Result<&'static encoding_rs::Encoding> {
         let mut buffer = vec![];
 
-        file.read_to_end(&mut buffer)?;
+        file.read_to_end(&mut buffer).await?;
         if let (_, encoding, false) = encoding_rs::UTF_8.decode(&buffer) {
             return Ok(encoding);
         }
@@ -81,8 +98,14 @@ impl LocalNovel {
     }
 }
 
+#[async_trait]
 impl Novel for LocalNovel {
     type Chapter = (String, usize);
+    type Args = PathBuf;
+
+    async fn init(args: Self::Args) -> Result<Self> {
+        Self::from_path(args).await
+    }
 
     fn request_chapters<T: FnMut(Result<Vec<Self::Chapter>>) + Send + 'static>(
         &self,
@@ -91,9 +114,9 @@ impl Novel for LocalNovel {
         let path = self.path.clone();
         let encoding = self.encoding;
 
-        tokio::spawn(async move {
+        tokio::task::spawn(async move {
             let res = async {
-                let file = File::open(path)?;
+                let file = File::open(path).await?;
 
                 let mut buf_reader = BufReader::new(file);
                 let regexp = regex::Regex::new(r"第.+章").unwrap();
@@ -102,7 +125,7 @@ impl Novel for LocalNovel {
 
                 let mut line = vec![];
 
-                while let Ok(chunk_size) = buf_reader.read_until(b'\n', &mut line) {
+                while let Ok(chunk_size) = buf_reader.read_until(b'\n', &mut line).await {
                     if chunk_size == 0 {
                         break;
                     }
@@ -133,23 +156,30 @@ impl Novel for LocalNovel {
             let (_, start) = self.get_chapters_result()?[self.current_chapter];
             start.to_owned()
         };
+        let is_last = self.get_chapters_result()?.is_empty()
+            || self.current_chapter + 1 >= self.get_chapters_result()?.len();
 
-        let end = if self.get_chapters_result()?.is_empty()
-            || self.current_chapter + 1 >= self.get_chapters_result()?.len()
-        {
-            self.file.try_lock()?.metadata()?.len() as usize
-        } else {
-            let (_, end) = self.get_chapters_result()?[self.current_chapter + 1];
-            end.to_owned()
-        };
+        let end = self.chapters.as_ref().and_then(|chapters| {
+            chapters
+                .get(self.current_chapter + 1)
+                .map(|chapter| chapter.1)
+        });
 
         let file = self.file.clone();
         let encoding = self.encoding;
         tokio::spawn(async move {
             let res = async {
+                let mut file = file.lock().await;
+
+                let end = if is_last {
+                    file.metadata().await?.len() as usize
+                } else {
+                    end.ok_or(anyhow!("找不到下一章"))?
+                };
+
                 let mut buffer = vec![0; end - start];
-                file.lock().await.seek(SeekFrom::Start(start as u64))?;
-                file.lock().await.read_exact(&mut buffer)?;
+                file.seek(SeekFrom::Start(start as u64)).await?;
+                file.read_exact(&mut buffer).await?;
 
                 let (str, _, has_error) = encoding.decode(&buffer);
                 if has_error {
@@ -184,22 +214,5 @@ impl Novel for LocalNovel {
 
     fn get_id(&self) -> String {
         self.path.to_string_lossy().to_string()
-    }
-}
-
-impl TryFrom<LocalNovelCache> for LocalNovel {
-    type Error = Errors;
-    fn try_from(value: LocalNovelCache) -> Result<Self> {
-        let file = File::open(&value.path)?;
-        Ok(Self {
-            file: Arc::new(Mutex::new(file)),
-            novel_chapters: NovelChapters {
-                chapters: Some(value.chapters),
-                current_chapter: value.current_chapter,
-                line_percent: value.line_percent,
-            },
-            encoding: value.encoding,
-            path: value.path,
-        })
     }
 }

@@ -1,5 +1,6 @@
 use crate::{history::HistoryItem, Result};
 use anyhow::anyhow;
+use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 use std::ops::{Deref, DerefMut};
 
@@ -23,8 +24,12 @@ where
     }
 }
 
-pub trait Novel: Deref<Target = NovelChapters<Self::Chapter>> + DerefMut {
+#[async_trait]
+pub trait Novel: Deref<Target = NovelChapters<Self::Chapter>> + DerefMut + Sized {
     type Chapter: Sync + Send + Clone;
+    type Args: Sync + Send + Clone;
+
+    async fn init(args: Self::Args) -> Result<Self>;
 
     fn set_chapters(&mut self, chapters: &[Self::Chapter]) {
         self.chapters = Some(chapters.to_vec());

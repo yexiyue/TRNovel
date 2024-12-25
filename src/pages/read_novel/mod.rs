@@ -16,7 +16,7 @@ use tokio::sync::mpsc;
 pub mod read_content;
 pub mod select_chapter;
 
-pub enum ReadNovelMsg<T: Novel> {
+pub enum ReadNovelMsg<T: Novel + 'static> {
     Next,
     Prev,
     SelectChapter(usize),
@@ -24,29 +24,32 @@ pub enum ReadNovelMsg<T: Novel> {
     Chapters(Vec<T::Chapter>),
     Error(Errors),
     Content(String),
+    Initialized(T),
 }
 
-pub struct ReadNovel<T: Novel + 'static> {
+pub struct ReadNovel<T: Novel + Send + Sync + 'static> {
     pub loading: Loading,
     pub select_chapter: SelectChapter<'static, T>,
     pub sender: mpsc::Sender<ReadNovelMsg<T>>,
     pub read_content: ReadContent<T>,
     pub show_select_chapter: bool,
-    pub novel: T,
+    pub novel: Option<T>,
     pub init_line_percent: Option<f64>,
 }
 
 impl<T> ReadNovel<T>
 where
-    T: Novel + Send + Sync + 'static,
+    T: Novel + Send + Sync,
 {
-    pub fn to_page_route(novel: T) -> PageWrapper<ReadNovel<T>, T, ReadNovelMsg<T>> {
-        PageWrapper::new(novel, None)
+    pub fn to_page_route(
+        init_args: T::Args,
+    ) -> PageWrapper<ReadNovel<T>, T::Args, ReadNovelMsg<T>> {
+        PageWrapper::new(init_args, None)
     }
 
     pub fn get_content(&mut self) -> Result<()> {
         let sender_clone = self.sender.clone();
-        self.novel.get_content(move |res| {
+        self.novel.as_mut().unwrap().get_content(move |res| {
             let msg = match res {
                 Ok(content) => ReadNovelMsg::Content(content),
                 Err(e) => ReadNovelMsg::Error(e),
@@ -58,69 +61,90 @@ where
 }
 
 #[async_trait]
-impl<T> Page<T> for ReadNovel<T>
+impl<T> Page<T::Args> for ReadNovel<T>
 where
     T: Novel + Send + Sync + 'static,
 {
     type Msg = ReadNovelMsg<T>;
     async fn init(
-        mut novel: T,
+        init_args: T::Args,
         sender: mpsc::Sender<Self::Msg>,
         _navigator: Navigator,
         state: State,
     ) -> Result<Self> {
         let sender_clone = sender.clone();
 
-        if novel.get_chapters().is_none() {
-            novel.request_chapters(move |res| {
-                let msg = match res {
-                    Ok(chapters) => ReadNovelMsg::Chapters(chapters),
-                    Err(e) => ReadNovelMsg::Error(e),
-                };
-                sender_clone.try_send(msg).unwrap();
-            })?;
-        } else {
-            novel.get_content(move |res| {
-                let msg = match res {
-                    Ok(content) => ReadNovelMsg::Content(content),
-                    Err(e) => ReadNovelMsg::Error(e),
-                };
-                sender_clone.try_send(msg).unwrap();
-            })?;
-        }
+        tokio::spawn(async move {
+            match T::init(init_args).await {
+                Ok(novel) => {
+                    let msg = ReadNovelMsg::Initialized(novel);
+                    sender_clone.send(msg).await.unwrap();
+                }
+                Err(e) => {
+                    let msg = ReadNovelMsg::Error(e);
+                    sender_clone.send(msg).await.unwrap();
+                }
+            }
+        });
 
         let size = state.size.lock().await.unwrap();
 
         Ok(Self {
-            init_line_percent: Some(novel.line_percent),
+            init_line_percent: None,
             loading: Loading::new("加载小说中..."),
-            select_chapter: SelectChapter::new(
-                sender.clone(),
-                novel.get_chapters_names().ok(),
-                novel.current_chapter,
-            ),
+            select_chapter: SelectChapter::new(sender.clone(), None, 0),
             read_content: ReadContent::new(
                 Size::new(size.width - 4, size.height - 5),
                 sender.clone(),
                 true,
             )?,
-            novel,
+            novel: None,
             sender,
             show_select_chapter: true,
         })
     }
 
     async fn update(&mut self, msg: Self::Msg) -> Result<()> {
+        let sender_clone = self.sender.clone();
         match msg {
+            ReadNovelMsg::Initialized(mut novel) => {
+                self.init_line_percent = Some(novel.line_percent);
+                self.select_chapter
+                    .state
+                    .select(Some(novel.current_chapter));
+
+                if let Ok(chapters) = novel.get_chapters_names() {
+                    self.select_chapter.set_list(chapters);
+                }
+
+                if novel.get_chapters().is_none() {
+                    novel.request_chapters(move |res| {
+                        let msg = match res {
+                            Ok(chapters) => ReadNovelMsg::Chapters(chapters),
+                            Err(e) => ReadNovelMsg::Error(e),
+                        };
+                        sender_clone.try_send(msg).unwrap();
+                    })?;
+                } else {
+                    novel.get_content(move |res| {
+                        let msg = match res {
+                            Ok(content) => ReadNovelMsg::Content(content),
+                            Err(e) => ReadNovelMsg::Error(e),
+                        };
+                        sender_clone.try_send(msg).unwrap();
+                    })?;
+                }
+                self.novel = Some(novel);
+            }
             ReadNovelMsg::Chapters(chapters) => {
-                self.novel.set_chapters(&chapters);
+                self.novel.as_mut().unwrap().set_chapters(&chapters);
 
                 self.select_chapter
-                    .set_list(self.novel.get_chapters_names()?);
+                    .set_list(self.novel.as_mut().unwrap().get_chapters_names()?);
 
                 self.select_chapter
                     .state
-                    .select(Some(self.novel.current_chapter));
+                    .select(Some(self.novel.as_mut().unwrap().current_chapter));
 
                 self.read_content.set_loading(true);
 
@@ -131,6 +155,8 @@ where
             ReadNovelMsg::QueryChapters(query) => {
                 let filter_list = self
                     .novel
+                    .as_ref()
+                    .unwrap()
                     .get_chapters_names()?
                     .into_iter()
                     .filter(|item| item.contains(&query))
@@ -141,11 +167,11 @@ where
                 self.show_select_chapter = false;
 
                 // 如果是当前章节，直接返回
-                if index == self.novel.current_chapter {
+                if index == self.novel.as_ref().unwrap().current_chapter {
                     return Ok(());
                 }
 
-                self.novel.set_chapter(index)?;
+                self.novel.as_mut().unwrap().set_chapter(index)?;
 
                 self.read_content.set_loading(true);
 
@@ -157,17 +183,17 @@ where
                 self.read_content
                     .set_content(content, self.init_line_percent.take());
 
-                if let Ok(chapter_name) = self.novel.get_current_chapter_name() {
+                if let Ok(chapter_name) = self.novel.as_ref().unwrap().get_current_chapter_name() {
                     self.read_content.set_current_chapter(chapter_name);
                 }
 
                 self.read_content
-                    .set_chapter_percent(self.novel.chapter_percent()?);
+                    .set_chapter_percent(self.novel.as_ref().unwrap().chapter_percent()?);
 
                 self.read_content.set_loading(false);
             }
             ReadNovelMsg::Next => {
-                self.novel.next_chapter()?;
+                self.novel.as_mut().unwrap().next_chapter()?;
 
                 self.read_content.set_loading(true);
 
@@ -176,7 +202,7 @@ where
                 self.get_content()?;
             }
             ReadNovelMsg::Prev => {
-                self.novel.prev_chapter()?;
+                self.novel.as_mut().unwrap().prev_chapter()?;
 
                 self.read_content.set_loading(true);
 
@@ -195,10 +221,14 @@ where
 #[async_trait]
 impl<T> Component for ReadNovel<T>
 where
-    T: Novel + Send,
+    T: Novel + Send + Sync,
 {
     fn render(&mut self, frame: &mut ratatui::Frame, area: ratatui::prelude::Rect) -> Result<()> {
-        if self.novel.get_chapters().is_none() {
+        if self
+            .novel
+            .as_ref()
+            .is_none_or(|novel| novel.get_chapters().is_none())
+        {
             frame.render_widget(&self.loading, area);
         } else if self.show_select_chapter {
             let [left_area, right_area] =
@@ -214,7 +244,11 @@ where
     }
 
     async fn handle_tick(&mut self, _state: State) -> Result<()> {
-        if self.novel.get_chapters().is_none() {
+        if self
+            .novel
+            .as_ref()
+            .is_none_or(|novel| novel.get_chapters().is_none())
+        {
             self.loading.state.calc_next();
         }
         Ok(())
@@ -232,7 +266,7 @@ where
                 if self.show_select_chapter {
                     self.select_chapter
                         .state
-                        .select(Some(self.novel.current_chapter));
+                        .select(Some(self.novel.as_mut().unwrap().current_chapter));
                 }
                 Ok(None)
             }
@@ -316,13 +350,12 @@ where
         // 这里需要更新行数进度
         let percent =
             self.read_content.current_line as f64 / self.read_content.content_lines as f64;
-        self.novel.line_percent = percent;
+        self.novel.as_mut().unwrap().line_percent = percent;
 
-        state
-            .history
-            .lock()
-            .await
-            .add(&self.novel.get_id(), self.novel.to_history_item()?);
+        state.history.lock().await.add(
+            &self.novel.as_mut().unwrap().get_id(),
+            self.novel.as_mut().unwrap().to_history_item()?,
+        );
         Ok(())
     }
 }

@@ -4,6 +4,7 @@ use crate::{
     Result,
 };
 use anyhow::anyhow;
+use async_trait::async_trait;
 use parse_book_source::{BookInfo, BookListItem, Chapter, JsonSource};
 use std::{
     ops::{Deref, DerefMut},
@@ -20,10 +21,11 @@ pub struct NetworkNovel {
 }
 
 impl NetworkNovel {
-    pub fn from_url(url: &str, book_sources: Arc<Mutex<BookSourceCache>>) -> Result<Self> {
+    pub async fn from_url(url: &str, book_sources: Arc<Mutex<BookSourceCache>>) -> Result<Self> {
         let network_cache = NetworkNovelCache::try_from(url)?;
         let json_source = book_sources
-            .try_lock()?
+            .lock()
+            .await
             .find_book_source(
                 &network_cache.book_source_url,
                 &network_cache.book_source_name,
@@ -71,8 +73,14 @@ impl DerefMut for NetworkNovel {
     }
 }
 
+#[async_trait]
 impl Novel for NetworkNovel {
     type Chapter = Chapter;
+    type Args = Self;
+
+    async fn init(args: Self::Args) -> Result<Self> {
+        Ok(args)
+    }
 
     fn get_current_chapter_name(&self) -> Result<String> {
         self.get_current_chapter()

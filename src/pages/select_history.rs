@@ -225,12 +225,12 @@ impl Component for SelectHistory {
 
                     match item {
                         HistoryItem::Local(_) => {
-                            let novel = LocalNovel::from_path(path)?;
-                            self.navigator
-                                .push(Box::new(ReadNovel::to_page_route(novel)))?;
+                            self.navigator.push(Box::new(
+                                ReadNovel::<LocalNovel>::to_page_route(path.into()),
+                            ))?;
                         }
                         HistoryItem::Network(_) => {
-                            let novel = NetworkNovel::from_url(path, state.book_sources)?;
+                            let novel = NetworkNovel::from_url(path, state.book_sources).await?;
                             self.navigator.push(BookDetail::to_page_route(novel))?;
                         }
                     }

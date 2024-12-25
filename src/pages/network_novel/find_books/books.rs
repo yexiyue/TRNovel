@@ -170,13 +170,15 @@ impl Component for Books {
                     .get(index)
                     .ok_or("您选择的书籍不存在")?;
 
-                let novel =
-                    match NetworkNovel::from_url(&book_list_item.book_url, state.book_sources) {
-                        Ok(novel) => novel,
-                        Err(_) => {
-                            NetworkNovel::new(book_list_item.clone(), self.book_source.clone())
-                        }
-                    };
+                let novel = match NetworkNovel::from_url(
+                    &book_list_item.book_url,
+                    state.book_sources,
+                )
+                .await
+                {
+                    Ok(novel) => novel,
+                    Err(_) => NetworkNovel::new(book_list_item.clone(), self.book_source.clone()),
+                };
 
                 self.navigator.push(BookDetail::to_page_route(novel))?;
 

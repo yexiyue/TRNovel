@@ -19,7 +19,7 @@ use super::ReadNovelMsg;
 
 pub struct ReadContent<T>
 where
-    T: Novel,
+    T: Novel + Send + Sync + 'static,
 {
     // 是否正在加载
     pub loading: Loading,
@@ -40,7 +40,7 @@ where
 
 impl<T> ReadContent<T>
 where
-    T: Novel,
+    T: Novel + Send + Sync,
 {
     pub fn new(
         size: Size,
@@ -143,23 +143,11 @@ where
     }
 
     fn render_content(&mut self, frame: &mut ratatui::Frame, area: ratatui::prelude::Rect) {
-        let current_chapter = self.current_chapter.clone().unwrap_or_default();
-
         let paragraph = Paragraph::new(self.content.as_str())
             .wrap(Wrap { trim: true })
-            .scroll((self.current_line as u16, 0))
-            .block(
-                Block::bordered()
-                    .border_style(Style::new().dim())
-                    .padding(Padding::new(1, 1, 0, 1))
-                    .title(Line::from(current_chapter).centered()),
-            );
-
-        let mut scrollbar_state =
-            ScrollbarState::new(self.content_lines).position(self.current_line);
+            .scroll((self.current_line as u16, 0));
 
         frame.render_widget(paragraph, area);
-        frame.render_stateful_widget(Scrollbar::default(), area, &mut scrollbar_state);
     }
 
     fn render_bottom(&mut self, frame: &mut ratatui::Frame, area: ratatui::prelude::Rect) {
@@ -196,24 +184,35 @@ where
 #[async_trait]
 impl<T> Component for ReadContent<T>
 where
-    T: Novel,
+    T: Novel + Send + Sync,
 {
     fn render(&mut self, frame: &mut ratatui::Frame, area: ratatui::prelude::Rect) -> Result<()> {
+        let current_chapter = self.current_chapter.clone().unwrap_or_default();
+        let block = Block::bordered()
+            .border_style(Style::new().dim())
+            .padding(Padding::new(1, 1, 0, 1))
+            .title(Line::from(current_chapter).centered());
+
         if self.is_loading {
-            frame.render_widget(&self.loading, area);
+            frame.render_widget(&self.loading, block.inner(area));
         } else {
-            self.render_content(frame, area);
-            self.render_bottom(
-                frame,
-                Rect {
-                    x: area.x + 2,
-                    y: area.height - 2,
-                    width: area.width - 4,
-                    height: 1,
-                },
-            );
+            self.render_content(frame, block.inner(area));
         }
 
+        self.render_bottom(
+            frame,
+            Rect {
+                x: area.x + 2,
+                y: area.height - 2,
+                width: area.width - 4,
+                height: 1,
+            },
+        );
+        frame.render_widget(block, area);
+
+        let mut scrollbar_state =
+            ScrollbarState::new(self.content_lines).position(self.current_line);
+        frame.render_stateful_widget(Scrollbar::default(), area, &mut scrollbar_state);
         Ok(())
     }
 

@@ -17,7 +17,7 @@ use tokio::sync::mpsc;
 
 pub struct SelectChapter<'a, T>
 where
-    T: Novel + 'static,
+    T: Novel + Send + Sync + 'static,
 {
     pub state: ListState,
     pub list: List<'a>,
@@ -28,7 +28,7 @@ where
 
 impl<T> SelectChapter<'_, T>
 where
-    T: Novel,
+    T: Novel + Send + Sync,
 {
     pub fn new(
         sender: mpsc::Sender<ReadNovelMsg<T>>,
@@ -69,7 +69,7 @@ where
 #[async_trait]
 impl<T> Component for SelectChapter<'_, T>
 where
-    T: Novel,
+    T: Novel + Send + Sync,
 {
     fn render(&mut self, frame: &mut ratatui::Frame, area: ratatui::prelude::Rect) -> Result<()> {
         let [top, content] =

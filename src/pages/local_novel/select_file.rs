@@ -152,9 +152,9 @@ impl Component for SelectFile<'_> {
                     let res = self.state.selected().last();
                     if let Some(path) = res {
                         if path.is_file() {
-                            let novel = LocalNovel::from_path(path)?;
-                            self.navigator
-                                .push(Box::new(ReadNovel::to_page_route(novel)))?;
+                            self.navigator.push(Box::new(
+                                ReadNovel::<LocalNovel>::to_page_route(path.clone()),
+                            ))?;
                         } else {
                             self.state.toggle_selected();
                         }

@@ -10,19 +10,18 @@ use crate::{
     History, HistoryItem, Result, RoutePage,
 };
 
-pub fn quick_start(
+pub async fn quick_start(
     history: History,
     book_sources: Arc<Mutex<BookSourceCache>>,
 ) -> Result<Box<dyn RoutePage>> {
     let (path, history_item) = history.histories.first().ok_or(anyhow!("没有历史记录"))?;
 
     match history_item {
-        HistoryItem::Local { .. } => {
-            let novel = LocalNovel::from_path(path)?;
-            Ok(Box::new(ReadNovel::to_page_route(novel)))
-        }
+        HistoryItem::Local { .. } => Ok(Box::new(ReadNovel::<LocalNovel>::to_page_route(
+            path.into(),
+        ))),
         HistoryItem::Network { .. } => {
-            let novel = NetworkNovel::from_url(path, book_sources)?;
+            let novel = NetworkNovel::from_url(path, book_sources).await?;
             Ok(BookDetail::to_page_route(novel))
         }
     }

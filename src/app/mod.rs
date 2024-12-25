@@ -54,7 +54,10 @@ impl App {
             Some(Commands::History) => (vec![SelectHistory::to_page_route()], 0),
             Some(Commands::Local { path }) => (vec![local_novel_first_page(path)], 0),
             Some(Commands::Quick) => (
-                vec![Home::to_page_route(), quick_start(history, book_sources)?],
+                vec![
+                    Home::to_page_route(),
+                    quick_start(history, book_sources).await?,
+                ],
                 1,
             ),
             _ => (vec![Home::to_page_route()], 0),

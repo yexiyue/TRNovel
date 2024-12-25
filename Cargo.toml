@@ -29,13 +29,7 @@ parse-book-source = { path = "./parse-book-source", version = "0.1.2" }
 ratatui = { version = "0.29.0", features = ["unstable"] }
 strum = { version = "0.26.3", features = ["derive"] }
 throbber-widgets-tui = "0.8.0"
-tokio = { version = "1.41.1", features = [
-    "macros",
-    "rt",
-    "rt-multi-thread",
-    "sync",
-    "time",
-] }
+tokio = { version = "1.41.1", features = ["fs", "macros", "rt", "rt-multi-thread", "sync", "time"] }
 tokio-util = "0.7.12"
 tui-scrollview = "0.5.1"
 tui-textarea = "0.7.0"

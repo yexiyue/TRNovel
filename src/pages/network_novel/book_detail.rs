@@ -129,7 +129,9 @@ impl Component for BookDetail {
         match key.code {
             KeyCode::Enter | KeyCode::Char('\n' | ' ') => {
                 self.navigator
-                    .push(Box::new(ReadNovel::to_page_route(self.novel.clone())))?;
+                    .push(Box::new(ReadNovel::<NetworkNovel>::to_page_route(
+                        self.novel.clone(),
+                    )))?;
                 Ok(None)
             }
             KeyCode::Char('j') | KeyCode::Down => {
