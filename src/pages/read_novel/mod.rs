@@ -109,12 +109,10 @@ where
         match msg {
             ReadNovelMsg::Initialized(mut novel) => {
                 self.init_line_percent = Some(novel.line_percent);
-                self.select_chapter
-                    .state
-                    .select(Some(novel.current_chapter));
 
                 if let Ok(chapters) = novel.get_chapters_names() {
-                    self.select_chapter.set_list(chapters);
+                    self.select_chapter
+                        .set_list(chapters, Some(novel.current_chapter));
                 }
 
                 if novel.get_chapters().is_none() {
@@ -139,12 +137,10 @@ where
             ReadNovelMsg::Chapters(chapters) => {
                 self.novel.as_mut().unwrap().set_chapters(&chapters);
 
-                self.select_chapter
-                    .set_list(self.novel.as_mut().unwrap().get_chapters_names()?);
-
-                self.select_chapter
-                    .state
-                    .select(Some(self.novel.as_mut().unwrap().current_chapter));
+                self.select_chapter.set_list(
+                    self.novel.as_mut().unwrap().get_chapters_names()?,
+                    Some(self.novel.as_mut().unwrap().current_chapter),
+                );
 
                 self.read_content.set_loading(true);
 
@@ -161,7 +157,7 @@ where
                     .into_iter()
                     .filter(|item| item.contains(&query))
                     .collect::<Vec<_>>();
-                self.select_chapter.set_list(filter_list);
+                self.select_chapter.set_list(filter_list, None);
             }
             ReadNovelMsg::SelectChapter(index) => {
                 self.show_select_chapter = false;

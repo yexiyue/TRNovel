@@ -59,8 +59,9 @@ where
         }
     }
 
-    pub fn set_list(&mut self, chapters: Vec<String>) {
+    pub fn set_list(&mut self, chapters: Vec<String>, selected: Option<usize>) {
         self.state = ListState::default();
+        self.state.select(selected);
         self.scrollbar_state = ScrollbarState::new(chapters.len());
         self.list = self.list.clone().items(chapters);
     }
