@@ -1,13 +1,13 @@
-use std::path::Path;
-
 use crate::Result;
 use anyhow::anyhow;
 use serde::{Deserialize, Serialize};
+use serde_json::Value;
+use std::path::Path;
+
+pub mod http_config;
+pub use http_config::*;
 pub mod rule;
 pub use rule::*;
-pub mod json_source;
-pub use json_source::*;
-use serde_json::Value;
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 #[serde(rename_all = "camelCase")]
@@ -15,17 +15,24 @@ pub struct BookSource {
     pub book_source_group: String,
     pub book_source_name: String,
     pub book_source_url: String,
-    pub enabled_explore: bool,
-    pub explore_url: Option<String>,
-    pub header: String,
     pub last_update_time: u64,
-    pub respond_time: u64,
+
+    pub search_url: String,
+    pub explore_url: Option<String>,
+    pub rule_explore_item: Option<RuleExploreItem>,
+
+    pub header: Option<String>,
+    pub respond_time: Option<u64>,
+
+    #[serde(default)]
+    pub http_config: HttpConfig,
+
+    // 解析规则
     pub rule_book_info: RuleBookInfo,
     pub rule_content: RuleContent,
-    pub rule_explore: Option<RuleExplore>,
+    pub rule_explore: Option<RuleSearch>,
     pub rule_search: RuleSearch,
     pub rule_toc: RuleToc,
-    pub search_url: String,
 }
 
 impl BookSource {

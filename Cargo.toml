@@ -18,34 +18,34 @@ name = "trn"
 path = "src/bin/trn.rs"
 
 [dependencies]
-async-trait = "0.1.83"
 chrono = { version = "0.4.38", features = ["serde"] }
 clap = { version = "4.5.21", features = ["derive"] }
 crossterm = { version = "0.28.1", features = ["event-stream"] }
 encoding_rs = { version = "0.8.35", features = ["serde"] }
-futures = "0.3.31"
 md5 = "0.7.0"
 parse-book-source = { path = "./parse-book-source", version = "0.1.2" }
 ratatui = { version = "0.29.0", features = ["unstable"] }
-strum = { version = "0.26.3", features = ["derive"] }
 throbber-widgets-tui = "0.8.0"
-tokio = { version = "1.41.1", features = ["fs", "macros", "rt", "rt-multi-thread", "sync", "time"] }
-tokio-util = "0.7.12"
 tui-scrollview = "0.5.1"
 tui-textarea = "0.7.0"
 tui-tree-widget = "0.23.0"
 tui-widget-list = "0.13.0"
+tui-big-text = "0.7.0"
 walkdir = "2.5.0"
 anyhow = { workspace = true }
+async-trait = { workspace = true }
 regex = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 thiserror = { workspace = true }
-tui-big-text = "0.7.0"
+tokio = { workspace = true }
+tokio-util = { workspace = true }
+futures = { workspace = true }
 
 
 [workspace]
 members = ["parse-book-source"]
+exclude = ["parse-book-source/examples/json"]
 
 [workspace.dependencies]
 serde = { version = "1.0.215", features = ["derive"] }
@@ -53,3 +53,14 @@ serde_json = "1.0.133"
 regex = "1.11.1"
 anyhow = "1.0.93"
 thiserror = "2.0.3"
+tokio = { version = "1.41.1", features = [
+    "fs",
+    "macros",
+    "rt",
+    "rt-multi-thread",
+    "sync",
+    "time",
+] }
+tokio-util = "0.7.12"
+futures = "0.3.31"
+async-trait = "0.1.83"
