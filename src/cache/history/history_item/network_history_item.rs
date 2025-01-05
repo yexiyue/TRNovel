@@ -19,7 +19,7 @@ impl From<NetworkNovelCache> for NetworkHistoryItem {
             current_chapter: value.current_chapter_name,
             last_read_at: Local::now(),
             percent: value.chapter_percent,
-            title: value.book_list_item.name,
+            title: value.book_list_item.book_info.name,
             book_source: value.book_source_name,
         }
     }

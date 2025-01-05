@@ -8,7 +8,7 @@ use crate::{
 use anyhow::anyhow;
 use async_trait::async_trait;
 use crossterm::event::{KeyCode, KeyEvent, KeyEventKind};
-use parse_book_source::{utils::Params, BookList, BookSource, ExploreItem, JsonSource};
+use parse_book_source::{BookList, BookSource, BookSourceParser, ExploreItem, ExploreList};
 use ratatui::layout::{Constraint, Layout};
 use std::sync::Arc;
 use tokio::sync::mpsc::Sender;
@@ -20,6 +20,7 @@ pub mod select_explore;
 pub use select_explore::*;
 
 pub enum FindBooksMsg {
+    Init(ExploreList),
     Search(String),
     SelectExplore(ExploreItem),
     BookList(BookList),
@@ -33,7 +34,7 @@ pub enum Current {
 }
 
 pub struct FindBooks<'a> {
-    pub book_source: Arc<Mutex<JsonSource>>,
+    pub book_source_parser: Arc<Mutex<BookSourceParser>>,
     pub explore: Option<SelectExplore<'a>>,
     pub search: Search<'a>,
     pub book_list: Books,
@@ -44,60 +45,26 @@ pub struct FindBooks<'a> {
 }
 
 #[async_trait]
-impl Page<JsonSource> for FindBooks<'_> {
+impl Page<BookSourceParser> for FindBooks<'_> {
     type Msg = FindBooksMsg;
     async fn init(
-        json_source: JsonSource,
+        parser: BookSourceParser,
         sender: Sender<Self::Msg>,
         navigator: crate::Navigator,
         _state: State,
     ) -> Result<Self> {
-        let explores = json_source.explores.clone();
-        let book_source = Arc::new(Mutex::new(json_source));
-
-        let (explore, book_list) = if let Some(explores) = explores {
-            if let Some(first) = explores.first() {
-                sender
-                    .send(FindBooksMsg::SelectExplore(first.clone()))
-                    .await
-                    .map_err(|_| anyhow!("发送消息失败"))?;
-                (
-                    Some(SelectExplore::new(explores, sender.clone())),
-                    Books::new(
-                        navigator.clone(),
-                        "频道列表",
-                        "暂无书籍",
-                        Loading::new("加载中..."),
-                        true,
-                        book_source.clone(),
-                    ),
-                )
-            } else {
-                (
-                    None,
-                    Books::new(
-                        navigator.clone(),
-                        "搜索结果",
-                        "请输入搜索内容",
-                        Loading::new("搜索中..."),
-                        false,
-                        book_source.clone(),
-                    ),
-                )
+        tokio::spawn({
+            let sender_clone = sender.clone();
+            let mut parser = parser.clone();
+            async move {
+                match parser.get_explores().await {
+                    Ok(explores) => sender_clone.send(FindBooksMsg::Init(explores)).await,
+                    Err(e) => sender_clone.send(FindBooksMsg::Error(e.into())).await,
+                }
             }
-        } else {
-            (
-                None,
-                Books::new(
-                    navigator.clone(),
-                    "搜索结果",
-                    "请输入搜索内容",
-                    Loading::new("搜索中..."),
-                    false,
-                    book_source.clone(),
-                ),
-            )
-        };
+        });
+
+        let book_source_parser = Arc::new(Mutex::new(parser));
 
         let sender_clone = sender.clone();
         let search = Search::new(
@@ -109,10 +76,17 @@ impl Page<JsonSource> for FindBooks<'_> {
         );
 
         Ok(Self {
-            book_source,
-            explore,
+            explore: None,
             search,
-            book_list,
+            book_list: Books::new(
+                navigator.clone(),
+                "搜索结果",
+                "请输入搜索内容",
+                Loading::new("加载分类中..."),
+                true,
+                book_source_parser.clone(),
+            ),
+            book_source_parser,
             navigator,
             sender,
             current: None,
@@ -122,6 +96,27 @@ impl Page<JsonSource> for FindBooks<'_> {
 
     async fn update(&mut self, msg: Self::Msg) -> Result<()> {
         match msg {
+            FindBooksMsg::Init(explores) => {
+                if !explores.is_empty() {
+                    if let Some(first) = explores.first() {
+                        self.sender
+                            .send(FindBooksMsg::SelectExplore(first.clone()))
+                            .await
+                            .unwrap();
+
+                        self.book_list.set_title("频道列表");
+                        self.book_list.set_empty_tip("暂无书籍");
+                        self.book_list.set_loading(Loading::new("加载中..."), true);
+                        self.explore = Some(SelectExplore::new(explores, self.sender.clone()));
+                    } else {
+                        self.book_list.set_title("搜索结果");
+                        self.book_list.set_empty_tip("请输入搜索内容");
+                        self.book_list.set_loading(Loading::new("搜索中..."), false);
+                    }
+                } else {
+                    self.book_list.set_loading(Loading::new("搜索中..."), false);
+                };
+            }
             FindBooksMsg::Search(text) => {
                 if text.is_empty() {
                     if self.current_explore.is_none() {
@@ -164,8 +159,8 @@ impl Router for FindBooks<'_> {}
 impl FindBooks<'_> {
     pub fn to_page_route(
         book_source: BookSource,
-    ) -> Result<PageWrapper<FindBooks<'static>, JsonSource, FindBooksMsg>> {
-        let json_source = JsonSource::try_from(book_source)?;
+    ) -> Result<PageWrapper<FindBooks<'static>, BookSourceParser, FindBooksMsg>> {
+        let json_source = BookSourceParser::try_from(book_source)?;
         Ok(PageWrapper::new(json_source, None))
     }
 
@@ -198,7 +193,7 @@ impl FindBooks<'_> {
             self.book_list.is_loading = true;
 
             let explore = self.current_explore.clone();
-            let book_source = self.book_source.clone();
+            let book_source = self.book_source_parser.clone();
             tokio::spawn(async move {
                 if let Err(e) = (async {
                     let book_list = match current {
@@ -206,19 +201,14 @@ impl FindBooks<'_> {
                             book_source
                                 .lock()
                                 .await
-                                .search_books(
-                                    Params::new().key(&key).page(page).page_size(page_size),
-                                )
+                                .search_books(&key, page as u32, page_size)
                                 .await?
                         }
                         Current::Explore => {
                             book_source
                                 .lock()
                                 .await
-                                .explore_books(
-                                    &explore.unwrap(),
-                                    Params::new().page(page).page_size(page_size),
-                                )
+                                .explore_books(&explore.unwrap().url, page as u32, page_size)
                                 .await?
                         }
                     };
@@ -293,7 +283,7 @@ impl Component for FindBooks<'_> {
             };
             Some(events)
         } else {
-            None
+            Some(events)
         }) else {
             return Ok(None);
         };

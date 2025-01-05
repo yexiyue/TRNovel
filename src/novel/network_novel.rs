@@ -5,7 +5,7 @@ use crate::{
 };
 use anyhow::anyhow;
 use async_trait::async_trait;
-use parse_book_source::{BookInfo, BookListItem, Chapter, JsonSource};
+use parse_book_source::{BookInfo, BookListItem, BookSourceParser, Chapter};
 use std::{
     ops::{Deref, DerefMut},
     sync::Arc,
@@ -15,7 +15,7 @@ use tokio::sync::Mutex;
 #[derive(Debug, Clone)]
 pub struct NetworkNovel {
     pub book_list_item: BookListItem,
-    pub book_source: Arc<Mutex<JsonSource>>,
+    pub book_source: Arc<Mutex<BookSourceParser>>,
     pub book_info: Option<BookInfo>,
     pub novel_chapters: NovelChapters<Chapter>,
 }
@@ -35,7 +35,7 @@ impl NetworkNovel {
 
         let novel = NetworkNovel {
             book_list_item: network_cache.book_list_item,
-            book_source: Arc::new(Mutex::new(JsonSource::try_from(json_source)?)),
+            book_source: Arc::new(Mutex::new(BookSourceParser::try_from(json_source)?)),
             book_info: None,
             novel_chapters: NovelChapters {
                 current_chapter: network_cache.current_chapter,
@@ -46,7 +46,7 @@ impl NetworkNovel {
         Ok(novel)
     }
 
-    pub fn new(book_list_item: BookListItem, book_source: Arc<Mutex<JsonSource>>) -> Self {
+    pub fn new(book_list_item: BookListItem, book_source: Arc<Mutex<BookSourceParser>>) -> Self {
         Self {
             book_list_item,
             book_source,
@@ -98,9 +98,8 @@ impl Novel for NetworkNovel {
             let res = book_source
                 .lock()
                 .await
-                .chapter_list(&book_info)
+                .get_chapters(&book_info.toc_url)
                 .await
-                .map(|chapters| chapters.chapter_list)
                 .map_err(Errors::from);
 
             callback(res);
@@ -127,7 +126,7 @@ impl Novel for NetworkNovel {
             let res = book_source
                 .lock()
                 .await
-                .chapter_content(&chapter)
+                .get_content(&chapter.chapter_url)
                 .await
                 .map_err(Errors::from);
 

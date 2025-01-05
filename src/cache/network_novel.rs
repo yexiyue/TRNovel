@@ -47,15 +47,15 @@ impl TryFrom<&NetworkNovel> for NetworkNovelCache {
     type Error = Errors;
     fn try_from(value: &NetworkNovel) -> Result<Self> {
         let novel_chapters = value.novel_chapters.clone();
-        let book_source = value.book_source.try_lock().unwrap();
+        let parser = value.book_source.try_lock().unwrap();
 
         Ok(Self {
             current_chapter: novel_chapters.current_chapter,
             current_chapter_name: value.get_current_chapter_name()?,
             line_percent: novel_chapters.line_percent,
             book_list_item: value.book_list_item.clone(),
-            book_source_url: book_source.book_source_url.clone(),
-            book_source_name: book_source.source_name.clone(),
+            book_source_url: parser.book_source.book_source_url.clone(),
+            book_source_name: parser.book_source.book_source_name.clone(),
             chapter_percent: (value.current_chapter as f64
                 / value.get_chapters_result()?.len() as f64)
                 * 100.0,

@@ -38,7 +38,7 @@ impl Analyzers {
     pub fn new(pattern: &str, replace: Option<&str>, analyzer: AnalyzerType) -> Result<Self> {
         Ok(Self {
             pattern: Regex::new(pattern)?,
-            replace: replace.map(|r| Regex::new(r)).transpose()?,
+            replace: replace.map(Regex::new).transpose()?,
             analyzer,
         })
     }

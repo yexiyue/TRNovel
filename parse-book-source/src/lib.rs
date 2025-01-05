@@ -59,7 +59,7 @@ impl BookSourceParser {
                     .text()
                     .await?;
 
-                let list = self.analyzer.get_element(&explore_url, &res)?;
+                let list = self.analyzer.get_element(explore_url, &res)?;
 
                 let res = list
                     .into_iter()
@@ -69,7 +69,7 @@ impl BookSourceParser {
                     .collect::<Vec<_>>();
                 return Ok(res);
             } else {
-                return Ok(serde_json::from_str(&explore_url)?);
+                return Ok(serde_json::from_str(explore_url)?);
             }
         }
 

@@ -69,7 +69,7 @@ impl AnalyzerManager {
                 let (r, replace) = r.split_at(index);
 
                 rule_list.push(SingleRule::new(
-                    &r,
+                    r,
                     // 去掉 ##
                     Some(&replace[2..]),
                     analyzer.analyzer.clone(),
@@ -83,11 +83,11 @@ impl AnalyzerManager {
         Ok(rule_list)
     }
 
-    fn _get_elements(&self, analyzer: &dyn Analyzer, rule: &str) -> Result<Vec<String>> {
+    fn _get_elements(analyzer: &dyn Analyzer, rule: &str) -> Result<Vec<String>> {
         if rule.contains("&&") {
             let mut res = vec![];
             for simple_rule in rule.split("&&") {
-                let mut r = self._get_elements(analyzer, simple_rule)?;
+                let mut r = Self::_get_elements(analyzer, simple_rule)?;
 
                 if !r.is_empty() {
                     res.append(&mut r);
@@ -96,7 +96,7 @@ impl AnalyzerManager {
             return Ok(res);
         } else if rule.contains("||") {
             for simple_rule in rule.split("||") {
-                let r = self._get_elements(analyzer, simple_rule)?;
+                let r = Self::_get_elements(analyzer, simple_rule)?;
 
                 if !r.is_empty() {
                     return Ok(r);
@@ -111,8 +111,7 @@ impl AnalyzerManager {
 
         for single_rule in self.split_rule_resolve(rule)? {
             let analyzer = single_rule.analyzer.parse_to_analyzer(&temp)?;
-            temp = self
-                ._get_elements(analyzer.as_ref(), &single_rule.rule)?
+            temp = Self::_get_elements(analyzer.as_ref(), &single_rule.rule)?
                 .join("_______split_______");
         }
 
@@ -123,7 +122,6 @@ impl AnalyzerManager {
     }
 
     fn _get_string(
-        &mut self,
         single_rule: &SingleRule,
         analyzer: &dyn Analyzer,
         rule: &str,
@@ -133,7 +131,7 @@ impl AnalyzerManager {
         if rule.contains("&&") {
             let mut res = vec![];
             for simple_rule in rule.split("&&") {
-                let r = self._get_string(single_rule, analyzer, simple_rule)?;
+                let r = Self::_get_string(single_rule, analyzer, simple_rule)?;
 
                 if !r.is_empty() {
                     res.push(r);
@@ -143,7 +141,7 @@ impl AnalyzerManager {
             return Ok(res.join("  "));
         } else if rule.contains("||") {
             for simple_rule in rule.split("||") {
-                let r = self._get_string(single_rule, analyzer, simple_rule)?;
+                let r = Self::_get_string(single_rule, analyzer, simple_rule)?;
 
                 if !r.is_empty() {
                     return Ok(r);
@@ -221,7 +219,7 @@ impl AnalyzerManager {
                     let sub_rule = captures.get(1).map(|m| m.as_str().trim()).unwrap_or("");
                     if extra.is_some() {
                         if let Some(extra_value) = extra.as_ref().unwrap().get(sub_rule) {
-                            return Ok(value_to_string(extra_value)?);
+                            return value_to_string(extra_value);
                         }
                     }
                     self.get_string(sub_rule, data, None)
@@ -234,7 +232,7 @@ impl AnalyzerManager {
         for single_rule in self.split_rule_resolve(&new_rule)? {
             let analyzer = single_rule.analyzer.parse_to_analyzer(&temp)?;
 
-            temp = self._get_string(&single_rule, analyzer.as_ref(), &single_rule.rule)?;
+            temp = Self::_get_string(&single_rule, analyzer.as_ref(), &single_rule.rule)?;
             temp = single_rule.replace_content(&temp)?;
         }
         Ok(temp)

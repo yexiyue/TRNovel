@@ -7,7 +7,7 @@ use crate::{
 };
 use async_trait::async_trait;
 use crossterm::event::{KeyCode, KeyEvent, KeyEventKind};
-use parse_book_source::{BookList, JsonSource};
+use parse_book_source::{BookList, BookSourceParser};
 use ratatui::{
     style::{Style, Stylize},
     text::{Line, Span},
@@ -26,7 +26,7 @@ pub struct Books {
     pub is_loading: bool,
     pub page: usize,
     pub navigator: Navigator,
-    pub book_source: Arc<Mutex<JsonSource>>,
+    pub book_source: Arc<Mutex<BookSourceParser>>,
 }
 
 impl Books {
@@ -40,7 +40,7 @@ impl Books {
         empty_tip: &str,
         loading: Loading,
         is_loading: bool,
-        book_source: Arc<Mutex<JsonSource>>,
+        book_source: Arc<Mutex<BookSourceParser>>,
     ) -> Self {
         Self {
             state: ListState::default(),
@@ -61,6 +61,11 @@ impl Books {
 
     pub fn set_empty_tip(&mut self, empty_tip: &str) {
         self.empty_tip = empty_tip.to_string();
+    }
+
+    pub fn set_loading(&mut self, loading: Loading, is_loading: bool) {
+        self.loading = loading;
+        self.is_loading = is_loading;
     }
 
     fn render_list(&mut self, frame: &mut ratatui::Frame, area: ratatui::prelude::Rect) {
@@ -99,11 +104,17 @@ impl Books {
                     Block::bordered().padding(Padding::horizontal(2))
                 };
 
-                let title = vec![Span::from("名称：").dim(), Span::from(item.name)];
-                let author = vec![Span::from("作者：").dim(), Span::from(item.author)];
-                let kind = vec![Span::from("类型：").dim(), Span::from(item.kind)];
-                let word_count = vec![Span::from("字数：").dim(), Span::from(item.word_count)];
-                let intro = vec![Span::from("简介：").dim(), Span::from(item.intro)];
+                let title = vec![Span::from("名称：").dim(), Span::from(item.book_info.name)];
+                let author = vec![
+                    Span::from("作者：").dim(),
+                    Span::from(item.book_info.author),
+                ];
+                let kind = vec![Span::from("类型：").dim(), Span::from(item.book_info.kind)];
+                let word_count = vec![
+                    Span::from("字数：").dim(),
+                    Span::from(item.book_info.word_count),
+                ];
+                let intro = vec![Span::from("简介：").dim(), Span::from(item.book_info.intro)];
 
                 let text = vec![
                     Line::from(title),

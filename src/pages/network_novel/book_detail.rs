@@ -162,7 +162,7 @@ impl LoadingWrapperInit for BookDetail {
             .book_source
             .lock()
             .await
-            .book_info(&novel.book_list_item)
+            .get_book_info(&novel.book_list_item.book_url)
             .await?;
 
         Ok(Some(BookDetail::new(book_info, navigator, novel)))

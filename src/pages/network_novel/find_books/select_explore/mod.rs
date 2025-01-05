@@ -3,7 +3,7 @@ mod widget;
 use anyhow::anyhow;
 use async_trait::async_trait;
 use crossterm::event::{KeyCode, KeyEvent, KeyEventKind};
-use parse_book_source::Explores;
+use parse_book_source::ExploreList;
 use ratatui::widgets::StatefulWidgetRef;
 use state::SelectExploreState;
 use tokio::sync::mpsc;
@@ -23,7 +23,7 @@ pub struct SelectExplore<'a> {
 }
 
 impl SelectExplore<'_> {
-    pub fn new(explore: Explores, sender: mpsc::Sender<FindBooksMsg>) -> Self {
+    pub fn new(explore: ExploreList, sender: mpsc::Sender<FindBooksMsg>) -> Self {
         Self {
             widget: SelectExploreWidget::new(explore),
             state: SelectExploreState::default(),

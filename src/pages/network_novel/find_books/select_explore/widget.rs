@@ -1,4 +1,4 @@
-use parse_book_source::Explores;
+use parse_book_source::ExploreList;
 use ratatui::{
     layout::{Constraint, Flex, Layout, Margin},
     style::{Style, Stylize},
@@ -12,12 +12,12 @@ use ratatui::{
 use super::state::SelectExploreState;
 
 pub struct SelectExploreWidget<'a> {
-    pub explore: Explores,
+    pub explore: ExploreList,
     pub list: List<'a>,
 }
 
 impl SelectExploreWidget<'_> {
-    pub fn new(explore: Explores) -> Self {
+    pub fn new(explore: ExploreList) -> Self {
         Self {
             list: List::new(
                 explore

@@ -13,7 +13,7 @@ pub struct ExploreItem {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct BookListItem {
     pub book_url: String,
-    
+
     #[serde(flatten)]
     pub book_info: BookInfo,
 }
