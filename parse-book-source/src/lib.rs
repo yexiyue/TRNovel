@@ -88,7 +88,11 @@ impl BookSourceParser {
             })),
         )?;
 
-        let res = self.http_client.get(url.as_str()).await?.text().await?;
+        let mut res = String::new();
+
+        for i in url.split(",") {
+            res = self.http_client.get(i).await?.text().await?;
+        }
 
         let list = self
             .analyzer
@@ -165,7 +169,7 @@ impl BookSourceParser {
         let res = if toc_url.starts_with("/") || toc_url.starts_with("http") {
             self.http_client.get(toc_url).await?.text().await?
         } else {
-            self.temp.take().ok_or(anyhow!("temp is none"))?
+            self.temp.clone().ok_or(anyhow!("temp is none"))?
         };
 
         let list = self

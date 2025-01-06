@@ -9,7 +9,7 @@ keywords = ["CLI", "Terminal", "Novel", "Reader"]
 repository = "https://github.com/yexiyue/parse-book-source"
 
 [dependencies]
-reqwest = { version = "0.12.9", features = ["json", "rustls-tls"] }
+reqwest = { version = "0.12.12", features = ["json", "rustls-tls", "cookies"] }
 jsonpath-rust = "0.7.3"
 lazy_static = "1.5.0"
 anyhow = { workspace = true }

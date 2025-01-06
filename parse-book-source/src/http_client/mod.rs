@@ -17,7 +17,7 @@ pub struct HttpClient {
 
 impl HttpClient {
     pub fn new(base_url: &str, config: &HttpConfig) -> Result<Self> {
-        let mut client = ClientBuilder::new();
+        let mut client = ClientBuilder::new().cookie_store(true);
 
         if let Some(header) = &config.header {
             let mut headers = HeaderMap::new();
