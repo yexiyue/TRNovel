@@ -128,7 +128,7 @@ mod test {
     #[test]
     fn test_rule_to_selector() {
         assert_eq!(
-            ".result-game-item-info p:nth-of-type(0) span:nth-of-type(1) @text",
+            ".result-game-item-info p:nth-of-type(1) span:nth-of-type(2) @text",
             rule_to_selector("class.result-game-item-info@tag.p.0@tag.span.1@text").unwrap()
         );
 
