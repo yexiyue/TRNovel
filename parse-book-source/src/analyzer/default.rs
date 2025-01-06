@@ -166,17 +166,10 @@ mod test {
     }
 
     #[test]
-    fn test_default_analyzer() {
-        let analyzer = DefaultAnalyzer::parse(include_str!("../../test-html/3.html")).unwrap();
-        let res = analyzer.get_elements("class.nav@tag.li[2:10]").unwrap();
-        println!("{:#?}", res);
-    }
-
-    #[test]
     fn test_default_analyzer_get_string() {
         let analyzer =
             DefaultAnalyzer::parse(r#"<li><a href="/xuanhuan/">玄幻小说</a></li>"#).unwrap();
         let res = analyzer.get_string("tag.a@href").unwrap();
-        println!("{:#?}", res);
+        assert_eq!(res, "/xuanhuan/");
     }
 }

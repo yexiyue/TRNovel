@@ -106,18 +106,3 @@ impl HtmlAnalyzer {
         }
     }
 }
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_html_analyzer() {
-        let analyzer = HtmlAnalyzer::parse(include_str!("../../test-html/4.html")).unwrap();
-        let res = analyzer
-            .get_string(".result-game-item-info p:nth-of-type(1) span:nth-of-type(2) @text")
-            .unwrap();
-        println!("{:#?}", res);
-        println!("{:#?}", res.len());
-    }
-}
