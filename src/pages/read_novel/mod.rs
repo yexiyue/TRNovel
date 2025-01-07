@@ -149,13 +149,31 @@ where
                 self.get_content()?;
             }
             ReadNovelMsg::QueryChapters(query) => {
+                if let Some(index) = query.strip_prefix("$") {
+                    if let Ok(index) = index.parse::<usize>() {
+                        if let Some(chapter) = self
+                            .novel
+                            .as_ref()
+                            .unwrap()
+                            .get_chapters_names()?
+                            .get(index)
+                        {
+                            self.select_chapter.set_list(vec![chapter.clone()], None);
+                        } else {
+                            self.select_chapter.set_list(vec![], None);
+                        }
+
+                        return Ok(());
+                    }
+                }
+
                 let filter_list = self
                     .novel
                     .as_ref()
                     .unwrap()
                     .get_chapters_names()?
                     .into_iter()
-                    .filter(|item| item.contains(&query))
+                    .filter(|(item, _)| item.contains(&query))
                     .collect::<Vec<_>>();
                 self.select_chapter.set_list(filter_list, None);
             }

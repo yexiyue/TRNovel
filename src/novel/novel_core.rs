@@ -87,7 +87,7 @@ pub trait Novel: Deref<Target = NovelChapters<Self::Chapter>> + DerefMut + Sized
     }
     // 下面的逻辑需要根据Self::Chapter实现,上面的是通用的，可以直接使用NovelChapters的方法
 
-    fn get_chapters_names(&self) -> Result<Vec<String>>;
+    fn get_chapters_names(&self) -> Result<Vec<(String, usize)>>;
 
     fn get_content<T: FnMut(Result<String>) + Send + 'static>(&mut self, callback: T)
         -> Result<()>;

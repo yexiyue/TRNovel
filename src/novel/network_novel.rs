@@ -107,11 +107,12 @@ impl Novel for NetworkNovel {
         Ok(())
     }
 
-    fn get_chapters_names(&self) -> Result<Vec<String>> {
+    fn get_chapters_names(&self) -> Result<Vec<(String, usize)>> {
         Ok(self
             .get_chapters_result()?
             .iter()
-            .map(|item| item.chapter_name.clone())
+            .enumerate()
+            .map(|(index, item)| (item.chapter_name.clone(), index))
             .collect())
     }
 

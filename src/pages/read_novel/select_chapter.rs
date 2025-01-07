@@ -20,6 +20,7 @@ where
     T: Novel + Send + Sync + 'static,
 {
     pub state: ListState,
+    pub chapters: Vec<(String, usize)>,
     pub list: List<'a>,
     pub search: Search<'a>,
     pub sender: mpsc::Sender<ReadNovelMsg<T>>,
@@ -32,7 +33,7 @@ where
 {
     pub fn new(
         sender: mpsc::Sender<ReadNovelMsg<T>>,
-        chapters: Option<Vec<String>>,
+        chapters: Option<Vec<(String, usize)>>,
         current_chapter: usize,
     ) -> Self {
         let sender_clone = sender.clone();
@@ -44,10 +45,12 @@ where
 
         Self {
             scrollbar_state: ScrollbarState::new(chapters.len()),
-            list: List::new(chapters).highlight_style(Style::new().bold().on_light_cyan().black()),
+            list: List::new(chapters.iter().map(|i| i.0.clone()))
+                .highlight_style(Style::new().bold().on_light_cyan().black()),
             state,
+            chapters,
             search: Search::new(
-                "搜索章节",
+                "搜索章节,以$开头输入数字表示索引",
                 move |query| {
                     sender_clone
                         .try_send(ReadNovelMsg::QueryChapters(query))
@@ -59,11 +62,15 @@ where
         }
     }
 
-    pub fn set_list(&mut self, chapters: Vec<String>, selected: Option<usize>) {
+    pub fn set_list(&mut self, chapters: Vec<(String, usize)>, selected: Option<usize>) {
         self.state = ListState::default();
         self.state.select(selected);
         self.scrollbar_state = ScrollbarState::new(chapters.len());
-        self.list = self.list.clone().items(chapters);
+        self.list = self
+            .list
+            .clone()
+            .items(chapters.iter().map(|i| i.0.clone()));
+        self.chapters = chapters;
     }
 }
 
@@ -117,8 +124,10 @@ where
             }
             KeyCode::Enter => {
                 if let Some(chapter_index) = self.state.selected() {
+                    let index = self.chapters[chapter_index].1;
+
                     self.sender
-                        .send(ReadNovelMsg::SelectChapter(chapter_index))
+                        .send(ReadNovelMsg::SelectChapter(index))
                         .await
                         .unwrap();
                 }

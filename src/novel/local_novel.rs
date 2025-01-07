@@ -198,11 +198,12 @@ impl Novel for LocalNovel {
         self.get_current_chapter().map(|chapter| chapter.0)
     }
 
-    fn get_chapters_names(&self) -> Result<Vec<String>> {
+    fn get_chapters_names(&self) -> Result<Vec<(String, usize)>> {
         Ok(self
             .get_chapters_result()?
             .iter()
-            .map(|item| item.0.clone())
+            .enumerate()
+            .map(|(index, item)| (item.0.clone(), index))
             .collect())
     }
 
