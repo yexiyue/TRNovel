@@ -52,7 +52,13 @@ impl App {
         let (first_pages, current_route) = match args.subcommand {
             Some(Commands::Network) => (vec![network_novel_first_page()?], 0),
             Some(Commands::History) => (vec![SelectHistory::to_page_route()], 0),
-            Some(Commands::Local { path }) => (vec![local_novel_first_page(path)], 0),
+            Some(Commands::Local { mut path }) => {
+                if path.is_none() {
+                    path = history.local_path;
+                }
+
+                (vec![local_novel_first_page(path)], 0)
+            }
             Some(Commands::Quick) => (
                 vec![
                     Home::to_page_route(),

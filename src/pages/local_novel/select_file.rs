@@ -5,7 +5,7 @@ use crate::{
     file_list::NovelFiles,
     novel::local_novel::LocalNovel,
     pages::{Page, PageWrapper, ReadNovel},
-    Events, Navigator, Result, RoutePage, Router,
+    Events, History, Navigator, Result, RoutePage, Router,
 };
 use async_trait::async_trait;
 use crossterm::event::{KeyCode, KeyEvent, KeyEventKind};
@@ -15,7 +15,8 @@ use ratatui::{
     text::Line,
     widgets::{Block, Scrollbar},
 };
-use std::path::PathBuf;
+use std::{path::PathBuf, sync::Arc};
+use tokio::sync::Mutex;
 use tui_tree_widget::{Tree, TreeItem, TreeState};
 
 pub enum SelectFileMsg<'a> {
@@ -32,6 +33,7 @@ pub struct SelectFile<'a: 'static> {
     pub is_loading: bool,
     pub search: Search<'a>,
     pub sender: tokio::sync::mpsc::Sender<SelectFileMsg<'a>>,
+    pub history: Arc<Mutex<History>>,
 }
 
 impl<'a> SelectFile<'a> {
@@ -46,6 +48,7 @@ impl<'a> SelectFile<'a> {
         sender: tokio::sync::mpsc::Sender<SelectFileMsg<'a>>,
         navigator: Navigator,
         path: Option<PathBuf>,
+        history: Arc<Mutex<History>>,
     ) -> Result<Self> {
         let sender_clone = sender.clone();
         let mut search = Search::new(
@@ -84,6 +87,7 @@ impl<'a> SelectFile<'a> {
             is_loading: path.is_some(),
             search,
             sender,
+            history,
         })
     }
 }
@@ -208,9 +212,9 @@ impl Page<Option<PathBuf>> for SelectFile<'_> {
         arg: Option<PathBuf>,
         sender: tokio::sync::mpsc::Sender<Self::Msg>,
         navigator: Navigator,
-        _state: State,
+        State { history, .. }: State,
     ) -> Result<Self> {
-        Ok(Self::new(sender, navigator, arg)?)
+        Ok(Self::new(sender, navigator, arg, history)?)
     }
 
     async fn update(&mut self, msg: Self::Msg) -> Result<()> {
@@ -218,9 +222,11 @@ impl Page<Option<PathBuf>> for SelectFile<'_> {
             SelectFileMsg::InputDirOrFile(query) => {
                 self.is_loading = true;
                 let sender = self.sender.clone();
+                let history = self.history.clone();
                 tokio::spawn(async move {
-                    match NovelFiles::from_path(query.into()) {
+                    match NovelFiles::from_path(query.clone().into()) {
                         Ok(files) => {
+                            history.lock().await.local_path = Some(query.into());
                             sender.send(SelectFileMsg::Files(files)).await.unwrap();
                         }
                         Err(e) => {

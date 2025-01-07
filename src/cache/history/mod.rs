@@ -12,6 +12,7 @@ pub use history_item::*;
 /// - 网络为book链接
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct History {
+    pub local_path: Option<PathBuf>,
     pub histories: Vec<(String, HistoryItem)>,
 }
 
@@ -24,7 +25,10 @@ impl History {
     pub fn load() -> Result<Self> {
         match File::open(Self::get_cache_file_path()?) {
             Ok(file) => Ok(serde_json::from_reader(file)?),
-            Err(_) => Ok(Self { histories: vec![] }),
+            Err(_) => Ok(Self {
+                histories: vec![],
+                local_path: None,
+            }),
         }
     }
 

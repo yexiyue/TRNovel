@@ -1,3 +1,5 @@
+use std::path::PathBuf;
+
 use async_trait::async_trait;
 use crossterm::event::KeyCode;
 use ratatui::{
@@ -21,6 +23,7 @@ use super::{
 pub struct Home {
     pub state: ListState,
     pub navigator: crate::Navigator,
+    pub local_path: Option<PathBuf>,
 }
 
 impl Home {
@@ -97,7 +100,8 @@ impl Component for Home {
                 if let Some(index) = self.state.selected() {
                     match index {
                         0 => {
-                            self.navigator.push(local_novel_first_page(None))?;
+                            self.navigator
+                                .push(local_novel_first_page(self.local_path.clone()))?;
                         }
                         1 => {
                             self.navigator.push(network_novel_first_page()?)?;
@@ -133,12 +137,17 @@ impl Page for Home {
         _arg: (),
         _sender: tokio::sync::mpsc::Sender<Self::Msg>,
         navigator: crate::Navigator,
-        _state: crate::app::State,
+        state: crate::app::State,
     ) -> crate::Result<Self> {
+        let local_path = state.history.lock().await.local_path.clone();
         let mut state = ListState::default();
         state.select(Some(0));
 
-        Ok(Self { state, navigator })
+        Ok(Self {
+            state,
+            navigator,
+            local_path,
+        })
     }
 }
 
