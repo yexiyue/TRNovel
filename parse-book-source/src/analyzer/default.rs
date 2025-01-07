@@ -133,7 +133,7 @@ mod test {
         );
 
         assert_eq!(
-            "#intro p:nth-of-type(0) @text",
+            "#intro p:nth-of-type(1) @text",
             rule_to_selector("id.intro@tag.p.0@text").unwrap()
         );
 
@@ -150,17 +150,17 @@ mod test {
         );
 
         assert_eq!(
-            ".bookbox:nth-of-type(1),.bookbox:nth-of-type(4),.bookbox:nth-of-type(3)",
+            ".bookbox:is(:nth-of-type(2),:nth-of-type(5),:nth-of-type(4))",
             rule_to_selector("class.bookbox[1,4,3]").unwrap()
         );
 
         assert_eq!(
-            ":not(.bookbox:nth-of-type(1),.bookbox:nth-of-type(4),.bookbox:nth-of-type(3))",
+            ".bookbox:not(:nth-of-type(2),:nth-of-type(5),:nth-of-type(4))",
             rule_to_selector("class.bookbox[!1,4,3]").unwrap()
         );
 
         assert_eq!(
-            ".bookbox:nth-of-type(n+3):not(:nth-of-type(n+10))",
+            ".bookbox:is(:nth-of-type(n+4):not(:nth-of-type(n+11)))",
             rule_to_selector("class.bookbox[3:10]").unwrap()
         );
     }
