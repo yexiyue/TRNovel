@@ -25,6 +25,7 @@ where
     pub search: Search<'a>,
     pub sender: mpsc::Sender<ReadNovelMsg<T>>,
     pub scrollbar_state: ScrollbarState,
+    pub total_chapters: usize,
 }
 
 impl<T> SelectChapter<'_, T>
@@ -48,6 +49,7 @@ where
             list: List::new(chapters.iter().map(|i| i.0.clone()))
                 .highlight_style(Style::new().bold().on_light_cyan().black()),
             state,
+            total_chapters: chapters.len(),
             chapters,
             search: Search::new(
                 "搜索章节,以$开头输入数字表示索引",
@@ -60,6 +62,10 @@ where
             ),
             sender,
         }
+    }
+
+    pub fn set_total_chapters(&mut self, total_chapters: usize) {
+        self.total_chapters = total_chapters;
     }
 
     pub fn set_list(&mut self, chapters: Vec<(String, usize)>, selected: Option<usize>) {
@@ -83,10 +89,20 @@ where
         let [top, content] =
             Layout::vertical([Constraint::Length(3), Constraint::Fill(1)]).areas(area);
 
+        let index = if let Some(chapter_index) = self.state.selected() {
+            self.chapters[chapter_index.min(self.chapters.len() - 1)].1 + 1
+        } else {
+            0
+        };
+
         let block = Block::bordered()
             .title(Line::from("目录").centered())
+            .title_bottom(
+                Line::from(format!(" {}/{}章", index, self.total_chapters)).left_aligned(),
+            )
             .border_style(Style::new().dim())
             .padding(Padding::horizontal(1));
+
         self.search.render(frame, top)?;
 
         if self.list.is_empty() {

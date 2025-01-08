@@ -46,8 +46,9 @@ impl Search<'_> {
         self.is_valid = is_valid;
         self.error_msg = error_msg.into();
 
-        self.textarea.set_yank_text(value);
-        self.textarea.paste();
+        let mut textarea = TextArea::new(vec![value.to_string()]);
+        textarea.set_placeholder_text(self.textarea.placeholder_text());
+        self.textarea = textarea;
     }
 
     pub fn validate_input(&mut self) -> bool {

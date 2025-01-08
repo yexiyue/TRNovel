@@ -29,6 +29,7 @@ pub enum ReadNovelMsg<T: Novel + 'static> {
 
 pub struct ReadNovel<T: Novel + Send + Sync + 'static> {
     pub loading: Loading,
+    pub chapters: Vec<(String, usize)>,
     pub select_chapter: SelectChapter<'static, T>,
     pub sender: mpsc::Sender<ReadNovelMsg<T>>,
     pub read_content: ReadContent<T>,
@@ -101,6 +102,7 @@ where
             novel: None,
             sender,
             show_select_chapter: true,
+            chapters: vec![],
         })
     }
 
@@ -111,6 +113,8 @@ where
                 self.init_line_percent = Some(novel.line_percent);
 
                 if let Ok(chapters) = novel.get_chapters_names() {
+                    self.chapters = chapters.clone();
+                    self.select_chapter.set_total_chapters(chapters.len());
                     self.select_chapter
                         .set_list(chapters, Some(novel.current_chapter));
                 }
@@ -137,10 +141,12 @@ where
             ReadNovelMsg::Chapters(chapters) => {
                 self.novel.as_mut().unwrap().set_chapters(&chapters);
 
-                self.select_chapter.set_list(
-                    self.novel.as_mut().unwrap().get_chapters_names()?,
-                    Some(self.novel.as_mut().unwrap().current_chapter),
-                );
+                let chapters = self.novel.as_ref().unwrap().get_chapters_names()?;
+
+                self.chapters = chapters.clone();
+                self.select_chapter.set_total_chapters(chapters.len());
+                self.select_chapter
+                    .set_list(chapters, Some(self.novel.as_mut().unwrap().current_chapter));
 
                 self.read_content.set_loading(true);
 
@@ -151,13 +157,7 @@ where
             ReadNovelMsg::QueryChapters(query) => {
                 if let Some(index) = query.strip_prefix("$") {
                     if let Ok(index) = index.parse::<usize>() {
-                        if let Some(chapter) = self
-                            .novel
-                            .as_ref()
-                            .unwrap()
-                            .get_chapters_names()?
-                            .get(index)
-                        {
+                        if let Some(chapter) = self.chapters.get(index.saturating_sub(1)) {
                             self.select_chapter.set_list(vec![chapter.clone()], None);
                         } else {
                             self.select_chapter.set_list(vec![], None);
@@ -168,13 +168,12 @@ where
                 }
 
                 let filter_list = self
-                    .novel
-                    .as_ref()
-                    .unwrap()
-                    .get_chapters_names()?
-                    .into_iter()
+                    .chapters
+                    .iter()
                     .filter(|(item, _)| item.contains(&query))
+                    .cloned()
                     .collect::<Vec<_>>();
+
                 self.select_chapter.set_list(filter_list, None);
             }
             ReadNovelMsg::SelectChapter(index) => {
@@ -278,9 +277,11 @@ where
 
                 // 选中当前正在阅读的章节
                 if self.show_select_chapter {
-                    self.select_chapter
-                        .state
-                        .select(Some(self.novel.as_mut().unwrap().current_chapter));
+                    self.select_chapter.search.set_value("");
+                    self.select_chapter.set_list(
+                        self.chapters.clone(),
+                        Some(self.novel.as_ref().unwrap().current_chapter),
+                    );
                 }
                 Ok(None)
             }

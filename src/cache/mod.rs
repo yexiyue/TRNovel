@@ -5,3 +5,4 @@ pub use network_novel::NetworkNovelCache;
 pub mod book_source;
 pub mod history;
 pub use history::*;
+pub mod setting;
