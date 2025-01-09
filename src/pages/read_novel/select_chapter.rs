@@ -3,13 +3,12 @@ use crate::{
     app::State,
     components::{Component, Empty, Search},
     novel::Novel,
-    Result,
+    Result, THEME_SETTING,
 };
 use async_trait::async_trait;
 use crossterm::event::{KeyCode, KeyEvent};
 use ratatui::{
     layout::{Constraint, Layout},
-    style::{Style, Stylize},
     text::Line,
     widgets::{Block, List, ListState, Padding, Scrollbar, ScrollbarState},
 };
@@ -47,7 +46,8 @@ where
         Self {
             scrollbar_state: ScrollbarState::new(chapters.len()),
             list: List::new(chapters.iter().map(|i| i.0.clone()))
-                .highlight_style(Style::new().bold().on_light_cyan().black()),
+                .style(THEME_SETTING.basic.text)
+                .highlight_style(THEME_SETTING.selected),
             state,
             total_chapters: chapters.len(),
             chapters,
@@ -96,11 +96,17 @@ where
         };
 
         let block = Block::bordered()
-            .title(Line::from("目录").centered())
-            .title_bottom(
-                Line::from(format!(" {}/{}章", index, self.total_chapters)).left_aligned(),
+            .title(
+                Line::from("目录")
+                    .centered()
+                    .style(THEME_SETTING.basic.border_title),
             )
-            .border_style(Style::new().dim())
+            .title_bottom(
+                Line::from(format!(" {}/{}章", index, self.total_chapters))
+                    .left_aligned()
+                    .style(THEME_SETTING.basic.border_info),
+            )
+            .border_style(THEME_SETTING.basic.border)
             .padding(Padding::horizontal(1));
 
         self.search.render(frame, top)?;

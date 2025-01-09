@@ -6,3 +6,4 @@ pub mod book_source;
 pub mod history;
 pub use history::*;
 pub mod setting;
+pub use setting::*;

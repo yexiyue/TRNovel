@@ -1,8 +1,11 @@
 use ratatui::{
     layout::{Alignment, Constraint, Flex, Layout, Margin},
-    style::{Style, Stylize},
+    style::Stylize,
+    text::Line,
     widgets::{Block, Clear, Padding, Paragraph, Widget, Wrap},
 };
+
+use crate::THEME_SETTING;
 
 #[derive(Debug, Clone)]
 pub struct Warning {
@@ -36,19 +39,21 @@ impl Widget for Warning {
 
         let block = if self.is_error {
             Block::bordered()
-                .title("错误".light_red())
+                .title(Line::from("错误").style(THEME_SETTING.error_modal.border_title))
                 .title_alignment(Alignment::Center)
-                .title_bottom("按q退出".dim())
+                .title_bottom(Line::from("按q退出").style(THEME_SETTING.error_modal.border_info))
                 .title_alignment(Alignment::Center)
-                .border_style(Style::new().light_red())
+                .border_style(THEME_SETTING.error_modal.border)
                 .padding(Padding::uniform(1))
         } else {
             Block::bordered()
-                .title("警告".light_yellow())
+                .title(Line::from("警告").style(THEME_SETTING.warning_modal.border_title))
                 .title_alignment(Alignment::Center)
-                .title_bottom("按ESC键继续".dim())
+                .title_bottom(
+                    Line::from("按ESC键继续").style(THEME_SETTING.warning_modal.border_info),
+                )
                 .title_alignment(Alignment::Center)
-                .border_style(Style::new().yellow())
+                .border_style(THEME_SETTING.warning_modal.border)
                 .padding(Padding::uniform(1))
         };
 
@@ -57,11 +62,10 @@ impl Widget for Warning {
         Paragraph::new(self.tip)
             .centered()
             .style(if self.is_error {
-                Style::new().light_red()
+                THEME_SETTING.error_modal.text
             } else {
-                Style::new().light_yellow()
+                THEME_SETTING.warning_modal.text
             })
-            .bold()
             .wrap(Wrap { trim: true })
             .block(block)
             .not_dim()

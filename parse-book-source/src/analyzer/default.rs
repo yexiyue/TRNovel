@@ -1,19 +1,16 @@
 use super::{Analyzer, HtmlAnalyzer};
 use crate::Result;
 use anyhow::anyhow;
-use lazy_static::lazy_static;
 use regex::Regex;
-use std::collections::HashMap;
+use std::{collections::HashMap, sync::LazyLock};
 
 pub struct DefaultAnalyzer {
     analyzer: HtmlAnalyzer,
 }
 
-lazy_static! {
-    static ref CLASS_MAP: HashMap<&'static str, &'static str> =
-        HashMap::from_iter(vec![("class", "."), ("id", "#"), ("tag", "")]);
-    static ref RANGE_RE: Regex = Regex::new(r"\[(.*?)\]").unwrap();
-}
+static CLASS_MAP: LazyLock<HashMap<&'static str, &'static str>> =
+    LazyLock::new(|| HashMap::from_iter(vec![("class", "."), ("id", "#"), ("tag", "")]));
+static RANGE_RE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"\[(.*?)\]").unwrap());
 
 fn rule_to_selector(rule: &str) -> Result<String> {
     let mut selectors = vec![];

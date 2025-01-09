@@ -1,13 +1,15 @@
 use parse_book_source::ExploreList;
 use ratatui::{
     layout::{Constraint, Flex, Layout, Margin},
-    style::{Style, Stylize},
+    style::Stylize,
     text::Line,
     widgets::{
         Block, Clear, List, Padding, Scrollbar, ScrollbarState, StatefulWidget, StatefulWidgetRef,
         Widget,
     },
 };
+
+use crate::THEME_SETTING;
 
 use super::state::SelectExploreState;
 
@@ -25,13 +27,8 @@ impl SelectExploreWidget<'_> {
                     .map(|x| Line::from(x.title.clone()).centered())
                     .collect::<Vec<_>>(),
             )
-            .highlight_style(Style::new().bold().on_light_cyan().black())
-            .block(
-                Block::bordered()
-                    .title(Line::from("频道").centered())
-                    .border_style(Style::new().dim())
-                    .padding(Padding::horizontal(1)),
-            ),
+            .style(THEME_SETTING.basic.text)
+            .highlight_style(THEME_SETTING.selected),
             explore,
         }
     }
@@ -61,7 +58,19 @@ impl StatefulWidgetRef for SelectExploreWidget<'_> {
 
             let block_area = block_area.inner(Margin::new(2, 1));
 
-            self.list.render_ref(block_area, buf, &mut state.state);
+            let block = Block::bordered()
+                .title(
+                    Line::from("频道")
+                        .style(THEME_SETTING.basic.border_title)
+                        .centered(),
+                )
+                .border_style(THEME_SETTING.basic.border)
+                .padding(Padding::horizontal(1));
+
+            self.list
+                .render_ref(block.inner(block_area), buf, &mut state.state);
+
+            block.render(block_area, buf);
 
             let mut scrollbar_state = ScrollbarState::new(self.explore.len())
                 .position(state.state.selected().unwrap_or(0));

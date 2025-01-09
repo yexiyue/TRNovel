@@ -151,6 +151,9 @@ name = "bitflags"
 version = "2.6.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b048fb63fd8b5923fc5aa7b340d8e156aec7ec02f0c78fa8a6ddc2613f6f71de"
+dependencies = [
+ "serde",
+]
 
 [[package]]
 name = "block-buffer"
@@ -287,6 +290,7 @@ dependencies = [
  "itoa",
  "rustversion",
  "ryu",
+ "serde",
  "static_assertions",
 ]
 
@@ -1196,12 +1200,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "lazy_static"
-version = "1.5.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "bbd2bcb4c963f2ddae06a2efc7e9f3591312473c50c6685e1f298068316e66fe"
-
-[[package]]
 name = "libc"
 version = "0.2.168"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1437,7 +1435,6 @@ dependencies = [
  "async-trait",
  "futures",
  "jsonpath-rust",
- "lazy_static",
  "regex",
  "reqwest",
  "scraper",
@@ -1765,6 +1762,7 @@ dependencies = [
  "itertools",
  "lru",
  "paste",
+ "serde",
  "strum",
  "unicode-segmentation",
  "unicode-truncate",

@@ -3,13 +3,12 @@ use crate::{
     components::{Component, Empty, Loading},
     novel::network_novel::NetworkNovel,
     pages::network_novel::book_detail::BookDetail,
-    Navigator,
+    Navigator, THEME_SETTING,
 };
 use async_trait::async_trait;
 use crossterm::event::{KeyCode, KeyEvent, KeyEventKind};
 use parse_book_source::{BookList, BookSourceParser};
 use ratatui::{
-    style::{Style, Stylize},
     text::{Line, Span},
     widgets::{Block, Padding, Paragraph, Scrollbar, ScrollbarState, Wrap},
 };
@@ -70,8 +69,12 @@ impl Books {
 
     fn render_list(&mut self, frame: &mut ratatui::Frame, area: ratatui::prelude::Rect) {
         let mut block = Block::bordered()
-            .title(Line::from(self.title.clone()).centered())
-            .border_style(Style::new().dim());
+            .title(
+                Line::from(self.title.clone())
+                    .style(THEME_SETTING.basic.border_title)
+                    .centered(),
+            )
+            .border_style(THEME_SETTING.basic.border);
 
         if let Some(books) = self.books.as_ref() {
             block = block.title_bottom(
@@ -81,6 +84,7 @@ impl Books {
                     self.state.selected.unwrap_or(0) + 1,
                     books.len()
                 ))
+                .style(THEME_SETTING.basic.border_info)
                 .left_aligned(),
             );
         }
@@ -99,30 +103,77 @@ impl Books {
                 let block = if context.is_selected {
                     Block::bordered()
                         .padding(Padding::horizontal(2))
-                        .light_cyan()
+                        .style(THEME_SETTING.selected)
                 } else {
                     Block::bordered().padding(Padding::horizontal(2))
                 };
 
-                let title = vec![Span::from("名称：").dim(), Span::from(item.book_info.name)];
-                let author = vec![
-                    Span::from("作者：").dim(),
-                    Span::from(item.book_info.author),
-                ];
-                let kind = vec![Span::from("类型：").dim(), Span::from(item.book_info.kind)];
-                let word_count = vec![
-                    Span::from("字数：").dim(),
-                    Span::from(item.book_info.word_count),
-                ];
-                let intro = vec![Span::from("简介：").dim(), Span::from(item.book_info.intro)];
+                let text_style = if context.is_selected {
+                    THEME_SETTING.basic.text.patch(THEME_SETTING.selected)
+                } else {
+                    THEME_SETTING.basic.text
+                };
 
-                let text = vec![
-                    Line::from(title),
-                    Line::from(author),
-                    Line::from(kind),
-                    Line::from(word_count),
-                    Line::from(intro),
-                ];
+                let mut text = vec![];
+
+                if !item.book_info.name.is_empty() {
+                    text.push(
+                        Line::from(vec![
+                            Span::from("名称：").style(THEME_SETTING.basic.border_info),
+                            Span::from(item.book_info.name),
+                        ])
+                        .style(text_style),
+                    );
+                }
+                if !item.book_info.author.is_empty() {
+                    text.push(
+                        Line::from(vec![
+                            Span::from("作者：").style(THEME_SETTING.basic.border_info),
+                            Span::from(item.book_info.author),
+                        ])
+                        .style(text_style),
+                    );
+                }
+
+                if !item.book_info.kind.is_empty() {
+                    text.push(
+                        Line::from(vec![
+                            Span::from("类型：").style(THEME_SETTING.basic.border_info),
+                            Span::from(item.book_info.kind),
+                        ])
+                        .style(text_style),
+                    );
+                }
+
+                if !item.book_info.last_chapter.is_empty() {
+                    text.push(
+                        Line::from(vec![
+                            Span::from("最新章节：").style(THEME_SETTING.basic.border_info),
+                            Span::from(item.book_info.last_chapter),
+                        ])
+                        .style(text_style),
+                    );
+                }
+
+                if !item.book_info.word_count.is_empty() {
+                    text.push(
+                        Line::from(vec![
+                            Span::from("字数：").style(THEME_SETTING.basic.border_info),
+                            Span::from(item.book_info.word_count),
+                        ])
+                        .style(text_style),
+                    );
+                }
+
+                if !item.book_info.intro.is_empty() {
+                    text.push(
+                        Line::from(vec![
+                            Span::from("简介：").style(THEME_SETTING.basic.border_info),
+                            Span::from(item.book_info.intro),
+                        ])
+                        .style(text_style),
+                    );
+                }
 
                 let paragraph = Paragraph::new(text).wrap(Wrap { trim: true }).block(block);
                 let height = paragraph.line_count(inner_area.width) as u16;

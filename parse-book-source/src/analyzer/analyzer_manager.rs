@@ -1,21 +1,20 @@
-use std::collections::HashMap;
+use std::{collections::HashMap, sync::LazyLock};
 
 use super::{json::value_to_string, Analyzer, AnalyzerType, Analyzers, SingleRule};
 use crate::{utils::replace_all, Result};
 use anyhow::anyhow;
-use lazy_static::lazy_static;
 use regex::Regex;
 use serde_json::Value;
 
-lazy_static! {
-    static ref SPLIT_RULE: Regex = Regex::new(
-        r"@css:|@json:|@http:|@xpath:|@match:|@regex:|@regexp:|@replace:|@encode:|@decode:|^"
+static SPLIT_RULE: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(
+        r"@css:|@json:|@http:|@xpath:|@match:|@regex:|@regexp:|@replace:|@encode:|@decode:|^",
     )
-    .unwrap();
-    static ref EXPRESSION: Regex = Regex::new(r"\{\{(.+?)\}\}").unwrap();
-    static ref PUT_RULE: Regex = Regex::new(r"@put:\{(.+?):(.+?)\}").unwrap();
-    static ref GET_RULE: Regex = Regex::new(r"@get:\{(.+?)\}").unwrap();
-}
+    .unwrap()
+});
+static EXPRESSION: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"\{\{(.+?)\}\}").unwrap());
+static PUT_RULE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"@put:\{(.+?):(.+?)\}").unwrap());
+static GET_RULE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"@get:\{(.+?)\}").unwrap());
 
 #[derive(Debug, Clone)]
 pub struct AnalyzerManager {

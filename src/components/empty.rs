@@ -1,8 +1,9 @@
 use ratatui::{
     layout::{Constraint, Flex, Layout},
-    style::Stylize,
     widgets::{Paragraph, Widget, Wrap},
 };
+
+use crate::THEME_SETTING;
 
 #[derive(Debug, Clone)]
 pub struct Empty {
@@ -27,8 +28,7 @@ impl Widget for Empty {
             .areas(area);
 
         Paragraph::new(self.text)
-            .yellow()
-            .bold()
+            .style(THEME_SETTING.empty)
             .centered()
             .wrap(Wrap { trim: true })
             .render(vertical, buf);

@@ -5,13 +5,12 @@ use crate::{
     history::{History, HistoryItem},
     novel::{local_novel::LocalNovel, network_novel::NetworkNovel},
     pages::ReadNovel,
-    Navigator, Result, RoutePage, Router,
+    Navigator, Result, RoutePage, Router, THEME_SETTING,
 };
 use async_trait::async_trait;
 use crossterm::event::{KeyCode, KeyEvent, KeyEventKind};
 use ratatui::{
     layout::{Constraint, Layout},
-    style::{Style, Stylize},
     text::{Line, Span, Text},
     widgets::{Block, Padding, Paragraph, Scrollbar, ScrollbarState, Widget},
 };
@@ -29,7 +28,7 @@ impl Widget for ListItem {
         let block = if self.selected {
             Block::bordered()
                 .padding(Padding::horizontal(0))
-                .light_cyan()
+                .style(THEME_SETTING.selected)
         } else {
             Block::bordered().padding(Padding::horizontal(0))
         };
@@ -42,24 +41,31 @@ impl Widget for ListItem {
             Layout::horizontal([Constraint::Percentage(50), Constraint::Percentage(50)])
                 .areas(bottom);
 
+        let text_color = if self.selected {
+            THEME_SETTING.basic.text.patch(THEME_SETTING.selected)
+        } else {
+            THEME_SETTING.basic.text
+        };
+
         match self.history {
             HistoryItem::Local(item) => {
                 Paragraph::new(Text::from(vec![
                     Line::from(item.title.clone()),
                     Line::from(item.current_chapter.clone()).centered(),
                 ]))
+                .style(text_color)
                 .render(top, buf);
 
-                Span::from("本地小说").dim().render(bottom_left, buf);
+                Span::from("本地小说")
+                    .style(THEME_SETTING.basic.border_info.patch(text_color))
+                    .render(bottom_left, buf);
 
-                Text::from(
-                    format!(
-                        "{:.2}% {}",
-                        item.percent,
-                        item.last_read_at.format("%Y-%m-%d %H:%M:%S")
-                    )
-                    .dim(),
-                )
+                Text::from(format!(
+                    "{:.2}% {}",
+                    item.percent,
+                    item.last_read_at.format("%Y-%m-%d %H:%M:%S")
+                ))
+                .style(THEME_SETTING.basic.border_info.patch(text_color))
                 .right_aligned()
                 .render(bottom_right, buf);
             }
@@ -68,20 +74,19 @@ impl Widget for ListItem {
                     Line::from(item.title.clone()),
                     Line::from(item.current_chapter.clone()).centered(),
                 ]))
+                .style(text_color)
                 .render(top, buf);
 
                 Span::from(format!("书源：{}", item.book_source))
-                    .dim()
+                    .style(THEME_SETTING.basic.border_info.patch(text_color))
                     .render(bottom_left, buf);
 
-                Text::from(
-                    format!(
-                        "{:.2}% {}",
-                        item.percent,
-                        item.last_read_at.format("%Y-%m-%d %H:%M:%S")
-                    )
-                    .dim(),
-                )
+                Text::from(format!(
+                    "{:.2}% {}",
+                    item.percent,
+                    item.last_read_at.format("%Y-%m-%d %H:%M:%S")
+                ))
+                .style(THEME_SETTING.basic.border_info.patch(text_color))
                 .right_aligned()
                 .render(bottom_right, buf);
             }
@@ -134,8 +139,12 @@ impl SelectHistory {
 impl Component for SelectHistory {
     fn render(&mut self, frame: &mut ratatui::Frame, area: ratatui::prelude::Rect) -> Result<()> {
         let block = Block::bordered()
-            .title(Line::from("历史记录").centered())
-            .border_style(Style::new().dim());
+            .title(
+                Line::from("历史记录")
+                    .centered()
+                    .style(THEME_SETTING.basic.border_title),
+            )
+            .border_style(THEME_SETTING.basic.border);
 
         let container_area = block.inner(area);
 
@@ -151,7 +160,10 @@ impl Component for SelectHistory {
         let current = self.state.selected.unwrap_or(0);
 
         frame.render_widget(
-            block.title_bottom(format!(" {}/{}", current + 1, len)),
+            block.title_bottom(
+                Line::from(format!(" {}/{}", current + 1, len))
+                    .style(THEME_SETTING.basic.border_info),
+            ),
             area,
         );
 

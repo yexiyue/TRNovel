@@ -1,4 +1,4 @@
-use crate::{app::State, components::Component};
+use crate::{app::State, components::Component, THEME_SETTING};
 use async_trait::async_trait;
 use crossterm::event::{KeyCode, KeyEvent, KeyEventKind};
 use ratatui::{
@@ -70,22 +70,28 @@ impl Component for Search<'_> {
         frame: &mut ratatui::Frame,
         area: ratatui::prelude::Rect,
     ) -> crate::Result<()> {
+        self.textarea.set_style(THEME_SETTING.search.text);
+        self.textarea
+            .set_placeholder_style(THEME_SETTING.search.placeholder);
         if self.is_focus {
             if !self.is_valid {
                 self.textarea.set_block(
                     Block::bordered()
-                        .title(Line::from(self.error_msg.clone()))
-                        .border_style(Style::default().red()),
+                        .title(
+                            Line::from(self.error_msg.clone())
+                                .style(THEME_SETTING.search.error_border_info),
+                        )
+                        .border_style(THEME_SETTING.search.error_border),
                 );
             } else {
                 self.textarea
-                    .set_block(Block::bordered().border_style(Style::default().light_green()));
+                    .set_block(Block::bordered().border_style(THEME_SETTING.search.success_border));
             }
             self.textarea
                 .set_cursor_style(Style::default().on_dark_gray());
         } else {
             self.textarea
-                .set_block(Block::bordered().border_style(Style::default().dim()));
+                .set_block(Block::bordered().border_style(THEME_SETTING.basic.border));
             self.textarea.set_cursor_style(Style::default());
         }
 

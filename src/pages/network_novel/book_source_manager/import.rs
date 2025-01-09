@@ -5,14 +5,13 @@ use crate::{
     app::State,
     components::{Component, Loading, Search},
     utils::time_to_string,
-    Events,
+    Events, THEME_SETTING,
 };
 use async_trait::async_trait;
 use crossterm::event::{KeyCode, KeyEvent, KeyEventKind};
 use parse_book_source::BookSource;
 use ratatui::{
     layout::{Constraint, Layout},
-    style::{Style, Stylize},
     text::{Line, Span, Text},
     widgets::{Block, Clear, Padding, Paragraph, Scrollbar, ScrollbarState, Widget},
 };
@@ -29,9 +28,11 @@ impl Widget for ListItem {
         let block = if self.height_light {
             Block::bordered()
                 .padding(Padding::horizontal(2))
-                .light_cyan()
+                .style(THEME_SETTING.highlight)
         } else if self.selected {
-            Block::bordered().padding(Padding::horizontal(2)).green()
+            Block::bordered()
+                .padding(Padding::horizontal(2))
+                .style(THEME_SETTING.selected)
         } else {
             Block::bordered().padding(Padding::horizontal(2))
         };
@@ -40,16 +41,24 @@ impl Widget for ListItem {
 
         block.render(area, buf);
 
+        let text_style = if self.selected {
+            THEME_SETTING.basic.text.patch(THEME_SETTING.selected)
+        } else if self.height_light {
+            THEME_SETTING.basic.text.patch(THEME_SETTING.highlight)
+        } else {
+            THEME_SETTING.basic.text
+        };
+
         Paragraph::new(Text::from(vec![
-            Line::from(self.book_source.book_source_name.clone()).centered(),
-            Line::from(
-                format!(
-                    "{} {}",
-                    self.book_source.book_source_url,
-                    time_to_string(self.book_source.last_update_time).unwrap()
-                )
-                .dim(),
-            )
+            Line::from(self.book_source.book_source_name.clone())
+                .style(text_style)
+                .centered(),
+            Line::from(format!(
+                "{} {}",
+                self.book_source.book_source_url,
+                time_to_string(self.book_source.last_update_time).unwrap()
+            ))
+            .style(THEME_SETTING.basic.border_info.patch(text_style))
             .right_aligned(),
         ]))
         .render(right, buf);
@@ -146,11 +155,18 @@ impl Component for Import {
         let current = self.list_state.selected.unwrap_or(0);
 
         let mut block = Block::bordered()
-            .title(Line::from("请选择要导入的书源").centered())
-            .border_style(Style::new().dim());
+            .title(
+                Line::from("请选择要导入的书源")
+                    .style(THEME_SETTING.basic.border_title)
+                    .centered(),
+            )
+            .border_style(THEME_SETTING.basic.border);
 
         if len != 0 {
-            block = block.title_bottom(format!(" {}/{}", current + 1, len));
+            block = block.title_bottom(
+                Line::from(format!(" {}/{}", current + 1, len))
+                    .style(THEME_SETTING.basic.border_info),
+            );
         }
 
         let list_area = block.inner(bottom);

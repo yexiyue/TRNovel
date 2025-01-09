@@ -5,7 +5,7 @@ use crate::{
     errors::Errors,
     pages::Page,
     utils::time_to_string,
-    Events, Navigator, Result, Router,
+    Events, Navigator, Result, Router, THEME_SETTING,
 };
 use async_trait::async_trait;
 
@@ -13,7 +13,6 @@ use crossterm::event::{KeyCode, KeyEvent, KeyEventKind};
 use import::Import;
 use parse_book_source::BookSource;
 use ratatui::{
-    style::{Style, Stylize},
     text::{Line, Text},
     widgets::{Block, Padding, Paragraph, Scrollbar, ScrollbarState},
 };
@@ -67,21 +66,27 @@ impl BookSourceManager {
             let block = if context.is_selected {
                 Block::bordered()
                     .padding(Padding::horizontal(2))
-                    .light_cyan()
+                    .style(THEME_SETTING.selected)
             } else {
                 Block::bordered().padding(Padding::horizontal(2))
             };
 
+            let text_style = if context.is_selected {
+                THEME_SETTING.basic.text.patch(THEME_SETTING.selected)
+            } else {
+                THEME_SETTING.basic.text
+            };
+
             let paragraph = Paragraph::new(Text::from(vec![
-                Line::from(item.book_source_name.clone()).centered(),
-                Line::from(
-                    format!(
-                        "{} {}",
-                        item.book_source_url,
-                        time_to_string(item.last_update_time).unwrap()
-                    )
-                    .dim(),
-                )
+                Line::from(item.book_source_name.clone())
+                    .style(text_style)
+                    .centered(),
+                Line::from(format!(
+                    "{} {}",
+                    item.book_source_url,
+                    time_to_string(item.last_update_time).unwrap()
+                ))
+                .style(THEME_SETTING.basic.border_info.patch(text_style))
                 .right_aligned(),
             ]))
             .block(block);
@@ -161,9 +166,10 @@ impl Component for BookSourceManager {
                 } else {
                     "书源管理"
                 })
+                .style(THEME_SETTING.basic.border_title)
                 .centered(),
             )
-            .border_style(Style::new().dim());
+            .border_style(THEME_SETTING.basic.border);
 
         let container_area = block.inner(area);
 

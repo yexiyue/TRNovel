@@ -24,7 +24,7 @@ crossterm = { version = "0.28.1", features = ["event-stream"] }
 encoding_rs = { version = "0.8.35", features = ["serde"] }
 md5 = "0.7.0"
 parse-book-source = { path = "./parse-book-source", version = "0.1.4" }
-ratatui = { version = "0.29.0", features = ["unstable"] }
+ratatui = { version = "0.29.0", features = ["unstable","serde"] }
 throbber-widgets-tui = "0.8.0"
 tui-scrollview = "0.5.1"
 tui-textarea = "0.7.0"

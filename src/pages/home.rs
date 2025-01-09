@@ -4,7 +4,6 @@ use async_trait::async_trait;
 use crossterm::event::KeyCode;
 use ratatui::{
     layout::{Constraint, Flex, Layout},
-    style::{Style, Stylize},
     text::Line,
     widgets::{List, ListState, Paragraph, Wrap},
 };
@@ -12,7 +11,7 @@ use tui_big_text::{BigText, PixelSize};
 
 use crate::{
     components::{Component, KeyShortcutInfo},
-    RoutePage, Router,
+    RoutePage, Router, THEME_SETTING,
 };
 
 use super::{
@@ -58,10 +57,12 @@ impl Component for Home {
             .pixel_size(PixelSize::Quadrant)
             .lines(vec!["TRNovel".into()])
             .centered()
-            .style(Style::new().light_green())
+            .style(THEME_SETTING.logo)
             .build();
+
         let info_txt = Paragraph::new(vec!["终端小说阅读器 (Terminal reader for novel)".into()])
             .wrap(Wrap { trim: true })
+            .style(THEME_SETTING.basic.text)
             .centered();
 
         frame.render_widget(big_txt, left_top);
@@ -72,7 +73,9 @@ impl Component for Home {
             Line::from("网络小说").centered(),
             Line::from("历史记录").centered(),
         ])
-        .highlight_style(Style::new().bold().on_light_cyan().black());
+        .style(THEME_SETTING.basic.text)
+        .highlight_style(THEME_SETTING.selected);
+
         frame.render_stateful_widget(list, list_area, &mut self.state);
 
         Ok(())

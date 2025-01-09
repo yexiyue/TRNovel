@@ -5,13 +5,12 @@ use crate::{
     file_list::NovelFiles,
     novel::local_novel::LocalNovel,
     pages::{Page, PageWrapper, ReadNovel},
-    Events, History, Navigator, Result, RoutePage, Router,
+    Events, History, Navigator, Result, RoutePage, Router, THEME_SETTING,
 };
 use async_trait::async_trait;
 use crossterm::event::{KeyCode, KeyEvent, KeyEventKind};
 use ratatui::{
     layout::{Constraint, Layout},
-    style::{Style, Stylize},
     text::Line,
     widgets::{Block, Scrollbar},
 };
@@ -101,8 +100,12 @@ impl Component for SelectFile<'_> {
         self.search.render(frame, top)?;
 
         let block = Block::bordered()
-            .title(Line::from("本地小说").centered())
-            .border_style(Style::new().dim());
+            .title(
+                Line::from("本地小说")
+                    .centered()
+                    .style(THEME_SETTING.basic.border_title),
+            )
+            .border_style(THEME_SETTING.basic.border);
 
         let inner_area = block.inner(content);
         frame.render_widget(block, content);
@@ -117,7 +120,8 @@ impl Component for SelectFile<'_> {
             }
         } else {
             let tree_widget = Tree::new(&self.items)?
-                .highlight_style(Style::new().bold().on_light_cyan())
+                .style(THEME_SETTING.basic.text)
+                .highlight_style(THEME_SETTING.selected)
                 .experimental_scrollbar(Some(Scrollbar::default()));
 
             frame.render_stateful_widget(tree_widget, inner_area, &mut self.state);
