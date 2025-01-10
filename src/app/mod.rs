@@ -112,46 +112,47 @@ impl App {
             self.routes
                 .handle_events(events.clone(), self.state.clone())
                 .await?
-                .unwrap_or(events)
         } else {
-            events
+            Some(events)
         };
 
-        match events {
-            Events::KeyEvent(key) => {
-                if key.kind == KeyEventKind::Press {
-                    if self.error.is_some() {
-                        if key.code == KeyCode::Char('q') {
-                            self.exit().await?;
-                        }
-                    } else if self.warning.is_some() {
-                        if key.code == KeyCode::Esc {
-                            self.warning = None;
-                        }
-                    } else {
-                        match key.code {
-                            KeyCode::Char('q') => {
+        if let Some(events) = events {
+            match events {
+                Events::KeyEvent(key) => {
+                    if key.kind == KeyEventKind::Press {
+                        if self.error.is_some() {
+                            if key.code == KeyCode::Char('q') {
                                 self.exit().await?;
                             }
-                            KeyCode::Char('c') => {
-                                if key.modifiers.contains(KeyModifiers::CONTROL) {
+                        } else if self.warning.is_some() {
+                            if key.code == KeyCode::Esc {
+                                self.warning = None;
+                            }
+                        } else {
+                            match key.code {
+                                KeyCode::Char('q') => {
                                     self.exit().await?;
                                 }
+                                KeyCode::Char('c') => {
+                                    if key.modifiers.contains(KeyModifiers::CONTROL) {
+                                        self.exit().await?;
+                                    }
+                                }
+                                _ => {}
                             }
-                            _ => {}
                         }
                     }
                 }
+                Events::Error(e) => self.error = Some(e),
+                Events::Resize(width, height) => {
+                    self.state
+                        .size
+                        .lock()
+                        .await
+                        .replace(Size::new(width, height));
+                }
+                _ => {}
             }
-            Events::Error(e) => self.error = Some(e),
-            Events::Resize(width, height) => {
-                self.state
-                    .size
-                    .lock()
-                    .await
-                    .replace(Size::new(width, height));
-            }
-            _ => {}
         }
 
         terminal.draw(|frame| match self.render(frame) {
