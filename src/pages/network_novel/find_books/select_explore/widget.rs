@@ -9,7 +9,7 @@ use ratatui::{
     },
 };
 
-use crate::THEME_SETTING;
+use crate::THEME_CONFIG;
 
 use super::state::SelectExploreState;
 
@@ -27,8 +27,8 @@ impl SelectExploreWidget<'_> {
                     .map(|x| Line::from(x.title.clone()).centered())
                     .collect::<Vec<_>>(),
             )
-            .style(THEME_SETTING.basic.text)
-            .highlight_style(THEME_SETTING.selected),
+            .style(THEME_CONFIG.basic.text)
+            .highlight_style(THEME_CONFIG.selected),
             explore,
         }
     }
@@ -61,10 +61,10 @@ impl StatefulWidgetRef for SelectExploreWidget<'_> {
             let block = Block::bordered()
                 .title(
                     Line::from("频道")
-                        .style(THEME_SETTING.basic.border_title)
+                        .style(THEME_CONFIG.basic.border_title)
                         .centered(),
                 )
-                .border_style(THEME_SETTING.basic.border)
+                .border_style(THEME_CONFIG.basic.border)
                 .padding(Padding::horizontal(1));
 
             self.list

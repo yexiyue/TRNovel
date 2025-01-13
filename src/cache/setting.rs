@@ -1,34 +1,30 @@
+use crate::Result;
 use ratatui::style::{Color, Style, Stylize};
 use serde::{Deserialize, Serialize};
 use std::{fs::File, sync::LazyLock};
 
 use crate::utils::novel_catch_dir;
 
-pub static THEME_SETTING: LazyLock<ThemeSetting> = LazyLock::new(|| {
-    let path = novel_catch_dir().unwrap().join("theme_setting.json");
+pub static THEME_CONFIG: LazyLock<ThemeConfig> = LazyLock::new(|| {
+    let path = novel_catch_dir().unwrap().join("theme.json");
     match File::open(path.clone()) {
         Ok(file) => serde_json::from_reader(file).unwrap_or_default(),
-        Err(_) => ThemeSetting::default(),
+        Err(_) => ThemeConfig::default(),
     }
 });
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct ThemeSetting {
-    pub color: Color,
-    pub primary_color: Color,
-    pub warning_color: Color,
-    pub error_color: Color,
-    pub success_color: Color,
-    pub info_color: Color,
+pub struct ThemeConfig {
+    pub colors: ThemeColors,
 
-    pub basic: BasicSetting,
     pub logo: Style,
     pub highlight: Style,
     pub selected: Style,
     pub empty: Style,
     pub detail_info: Style,
 
+    pub basic: BasicSetting,
     pub loading_modal: BasicSetting,
     pub warning_modal: BasicSetting,
     pub error_modal: BasicSetting,
@@ -36,44 +32,58 @@ pub struct ThemeSetting {
     pub novel: NovelSetting,
 }
 
-impl Default for ThemeSetting {
-    fn default() -> Self {
-        let color = Color::default();
-        let primary_color = Color::LightBlue;
-        let second_color = Color::LightCyan;
-        let warning_color = Color::LightYellow;
-        let error_color = Color::LightRed;
-        let success_color = Color::LightGreen;
-        let info_color = Color::DarkGray;
-        let basic = BasicSetting {
-            text: Style::new().fg(color),
-            border: Style::new().dim(),
-            border_info: Style::new().dim(),
-            ..Default::default()
-        };
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ThemeColors {
+    pub text_color: Color,
+    pub primary_color: Color,
+    pub warning_color: Color,
+    pub error_color: Color,
+    pub success_color: Color,
+    pub info_color: Color,
+}
 
-        Self {
-            color,
+impl ThemeConfig {
+    pub fn save(&self) -> Result<()> {
+        let path = novel_catch_dir()?.join("theme.json");
+        let file = File::create(path)?;
+        serde_json::to_writer_pretty(file, self)?;
+        Ok(())
+    }
+
+    pub fn from_colors(colors: ThemeColors) -> Self {
+        let ThemeColors {
+            text_color,
             primary_color,
             warning_color,
             error_color,
             success_color,
             info_color,
+        } = colors;
+
+        let basic = BasicSetting {
+            text: Style::new().fg(text_color),
+            border: Style::new().dim(),
+            border_info: Style::new().dim().fg(info_color),
+            ..Default::default()
+        };
+        Self {
+            colors,
             detail_info: Style::new().fg(warning_color).bold(),
             logo: Style::new().light_green(),
             selected: Style::new().fg(success_color),
-            highlight: Style::new().fg(second_color),
+            highlight: Style::new().fg(primary_color),
             empty: Style::new().fg(warning_color).bold(),
             search: SearchSetting {
                 success_border: Style::new().fg(success_color),
                 error_border: Style::new().fg(error_color),
                 error_border_info: Style::new().fg(info_color),
-                placeholder: Style::new().fg(second_color),
-                text: Style::new().fg(color),
+                placeholder: Style::new().fg(primary_color),
+                text: Style::new().fg(text_color),
             },
             loading_modal: BasicSetting {
-                border: basic.border.fg(second_color),
-                text: Style::new().fg(second_color),
+                border: basic.border.fg(primary_color),
+                text: Style::new().fg(primary_color),
                 ..Default::default()
             },
             warning_modal: BasicSetting {
@@ -87,7 +97,7 @@ impl Default for ThemeSetting {
                 ..Default::default()
             },
             novel: NovelSetting {
-                content: Style::new().fg(color),
+                content: Style::new().fg(text_color),
                 chapter: basic.border_title,
                 page: basic.border_info,
                 progress: basic.border_info,
@@ -95,6 +105,20 @@ impl Default for ThemeSetting {
             },
             basic,
         }
+    }
+}
+
+impl Default for ThemeConfig {
+    fn default() -> Self {
+        let colors = ThemeColors {
+            text_color: Color::default(),
+            primary_color: Color::LightBlue,
+            warning_color: Color::LightYellow,
+            error_color: Color::LightRed,
+            success_color: Color::LightGreen,
+            info_color: Color::Gray,
+        };
+        Self::from_colors(colors)
     }
 }
 

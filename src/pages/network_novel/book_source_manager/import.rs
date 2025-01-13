@@ -5,7 +5,7 @@ use crate::{
     app::State,
     components::{Component, Loading, Search},
     utils::time_to_string,
-    Events, THEME_SETTING,
+    Events, THEME_CONFIG,
 };
 use async_trait::async_trait;
 use crossterm::event::{KeyCode, KeyEvent, KeyEventKind};
@@ -28,11 +28,11 @@ impl Widget for ListItem {
         let block = if self.height_light {
             Block::bordered()
                 .padding(Padding::horizontal(2))
-                .style(THEME_SETTING.highlight)
+                .style(THEME_CONFIG.highlight)
         } else if self.selected {
             Block::bordered()
                 .padding(Padding::horizontal(2))
-                .style(THEME_SETTING.selected)
+                .style(THEME_CONFIG.selected)
         } else {
             Block::bordered().padding(Padding::horizontal(2))
         };
@@ -42,11 +42,11 @@ impl Widget for ListItem {
         block.render(area, buf);
 
         let text_style = if self.selected {
-            THEME_SETTING.basic.text.patch(THEME_SETTING.selected)
+            THEME_CONFIG.basic.text.patch(THEME_CONFIG.selected)
         } else if self.height_light {
-            THEME_SETTING.basic.text.patch(THEME_SETTING.highlight)
+            THEME_CONFIG.basic.text.patch(THEME_CONFIG.highlight)
         } else {
-            THEME_SETTING.basic.text
+            THEME_CONFIG.basic.text
         };
 
         Paragraph::new(Text::from(vec![
@@ -58,7 +58,7 @@ impl Widget for ListItem {
                 self.book_source.book_source_url,
                 time_to_string(self.book_source.last_update_time).unwrap()
             ))
-            .style(THEME_SETTING.basic.border_info.patch(text_style))
+            .style(THEME_CONFIG.basic.border_info.patch(text_style))
             .right_aligned(),
         ]))
         .render(right, buf);
@@ -157,15 +157,15 @@ impl Component for Import {
         let mut block = Block::bordered()
             .title(
                 Line::from("请选择要导入的书源")
-                    .style(THEME_SETTING.basic.border_title)
+                    .style(THEME_CONFIG.basic.border_title)
                     .centered(),
             )
-            .border_style(THEME_SETTING.basic.border);
+            .border_style(THEME_CONFIG.basic.border);
 
         if len != 0 {
             block = block.title_bottom(
                 Line::from(format!(" {}/{}", current + 1, len))
-                    .style(THEME_SETTING.basic.border_info),
+                    .style(THEME_CONFIG.basic.border_info),
             );
         }
 

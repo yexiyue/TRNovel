@@ -3,7 +3,7 @@ use crate::{
     components::{Component, Empty, Loading},
     novel::network_novel::NetworkNovel,
     pages::network_novel::book_detail::BookDetail,
-    Navigator, THEME_SETTING,
+    Navigator, THEME_CONFIG,
 };
 use async_trait::async_trait;
 use crossterm::event::{KeyCode, KeyEvent, KeyEventKind};
@@ -71,10 +71,10 @@ impl Books {
         let mut block = Block::bordered()
             .title(
                 Line::from(self.title.clone())
-                    .style(THEME_SETTING.basic.border_title)
+                    .style(THEME_CONFIG.basic.border_title)
                     .centered(),
             )
-            .border_style(THEME_SETTING.basic.border);
+            .border_style(THEME_CONFIG.basic.border);
 
         if let Some(books) = self.books.as_ref() {
             block = block.title_bottom(
@@ -84,7 +84,7 @@ impl Books {
                     self.state.selected.unwrap_or(0) + 1,
                     books.len()
                 ))
-                .style(THEME_SETTING.basic.border_info)
+                .style(THEME_CONFIG.basic.border_info)
                 .left_aligned(),
             );
         }
@@ -103,15 +103,15 @@ impl Books {
                 let block = if context.is_selected {
                     Block::bordered()
                         .padding(Padding::horizontal(2))
-                        .style(THEME_SETTING.selected)
+                        .style(THEME_CONFIG.selected)
                 } else {
                     Block::bordered().padding(Padding::horizontal(2))
                 };
 
                 let text_style = if context.is_selected {
-                    THEME_SETTING.basic.text.patch(THEME_SETTING.selected)
+                    THEME_CONFIG.basic.text.patch(THEME_CONFIG.selected)
                 } else {
-                    THEME_SETTING.basic.text
+                    THEME_CONFIG.basic.text
                 };
 
                 let mut text = vec![];
@@ -119,7 +119,7 @@ impl Books {
                 if !item.book_info.name.is_empty() {
                     text.push(
                         Line::from(vec![
-                            Span::from("名称：").style(THEME_SETTING.basic.border_info),
+                            Span::from("名称：").style(THEME_CONFIG.basic.border_info),
                             Span::from(item.book_info.name),
                         ])
                         .style(text_style),
@@ -128,7 +128,7 @@ impl Books {
                 if !item.book_info.author.is_empty() {
                     text.push(
                         Line::from(vec![
-                            Span::from("作者：").style(THEME_SETTING.basic.border_info),
+                            Span::from("作者：").style(THEME_CONFIG.basic.border_info),
                             Span::from(item.book_info.author),
                         ])
                         .style(text_style),
@@ -138,7 +138,7 @@ impl Books {
                 if !item.book_info.kind.is_empty() {
                     text.push(
                         Line::from(vec![
-                            Span::from("类型：").style(THEME_SETTING.basic.border_info),
+                            Span::from("类型：").style(THEME_CONFIG.basic.border_info),
                             Span::from(item.book_info.kind),
                         ])
                         .style(text_style),
@@ -148,7 +148,7 @@ impl Books {
                 if !item.book_info.last_chapter.is_empty() {
                     text.push(
                         Line::from(vec![
-                            Span::from("最新章节：").style(THEME_SETTING.basic.border_info),
+                            Span::from("最新章节：").style(THEME_CONFIG.basic.border_info),
                             Span::from(item.book_info.last_chapter),
                         ])
                         .style(text_style),
@@ -158,7 +158,7 @@ impl Books {
                 if !item.book_info.word_count.is_empty() {
                     text.push(
                         Line::from(vec![
-                            Span::from("字数：").style(THEME_SETTING.basic.border_info),
+                            Span::from("字数：").style(THEME_CONFIG.basic.border_info),
                             Span::from(item.book_info.word_count),
                         ])
                         .style(text_style),
@@ -168,7 +168,7 @@ impl Books {
                 if !item.book_info.intro.is_empty() {
                     text.push(
                         Line::from(vec![
-                            Span::from("简介：").style(THEME_SETTING.basic.border_info),
+                            Span::from("简介：").style(THEME_CONFIG.basic.border_info),
                             Span::from(item.book_info.intro),
                         ])
                         .style(text_style),

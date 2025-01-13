@@ -3,7 +3,7 @@ use crate::{
     components::{Component, KeyShortcutInfo, LoadingWrapper, LoadingWrapperInit},
     novel::network_novel::NetworkNovel,
     pages::ReadNovel,
-    Navigator, Result, RoutePage, Router, THEME_SETTING,
+    Navigator, Result, RoutePage, Router, THEME_CONFIG,
 };
 use async_trait::async_trait;
 use crossterm::event::{KeyCode, KeyEvent, KeyEventKind};
@@ -28,25 +28,25 @@ pub struct BookDetail {
 impl BookDetail {
     pub fn new(book_info: BookInfo, navigator: Navigator, mut novel: NetworkNovel) -> Self {
         let title = vec![
-            Span::from("名称：").style(THEME_SETTING.detail_info),
-            Span::from(book_info.name.clone()).style(THEME_SETTING.basic.text),
+            Span::from("名称：").style(THEME_CONFIG.detail_info),
+            Span::from(book_info.name.clone()).style(THEME_CONFIG.basic.text),
         ];
         let author = vec![
-            Span::from("作者：").style(THEME_SETTING.detail_info),
-            Span::from(book_info.author.clone()).style(THEME_SETTING.basic.text),
+            Span::from("作者：").style(THEME_CONFIG.detail_info),
+            Span::from(book_info.author.clone()).style(THEME_CONFIG.basic.text),
         ];
         let kind = vec![
-            Span::from("类型：").style(THEME_SETTING.detail_info),
-            Span::from(book_info.kind.clone()).style(THEME_SETTING.basic.text),
+            Span::from("类型：").style(THEME_CONFIG.detail_info),
+            Span::from(book_info.kind.clone()).style(THEME_CONFIG.basic.text),
         ];
         let word_count = vec![
-            Span::from("字数：").style(THEME_SETTING.detail_info),
-            Span::from(book_info.word_count.clone()).style(THEME_SETTING.basic.text),
+            Span::from("字数：").style(THEME_CONFIG.detail_info),
+            Span::from(book_info.word_count.clone()).style(THEME_CONFIG.basic.text),
         ];
 
         let last_chapter = vec![
-            Span::from("最新章节：").style(THEME_SETTING.detail_info),
-            Span::from(book_info.last_chapter.clone()).style(THEME_SETTING.basic.text),
+            Span::from("最新章节：").style(THEME_CONFIG.detail_info),
+            Span::from(book_info.last_chapter.clone()).style(THEME_CONFIG.basic.text),
         ];
 
         let text = vec![
@@ -65,7 +65,7 @@ impl BookDetail {
         let paragraph = Paragraph::new(text).wrap(Wrap { trim: true });
 
         let intro = Paragraph::new(book_info.intro.clone())
-            .style(THEME_SETTING.basic.text)
+            .style(THEME_CONFIG.basic.text)
             .wrap(Wrap { trim: true });
 
         novel.set_book_info(&book_info);
@@ -95,7 +95,7 @@ impl BookDetail {
 
         self.other_paragraph.render_ref(top, buf);
         Line::from("简介：")
-            .style(THEME_SETTING.detail_info)
+            .style(THEME_CONFIG.detail_info)
             .render(left, buf);
         self.intro_paragraph.render_ref(right, buf);
     }
@@ -108,9 +108,9 @@ impl Component for BookDetail {
             .title(
                 Line::from("书籍详情")
                     .centered()
-                    .style(THEME_SETTING.basic.border_title),
+                    .style(THEME_CONFIG.basic.border_title),
             )
-            .border_style(THEME_SETTING.basic.border)
+            .border_style(THEME_CONFIG.basic.border)
             .padding(Padding::new(3, 0, 1, 1));
 
         let inner_area = block.inner(area).inner(Margin::new(1, 0));

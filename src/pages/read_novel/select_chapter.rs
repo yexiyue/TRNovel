@@ -3,7 +3,7 @@ use crate::{
     app::State,
     components::{Component, Empty, Search},
     novel::Novel,
-    Result, THEME_SETTING,
+    Result, THEME_CONFIG,
 };
 use async_trait::async_trait;
 use crossterm::event::{KeyCode, KeyEvent};
@@ -46,8 +46,8 @@ where
         Self {
             scrollbar_state: ScrollbarState::new(chapters.len()),
             list: List::new(chapters.iter().map(|i| i.0.clone()))
-                .style(THEME_SETTING.basic.text)
-                .highlight_style(THEME_SETTING.selected),
+                .style(THEME_CONFIG.basic.text)
+                .highlight_style(THEME_CONFIG.selected),
             state,
             total_chapters: chapters.len(),
             chapters,
@@ -99,14 +99,14 @@ where
             .title(
                 Line::from("目录")
                     .centered()
-                    .style(THEME_SETTING.basic.border_title),
+                    .style(THEME_CONFIG.basic.border_title),
             )
             .title_bottom(
                 Line::from(format!(" {}/{}章", index, self.total_chapters))
                     .left_aligned()
-                    .style(THEME_SETTING.basic.border_info),
+                    .style(THEME_CONFIG.basic.border_info),
             )
-            .border_style(THEME_SETTING.basic.border)
+            .border_style(THEME_CONFIG.basic.border)
             .padding(Padding::horizontal(1));
 
         self.search.render(frame, top)?;

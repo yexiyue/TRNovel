@@ -5,7 +5,7 @@ use crate::{
     history::{History, HistoryItem},
     novel::{local_novel::LocalNovel, network_novel::NetworkNovel},
     pages::ReadNovel,
-    Navigator, Result, RoutePage, Router, THEME_SETTING,
+    Navigator, Result, RoutePage, Router, THEME_CONFIG,
 };
 use async_trait::async_trait;
 use crossterm::event::{KeyCode, KeyEvent, KeyEventKind};
@@ -28,7 +28,7 @@ impl Widget for ListItem {
         let block = if self.selected {
             Block::bordered()
                 .padding(Padding::horizontal(0))
-                .style(THEME_SETTING.selected)
+                .style(THEME_CONFIG.selected)
         } else {
             Block::bordered().padding(Padding::horizontal(0))
         };
@@ -42,9 +42,9 @@ impl Widget for ListItem {
                 .areas(bottom);
 
         let text_color = if self.selected {
-            THEME_SETTING.basic.text.patch(THEME_SETTING.selected)
+            THEME_CONFIG.basic.text.patch(THEME_CONFIG.selected)
         } else {
-            THEME_SETTING.basic.text
+            THEME_CONFIG.basic.text
         };
 
         match self.history {
@@ -57,7 +57,7 @@ impl Widget for ListItem {
                 .render(top, buf);
 
                 Span::from("本地小说")
-                    .style(THEME_SETTING.basic.border_info.patch(text_color))
+                    .style(THEME_CONFIG.basic.border_info.patch(text_color))
                     .render(bottom_left, buf);
 
                 Text::from(format!(
@@ -65,7 +65,7 @@ impl Widget for ListItem {
                     item.percent,
                     item.last_read_at.format("%Y-%m-%d %H:%M:%S")
                 ))
-                .style(THEME_SETTING.basic.border_info.patch(text_color))
+                .style(THEME_CONFIG.basic.border_info.patch(text_color))
                 .right_aligned()
                 .render(bottom_right, buf);
             }
@@ -78,7 +78,7 @@ impl Widget for ListItem {
                 .render(top, buf);
 
                 Span::from(format!("书源：{}", item.book_source))
-                    .style(THEME_SETTING.basic.border_info.patch(text_color))
+                    .style(THEME_CONFIG.basic.border_info.patch(text_color))
                     .render(bottom_left, buf);
 
                 Text::from(format!(
@@ -86,7 +86,7 @@ impl Widget for ListItem {
                     item.percent,
                     item.last_read_at.format("%Y-%m-%d %H:%M:%S")
                 ))
-                .style(THEME_SETTING.basic.border_info.patch(text_color))
+                .style(THEME_CONFIG.basic.border_info.patch(text_color))
                 .right_aligned()
                 .render(bottom_right, buf);
             }
@@ -142,9 +142,9 @@ impl Component for SelectHistory {
             .title(
                 Line::from("历史记录")
                     .centered()
-                    .style(THEME_SETTING.basic.border_title),
+                    .style(THEME_CONFIG.basic.border_title),
             )
-            .border_style(THEME_SETTING.basic.border);
+            .border_style(THEME_CONFIG.basic.border);
 
         let container_area = block.inner(area);
 
@@ -162,7 +162,7 @@ impl Component for SelectHistory {
         frame.render_widget(
             block.title_bottom(
                 Line::from(format!(" {}/{}", current + 1, len))
-                    .style(THEME_SETTING.basic.border_info),
+                    .style(THEME_CONFIG.basic.border_info),
             ),
             area,
         );

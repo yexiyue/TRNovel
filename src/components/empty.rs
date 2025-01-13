@@ -3,7 +3,7 @@ use ratatui::{
     widgets::{Paragraph, Widget, Wrap},
 };
 
-use crate::THEME_SETTING;
+use crate::THEME_CONFIG;
 
 #[derive(Debug, Clone)]
 pub struct Empty {
@@ -28,7 +28,7 @@ impl Widget for Empty {
             .areas(area);
 
         Paragraph::new(self.text)
-            .style(THEME_SETTING.empty)
+            .style(THEME_CONFIG.empty)
             .centered()
             .wrap(Wrap { trim: true })
             .render(vertical, buf);

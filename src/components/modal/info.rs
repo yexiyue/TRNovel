@@ -8,7 +8,7 @@ use ratatui::{
 use std::ops::{Deref, DerefMut};
 use tui_scrollview::{ScrollView, ScrollViewState, ScrollbarVisibility};
 
-use crate::THEME_SETTING;
+use crate::THEME_CONFIG;
 
 #[derive(Debug, Clone, Default)]
 pub struct ShortcutInfoState {
@@ -122,18 +122,18 @@ impl ShortcutInfo {
         .areas(area);
 
         let widths = [Constraint::Fill(1), Constraint::Fill(1)];
-        let header = Row::new(vec!["描述", "快捷键"]).style(THEME_SETTING.highlight);
+        let header = Row::new(vec!["描述", "快捷键"]).style(THEME_CONFIG.highlight);
 
         let table = Table::new(self.key_shortcut_info.rows(), widths)
             .header(header.clone())
             .block(
                 Block::bordered()
-                    .style(THEME_SETTING.basic.border)
+                    .style(THEME_CONFIG.basic.border)
                     .not_dim()
                     .title(
                         Line::from("当前页")
                             .centered()
-                            .style(THEME_SETTING.basic.border_title),
+                            .style(THEME_CONFIG.basic.border_title),
                     ),
             );
         Widget::render(table, top, buf);
@@ -142,12 +142,12 @@ impl ShortcutInfo {
             .header(header)
             .block(
                 Block::bordered()
-                    .style(THEME_SETTING.basic.border)
+                    .style(THEME_CONFIG.basic.border)
                     .not_dim()
                     .title(
                         Line::from("全局")
                             .centered()
-                            .style(THEME_SETTING.basic.border_title),
+                            .style(THEME_CONFIG.basic.border_title),
                     ),
             );
         Widget::render(table, bottom, buf);

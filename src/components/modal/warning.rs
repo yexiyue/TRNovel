@@ -5,7 +5,7 @@ use ratatui::{
     widgets::{Block, Clear, Padding, Paragraph, Widget, Wrap},
 };
 
-use crate::THEME_SETTING;
+use crate::THEME_CONFIG;
 
 #[derive(Debug, Clone)]
 pub struct Warning {
@@ -39,21 +39,21 @@ impl Widget for Warning {
 
         let block = if self.is_error {
             Block::bordered()
-                .title(Line::from("错误").style(THEME_SETTING.error_modal.border_title))
+                .title(Line::from("错误").style(THEME_CONFIG.error_modal.border_title))
                 .title_alignment(Alignment::Center)
-                .title_bottom(Line::from("按q退出").style(THEME_SETTING.error_modal.border_info))
+                .title_bottom(Line::from("按q退出").style(THEME_CONFIG.error_modal.border_info))
                 .title_alignment(Alignment::Center)
-                .border_style(THEME_SETTING.error_modal.border)
+                .border_style(THEME_CONFIG.error_modal.border)
                 .padding(Padding::uniform(1))
         } else {
             Block::bordered()
-                .title(Line::from("警告").style(THEME_SETTING.warning_modal.border_title))
+                .title(Line::from("警告").style(THEME_CONFIG.warning_modal.border_title))
                 .title_alignment(Alignment::Center)
                 .title_bottom(
-                    Line::from("按ESC键继续").style(THEME_SETTING.warning_modal.border_info),
+                    Line::from("按ESC键继续").style(THEME_CONFIG.warning_modal.border_info),
                 )
                 .title_alignment(Alignment::Center)
-                .border_style(THEME_SETTING.warning_modal.border)
+                .border_style(THEME_CONFIG.warning_modal.border)
                 .padding(Padding::uniform(1))
         };
 
@@ -62,9 +62,9 @@ impl Widget for Warning {
         Paragraph::new(self.tip)
             .centered()
             .style(if self.is_error {
-                THEME_SETTING.error_modal.text
+                THEME_CONFIG.error_modal.text
             } else {
-                THEME_SETTING.warning_modal.text
+                THEME_CONFIG.warning_modal.text
             })
             .wrap(Wrap { trim: true })
             .block(block)

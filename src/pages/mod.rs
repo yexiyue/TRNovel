@@ -13,6 +13,7 @@ pub mod read_novel;
 pub use read_novel::ReadNovel;
 pub mod home;
 pub mod select_history;
+pub mod theme_setting;
 
 #[async_trait]
 pub trait Page<Arg = ()>

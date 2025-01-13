@@ -4,7 +4,7 @@ use ratatui::{
 };
 use throbber_widgets_tui::{Throbber, ThrobberState};
 
-use crate::THEME_SETTING;
+use crate::THEME_CONFIG;
 
 #[derive(Debug, Clone)]
 pub struct Loading {
@@ -32,7 +32,7 @@ impl Widget for &Loading {
 
         Clear.render(area, buf);
 
-        let block = Block::bordered().border_style(THEME_SETTING.loading_modal.border);
+        let block = Block::bordered().border_style(THEME_CONFIG.loading_modal.border);
         let inner_area = block.inner(horizontal);
         block.render(horizontal, buf);
 
@@ -41,7 +41,7 @@ impl Widget for &Loading {
             .throbber_set(throbber_widgets_tui::ASCII)
             .to_line(&self.state)
             .centered()
-            .style(THEME_SETTING.loading_modal.text)
+            .style(THEME_CONFIG.loading_modal.text)
             .render(inner_area.offset(Offset { x: 0, y: 1 }), buf);
     }
 }

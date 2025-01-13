@@ -11,7 +11,7 @@ use tui_big_text::{BigText, PixelSize};
 
 use crate::{
     components::{Component, KeyShortcutInfo},
-    RoutePage, Router, THEME_SETTING,
+    RoutePage, Router, THEME_CONFIG,
 };
 
 use super::{
@@ -57,12 +57,12 @@ impl Component for Home {
             .pixel_size(PixelSize::Quadrant)
             .lines(vec!["TRNovel".into()])
             .centered()
-            .style(THEME_SETTING.logo)
+            .style(THEME_CONFIG.logo)
             .build();
 
         let info_txt = Paragraph::new(vec!["终端小说阅读器 (Terminal reader for novel)".into()])
             .wrap(Wrap { trim: true })
-            .style(THEME_SETTING.basic.text)
+            .style(THEME_CONFIG.basic.text)
             .centered();
 
         frame.render_widget(big_txt, left_top);
@@ -73,8 +73,8 @@ impl Component for Home {
             Line::from("网络小说").centered(),
             Line::from("历史记录").centered(),
         ])
-        .style(THEME_SETTING.basic.text)
-        .highlight_style(THEME_SETTING.selected);
+        .style(THEME_CONFIG.basic.text)
+        .highlight_style(THEME_CONFIG.selected);
 
         frame.render_stateful_widget(list, list_area, &mut self.state);
 

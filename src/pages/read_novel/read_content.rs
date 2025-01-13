@@ -11,7 +11,7 @@ use crate::{
     app::State,
     components::{Component, Loading},
     novel::Novel,
-    Events, Result, THEME_SETTING,
+    Events, Result, THEME_CONFIG,
 };
 
 use super::ReadNovelMsg;
@@ -144,7 +144,7 @@ where
     fn render_content(&mut self, frame: &mut ratatui::Frame, area: ratatui::prelude::Rect) {
         let paragraph = Paragraph::new(self.content.as_str())
             .wrap(Wrap { trim: true })
-            .style(THEME_SETTING.novel.content)
+            .style(THEME_CONFIG.novel.content)
             .scroll((self.current_line as u16, 0));
 
         frame.render_widget(paragraph, area);
@@ -163,7 +163,7 @@ where
                 self.content_lines + 1
             ))
             .left_aligned()
-            .style(THEME_SETTING.novel.page),
+            .style(THEME_CONFIG.novel.page),
             left_area,
         );
         let percent = if self.chapter_percent.is_nan() {
@@ -175,7 +175,7 @@ where
         frame.render_widget(
             Line::from(format!("{:.2}% {}", percent, current_time))
                 .right_aligned()
-                .style(THEME_SETTING.novel.progress),
+                .style(THEME_CONFIG.novel.progress),
             right_area,
         );
     }
@@ -189,12 +189,12 @@ where
     fn render(&mut self, frame: &mut ratatui::Frame, area: ratatui::prelude::Rect) -> Result<()> {
         let current_chapter = self.current_chapter.clone().unwrap_or_default();
         let block = Block::bordered()
-            .border_style(THEME_SETTING.novel.border)
+            .border_style(THEME_CONFIG.novel.border)
             .padding(Padding::new(1, 1, 0, 1))
             .title(
                 Line::from(current_chapter)
                     .centered()
-                    .style(THEME_SETTING.novel.chapter),
+                    .style(THEME_CONFIG.novel.chapter),
             );
 
         if self.is_loading {

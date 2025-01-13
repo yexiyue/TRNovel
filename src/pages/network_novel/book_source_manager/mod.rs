@@ -5,7 +5,7 @@ use crate::{
     errors::Errors,
     pages::Page,
     utils::time_to_string,
-    Events, Navigator, Result, Router, THEME_SETTING,
+    Events, Navigator, Result, Router, THEME_CONFIG,
 };
 use async_trait::async_trait;
 
@@ -66,15 +66,15 @@ impl BookSourceManager {
             let block = if context.is_selected {
                 Block::bordered()
                     .padding(Padding::horizontal(2))
-                    .style(THEME_SETTING.selected)
+                    .style(THEME_CONFIG.selected)
             } else {
                 Block::bordered().padding(Padding::horizontal(2))
             };
 
             let text_style = if context.is_selected {
-                THEME_SETTING.basic.text.patch(THEME_SETTING.selected)
+                THEME_CONFIG.basic.text.patch(THEME_CONFIG.selected)
             } else {
-                THEME_SETTING.basic.text
+                THEME_CONFIG.basic.text
             };
 
             let paragraph = Paragraph::new(Text::from(vec![
@@ -86,7 +86,7 @@ impl BookSourceManager {
                     item.book_source_url,
                     time_to_string(item.last_update_time).unwrap()
                 ))
-                .style(THEME_SETTING.basic.border_info.patch(text_style))
+                .style(THEME_CONFIG.basic.border_info.patch(text_style))
                 .right_aligned(),
             ]))
             .block(block);
@@ -166,10 +166,10 @@ impl Component for BookSourceManager {
                 } else {
                     "书源管理"
                 })
-                .style(THEME_SETTING.basic.border_title)
+                .style(THEME_CONFIG.basic.border_title)
                 .centered(),
             )
-            .border_style(THEME_SETTING.basic.border);
+            .border_style(THEME_CONFIG.basic.border);
 
         let container_area = block.inner(area);
 
