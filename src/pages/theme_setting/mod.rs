@@ -44,7 +44,7 @@ impl Widget for ListItem {
 
         block.render(area, buf);
 
-        let color = Line::from(format!("■ {}", self.color.to_string()))
+        let color = Line::from(format!("■ {}", self.color))
             .centered()
             .style(self.color);
         color.render(inner_area, buf);

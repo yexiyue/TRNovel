@@ -23,7 +23,7 @@ pub struct SelectColor {
 impl SelectColor {
     pub fn new<T>(on_select: T) -> Self
     where
-        T: FnMut(Color) -> () + Send + Sync + 'static + Clone,
+        T: FnMut(Color) + Send + Sync + 'static + Clone,
     {
         let mut on_select_clone = on_select.clone();
         let search = Search::new(

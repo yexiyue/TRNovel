@@ -1,5 +1,11 @@
-use std::path::PathBuf;
-
+use super::{
+    local_novel::local_novel_first_page, network_novel::network_novel_first_page,
+    select_history::SelectHistory, theme_setting::ThemeSettingPage, Page, PageWrapper,
+};
+use crate::{
+    components::{Component, KeyShortcutInfo},
+    RoutePage, Router, THEME_CONFIG,
+};
 use async_trait::async_trait;
 use crossterm::event::KeyCode;
 use ratatui::{
@@ -7,16 +13,8 @@ use ratatui::{
     text::Line,
     widgets::{List, ListState, Paragraph, Wrap},
 };
+use std::path::PathBuf;
 use tui_big_text::{BigText, PixelSize};
-
-use crate::{
-    components::{Component, KeyShortcutInfo},
-    RoutePage, Router, THEME_CONFIG,
-};
-
-use super::{
-    local_novel::local_novel_first_page, network_novel::network_novel_first_page, select_history::SelectHistory, theme_setting::ThemeSettingPage, Page, PageWrapper
-};
 
 pub struct Home {
     pub state: ListState,
