@@ -15,8 +15,7 @@ use crate::{
 };
 
 use super::{
-    local_novel::local_novel_first_page, network_novel::network_novel_first_page,
-    select_history::SelectHistory, Page, PageWrapper,
+    local_novel::local_novel_first_page, network_novel::network_novel_first_page, select_history::SelectHistory, theme_setting::ThemeSettingPage, Page, PageWrapper
 };
 
 pub struct Home {
@@ -38,7 +37,7 @@ impl Component for Home {
         frame: &mut ratatui::Frame,
         area: ratatui::prelude::Rect,
     ) -> crate::Result<()> {
-        let [center] = Layout::vertical([Constraint::Length(10)])
+        let [center] = Layout::vertical([Constraint::Length(11)])
             .flex(Flex::Center)
             .areas(area);
 
@@ -72,6 +71,7 @@ impl Component for Home {
             Line::from("本地小说").centered(),
             Line::from("网络小说").centered(),
             Line::from("历史记录").centered(),
+            Line::from("主题设置").centered(),
         ])
         .style(THEME_CONFIG.basic.text)
         .highlight_style(THEME_CONFIG.selected);
@@ -111,6 +111,9 @@ impl Component for Home {
                         }
                         2 => {
                             self.navigator.push(SelectHistory::to_page_route())?;
+                        }
+                        3 => {
+                            self.navigator.push(ThemeSettingPage::to_page_route())?;
                         }
                         _ => {}
                     }
