@@ -163,6 +163,11 @@ impl Component for ThemeSettingPage {
                     .centered()
                     .style(THEME_CONFIG.basic.border_title),
             )
+            .title_bottom(
+                Line::from("设置成功后请重启应用")
+                    .centered()
+                    .style(THEME_CONFIG.detail_info),
+            )
             .border_style(THEME_CONFIG.basic.border);
 
         let inner_area = block.inner(area);
