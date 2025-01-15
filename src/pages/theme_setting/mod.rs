@@ -1,6 +1,7 @@
 use crate::{
-    app::State, components::Component, Navigator, Result, RoutePage, Router, ThemeColors,
-    ThemeConfig, THEME_CONFIG,
+    app::State,
+    components::{Component, KeyShortcutInfo},
+    Navigator, Result, RoutePage, Router, ThemeColors, ThemeConfig, THEME_CONFIG,
 };
 use async_trait::async_trait;
 use crossterm::event::{KeyCode, KeyEvent};
@@ -253,6 +254,25 @@ impl Component for ThemeSettingPage {
                 return Ok(Some(key));
             }
         }
+    }
+
+    fn key_shortcut_info(&self) -> KeyShortcutInfo {
+        let data = if self.show_select_color {
+            vec![
+                ("输入颜色", "S"),
+                ("选择下一个", "J / ▼"),
+                ("选择上一个", "K / ▲"),
+                ("取消", "Esc"),
+                ("确定", "Enter"),
+            ]
+        } else {
+            vec![
+                ("选择下一个", "J / ▼"),
+                ("选择上一个", "K / ▲"),
+                ("进入选择颜色模式", "Enter"),
+            ]
+        };
+        KeyShortcutInfo::new(data)
     }
 }
 

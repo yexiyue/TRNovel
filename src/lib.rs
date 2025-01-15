@@ -73,6 +73,7 @@ where
     - 本地小说
     - 网络小说
     - 历史记录
+    - 主题设置
 
   GitHub: https://github.com/yexiyue/trnovel
   
