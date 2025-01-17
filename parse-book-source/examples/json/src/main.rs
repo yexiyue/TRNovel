@@ -5,7 +5,7 @@ use parse_book_source::{BookSource, BookSourceParser};
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
     let book_source = BookSource::from_path(
-        "/Users/yexiyue/rust-project/ratatui-study/trnovel/parse-book-source/test.json",
+        "./test.json",
     )?[0]
         .clone();
     let mut parser = BookSourceParser::new(book_source)?;

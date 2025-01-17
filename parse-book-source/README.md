@@ -1,63 +1,39 @@
 ## Parse Book Source
 
-本仓库是为TRNovler 服务，用于支持解析各种书籍源。
+本仓库是为TRNovle 服务，用于支持解析各种书籍源。兼容部分`阅读`书源。
 
 - [x] 支持解析 Api Json接口
-- [ ] 支持解析 网站源
+- [x] 支持解析 网站源
 
 **示例**
 
 ```rust
-use std::{fs::File, thread::sleep, time::Duration};
+use std::{thread::sleep, time::Duration};
 
-use parse_book_source::{utils::Params, BookSource, JsonSource};
+use parse_book_source::{BookSource, BookSourceParser};
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
-    let file = File::open("../../test.json")?;
-    let book_source: BookSource = serde_json::from_reader(file)?;
-    let mut json_source = JsonSource::try_from(book_source)?;
-
-    let book_list = json_source
-        .search_books(Params::new().key("剑来").page(1).page_size(2))
-        .await?;
-    // let book_list = json_source
-    //     .explore_books(
-    //         &json_source.explores.as_ref().unwrap()[0],
-    //         Params::new().page(1).page_size(5),
-    //     )
-    //     .await?;
-
-    println!("{:#?}", book_list);
-    println!("等待中");
-    sleep(Duration::from_secs(1));
-    println!("等待结束");
-
-    let book_info = json_source.book_info(&book_list[0]).await?;
+    let book_source = BookSource::from_path(
+        "./test.json",
+    )?[0]
+        .clone();
+    let mut parser = BookSourceParser::new(book_source)?;
+    // let res = parser.search_books("百炼", 1, 2).await?;
+    // println!("{:#?}", res);
+    let explores = parser.get_explores().await?;
+    let res = parser.explore_books(&explores[0].url, 1, 2).await?;
+    println!("{:#?}", res);
+    let book_info = parser.get_book_info(&res[2].book_url).await?;
     println!("{:#?}", book_info);
-
-    println!("等待中");
-    sleep(Duration::from_secs(1));
-    println!("等待结束");
-
-    let chapter_list = json_source.chapter_list(&book_info).await?;
-    println!("{:#?}", chapter_list);
-
-    println!("等待中");
-    sleep(Duration::from_secs(1));
-    println!("等待结束");
-    let chapter = json_source.chapter_content(&chapter_list[0]).await?;
-
-    println!("{}", chapter);
+    // sleep(Duration::from_secs(1));
+    let toc = parser.get_chapters(&book_info.toc_url).await?;
+    println!("{:#?}", toc);
+    // sleep(Duration::from_secs(1));
+    // let content = parser.get_content(&toc[1].chapter_url).await?;
+    // println!("{}", toc[1].chapter_url);
+    // println!("{}", content);
     Ok(())
 }
 
 ```
-
-TODO:
-
-- [ ] 优化代码
-- [ ] rules 设计
-- [ ] 支持css和json 解析
-- [ ] 支持解密内容
-- [ ] 设计URL快捷导入
