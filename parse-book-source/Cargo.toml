@@ -1,6 +1,6 @@
 [package]
 name = "parse-book-source"
-version = "0.1.5"
+version = "0.1.6"
 edition = "2021"
 description = "Terminal reader for novel"
 authors = ["yexiyue <yexiyue666@qq.com>"]

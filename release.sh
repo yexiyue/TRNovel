@@ -1,4 +1,4 @@
-# cargo fmt --all --check
+cargo fmt --all --check
 cargo clippy --all-targets --all-features --workspace -- -D warnings
 cargo release changes
 cargo release version patch --execute --no-confirm --workspace
