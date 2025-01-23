@@ -25,6 +25,9 @@ pub enum ParseError {
 
     #[error("{0}")]
     Warning(String),
+
+    #[error("Canceled")]
+    Canceled,
 }
 
 pub type Result<T> = std::result::Result<T, ParseError>;

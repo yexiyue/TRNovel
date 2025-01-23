@@ -12,6 +12,8 @@ pub use book::*;
 pub use book_source::*;
 pub use error::*;
 pub use http_client::*;
+pub mod download;
+pub use download::*;
 
 #[derive(Debug, Clone)]
 pub struct BookSourceParser {
