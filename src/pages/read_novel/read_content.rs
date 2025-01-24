@@ -1,5 +1,5 @@
 use async_trait::async_trait;
-use crossterm::event::{KeyCode, KeyEvent, KeyEventKind};
+use crossterm::event::{KeyCode, KeyEvent, KeyEventKind, MouseButton};
 use ratatui::{
     layout::{Constraint, Layout, Rect, Size},
     text::Line,
@@ -266,13 +266,36 @@ where
         }
     }
 
+    async fn handle_mouse_event(
+        &mut self,
+        mouse: crossterm::event::MouseEvent,
+        _state: State,
+    ) -> Result<Option<crossterm::event::MouseEvent>> {
+        if matches!(
+            mouse.kind,
+            crossterm::event::MouseEventKind::Down(MouseButton::Left)
+        ) {
+            if self.is_bottom() {
+                self.sender.send(ReadNovelMsg::Next).await.unwrap();
+            } else {
+                self.scroll_down();
+            }
+            Ok(None)
+        } else {
+            Ok(Some(mouse))
+        }
+    }
+
     async fn handle_events(&mut self, events: Events, state: State) -> Result<Option<Events>> {
         match events {
             Events::KeyEvent(key) => self
                 .handle_key_event(key, state)
                 .await
                 .map(|item| item.map(Events::KeyEvent)),
-
+            Events::MouseEvent(mouse) => self
+                .handle_mouse_event(mouse, state)
+                .await
+                .map(|item| item.map(Events::MouseEvent)),
             Events::Tick => {
                 self.handle_tick(state).await?;
 
