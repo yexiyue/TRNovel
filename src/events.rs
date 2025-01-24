@@ -1,4 +1,4 @@
-use crossterm::event::EventStream;
+use crossterm::event::{Event, EventStream, KeyCode, KeyEvent, MouseEventKind};
 use futures::{FutureExt, StreamExt};
 use std::time::Duration;
 use tokio::{sync::mpsc::UnboundedSender, time::interval};
@@ -29,12 +29,27 @@ pub fn event_loop(event_tx: UnboundedSender<Events>, cancellation_token: Cancell
                     match crossterm_event {
                         Some(Ok(event)) => {
                             match event {
-                                crossterm::event::Event::Key(key_event) => {
+                                Event::Key(key_event) => {
                                     Events::KeyEvent(key_event)
                                 },
-                                crossterm::event::Event::Resize(width, height) => {
+                                Event::Resize(width, height) => {
                                     Events::Resize(width, height)
                                 },
+                                Event::Mouse(mouse)=>{
+                                    // 鼠标滚轮事件模拟成键盘Up和Down事件
+                                    match mouse.kind{
+                                        MouseEventKind::ScrollUp=>{
+                                            Events::KeyEvent(KeyEvent::new(KeyCode::Up, mouse.modifiers))
+                                        }
+                                        MouseEventKind::ScrollDown=>{
+                                            Events::KeyEvent(KeyEvent::new(KeyCode::Down, mouse.modifiers))
+                                        }
+                                        _=>{
+                                            continue;
+                                        }
+                                    }
+
+                                }
                                 _ => continue
                             }
                         },

@@ -1,7 +1,11 @@
 use app::App;
 use clap::{Parser, Subcommand};
-use crossterm::style::Stylize;
-use std::{env, ffi::OsString, fmt::Debug, fs, path::PathBuf};
+use crossterm::{
+    event::{DisableMouseCapture, EnableMouseCapture},
+    execute,
+    style::Stylize,
+};
+use std::{env, ffi::OsString, fmt::Debug, fs, io::stdout, path::PathBuf};
 use utils::novel_catch_dir;
 
 pub mod app;
@@ -39,14 +43,18 @@ where
     }
 
     let terminal = ratatui::init();
+    //支持鼠标事件，需要开启鼠标捕获 https://docs.rs/crossterm/0.28.1/crossterm/event/index.html
+    execute!(stdout(), EnableMouseCapture)?;
     let size = terminal.size()?;
 
     match App::new(trnovel, size).await {
         Ok(app) => {
             app.run(terminal).await?;
+            execute!(stdout(), DisableMouseCapture)?;
             ratatui::restore();
         }
         Err(e) => {
+            execute!(stdout(), DisableMouseCapture)?;
             ratatui::restore();
             eprintln!("{}: {}", "Error".red().bold(), e.to_string().red());
         }
