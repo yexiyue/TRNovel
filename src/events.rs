@@ -9,6 +9,8 @@ use tokio_util::sync::CancellationToken;
 pub enum Events {
     Tick,
     KeyEvent(crossterm::event::KeyEvent),
+    // 鼠标事件
+    MouseEvent(crossterm::event::MouseEvent),
     Resize(u16, u16),
     Error(String),
 }
@@ -45,10 +47,9 @@ pub fn event_loop(event_tx: UnboundedSender<Events>, cancellation_token: Cancell
                                             Events::KeyEvent(KeyEvent::new(KeyCode::Down, mouse.modifiers))
                                         }
                                         _=>{
-                                            continue;
+                                            Events::MouseEvent(mouse)
                                         }
                                     }
-
                                 }
                                 _ => continue
                             }

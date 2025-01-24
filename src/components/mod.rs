@@ -26,6 +26,14 @@ pub trait Component {
         Ok(())
     }
 
+    async fn handle_mouse_event(
+        &mut self,
+        mouse: crossterm::event::MouseEvent,
+        _state: State,
+    ) -> Result<Option<crossterm::event::MouseEvent>> {
+        Ok(Some(mouse))
+    }
+
     /// 此架构是消耗型事件，优先级根据代码逻辑而定，推荐优先处理子组件
     /// 注意：
     /// 1. 一定要返回事件，不要返回None，因为render事件也是根据这个来的
@@ -36,7 +44,10 @@ pub trait Component {
                 .handle_key_event(key, state)
                 .await
                 .map(|item| item.map(Events::KeyEvent)),
-
+            Events::MouseEvent(mouse) => self
+                .handle_mouse_event(mouse, state)
+                .await
+                .map(|item| item.map(Events::MouseEvent)),
             Events::Tick => {
                 self.handle_tick(state).await?;
 
