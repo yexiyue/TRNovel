@@ -1,3 +1,4 @@
+use crate::THEME_CONFIG;
 use ratatui::{
     layout::{Alignment, Constraint, Flex, Layout, Margin},
     style::{Style, Stylize},
@@ -72,8 +73,8 @@ impl StatefulWidget for Confirm {
             let block = Block::bordered()
                 .title(self.title.as_str())
                 .title_alignment(Alignment::Center)
-                .title_style(Style::default().light_yellow().bold())
-                .border_style(Style::default().light_yellow());
+                .title_style(THEME_CONFIG.warning_modal.border_title)
+                .border_style(THEME_CONFIG.warning_modal.border);
 
             let inner_area = block.inner(block_area);
 
@@ -83,7 +84,7 @@ impl StatefulWidget for Confirm {
                 Layout::vertical([Constraint::Fill(1), Constraint::Length(3)]).areas(inner_area);
 
             Paragraph::new(self.content.as_str())
-                .yellow()
+                .style(THEME_CONFIG.warning_modal.text)
                 .wrap(Wrap { trim: true })
                 .centered()
                 .render(content_area.inner(Margin::new(2, 2)), buf);
@@ -94,9 +95,15 @@ impl StatefulWidget for Confirm {
                     .areas(bottom_area);
 
             let (cancel_style, confirm_style) = if state.confirm {
-                (Style::default(), Style::default().light_red())
+                (
+                    Style::default(),
+                    Style::default().fg(THEME_CONFIG.colors.error_color),
+                )
             } else {
-                (Style::default().light_cyan(), Style::default())
+                (
+                    Style::default().fg(THEME_CONFIG.colors.primary_color),
+                    Style::default(),
+                )
             };
 
             Paragraph::new("取消")
