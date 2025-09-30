@@ -1,0 +1,13 @@
+pre-commit:
+  jobs:
+    - name: test
+      run: cargo test --locked --all-features --workspace --lib --tests --examples
+
+    - name: clippy
+      run: cargo clippy --all-targets --all-features --workspace -- -D warnings
+
+    - name: rustfmt
+      run: cargo fmt --all --check
+
+    - name: docs
+      run: cargo doc --no-deps --document-private-items --all-features --workspace --examples

@@ -8,10 +8,10 @@ use ratatui::{
 use tokio::sync::mpsc;
 
 use crate::{
+    Events, Result, THEME_CONFIG,
     app::State,
     components::{Component, Loading},
     novel::Novel,
-    Events, Result, THEME_CONFIG,
 };
 
 use super::ReadNovelMsg;

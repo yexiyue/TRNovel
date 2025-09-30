@@ -1,7 +1,7 @@
 use crate::{
+    Result, THEME_CONFIG,
     app::State,
     components::{Component, Search},
-    Result, THEME_CONFIG,
 };
 use async_trait::async_trait;
 use crossterm::event::{KeyCode, KeyEvent};

@@ -2,10 +2,10 @@ use std::collections::HashSet;
 
 use super::BookSourceManagerMsg;
 use crate::{
+    Events, THEME_CONFIG,
     app::State,
     components::{Component, Loading, Search},
     utils::time_to_string,
-    Events, THEME_CONFIG,
 };
 use async_trait::async_trait;
 use crossterm::event::{KeyCode, KeyEvent, KeyEventKind};

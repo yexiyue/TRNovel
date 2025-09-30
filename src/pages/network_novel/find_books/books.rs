@@ -1,9 +1,9 @@
 use crate::{
+    Navigator, THEME_CONFIG,
     app::State,
     components::{Component, Empty, Loading},
     novel::network_novel::NetworkNovel,
     pages::network_novel::book_detail::BookDetail,
-    Navigator, THEME_CONFIG,
 };
 use async_trait::async_trait;
 use crossterm::event::{KeyCode, KeyEvent, KeyEventKind};

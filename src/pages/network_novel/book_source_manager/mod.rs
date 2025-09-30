@@ -1,11 +1,11 @@
 use crate::{
+    Events, Navigator, Result, Router, THEME_CONFIG,
     app::State,
     book_source::BookSourceCache,
     components::{Component, Confirm, ConfirmState, Empty, KeyShortcutInfo},
     errors::Errors,
     pages::Page,
     utils::time_to_string,
-    Events, Navigator, Result, Router, THEME_CONFIG,
 };
 use async_trait::async_trait;
 
@@ -17,7 +17,7 @@ use ratatui::{
     widgets::{Block, Padding, Paragraph, Scrollbar, ScrollbarState},
 };
 use std::sync::Arc;
-use tokio::sync::{mpsc::Sender, Mutex};
+use tokio::sync::{Mutex, mpsc::Sender};
 use tui_widget_list::{ListBuilder, ListState, ListView};
 
 use super::find_books::FindBooks;

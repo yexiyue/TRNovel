@@ -1,9 +1,9 @@
 use crate::{
+    Navigator, Result, RoutePage, Router, THEME_CONFIG,
     app::State,
     components::{Component, KeyShortcutInfo, LoadingWrapper, LoadingWrapperInit},
     novel::network_novel::NetworkNovel,
     pages::ReadNovel,
-    Navigator, Result, RoutePage, Router, THEME_CONFIG,
 };
 use async_trait::async_trait;
 use crossterm::event::{KeyCode, KeyEvent, KeyEventKind};

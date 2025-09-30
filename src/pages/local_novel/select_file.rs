@@ -1,11 +1,11 @@
 use crate::{
+    Events, History, Navigator, Result, RoutePage, Router, THEME_CONFIG,
     app::State,
     components::{Component, Empty, KeyShortcutInfo, Loading, Search},
     errors::Errors,
     file_list::NovelFiles,
     novel::local_novel::LocalNovel,
     pages::{Page, PageWrapper, ReadNovel},
-    Events, History, Navigator, Result, RoutePage, Router, THEME_CONFIG,
 };
 use async_trait::async_trait;
 use crossterm::event::{KeyCode, KeyEvent, KeyEventKind};

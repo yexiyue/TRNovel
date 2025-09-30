@@ -1,11 +1,11 @@
 use std::time::Duration;
 
 use crate::{
+    Events, Navigator, RoutePage, Router,
     app::State,
     components::Loading,
     errors::{Errors, Result},
     pages::{Page, PageWrapper},
-    Events, Navigator, RoutePage, Router,
 };
 use anyhow::anyhow;
 use async_trait::async_trait;

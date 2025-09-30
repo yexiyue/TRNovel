@@ -1,5 +1,5 @@
 use super::components::Component;
-use crate::{app::State, Result};
+use crate::{Result, app::State};
 use async_trait::async_trait;
 
 pub mod navigator;

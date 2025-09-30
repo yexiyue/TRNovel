@@ -1,4 +1,4 @@
-use crate::{app::State, components::Component, THEME_CONFIG};
+use crate::{THEME_CONFIG, app::State, components::Component};
 use async_trait::async_trait;
 use crossterm::event::{KeyCode, KeyEvent, KeyEventKind};
 use ratatui::{

@@ -1,11 +1,7 @@
 use app::App;
 use clap::{Parser, Subcommand};
-use crossterm::{
-    event::{DisableMouseCapture, EnableMouseCapture},
-    execute,
-    style::Stylize,
-};
-use std::{env, ffi::OsString, fmt::Debug, fs, io::stdout, path::PathBuf};
+use ratatui_kit::{ElementExt, element};
+use std::{env, ffi::OsString, fmt::Debug, fs, path::PathBuf};
 use utils::novel_catch_dir;
 
 pub mod app;
@@ -14,6 +10,7 @@ pub mod components;
 pub mod errors;
 pub mod events;
 pub mod file_list;
+pub mod hooks;
 pub mod novel;
 pub mod pages;
 pub mod quick_start;
@@ -25,6 +22,8 @@ pub use cache::*;
 pub use errors::Result;
 pub use events::Events;
 pub use router::*;
+
+use crate::app::AppProps;
 
 pub async fn run() -> Result<()> {
     try_run(env::args()).await
@@ -41,24 +40,10 @@ where
         fs::remove_dir_all(novel_catch_dir()?)?;
         return Ok(());
     }
+    let props = AppProps { trnovel };
 
-    let terminal = ratatui::init();
-    //支持鼠标事件，需要开启鼠标捕获 https://docs.rs/crossterm/0.28.1/crossterm/event/index.html
-    execute!(stdout(), EnableMouseCapture)?;
-    let size = terminal.size()?;
+    element!(App(..props)).fullscreen().await?;
 
-    match App::new(trnovel, size).await {
-        Ok(app) => {
-            app.run(terminal).await?;
-            execute!(stdout(), DisableMouseCapture)?;
-            ratatui::restore();
-        }
-        Err(e) => {
-            execute!(stdout(), DisableMouseCapture)?;
-            ratatui::restore();
-            eprintln!("{}: {}", "Error".red().bold(), e.to_string().red());
-        }
-    }
     Ok(())
 }
 

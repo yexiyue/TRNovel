@@ -1,7 +1,7 @@
 use super::{Novel, NovelChapters};
 use crate::{
-    book_source::BookSourceCache, cache::NetworkNovelCache, errors::Errors, history::HistoryItem,
-    Result,
+    Result, book_source::BookSourceCache, cache::NetworkNovelCache, errors::Errors,
+    history::HistoryItem,
 };
 use anyhow::anyhow;
 use async_trait::async_trait;

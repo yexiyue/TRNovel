@@ -1,4 +1,4 @@
-use crate::{history::HistoryItem, Result};
+use crate::{Result, history::HistoryItem};
 use anyhow::anyhow;
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
@@ -90,7 +90,7 @@ pub trait Novel: Deref<Target = NovelChapters<Self::Chapter>> + DerefMut + Sized
     fn get_chapters_names(&self) -> Result<Vec<(String, usize)>>;
 
     fn get_content<T: FnMut(Result<String>) + Send + 'static>(&mut self, callback: T)
-        -> Result<()>;
+    -> Result<()>;
 
     fn request_chapters<T: FnMut(Result<Vec<Self::Chapter>>) + Send + 'static>(
         &self,

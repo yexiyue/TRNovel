@@ -1,7 +1,7 @@
-use crate::{app::State, Events, Result};
+use crate::{Events, Result, app::State};
 use async_trait::async_trait;
 use crossterm::event::KeyEvent;
-use ratatui::{layout::Rect, Frame};
+use ratatui::{Frame, layout::Rect};
 
 pub mod loading_wrapper;
 pub use loading_wrapper::*;
@@ -11,6 +11,11 @@ pub mod empty;
 pub use empty::*;
 pub mod search;
 pub use search::*;
+
+pub mod loading;
+pub use loading::*;
+pub mod shortcut_info_modal;
+pub use shortcut_info_modal::*;
 
 #[async_trait]
 pub trait Component {

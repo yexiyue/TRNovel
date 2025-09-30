@@ -1,10 +1,10 @@
 use crate::{
+    Events, Navigator, Result, Router,
     app::State,
     components::{Component, KeyShortcutInfo, Loading},
     errors::Errors,
     novel::Novel,
     pages::{Page, PageWrapper},
-    Events, Navigator, Result, Router,
 };
 use async_trait::async_trait;
 use crossterm::event::{KeyCode, KeyEvent, KeyEventKind};

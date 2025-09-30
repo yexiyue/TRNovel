@@ -1,4 +1,4 @@
-use crate::{app::State, components::Component, Events, Result, RoutePage, RouterMsg};
+use crate::{Events, Result, RoutePage, RouterMsg, app::State, components::Component};
 use anyhow::anyhow;
 use async_trait::async_trait;
 use crossterm::event::{KeyCode, KeyEventKind};

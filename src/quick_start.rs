@@ -4,10 +4,10 @@ use anyhow::anyhow;
 use tokio::sync::Mutex;
 
 use crate::{
+    History, HistoryItem, Result, RoutePage,
     book_source::BookSourceCache,
     novel::{local_novel::LocalNovel, network_novel::NetworkNovel},
-    pages::{network_novel::book_detail::BookDetail, ReadNovel},
-    History, HistoryItem, Result, RoutePage,
+    pages::{ReadNovel, network_novel::book_detail::BookDetail},
 };
 
 pub async fn quick_start(

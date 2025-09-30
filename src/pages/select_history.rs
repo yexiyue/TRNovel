@@ -1,11 +1,11 @@
-use super::{network_novel::book_detail::BookDetail, Page, PageWrapper};
+use super::{Page, PageWrapper, network_novel::book_detail::BookDetail};
 use crate::{
+    Navigator, Result, RoutePage, Router, THEME_CONFIG,
     app::State,
     components::{Component, Confirm, ConfirmState, Empty, KeyShortcutInfo},
     history::{History, HistoryItem},
     novel::{local_novel::LocalNovel, network_novel::NetworkNovel},
     pages::ReadNovel,
-    Navigator, Result, RoutePage, Router, THEME_CONFIG,
 };
 use async_trait::async_trait;
 use crossterm::event::{KeyCode, KeyEvent, KeyEventKind};
@@ -15,7 +15,7 @@ use ratatui::{
     widgets::{Block, Padding, Paragraph, Scrollbar, ScrollbarState, Widget},
 };
 use std::sync::Arc;
-use tokio::sync::{mpsc::Sender, Mutex};
+use tokio::sync::{Mutex, mpsc::Sender};
 use tui_widget_list::{ListBuilder, ListState, ListView};
 
 struct ListItem {

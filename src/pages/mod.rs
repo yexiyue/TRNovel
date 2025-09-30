@@ -1,7 +1,7 @@
 use crate::{
+    Events, Navigator, Result, RoutePage, Router,
     app::State,
     components::{Component, ShortcutInfo, ShortcutInfoState},
-    Events, Navigator, Result, RoutePage, Router,
 };
 use async_trait::async_trait;
 use crossterm::event::{KeyCode, KeyEvent, KeyEventKind};

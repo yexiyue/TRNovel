@@ -1,9 +1,9 @@
 use crate::{
+    Events, Result, Router,
     app::State,
     components::{Component, KeyShortcutInfo, Loading, Search},
     errors::Errors,
     pages::{Page, PageWrapper},
-    Events, Result, Router,
 };
 use anyhow::anyhow;
 use async_trait::async_trait;
@@ -11,8 +11,8 @@ use crossterm::event::{KeyCode, KeyEvent, KeyEventKind};
 use parse_book_source::{BookList, BookSource, BookSourceParser, ExploreItem, ExploreList};
 use ratatui::layout::{Constraint, Layout};
 use std::sync::Arc;
-use tokio::sync::mpsc::Sender;
 use tokio::sync::Mutex;
+use tokio::sync::mpsc::Sender;
 
 pub mod books;
 pub use books::*;

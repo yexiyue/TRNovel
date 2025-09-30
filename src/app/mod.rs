@@ -1,197 +1,81 @@
-use crate::{
-    book_source::BookSourceCache,
-    components::{Component, Warning},
-    errors::{Errors, Result},
-    events::{event_loop, Events},
-    history::History,
-    pages::{
-        home::Home, local_novel::local_novel_first_page, network_novel::network_novel_first_page,
-        select_history::SelectHistory,
-    },
-    quick_start::quick_start,
-    routes::Routes,
-    Commands, TRNovel,
+use ratatui_kit::{
+    AnyElement, Context, Hooks, Props, UseFuture, UseState, component, element,
+    prelude::{ContextProvider, Fragment, RouterProvider},
+    routes,
 };
-use crossterm::event::{KeyCode, KeyEventKind, KeyModifiers};
-use ratatui::{layout::Size, DefaultTerminal, Frame};
-use std::sync::Arc;
-use tokio::sync::mpsc::{UnboundedReceiver, UnboundedSender};
-use tokio::sync::Mutex;
-use tokio_util::sync::CancellationToken;
 
 pub mod state;
 pub use state::State;
 
-pub struct App {
-    pub show_exit: bool,
-    pub event_rx: UnboundedReceiver<Events>,
-    pub event_tx: UnboundedSender<Events>,
-    pub error: Option<String>,
-    pub warning: Option<String>,
-    pub cancellation_token: CancellationToken,
-    pub routes: Routes,
-    pub state: State,
+use crate::{
+    History, TRNovel,
+    book_source::BookSourceCache,
+    components::{Loading2, WarningModal},
+    errors::Errors,
+    pages::home::Home,
+};
+
+#[derive(Debug, Props)]
+pub struct AppProps {
+    pub trnovel: TRNovel,
 }
 
-impl App {
-    pub async fn new(args: TRNovel, size: Size) -> Result<Self> {
-        let (tx, rx) = tokio::sync::mpsc::unbounded_channel();
-        let cancellation_token = CancellationToken::new();
+#[component]
+pub fn App(_props: &AppProps, mut hooks: Hooks) -> impl Into<AnyElement<'static>> {
+    let mut loading = hooks.use_state(|| true);
+    let history_state = hooks.use_state(|| None::<History>);
+    let book_sources_catch_state = hooks.use_state(|| None::<BookSourceCache>);
+    let error = hooks.use_state(|| None::<String>);
 
-        event_loop(tx.clone(), cancellation_token.clone());
+    hooks.use_future(async move {
+        loading.set(true);
+        tokio::time::sleep(std::time::Duration::from_millis(1000)).await;
+        match (move || {
+            let history = History::load()?;
+            history_state.write().replace(history);
 
-        let history = History::load()?;
-        let book_sources = Arc::new(Mutex::new(BookSourceCache::load()?));
+            let book_sources = BookSourceCache::load()?;
+            book_sources_catch_state.write().replace(book_sources);
 
-        let state = State {
-            book_sources: book_sources.clone(),
-            history: Arc::new(Mutex::new(history.clone())),
-            size: Arc::new(Mutex::new(Some(size))),
-        };
-
-        let (first_pages, current_route) = match args.subcommand {
-            Some(Commands::Network) => (vec![network_novel_first_page()?], 0),
-            Some(Commands::History) => (vec![SelectHistory::to_page_route()], 0),
-            Some(Commands::Local { mut path }) => {
-                if path.is_none() {
-                    path = history.local_path;
-                }
-
-                (vec![local_novel_first_page(path)], 0)
-            }
-            Some(Commands::Quick) => (
-                vec![
-                    Home::to_page_route(),
-                    quick_start(history, book_sources).await?,
-                ],
-                1,
-            ),
-            _ => (vec![Home::to_page_route()], 0),
-        };
-
-        Ok(Self {
-            event_tx: tx.clone(),
-            event_rx: rx,
-            show_exit: false,
-            error: None,
-            warning: None,
-            routes: Routes::new(first_pages, current_route, state.clone()).await?,
-            state,
-            cancellation_token,
-        })
-    }
-
-    pub async fn exit(&mut self) -> Result<()> {
-        self.routes.on_exit().await?;
-        self.state.history.lock().await.save()?;
-        self.cancellation_token.cancel();
-        self.show_exit = true;
-        Ok(())
-    }
-
-    pub fn render(&mut self, frame: &mut Frame<'_>) -> Result<()> {
-        self.routes.render(frame, frame.area())?;
-
-        if let Some(warning) = &self.error {
-            frame.render_widget(Warning::new(warning, true), frame.area());
-        }
-
-        if let Some(warning) = &self.warning {
-            frame.render_widget(Warning::new(warning, false), frame.area());
-        }
-        Ok(())
-    }
-
-    pub async fn handle_events(&mut self, terminal: &mut DefaultTerminal) -> Result<()> {
-        let Some(events) = self.event_rx.recv().await else {
-            return Ok(());
-        };
-
-        // 消耗型事件，如果返回了None就默认不进行消耗，如果不返回Render事件，就会导致不能渲染
-        let events = if self.error.is_none() && self.warning.is_none() {
-            self.routes
-                .handle_events(events.clone(), self.state.clone())
-                .await?
-        } else {
-            Some(events)
-        };
-
-        if let Some(events) = events {
-            match events {
-                Events::KeyEvent(key) => {
-                    if key.kind == KeyEventKind::Press {
-                        if self.error.is_some() {
-                            if key.code == KeyCode::Char('q') {
-                                self.exit().await?;
-                            }
-                        } else if self.warning.is_some() {
-                            if key.code == KeyCode::Esc {
-                                self.warning = None;
-                            }
-                        } else {
-                            match key.code {
-                                KeyCode::Char('q') => {
-                                    self.exit().await?;
-                                }
-                                KeyCode::Char('c') => {
-                                    if key.modifiers.contains(KeyModifiers::CONTROL) {
-                                        self.exit().await?;
-                                    }
-                                }
-                                _ => {}
-                            }
-                        }
-                    }
-                }
-                Events::Error(e) => self.error = Some(e),
-                Events::Resize(width, height) => {
-                    self.state
-                        .size
-                        .lock()
-                        .await
-                        .replace(Size::new(width, height));
-                }
-                _ => {}
-            }
-        }
-
-        terminal.draw(|frame| match self.render(frame) {
+            Ok::<(), Errors>(())
+        })() {
             Ok(_) => {}
             Err(e) => {
-                self.error = Some(e.to_string());
-            }
-        })?;
-
-        Ok(())
-    }
-
-    /// 主循环
-    pub async fn run(mut self, mut terminal: DefaultTerminal) -> Result<()> {
-        while !self.show_exit {
-            // 先处理事件
-            match self.handle_events(&mut terminal).await {
-                Ok(_) => {}
-                Err(e) => {
-                    if let Errors::Warning(tip) = e {
-                        self.warning = Some(tip);
-                    } else {
-                        self.error = Some(e.to_string());
-                    }
-                }
-            }
-
-            // 然后处理消息
-            match self.routes.update().await {
-                Ok(_) => {}
-                Err(e) => {
-                    if let Errors::Warning(tip) = e {
-                        self.warning = Some(tip);
-                    } else {
-                        self.error = Some(e.to_string());
-                    }
-                }
+                error.write().replace(e.to_string());
             }
         }
-        Ok(())
+
+        loading.set(false);
+    });
+
+    let routes = routes!(
+        "/"=>Home,
+    );
+
+    if error.read().is_some() {
+        element!(WarningModal(
+            tip: error.read().clone().unwrap_or_default(),
+            is_error: error.read().is_some(),
+            open: true,
+        ))
+        .into_any()
+    } else {
+        element!(Fragment{
+            #(if loading.get() {
+                element!(Loading2(tip:"加载缓存中...")).into_any()
+            } else {
+                element!(
+                    ContextProvider(value:Context::owned(history_state)){
+                        ContextProvider(value:Context::owned(book_sources_catch_state)){
+                            RouterProvider(
+                                routes:routes,
+                                index_path:"/"
+                            )
+                        }
+                    }
+                ).into_any()
+            })
+        })
+        .into_any()
     }
 }

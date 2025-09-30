@@ -1,9 +1,9 @@
 use super::ReadNovelMsg;
 use crate::{
+    Result, THEME_CONFIG,
     app::State,
     components::{Component, Empty, Search},
     novel::Novel,
-    Result, THEME_CONFIG,
 };
 use async_trait::async_trait;
 use crossterm::event::{KeyCode, KeyEvent};

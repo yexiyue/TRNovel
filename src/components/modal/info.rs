@@ -5,6 +5,10 @@ use ratatui::{
     text::Line,
     widgets::{Block, Clear, Row, StatefulWidget, Table, Widget},
 };
+use ratatui_kit::{
+    AnyElement, Props, component, element,
+    prelude::{Fragment, Modal},
+};
 use std::ops::{Deref, DerefMut};
 use tui_scrollview::{ScrollView, ScrollViewState, ScrollbarVisibility};
 
@@ -72,10 +76,10 @@ impl KeyShortcutInfo {
         )
     }
 
-    pub fn rows(&self) -> Vec<Row<'_>> {
+    pub fn rows(&self) -> Vec<Row<'static>> {
         self.0
             .iter()
-            .map(|(key, info)| Row::new(vec![key.as_str(), info.as_str()]))
+            .map(|(key, info)| Row::new(vec![key.clone(), info.clone()]))
             .collect::<Vec<_>>()
     }
 }
@@ -186,3 +190,4 @@ impl StatefulWidget for ShortcutInfo {
         scroll_view.render(horizontal, buf, &mut state.state);
     }
 }
+

@@ -1,8 +1,13 @@
+use crossterm::event::{Event, KeyEventKind};
 use ratatui::{
     layout::{Alignment, Constraint, Flex, Layout, Margin},
-    style::Stylize,
+    style::{Style, Stylize},
     text::Line,
     widgets::{Block, Clear, Padding, Paragraph, Widget, Wrap},
+};
+use ratatui_kit::{
+    AnyElement, Handler, Hooks, Props, UseEvents, UseExit, component, element,
+    prelude::{Border, Modal, Text},
 };
 
 use crate::THEME_CONFIG;
@@ -71,4 +76,80 @@ impl Widget for Warning {
             .not_dim()
             .render(horizontal.inner(Margin::new(2, 0)), buf);
     }
+}
+
+#[derive(Props, Default)]
+pub struct WarningModalProps {
+    pub tip: String,
+    pub is_error: bool,
+    pub open: bool,
+    pub on_close: Handler<'static, ()>,
+}
+
+#[component]
+pub fn WarningModal(
+    props: &mut WarningModalProps,
+    mut hooks: Hooks,
+) -> impl Into<AnyElement<'static>> {
+    let mut exit = hooks.use_exit();
+
+    hooks.use_events({
+        let is_error = props.is_error;
+        let mut handle = props.on_close.take();
+
+        move |event| {
+            if let Event::Key(key) = event
+                && key.kind == KeyEventKind::Press
+            {
+                match key.code {
+                    crossterm::event::KeyCode::Esc if !is_error => {
+                        handle(());
+                    }
+                    crossterm::event::KeyCode::Char('q') if is_error => {
+                        if handle.is_default() {
+                            exit();
+                        } else {
+                            handle(());
+                        }
+                    }
+                    _ => {}
+                }
+            }
+        }
+    });
+
+    element!(Modal(
+        open: props.open,
+        width: Constraint::Percentage(50),
+        height: Constraint::Length(6),
+        style: Style::new().dim(),
+    ){
+        Border(
+            top_title: Some(Line::from(if props.is_error {"错误"} else {"警告"}).style(
+                if props.is_error {
+                    THEME_CONFIG.error_modal.border_title
+                } else {
+                    THEME_CONFIG.warning_modal.border_title
+                }
+            ).centered()),
+            bottom_title: Some(Line::from(if props.is_error {"按q退出"} else {"按ESC键继续"}).style(
+                if props.is_error {
+                    THEME_CONFIG.error_modal.border_info
+                } else {
+                    THEME_CONFIG.warning_modal.border_info
+                }
+            ).centered()),
+            style: if props.is_error {
+                THEME_CONFIG.error_modal.border.not_dim()
+            } else {
+                THEME_CONFIG.warning_modal.border.not_dim()
+            },
+            padding: Padding::uniform(1),
+        ){
+            Text(
+                text: props.tip.clone(),
+                alignment:Alignment::Center,
+            )
+        }
+    })
 }
