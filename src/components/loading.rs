@@ -7,7 +7,7 @@ use ratatui_kit::{
 };
 use throbber_widgets_tui::{Throbber, ThrobberState};
 
-use crate::THEME_CONFIG;
+use crate::hooks::UseThemeConfig;
 
 #[derive(Debug, Clone, Default, Props)]
 pub struct LoadingProps {
@@ -16,13 +16,14 @@ pub struct LoadingProps {
 
 #[component]
 pub fn Loading2(props: &LoadingProps, mut hooks: Hooks) -> impl Into<AnyElement<'static>> {
+    let theme = hooks.use_theme_config();
     let state = hooks.use_state(ThrobberState::default);
 
     let throbber = Throbber::default()
         .label(props.tip.clone())
         .throbber_set(throbber_widgets_tui::ASCII)
         .to_line(&state.read())
-        .style(THEME_CONFIG.loading_modal.text)
+        .style(theme.loading_modal.text)
         .centered();
 
     hooks.use_future(async move {
@@ -39,7 +40,7 @@ pub fn Loading2(props: &LoadingProps, mut hooks: Hooks) -> impl Into<AnyElement<
         ){
             Border(
                 justify_content:Flex::Center,
-                border_style:THEME_CONFIG.loading_modal.border,
+                border_style:theme.loading_modal.border,
             ){
                 View(height:Constraint::Length(1)){
                     $throbber
@@ -48,5 +49,3 @@ pub fn Loading2(props: &LoadingProps, mut hooks: Hooks) -> impl Into<AnyElement<
         }
     )
 }
-
-

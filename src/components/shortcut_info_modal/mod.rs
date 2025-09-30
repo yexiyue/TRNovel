@@ -5,11 +5,11 @@ use ratatui::{
     widgets::{Block, Row, Table},
 };
 use ratatui_kit::{
-    AnyElement, Props, component, element,
+    AnyElement, Hooks, Props, component, element,
     prelude::{Modal, ScrollView, View},
 };
 
-use crate::{THEME_CONFIG, components::KeyShortcutInfo};
+use crate::{components::KeyShortcutInfo, hooks::UseThemeConfig};
 
 #[derive(Debug, Clone, Props, Default)]
 pub struct ShortcutInfoModalProps {
@@ -18,21 +18,23 @@ pub struct ShortcutInfoModalProps {
 }
 
 #[component]
-pub fn ShortcutInfoModal(props: &ShortcutInfoModalProps) -> impl Into<AnyElement<'static>> {
+pub fn ShortcutInfoModal(
+    props: &ShortcutInfoModalProps,
+    hooks: Hooks,
+) -> impl Into<AnyElement<'static>> {
+    let theme = hooks.use_theme_config();
     let widths = [Constraint::Fill(1), Constraint::Fill(1)];
-    let header = Row::new(vec!["描述", "快捷键"]).style(THEME_CONFIG.highlight);
+
+    let header = Row::new(vec!["描述", "快捷键"]).style(theme.highlight);
 
     let key_table = Table::new(props.key_shortcut_info.rows(), widths)
         .header(header.clone())
         .block(
-            Block::bordered()
-                .style(THEME_CONFIG.basic.border)
-                .not_dim()
-                .title(
-                    Line::from("当前页")
-                        .centered()
-                        .style(THEME_CONFIG.basic.border_title),
-                ),
+            Block::bordered().style(theme.basic.border).not_dim().title(
+                Line::from("当前页")
+                    .centered()
+                    .style(theme.basic.border_title),
+            ),
         );
 
     let global_shortcut_info = KeyShortcutInfo::new(vec![
@@ -46,19 +48,15 @@ pub fn ShortcutInfoModal(props: &ShortcutInfoModalProps) -> impl Into<AnyElement
     let global_table = Table::new(global_shortcut_info.rows(), widths)
         .header(header)
         .block(
-            Block::bordered()
-                .style(THEME_CONFIG.basic.border)
-                .not_dim()
-                .title(
-                    Line::from("全局")
-                        .centered()
-                        .style(THEME_CONFIG.basic.border_title),
-                ),
+            Block::bordered().style(theme.basic.border).not_dim().title(
+                Line::from("全局")
+                    .centered()
+                    .style(theme.basic.border_title),
+            ),
         );
 
     let global_height = global_shortcut_info.0.len() as u16;
     let key_height = props.key_shortcut_info.0.len() as u16;
-    let height = global_height + key_height + 3 * 2;
 
     element!(Modal(
         width:Constraint::Percentage(60),
@@ -67,8 +65,10 @@ pub fn ShortcutInfoModal(props: &ShortcutInfoModalProps) -> impl Into<AnyElement
         style:Style::new().dim(),
     ){
         ScrollView(margin:Margin::new(0,1)){
-            View(height:Constraint::Length(height)){
+            View(height:Constraint::Length(key_height+3)){
                 $key_table
+            }
+            View(height:Constraint::Length(global_height+3)){
                 $global_table
             }
         }

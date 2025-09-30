@@ -223,11 +223,11 @@ impl Component for BookSourceManager {
                     Ok(None)
                 }
                 KeyCode::Enter => {
-                    if let Some(index) = self.state.selected {
-                        if self.confirm_state.is_confirm() {
-                            self.book_sources.try_lock().unwrap().remove(index);
-                            self.state.select(None);
-                        }
+                    if let Some(index) = self.state.selected
+                        && self.confirm_state.is_confirm()
+                    {
+                        self.book_sources.try_lock().unwrap().remove(index);
+                        self.state.select(None);
                     }
                     self.confirm_state.hide();
                     Ok(None)

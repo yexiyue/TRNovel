@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use tokio::{
     sync::Semaphore,
-    time::{interval, Duration},
+    time::{Duration, interval},
 };
 use tokio_util::sync::CancellationToken;
 

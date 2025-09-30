@@ -1,3 +1,5 @@
+use std::fs::File;
+
 use ratatui_kit::{
     AnyElement, Context, Hooks, Props, UseFuture, UseState, component, element,
     prelude::{ContextProvider, Fragment, RouterProvider},
@@ -8,11 +10,12 @@ pub mod state;
 pub use state::State;
 
 use crate::{
-    History, TRNovel,
+    History, TRNovel, ThemeConfig,
     book_source::BookSourceCache,
     components::{Loading2, WarningModal},
     errors::Errors,
     pages::home::Home,
+    utils::novel_catch_dir,
 };
 
 #[derive(Debug, Props)]
@@ -23,6 +26,7 @@ pub struct AppProps {
 #[component]
 pub fn App(_props: &AppProps, mut hooks: Hooks) -> impl Into<AnyElement<'static>> {
     let mut loading = hooks.use_state(|| true);
+    let mut theme_config_state = hooks.use_state(ThemeConfig::default);
     let history_state = hooks.use_state(|| None::<History>);
     let book_sources_catch_state = hooks.use_state(|| None::<BookSourceCache>);
     let error = hooks.use_state(|| None::<String>);
@@ -36,6 +40,12 @@ pub fn App(_props: &AppProps, mut hooks: Hooks) -> impl Into<AnyElement<'static>
 
             let book_sources = BookSourceCache::load()?;
             book_sources_catch_state.write().replace(book_sources);
+
+            let path = novel_catch_dir()?.join("theme.json");
+
+            if let Ok(file) = File::open(path) {
+                theme_config_state.set(serde_json::from_reader(file).unwrap_or_default());
+            }
 
             Ok::<(), Errors>(())
         })() {
@@ -65,12 +75,14 @@ pub fn App(_props: &AppProps, mut hooks: Hooks) -> impl Into<AnyElement<'static>
                 element!(Loading2(tip:"加载缓存中...")).into_any()
             } else {
                 element!(
-                    ContextProvider(value:Context::owned(history_state)){
-                        ContextProvider(value:Context::owned(book_sources_catch_state)){
-                            RouterProvider(
-                                routes:routes,
-                                index_path:"/"
-                            )
+                    ContextProvider(value:Context::owned(theme_config_state)){
+                        ContextProvider(value:Context::owned(history_state)){
+                            ContextProvider(value:Context::owned(book_sources_catch_state)){
+                                RouterProvider(
+                                    routes:routes,
+                                    index_path:"/"
+                                )
+                            }
                         }
                     }
                 ).into_any()

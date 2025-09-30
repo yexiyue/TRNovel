@@ -1,17 +1,17 @@
 use crate::{
-    THEME_CONFIG,
     components::{KeyShortcutInfo, ShortcutInfoModal},
+    hooks::UseThemeConfig,
 };
 
 use crossterm::event::{Event, KeyCode, KeyEventKind};
 use ratatui::{
-    layout::{Constraint, Direction, Flex},
+    layout::Constraint,
     text::Line,
     widgets::{List, ListState, Paragraph, Wrap},
 };
 use ratatui_kit::{
     AnyElement, Hooks, UseEvents, UseRouter, UseState, UseTerminalSize, component, element,
-    prelude::{Center, Fragment, View},
+    prelude::{Center, View},
 };
 use tui_big_text::{BigText, PixelSize};
 
@@ -20,7 +20,10 @@ pub fn Home(mut hooks: Hooks) -> impl Into<AnyElement<'static>> {
     let state = hooks.use_state(ListState::default);
     let mut info_modal_open = hooks.use_state(|| false);
 
+    let theme = hooks.use_theme_config();
+
     let navigate = hooks.use_navigate();
+
     hooks.use_terminal_size();
 
     hooks.use_events(move |event| {
@@ -74,12 +77,12 @@ pub fn Home(mut hooks: Hooks) -> impl Into<AnyElement<'static>> {
         .pixel_size(PixelSize::Quadrant)
         .lines(vec!["TRNovel".into()])
         .centered()
-        .style(THEME_CONFIG.logo)
+        .style(theme.logo)
         .build();
 
     let info_txt = Paragraph::new(vec!["终端小说阅读器 (Terminal reader for novel)".into()])
         .wrap(Wrap { trim: true })
-        .style(THEME_CONFIG.basic.text)
+        .style(theme.basic.text)
         .centered();
 
     let list = List::new(vec![
@@ -88,8 +91,8 @@ pub fn Home(mut hooks: Hooks) -> impl Into<AnyElement<'static>> {
         Line::from("历史记录").centered(),
         Line::from("主题设置").centered(),
     ])
-    .style(THEME_CONFIG.basic.text)
-    .highlight_style(THEME_CONFIG.selected);
+    .style(theme.basic.text)
+    .highlight_style(theme.selected);
 
     element!(
         Center{
@@ -115,6 +118,5 @@ pub fn Home(mut hooks: Hooks) -> impl Into<AnyElement<'static>> {
                 open:info_modal_open.get(),
             )
         }
-
     )
 }

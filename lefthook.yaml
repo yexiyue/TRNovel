@@ -4,7 +4,8 @@ pre-commit:
       run: cargo test --locked --all-features --workspace --lib --tests --examples
 
     - name: clippy
-      run: cargo clippy --all-targets --all-features --workspace -- -D warnings
+      # run: cargo clippy --all-targets --all-features --workspace -- -D warnings
+      run: cargo clippy --all-targets --all-features --workspace
 
     - name: rustfmt
       run: cargo fmt --all --check

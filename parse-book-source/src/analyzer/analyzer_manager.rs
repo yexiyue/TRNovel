@@ -1,7 +1,7 @@
 use std::{collections::HashMap, sync::LazyLock};
 
-use super::{json::value_to_string, Analyzer, AnalyzerType, Analyzers, SingleRule};
-use crate::{utils::replace_all, Result};
+use super::{Analyzer, AnalyzerType, Analyzers, SingleRule, json::value_to_string};
+use crate::{Result, utils::replace_all};
 use anyhow::anyhow;
 use regex::Regex;
 use serde_json::Value;
@@ -216,10 +216,10 @@ impl AnalyzerManager {
             if left < right {
                 return replace_all(&EXPRESSION, &new_rule, |captures| {
                     let sub_rule = captures.get(1).map(|m| m.as_str().trim()).unwrap_or("");
-                    if extra.is_some() {
-                        if let Some(extra_value) = extra.as_ref().unwrap().get(sub_rule) {
-                            return value_to_string(extra_value);
-                        }
+                    if extra.is_some()
+                        && let Some(extra_value) = extra.as_ref().unwrap().get(sub_rule)
+                    {
+                        return value_to_string(extra_value);
                     }
                     self.get_string(sub_rule, data, None)
                 });
@@ -257,7 +257,10 @@ mod tests {
                 "page":123
             })),
         );
-        assert_eq!(res.unwrap(), "https://www.xmkanshu.com/service/getContent?fr=smsstg&v=4&uid=B197589CF54DC527538FADCAE6BDBC78&urbid=%2Fbook_95_0&bkid=123&crid=300&pg=1");
+        assert_eq!(
+            res.unwrap(),
+            "https://www.xmkanshu.com/service/getContent?fr=smsstg&v=4&uid=B197589CF54DC527538FADCAE6BDBC78&urbid=%2Fbook_95_0&bkid=123&crid=300&pg=1"
+        );
     }
 
     #[test]

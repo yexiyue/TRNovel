@@ -155,16 +155,16 @@ where
                 self.get_content()?;
             }
             ReadNovelMsg::QueryChapters(query) => {
-                if let Some(index) = query.strip_prefix("$") {
-                    if let Ok(index) = index.parse::<usize>() {
-                        if let Some(chapter) = self.chapters.get(index.saturating_sub(1)) {
-                            self.select_chapter.set_list(vec![chapter.clone()], None);
-                        } else {
-                            self.select_chapter.set_list(vec![], None);
-                        }
-
-                        return Ok(());
+                if let Some(index) = query.strip_prefix("$")
+                    && let Ok(index) = index.parse::<usize>()
+                {
+                    if let Some(chapter) = self.chapters.get(index.saturating_sub(1)) {
+                        self.select_chapter.set_list(vec![chapter.clone()], None);
+                    } else {
+                        self.select_chapter.set_list(vec![], None);
                     }
+
+                    return Ok(());
                 }
 
                 let filter_list = self

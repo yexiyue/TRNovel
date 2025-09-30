@@ -10,7 +10,7 @@ use ratatui_kit::{
     prelude::{Border, Modal, Text},
 };
 
-use crate::THEME_CONFIG;
+use crate::{THEME_CONFIG, hooks::UseThemeConfig};
 
 #[derive(Debug, Clone)]
 pub struct Warning {
@@ -91,6 +91,7 @@ pub fn WarningModal(
     props: &mut WarningModalProps,
     mut hooks: Hooks,
 ) -> impl Into<AnyElement<'static>> {
+    let theme = hooks.use_theme_config();
     let mut exit = hooks.use_exit();
 
     hooks.use_events({
@@ -127,22 +128,22 @@ pub fn WarningModal(
         Border(
             top_title: Some(Line::from(if props.is_error {"错误"} else {"警告"}).style(
                 if props.is_error {
-                    THEME_CONFIG.error_modal.border_title
+                    theme.error_modal.border_title
                 } else {
-                    THEME_CONFIG.warning_modal.border_title
+                    theme.warning_modal.border_title
                 }
             ).centered()),
             bottom_title: Some(Line::from(if props.is_error {"按q退出"} else {"按ESC键继续"}).style(
                 if props.is_error {
-                    THEME_CONFIG.error_modal.border_info
+                    theme.error_modal.border_info
                 } else {
-                    THEME_CONFIG.warning_modal.border_info
+                    theme.warning_modal.border_info
                 }
             ).centered()),
             style: if props.is_error {
-                THEME_CONFIG.error_modal.border.not_dim()
+                theme.error_modal.border.not_dim()
             } else {
-                THEME_CONFIG.warning_modal.border.not_dim()
+                theme.warning_modal.border.not_dim()
             },
             padding: Padding::uniform(1),
         ){

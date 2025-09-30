@@ -5,10 +5,6 @@ use ratatui::{
     text::Line,
     widgets::{Block, Clear, Row, StatefulWidget, Table, Widget},
 };
-use ratatui_kit::{
-    AnyElement, Props, component, element,
-    prelude::{Fragment, Modal},
-};
 use std::ops::{Deref, DerefMut};
 use tui_scrollview::{ScrollView, ScrollViewState, ScrollbarVisibility};
 
@@ -190,4 +186,3 @@ impl StatefulWidget for ShortcutInfo {
         scroll_view.render(horizontal, buf, &mut state.state);
     }
 }
-
