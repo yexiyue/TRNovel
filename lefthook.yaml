@@ -8,7 +8,8 @@ pre-commit:
       run: cargo clippy --all-targets --all-features --workspace
 
     - name: rustfmt
-      run: cargo fmt --all --check
+      run: cargo fmt --all
+      stage_fixed: true
 
     - name: docs
       run: cargo doc --no-deps --document-private-items --all-features --workspace --examples

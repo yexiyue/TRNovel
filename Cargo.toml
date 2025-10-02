@@ -41,8 +41,10 @@ thiserror = { workspace = true }
 tokio = { workspace = true }
 tokio-util = { workspace = true }
 futures = { workspace = true }
-ratatui-kit = { version = "0.5.2", features = ["full"] }
-# ratatui-kit = { features = ["full"], path = "../ratatui-kit/packages/ratatui-kit" }
+# ratatui-kit = { version = "0.5.3", features = ["full"] }
+ratatui-kit = { features = [
+    "full",
+], path = "../ratatui-kit/packages/ratatui-kit" }
 
 
 [workspace]

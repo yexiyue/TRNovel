@@ -14,7 +14,7 @@ use crate::{
     book_source::BookSourceCache,
     components::{Loading2, WarningModal},
     errors::Errors,
-    pages::home::Home,
+    pages::{home::Home, playground::Playground},
     utils::novel_catch_dir,
 };
 
@@ -60,6 +60,7 @@ pub fn App(_props: &AppProps, mut hooks: Hooks) -> impl Into<AnyElement<'static>
 
     let routes = routes!(
         "/"=>Home,
+        "/playground"=>Playground
     );
 
     if error.read().is_some() {
@@ -80,7 +81,7 @@ pub fn App(_props: &AppProps, mut hooks: Hooks) -> impl Into<AnyElement<'static>
                             ContextProvider(value:Context::owned(book_sources_catch_state)){
                                 RouterProvider(
                                     routes:routes,
-                                    index_path:"/"
+                                    index_path:"/playground",
                                 )
                             }
                         }

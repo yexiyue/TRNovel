@@ -24,6 +24,8 @@ pub trait UseThemeConfig {
 
 impl UseThemeConfig for Hooks<'_, '_> {
     fn use_theme_config(&self) -> ThemeConfig {
-        self.use_context::<State<ThemeConfig>>().read().clone()
+        self.try_use_context::<State<ThemeConfig>>()
+            .map(|s| s.read().clone())
+            .unwrap_or_default()
     }
 }

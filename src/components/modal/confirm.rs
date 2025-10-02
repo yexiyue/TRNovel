@@ -4,6 +4,10 @@ use ratatui::{
     style::{Style, Stylize},
     widgets::{Block, Clear, Paragraph, StatefulWidget, Widget, Wrap},
 };
+use ratatui_kit::{
+    AnyElement, component, element,
+    prelude::{Fragment, Modal},
+};
 
 #[derive(Debug, Clone)]
 pub struct Confirm {
@@ -119,4 +123,11 @@ impl StatefulWidget for Confirm {
                 .render(right, buf);
         }
     }
+}
+
+#[component]
+pub fn ConfirmModal() -> impl Into<AnyElement<'static>> {
+    element!(Modal(){
+
+    })
 }

@@ -75,11 +75,12 @@ impl ThemeConfig {
             highlight: Style::new().fg(primary_color),
             empty: Style::new().fg(warning_color).bold(),
             search: SearchSetting {
-                success_border: Style::new().fg(success_color),
-                error_border: Style::new().fg(error_color),
-                error_border_info: Style::new().fg(info_color),
-                placeholder: Style::new().fg(primary_color),
-                text: Style::new().fg(text_color),
+                success_border: Style::new().fg(success_color).dim(),
+                success_border_info: Style::new().fg(success_color).not_dim(),
+                error_border: Style::new().fg(error_color).dim(),
+                error_border_info: Style::new().fg(error_color).not_dim(),
+                placeholder: Style::new().fg(text_color).dark_gray().not_dim(),
+                text: Style::new().fg(text_color).not_dim(),
             },
             loading_modal: BasicSetting {
                 border: basic.border.fg(primary_color),
@@ -133,6 +134,7 @@ pub struct BasicSetting {
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct SearchSetting {
     pub success_border: Style,
+    pub success_border_info: Style,
     pub error_border: Style,
     pub error_border_info: Style,
     pub placeholder: Style,

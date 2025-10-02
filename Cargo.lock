@@ -1861,9 +1861,7 @@ dependencies = [
 
 [[package]]
 name = "ratatui-kit"
-version = "0.5.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "be489231cd543a9fc8d2c11cdb346b3196c91c37bf60f5072fe6005a07789924"
+version = "0.5.3"
 dependencies = [
  "any_key",
  "crossterm",
@@ -1872,14 +1870,13 @@ dependencies = [
  "ratatui",
  "ratatui-kit-macros",
  "regex",
+ "tui-input",
  "tui-textarea",
 ]
 
 [[package]]
 name = "ratatui-kit-macros"
 version = "0.5.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "22bf3a8e830d8a0db564c642d017597c912580049a7569e79708007acef9de73"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -2787,6 +2784,16 @@ dependencies = [
  "font8x8",
  "itertools 0.14.0",
  "ratatui",
+]
+
+[[package]]
+name = "tui-input"
+version = "0.14.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "911e93158bf80bbc94bad533b2b16e3d711e1132d69a6a6980c3920a63422c19"
+dependencies = [
+ "ratatui",
+ "unicode-width 0.2.0",
 ]
 
 [[package]]

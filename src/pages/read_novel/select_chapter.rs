@@ -90,7 +90,8 @@ where
             Layout::vertical([Constraint::Length(3), Constraint::Fill(1)]).areas(area);
 
         let index = if let Some(chapter_index) = self.state.selected() {
-            self.chapters[chapter_index.min(self.chapters.len() - 1)].1 + 1
+            // todo: 优化
+            self.chapters[chapter_index.min(self.chapters.len() - 1).max(0)].1 + 1
         } else {
             0
         };

@@ -17,6 +17,8 @@ pub use loading::*;
 pub mod shortcut_info_modal;
 pub use shortcut_info_modal::*;
 
+pub mod search_input;
+
 #[async_trait]
 pub trait Component {
     /// 渲染组件样式
