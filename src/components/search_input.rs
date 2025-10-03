@@ -8,7 +8,7 @@ use ratatui::{
 };
 use ratatui_kit::{
     AnyElement, Handler, Hooks, Props, UseEvents, UseState, component, element,
-    prelude::{Border, Input as InputInner, tui_input},
+    prelude::{Border, Input, tui_input},
 };
 use tui_input::backend::crossterm::EventHandler;
 
@@ -86,7 +86,7 @@ pub fn SearchInput(
     element!(
         Border(
             height:Constraint::Length(3),
-            style: if let Some(valid)=is_valid.get() && is_editing.get(){
+            border_style: if let Some(valid)=is_valid.get() && is_editing.get(){
                         if valid {
                             theme.search.success_border
                         } else {
@@ -105,7 +105,7 @@ pub fn SearchInput(
                 None
             },
         ){
-            InputInner(
+            Input(
                 input: value.read().clone(),
                 cursor_style: Style::new().on_dark_gray(),
                 style: theme.search.text,

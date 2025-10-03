@@ -1,0 +1,74 @@
+use crossterm::event::{Event, KeyCode, KeyEventKind};
+use ratatui::{
+    text::Line,
+    widgets::{List, ListItem, ListState},
+};
+use ratatui_kit::{
+    AnyElement, Handler, Hooks, Props, UseEvents, UseState, component, element, prelude::Border,
+};
+
+use crate::hooks::{UseScrollbar, UseThemeConfig};
+
+#[derive(Default, Props)]
+pub struct SelectProps<T>
+where
+    T: Into<ListItem<'static>> + Sync + Send + Clone,
+{
+    pub items: Vec<T>,
+    pub on_select: Handler<'static, T>,
+    pub default_value: Option<usize>,
+    pub top_title: Option<Line<'static>>,
+    pub bottom_title: Option<Line<'static>>,
+    pub is_editing: bool,
+}
+
+#[component]
+pub fn Select<T>(props: &mut SelectProps<T>, mut hooks: Hooks) -> impl Into<AnyElement<'static>>
+where
+    T: Into<ListItem<'static>> + Sync + Send + Clone + 'static,
+{
+    let state = hooks.use_state(|| ListState::default().with_selected(props.default_value));
+    let theme = hooks.use_theme_config();
+
+    let list = List::new(props.items.clone())
+        .style(theme.basic.text)
+        .highlight_style(theme.selected);
+
+    let mut on_select = props.on_select.take();
+
+    hooks.use_scrollbar(list.len(), state.read().selected());
+
+    hooks.use_events({
+        let items = props.items.clone();
+        let is_editing = props.is_editing;
+        move |event| {
+            if let Event::Key(key) = event
+                && key.kind == KeyEventKind::Press
+                && is_editing
+            {
+                match key.code {
+                    KeyCode::Char('j') | KeyCode::Down => {
+                        state.write().select_next();
+                    }
+                    KeyCode::Char('k') | KeyCode::Up => {
+                        state.write().select_previous();
+                    }
+                    KeyCode::Enter => {
+                        if let Some(index) = state.read().selected() {
+                            on_select(items[index].clone());
+                        }
+                    }
+                    _ => {}
+                }
+            }
+        }
+    });
+
+    element!(Border(
+        border_style: theme.basic.border,
+        top_title:props.top_title.clone(),
+        bottom_title:props.bottom_title.clone()
+    ){
+         $(list,state)
+    })
+}

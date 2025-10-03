@@ -79,8 +79,8 @@ impl ThemeConfig {
                 success_border_info: Style::new().fg(success_color).not_dim(),
                 error_border: Style::new().fg(error_color).dim(),
                 error_border_info: Style::new().fg(error_color).not_dim(),
-                placeholder: Style::new().fg(text_color).dark_gray().not_dim(),
-                text: Style::new().fg(text_color).not_dim(),
+                placeholder: Style::new().fg(text_color).dark_gray(),
+                text: Style::new().fg(text_color),
             },
             loading_modal: BasicSetting {
                 border: basic.border.fg(primary_color),

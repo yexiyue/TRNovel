@@ -17,7 +17,9 @@ pub use loading::*;
 pub mod shortcut_info_modal;
 pub use shortcut_info_modal::*;
 
+pub mod list_select;
 pub mod search_input;
+pub mod select;
 
 #[async_trait]
 pub trait Component {
