@@ -17,6 +17,7 @@ pub use loading::*;
 pub mod shortcut_info_modal;
 pub use shortcut_info_modal::*;
 
+pub mod file_select;
 pub mod list_select;
 pub mod search_input;
 pub mod select;
