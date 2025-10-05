@@ -19,8 +19,10 @@ pub use shortcut_info_modal::*;
 
 pub mod file_select;
 pub mod list_select;
+pub mod list_view;
 pub mod search_input;
 pub mod select;
+pub mod widget_wrapper;
 
 #[async_trait]
 pub trait Component {

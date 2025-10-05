@@ -72,9 +72,9 @@ pub fn FileSelect(props: &mut FileSelectProps, mut hooks: Hooks) -> impl Into<An
     element!(TreeSelect<PathBuf>(
         style: theme.basic.text,
         highlight_style: theme.selected,
-        state: Some(state.clone()),
+        state: state,
         items: props.items.clone(),
-        scrollbar:Some(Scrollbar::default()),
-        block:Some(border),
+        scrollbar: Scrollbar::default(),
+        block: border,
     ))
 }

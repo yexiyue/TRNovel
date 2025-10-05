@@ -9,65 +9,65 @@ use crate::components::{
 
 #[component]
 pub fn Playground() -> impl Into<AnyElement<'static>> {
-    let tree_items = vec![
-        TreeItem::new(
-            PathBuf::from("1"),
-            "1",
-            vec![
-                TreeItem::new(PathBuf::from("1.1"), "1.1", vec![]).unwrap(),
-                TreeItem::new(PathBuf::from("1.2"), "1.2", vec![]).unwrap(),
-                TreeItem::new(PathBuf::from("1.4"), "1.3", vec![]).unwrap(),
-            ],
-        )
-        .unwrap(),
-        TreeItem::new(
-            PathBuf::from("2"),
-            "2",
-            vec![
-                TreeItem::new(PathBuf::from("2.1"), "2.1", vec![]).unwrap(),
-                TreeItem::new(PathBuf::from("2.2"), "2.2", vec![]).unwrap(),
-                TreeItem::new(PathBuf::from("2.4"), "2.3", vec![]).unwrap(),
-            ],
-        )
-        .unwrap(),
-        TreeItem::new(
-            PathBuf::from("3"),
-            "3",
-            vec![
-                TreeItem::new(
-                    PathBuf::from("3.1"),
-                    "3.1",
-                    vec![
-                        TreeItem::new(
-                            PathBuf::from("5"),
-                            "5",
-                            vec![
-                                TreeItem::new(PathBuf::from("5.1"), "5.1", vec![]).unwrap(),
-                                TreeItem::new(PathBuf::from("5.2"), "5.2", vec![]).unwrap(),
-                                TreeItem::new(PathBuf::from("5.4"), "5.3", vec![]).unwrap(),
-                            ],
-                        )
-                        .unwrap(),
-                        TreeItem::new(
-                            PathBuf::from("6"),
-                            "6",
-                            vec![
-                                TreeItem::new(PathBuf::from("6.1"), "6.1", vec![]).unwrap(),
-                                TreeItem::new(PathBuf::from("6.2"), "6.2", vec![]).unwrap(),
-                                TreeItem::new(PathBuf::from("6.4"), "6.3", vec![]).unwrap(),
-                            ],
-                        )
-                        .unwrap(),
-                    ],
-                )
-                .unwrap(),
-                TreeItem::new(PathBuf::from("3.2"), "3.2", vec![]).unwrap(),
-                TreeItem::new(PathBuf::from("3.4"), "3.3", vec![]).unwrap(),
-            ],
-        )
-        .unwrap(),
-        TreeItem::new(PathBuf::from("7"), "7", vec![]).unwrap(),
-    ];
+    // let tree_items = vec![
+    //     TreeItem::new(
+    //         PathBuf::from("1"),
+    //         "1",
+    //         vec![
+    //             TreeItem::new(PathBuf::from("1.1"), "1.1", vec![]).unwrap(),
+    //             TreeItem::new(PathBuf::from("1.2"), "1.2", vec![]).unwrap(),
+    //             TreeItem::new(PathBuf::from("1.4"), "1.3", vec![]).unwrap(),
+    //         ],
+    //     )
+    //     .unwrap(),
+    //     TreeItem::new(
+    //         PathBuf::from("2"),
+    //         "2",
+    //         vec![
+    //             TreeItem::new(PathBuf::from("2.1"), "2.1", vec![]).unwrap(),
+    //             TreeItem::new(PathBuf::from("2.2"), "2.2", vec![]).unwrap(),
+    //             TreeItem::new(PathBuf::from("2.4"), "2.3", vec![]).unwrap(),
+    //         ],
+    //     )
+    //     .unwrap(),
+    //     TreeItem::new(
+    //         PathBuf::from("3"),
+    //         "3",
+    //         vec![
+    //             TreeItem::new(
+    //                 PathBuf::from("3.1"),
+    //                 "3.1",
+    //                 vec![
+    //                     TreeItem::new(
+    //                         PathBuf::from("5"),
+    //                         "5",
+    //                         vec![
+    //                             TreeItem::new(PathBuf::from("5.1"), "5.1", vec![]).unwrap(),
+    //                             TreeItem::new(PathBuf::from("5.2"), "5.2", vec![]).unwrap(),
+    //                             TreeItem::new(PathBuf::from("5.4"), "5.3", vec![]).unwrap(),
+    //                         ],
+    //                     )
+    //                     .unwrap(),
+    //                     TreeItem::new(
+    //                         PathBuf::from("6"),
+    //                         "6",
+    //                         vec![
+    //                             TreeItem::new(PathBuf::from("6.1"), "6.1", vec![]).unwrap(),
+    //                             TreeItem::new(PathBuf::from("6.2"), "6.2", vec![]).unwrap(),
+    //                             TreeItem::new(PathBuf::from("6.4"), "6.3", vec![]).unwrap(),
+    //                         ],
+    //                     )
+    //                     .unwrap(),
+    //                 ],
+    //             )
+    //             .unwrap(),
+    //             TreeItem::new(PathBuf::from("3.2"), "3.2", vec![]).unwrap(),
+    //             TreeItem::new(PathBuf::from("3.4"), "3.3", vec![]).unwrap(),
+    //         ],
+    //     )
+    //     .unwrap(),
+    //     TreeItem::new(PathBuf::from("7"), "7", vec![]).unwrap(),
+    // ];
     element!(Fragment{
         // SearchInput(
         //     placeholder:"这是一个输入框，按e开始编辑，按Esc结束编辑",
