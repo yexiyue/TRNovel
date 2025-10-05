@@ -1,8 +1,10 @@
 use crossterm::event::{Event, KeyCode, KeyEventKind};
-use ratatui::text::Line;
+use ratatui::{
+    text::Line,
+    widgets::{Block, Scrollbar},
+};
 use ratatui_kit::{
-    AnyElement, Handler, Hooks, Props, UseEvents, UseState, component, element,
-    prelude::{Border, TreeSelect},
+    AnyElement, Handler, Hooks, Props, UseEvents, UseState, component, element, prelude::TreeSelect,
 };
 use std::path::PathBuf;
 use tui_tree_widget::{TreeItem, TreeState};
@@ -58,16 +60,21 @@ pub fn FileSelect(props: &mut FileSelectProps, mut hooks: Hooks) -> impl Into<An
         }
     });
 
-    element!(Border(
-        border_style: theme.basic.border,
-        top_title: props.top_title.clone(),
-        bottom_title: props.bottom_title.clone()
-    ){
-        TreeSelect<PathBuf>(
-            style: theme.basic.text,
-            highlight_style: theme.selected,
-            state: Some(state.clone()),
-            items: props.items.clone(),
-        )
-    })
+    let mut border = Block::bordered().border_style(theme.basic.border);
+
+    if let Some(title) = props.top_title.clone() {
+        border = border.title_top(title);
+    }
+    if let Some(title) = props.bottom_title.clone() {
+        border = border.title_bottom(title);
+    }
+
+    element!(TreeSelect<PathBuf>(
+        style: theme.basic.text,
+        highlight_style: theme.selected,
+        state: Some(state.clone()),
+        items: props.items.clone(),
+        scrollbar:Some(Scrollbar::default()),
+        block:Some(border),
+    ))
 }
