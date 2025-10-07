@@ -63,3 +63,9 @@ impl History {
         self.histories.remove(index);
     }
 }
+
+impl Drop for History {
+    fn drop(&mut self) {
+        let _ = self.save();
+    }
+}

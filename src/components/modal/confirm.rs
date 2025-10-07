@@ -168,8 +168,11 @@ pub fn ConfirmModal(
                             on_cancel(());
                         }
                     }
-                    KeyCode::Esc => {
+                    KeyCode::Char('y') | KeyCode::Char('Y') => {
                         on_confirm(());
+                    }
+                    KeyCode::Char('n') | KeyCode::Char('N') | KeyCode::Esc => {
+                        on_cancel(());
                     }
                     _ => {}
                 }
@@ -193,6 +196,7 @@ pub fn ConfirmModal(
         open: props.open,
         width: Constraint::Percentage(50),
         height: Constraint::Length(10),
+        style: Style::default().dim()
     ){
         Border(
             border_style: theme.warning_modal.border,

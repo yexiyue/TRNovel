@@ -14,6 +14,7 @@ pub use read_novel::ReadNovel;
 pub mod home;
 pub mod playground;
 pub mod select_history;
+pub mod select_history2;
 pub mod theme_setting;
 
 #[async_trait]

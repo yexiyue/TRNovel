@@ -1,7 +1,7 @@
 use std::fs::File;
 
 use ratatui_kit::{
-    AnyElement, Context, Hooks, Props, UseFuture, UseState, component, element,
+    AnyElement, Context, Hooks, Props, UseFuture, UseState, UseTerminalSize, component, element,
     prelude::{ContextProvider, Fragment, RouterProvider},
     routes,
 };
@@ -14,7 +14,10 @@ use crate::{
     book_source::BookSourceCache,
     components::{Loading2, WarningModal},
     errors::Errors,
-    pages::{home::Home, playground::Playground},
+    pages::{
+        home::Home, local_novel::SelectFile2, playground::Playground,
+        select_history2::SelectHistory2,
+    },
     utils::novel_catch_dir,
 };
 
@@ -25,6 +28,7 @@ pub struct AppProps {
 
 #[component]
 pub fn App(_props: &AppProps, mut hooks: Hooks) -> impl Into<AnyElement<'static>> {
+    hooks.use_terminal_size();
     let mut loading = hooks.use_state(|| true);
     let mut theme_config_state = hooks.use_state(ThemeConfig::default);
     let history_state = hooks.use_state(|| None::<History>);
@@ -60,7 +64,9 @@ pub fn App(_props: &AppProps, mut hooks: Hooks) -> impl Into<AnyElement<'static>
 
     let routes = routes!(
         "/"=>Home,
-        "/playground"=>Playground
+        "/playground"=>Playground,
+        "/select-history"=>SelectHistory2,
+        "/select-file"=>SelectFile2,
     );
 
     if error.read().is_some() {
@@ -81,7 +87,7 @@ pub fn App(_props: &AppProps, mut hooks: Hooks) -> impl Into<AnyElement<'static>
                             ContextProvider(value:Context::owned(book_sources_catch_state)){
                                 RouterProvider(
                                     routes:routes,
-                                    index_path:"/playground",
+                                    index_path:"/select-file",
                                 )
                             }
                         }

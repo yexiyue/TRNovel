@@ -7,7 +7,7 @@ use ratatui::{
     text::Line,
 };
 use ratatui_kit::{
-    AnyElement, Handler, Hooks, Props, UseEvents, UseState, component, element,
+    AnyElement, Handler, Hooks, Props, State, UseEvents, UseState, component, element,
     prelude::{Border, Input, tui_input},
 };
 use tui_input::backend::crossterm::EventHandler;
@@ -21,6 +21,7 @@ pub struct SearchInputProps {
     pub on_submit: Handler<'static, String, bool>,
     pub clear_on_submit: bool,
     pub clear_on_escape: bool,
+    pub is_editing: Option<State<bool>>,
 }
 
 #[component]
@@ -28,7 +29,9 @@ pub fn SearchInput(
     props: &mut SearchInputProps,
     mut hooks: Hooks,
 ) -> impl Into<AnyElement<'static>> {
-    let mut is_editing = hooks.use_state(|| false);
+    let is_editing = hooks.use_state(|| false);
+    let mut is_editing = props.is_editing.take().unwrap_or(is_editing);
+
     let value = hooks.use_state(tui_input::Input::default);
     let mut is_valid = hooks.use_state(|| None::<bool>);
     let mut validate_fn = props.validate.take();

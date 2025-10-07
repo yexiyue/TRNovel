@@ -1,19 +1,16 @@
 use crate::{
-    components::{
-        list_view::{ListView, RenderItem},
-        widget_wrapper::WidgetWrapper,
-    },
+    components::list_view::{ListView, RenderItem},
     hooks::UseThemeConfig,
 };
 use crossterm::event::{Event, KeyCode, KeyEventKind};
 use ratatui::widgets::Block;
-use ratatui_kit::{AnyElement, Hooks, Props, UseEvents, UseState, component, element};
+use ratatui_kit::{AnyElement, Handler, Hooks, Props, UseEvents, UseState, component, element};
 use tui_widget_list::ListState;
 
-#[derive(Default, Props)]
+#[derive(Props)]
 pub struct ListSelectProps<T>
 where
-    T: Into<WidgetWrapper> + Sync + Send + Clone + 'static,
+    T: Sync + Send + Clone + 'static,
 {
     pub items: Vec<T>,
     pub on_select: ratatui_kit::Handler<'static, T>,
@@ -22,12 +19,34 @@ where
     pub bottom_title: Option<ratatui::text::Line<'static>>,
     pub is_editing: bool,
     pub render_item: RenderItem<'static>,
+    pub state: Option<ratatui_kit::State<ListState>>,
+}
+
+impl<T> Default for ListSelectProps<T>
+where
+    T: Sync + Send + Clone + 'static,
+{
+    fn default() -> Self {
+        Self {
+            items: vec![],
+            on_select: Handler::default(),
+            default_value: None,
+            top_title: None,
+            bottom_title: None,
+            is_editing: false,
+            render_item: RenderItem::default(),
+            state: None,
+        }
+    }
 }
 
 #[component]
-fn ListSelect<T>(props: &mut ListSelectProps<T>, mut hooks: Hooks) -> impl Into<AnyElement<'static>>
+pub fn ListSelect<T>(
+    props: &mut ListSelectProps<T>,
+    mut hooks: Hooks,
+) -> impl Into<AnyElement<'static>>
 where
-    T: Into<WidgetWrapper> + Unpin + Sync + Clone + Send + 'static,
+    T: Unpin + Sync + Clone + Send + 'static,
 {
     let theme = hooks.use_theme_config();
     let state = hooks.use_state(|| {
@@ -35,6 +54,8 @@ where
         state.select(props.default_value);
         state
     });
+
+    let state = props.state.unwrap_or(state);
 
     hooks.use_events({
         let is_editing = props.is_editing;
@@ -80,5 +101,6 @@ where
         state: state,
         block: border,
         render_item: props.render_item.take(),
+        item_count: props.items.len(),
     ))
 }

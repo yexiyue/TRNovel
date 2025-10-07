@@ -1,10 +1,12 @@
 use crossterm::event::{Event, KeyCode, KeyEventKind};
 use ratatui::{
+    layout::{Alignment, Constraint},
     text::Line,
     widgets::{Block, Scrollbar},
 };
 use ratatui_kit::{
-    AnyElement, Handler, Hooks, Props, UseEvents, UseState, component, element, prelude::TreeSelect,
+    AnyElement, Handler, Hooks, Props, UseEvents, UseState, component, element,
+    prelude::{Border, Center, Text, TreeSelect},
 };
 use std::path::PathBuf;
 use tui_tree_widget::{TreeItem, TreeState};
@@ -19,12 +21,15 @@ pub struct FileSelectProps {
     pub top_title: Option<Line<'static>>,
     pub bottom_title: Option<Line<'static>>,
     pub is_editing: bool,
+    pub empty_message: String,
 }
 
 #[component]
 pub fn FileSelect(props: &mut FileSelectProps, mut hooks: Hooks) -> impl Into<AnyElement<'static>> {
     let state = hooks.use_state(|| TreeState::default());
     let theme = hooks.use_theme_config();
+
+    let is_empty = props.items.is_empty();
 
     let mut on_select = props.on_select.take();
 
@@ -69,6 +74,29 @@ pub fn FileSelect(props: &mut FileSelectProps, mut hooks: Hooks) -> impl Into<An
         border = border.title_bottom(title);
     }
 
+    if is_empty {
+        return element!(
+            Border(
+                top_title: props.top_title.clone(),
+                bottom_title: props.bottom_title.clone(),
+                border_style: theme.basic.border,
+            ){
+                Center(
+                    height:Constraint::Length(5),
+                    width:Constraint::Percentage(50)
+                ){
+                    Text(
+                        text: props.empty_message.clone(),
+                        alignment: Alignment::Center,
+                        style: theme.colors.warning_color,
+                        wrap: true,
+                    )
+                }
+            }
+        )
+        .into_any();
+    }
+
     element!(TreeSelect<PathBuf>(
         style: theme.basic.text,
         highlight_style: theme.selected,
@@ -77,4 +105,5 @@ pub fn FileSelect(props: &mut FileSelectProps, mut hooks: Hooks) -> impl Into<An
         scrollbar: Scrollbar::default(),
         block: border,
     ))
+    .into_any()
 }

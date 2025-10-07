@@ -12,19 +12,25 @@ use crossterm::event::{KeyCode, KeyEvent, KeyEventKind};
 use ratatui::{
     layout::{Constraint, Layout},
     text::{Line, Span, Text},
-    widgets::{Block, Padding, Paragraph, Scrollbar, ScrollbarState, Widget},
+    widgets::{Block, Padding, Paragraph, Scrollbar, ScrollbarState, Widget, WidgetRef},
 };
 use std::sync::Arc;
 use tokio::sync::{Mutex, mpsc::Sender};
 use tui_widget_list::{ListBuilder, ListState, ListView};
 
-struct ListItem {
+pub struct ListItem {
     pub history: HistoryItem,
     pub selected: bool,
 }
 
 impl Widget for ListItem {
     fn render(self, area: ratatui::prelude::Rect, buf: &mut ratatui::prelude::Buffer) {
+        self.render_ref(area, buf);
+    }
+}
+
+impl WidgetRef for ListItem {
+    fn render_ref(&self, area: ratatui::prelude::Rect, buf: &mut ratatui::prelude::Buffer) {
         let block = if self.selected {
             Block::bordered()
                 .padding(Padding::horizontal(0))
@@ -47,7 +53,7 @@ impl Widget for ListItem {
             THEME_CONFIG.basic.text
         };
 
-        match self.history {
+        match &self.history {
             HistoryItem::Local(item) => {
                 Paragraph::new(Text::from(vec![
                     Line::from(item.title.clone()),
@@ -93,7 +99,6 @@ impl Widget for ListItem {
         };
     }
 }
-
 #[derive(Debug, Clone)]
 pub struct SelectHistory {
     pub state: ListState,

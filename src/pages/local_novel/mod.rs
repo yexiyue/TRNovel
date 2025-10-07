@@ -1,9 +1,92 @@
-use crate::RoutePage;
-use std::path::PathBuf;
+use crate::{
+    RoutePage,
+    components::{Loading2, WarningModal, file_select::FileSelect, search_input::SearchInput},
+    file_list::NovelFiles,
+    hooks::UseInitState,
+};
+use std::{env::current_dir, path::PathBuf};
 
 pub mod select_file;
+use ratatui::text::Line;
+use ratatui_kit::{
+    AnyElement, Hooks, UseRouter, UseState, component, element,
+    prelude::{Fragment, View},
+};
 use select_file::SelectFile;
 
 pub fn local_novel_first_page(path: Option<PathBuf>) -> Box<dyn RoutePage> {
     SelectFile::to_page_route(path)
+}
+
+#[component]
+pub fn SelectFile2(mut hooks: Hooks) -> impl Into<AnyElement<'static>> {
+    let dir_path = hooks.use_route_state::<PathBuf>();
+    let is_inputting = hooks.use_state(|| false);
+    let mut path = hooks.use_state(|| dir_path.map(|p| (*p).clone()));
+
+    let dir_path = path.read().clone().unwrap_or(current_dir().unwrap());
+
+    let (data, loading, error) = hooks.use_effect_state(
+        {
+            let path = dir_path.clone();
+            async move { tokio::spawn(async move { NovelFiles::from_path(path) }).await? }
+        },
+        dir_path,
+    );
+
+    let tree_items = data
+        .read()
+        .clone()
+        .map(|i| i.into_tree_item())
+        .unwrap_or_default();
+
+    if loading.get() {
+        return element!(Loading2(tip:"搜索小说中...")).into_any();
+    }
+
+    element!(Fragment {
+        View{
+            SearchInput(
+                placeholder: "请输入小说文件夹路径",
+                is_editing: is_inputting,
+                validate: |input: String| {
+                    let path = PathBuf::from(input);
+                    if path.exists() {
+                        if path.is_file() && path.extension().unwrap_or_default() != "txt" {
+                            (false, "文件格式不正确".to_owned())
+                        } else {
+                            (true, "".to_owned())
+                        }
+                    } else {
+                        (false, "路径不存在".to_owned())
+                    }
+                },
+                on_submit: move |input: String| {
+                    let new_path = PathBuf::from(input);
+                    if new_path.exists() {
+                        path.set(Some(new_path));
+                        true
+                    } else {
+                        false
+                    }
+                },
+            )
+
+            FileSelect(
+                is_editing: !is_inputting.get(),
+                top_title: Line::from(format!("本地小说")).centered(),
+                items: tree_items,
+                on_select: move |item:PathBuf| {
+
+                },
+                empty_message: "未搜索到小说文件，请确认路径是否正确，或按i开始输入路径",
+            )
+            WarningModal(
+                tip: format!("加载失败:{:?}", error.read().as_ref()),
+                is_error: error.read().is_some(),
+                open: error.read().is_some(),
+            )
+        }
+    })
+    .into_any()
 }
