@@ -89,13 +89,9 @@ pub trait Novel: Deref<Target = NovelChapters<Self::Chapter>> + DerefMut + Sized
 
     fn get_chapters_names(&self) -> Result<Vec<(String, usize)>>;
 
-    fn get_content<T: FnMut(Result<String>) + Send + 'static>(&mut self, callback: T)
-    -> Result<()>;
+    async fn get_content(&self) -> Result<String>;
 
-    fn request_chapters<T: FnMut(Result<Vec<Self::Chapter>>) + Send + 'static>(
-        &self,
-        callback: T,
-    ) -> Result<()>;
+    async fn request_chapters(&self) -> Result<Vec<Self::Chapter>>;
 
     fn get_current_chapter_name(&self) -> Result<String>;
 

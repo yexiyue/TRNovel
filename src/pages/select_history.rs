@@ -1,22 +1,21 @@
-use super::{Page, PageWrapper, network_novel::book_detail::BookDetail};
-use crate::{
-    Navigator, Result, RoutePage, Router, THEME_CONFIG,
-    app::State,
-    components::{Component, Confirm, ConfirmState, Empty, KeyShortcutInfo},
-    history::{History, HistoryItem},
-    novel::{local_novel::LocalNovel, network_novel::NetworkNovel},
-    pages::ReadNovel,
-};
-use async_trait::async_trait;
-use crossterm::event::{KeyCode, KeyEvent, KeyEventKind};
+use crossterm::event::{Event, KeyCode, KeyEventKind};
 use ratatui::{
     layout::{Constraint, Layout},
+    style::Stylize,
     text::{Line, Span, Text},
-    widgets::{Block, Padding, Paragraph, Scrollbar, ScrollbarState, Widget, WidgetRef},
+    widgets::{Block, Padding, Paragraph, Widget, WidgetRef},
 };
-use std::sync::Arc;
-use tokio::sync::{Mutex, mpsc::Sender};
-use tui_widget_list::{ListBuilder, ListState, ListView};
+use ratatui_kit::{
+    AnyElement, Hooks, State, UseContext, UseEvents, UseState, component, element,
+    prelude::Fragment,
+};
+use tui_widget_list::{ListBuildContext, ListState};
+
+use crate::{
+    History, HistoryItem, THEME_CONFIG,
+    components::{ConfirmModal, KeyShortcutInfo, ShortcutInfoModal, list_select::ListSelect},
+    hooks::UseThemeConfig,
+};
 
 pub struct ListItem {
     pub history: HistoryItem,
@@ -99,207 +98,110 @@ impl WidgetRef for ListItem {
         };
     }
 }
-#[derive(Debug, Clone)]
-pub struct SelectHistory {
-    pub state: ListState,
-    pub confirm_state: ConfirmState,
-    pub history: Arc<Mutex<History>>,
-    pub navigator: Navigator,
-}
 
-impl SelectHistory {
-    pub fn new(history: Arc<Mutex<History>>, navigator: Navigator) -> Self {
-        Self {
-            history,
-            state: ListState::default(),
-            confirm_state: ConfirmState::default(),
-            navigator,
-        }
-    }
+#[component]
+pub fn SelectHistory2(mut hooks: Hooks) -> impl Into<AnyElement<'static>> {
+    let theme = hooks.use_theme_config();
+    let history = hooks.use_context::<State<Option<History>>>();
 
-    pub fn to_page_route() -> Box<dyn RoutePage> {
-        let page: PageWrapper<Self, (), ()> = PageWrapper::new((), None);
-        Box::new(page)
-    }
+    let mut delete_modal_open = hooks.use_state(|| false);
+    let mut info_modal_open = hooks.use_state(|| false);
 
-    fn render_list(&mut self, frame: &mut ratatui::Frame, area: ratatui::prelude::Rect) {
-        let list_items = self.history.try_lock().unwrap().histories.clone();
-        let length = list_items.len();
-        let builder = ListBuilder::new(move |context| {
-            let (_, item) = &list_items[context.index];
-            (
-                ListItem {
-                    history: item.clone(),
-                    selected: context.is_selected,
-                },
-                5,
-            )
-        });
-        let widget = ListView::new(builder, length).infinite_scrolling(false);
-        frame.render_stateful_widget(widget, area, &mut self.state);
-    }
-}
+    let state = hooks.use_state(ListState::default);
+    let history = history.clone();
 
-#[async_trait]
-impl Component for SelectHistory {
-    fn render(&mut self, frame: &mut ratatui::Frame, area: ratatui::prelude::Rect) -> Result<()> {
-        let block = Block::bordered()
-            .title(
-                Line::from("历史记录")
-                    .centered()
-                    .style(THEME_CONFIG.basic.border_title),
-            )
-            .border_style(THEME_CONFIG.basic.border);
+    let histories = history
+        .read()
+        .clone()
+        .map(|h| h.histories.clone())
+        .unwrap_or_default();
 
-        let container_area = block.inner(area);
-
-        if self.history.try_lock().unwrap().histories.is_empty() {
-            frame.render_widget(Empty::new("暂无历史记录"), container_area);
-            frame.render_widget(block, area);
-            return Ok(());
-        }
-
-        self.render_list(frame, container_area);
-
-        let len = self.history.try_lock()?.histories.len();
-        let current = self.state.selected.unwrap_or(0);
-
-        frame.render_widget(
-            block.title_bottom(
-                Line::from(format!(" {}/{}", current + 1, len))
-                    .style(THEME_CONFIG.basic.border_info),
-            ),
-            area,
-        );
-
-        if len * 5 > container_area.height as usize {
-            let mut scrollbar_state = ScrollbarState::new(len).position(current);
-            frame.render_stateful_widget(Scrollbar::default(), area, &mut scrollbar_state);
-        }
-
-        frame.render_stateful_widget(
-            Confirm::new("警告", "确认删除该历史记录吗？"),
-            area,
-            &mut self.confirm_state,
-        );
-        Ok(())
-    }
-
-    async fn handle_key_event(
-        &mut self,
-        key: crossterm::event::KeyEvent,
-        state: State,
-    ) -> Result<Option<KeyEvent>> {
-        if key.kind != KeyEventKind::Press {
-            return Ok(Some(key));
-        }
-        if self.confirm_state.show {
+    hooks.use_events(move |event| {
+        if let Event::Key(key) = event
+            && key.kind == KeyEventKind::Press
+        {
             match key.code {
-                KeyCode::Char('y') => {
-                    self.confirm_state.confirm();
-                    Ok(None)
+                KeyCode::Char('i') | KeyCode::Char('I') => {
+                    info_modal_open.set(!info_modal_open.get());
                 }
-                KeyCode::Left | KeyCode::Right | KeyCode::Char('h') | KeyCode::Char('l') => {
-                    self.confirm_state.toggle();
-                    Ok(None)
-                }
-                KeyCode::Enter => {
-                    if let Some(index) = self.state.selected
-                        && self.confirm_state.is_confirm()
-                    {
-                        self.history.lock().await.remove_index(index);
-                        self.history.lock().await.save()?;
-                        self.state.select(None);
+                KeyCode::Char('d') | KeyCode::Char('D') => {
+                    if state.read().selected.is_some() && !delete_modal_open.get() {
+                        delete_modal_open.set(true);
+                    } else {
+                        delete_modal_open.set(false);
                     }
-                    self.confirm_state.hide();
-                    Ok(None)
                 }
-                KeyCode::Char('n') => {
-                    self.confirm_state.hide();
-                    Ok(None)
-                }
-                _ => Ok(Some(key)),
-            }
-        } else {
-            match key.code {
-                KeyCode::Char('h') | KeyCode::Left => {
-                    self.state.select(None);
-                    Ok(None)
-                }
-                KeyCode::Char('j') | KeyCode::Down => {
-                    self.state.next();
-                    Ok(None)
-                }
-                KeyCode::Char('k') | KeyCode::Up => {
-                    self.state.previous();
-                    Ok(None)
-                }
-                KeyCode::Char('l') | KeyCode::Right | KeyCode::Enter => {
-                    let Some(index) = self.state.selected else {
-                        return Err("请选择历史记录".into());
-                    };
-                    let (path, item) = &self.history.lock().await.histories[index];
-
-                    match item {
-                        HistoryItem::Local(_) => {
-                            self.navigator.push(Box::new(
-                                ReadNovel::<LocalNovel>::to_page_route(path.into()),
-                            ))?;
-                        }
-                        HistoryItem::Network(_) => {
-                            let novel = NetworkNovel::from_url(path, state.book_sources).await?;
-                            self.navigator.push(BookDetail::to_page_route(novel))?;
-                        }
-                    }
-
-                    Ok(None)
-                }
-                KeyCode::Char('d') => {
-                    if self.state.selected.is_none() {
-                        return Err("请选择历史记录".into());
-                    }
-
-                    self.confirm_state.show();
-                    Ok(None)
-                }
-                _ => Ok(Some(key)),
+                _ => {}
             }
         }
-    }
+    });
 
-    fn key_shortcut_info(&self) -> crate::components::KeyShortcutInfo {
-        let data = if self.confirm_state.show {
-            vec![
-                ("确认删除", "Y"),
-                ("取消删除", "N"),
-                ("切换确定/取消", "H / ◄ / L / ► "),
-                ("确认选中", "Enter"),
-            ]
-        } else {
-            vec![
-                ("选择下一个", "J / ▼"),
-                ("选择上一个", "K / ▲"),
-                ("取消选择", "H / ◄"),
-                ("确认选择", "L / ► / Enter"),
-                ("删除选中的历史记录", "D"),
-            ]
-        };
-        KeyShortcutInfo::new(data)
-    }
+    element!(Fragment{
+        ListSelect<(String,HistoryItem)>(
+            state: state,
+            is_editing: !delete_modal_open.get() && !info_modal_open.get(),
+            items: histories.clone(),
+            top_title: Line::from("历史记录").centered().style(theme.basic.border_title),
+            bottom_title: Line::from(
+                format!(
+                    "{}/{} 条",
+                    state.read().selected.unwrap_or(0)+1,
+                    histories.len())
+                )
+                .style(theme.basic.border_info.not_dim()),
+            render_item: move |context:&ListBuildContext| {
+                let (_, item) = &histories[context.index];
+                (
+                    ListItem {
+                        history: item.clone(),
+                        selected: context.is_selected,
+                    }.into(),
+                    5,
+                )
+            },
+            empty_message: "暂无历史记录",
+        )
+        ConfirmModal(
+            title: Line::from("警告").centered().style(theme.basic.border_title),
+            content: "确认删除该历史记录吗？",
+            open: delete_modal_open.get(),
+            on_confirm:move |_| {
+                let selected= state.read().selected.clone();
+                if let Some(index) = selected {
+                    if let Some(histories) = history.write().as_mut() {
+                        if index < histories.histories.len() {
+                            histories.histories.remove(index);
+                            state.write().select(Some(index.saturating_sub(1)));
+                        }
+                    }
+                }
+                delete_modal_open.set(false);
+            },
+            on_cancel:move |_| {
+                delete_modal_open.set(false);
+            }
+        )
+        ShortcutInfoModal(
+            key_shortcut_info: {
+                let data = if delete_modal_open.get() {
+                    vec![
+                        ("确认删除", "Y"),
+                        ("取消删除", "N"),
+                        ("切换确定/取消", "◄ / ►"),
+                        ("确认选中", "Enter"),
+                    ]
+                } else {
+                    vec![
+                        ("选择下一个", "J / ▼"),
+                        ("选择上一个", "K / ▲"),
+                        ("取消选择", "H / ◄"),
+                        ("确认选择", "L / ► / Enter"),
+                        ("删除选中的历史记录", "D"),
+                    ]
+                };
+                KeyShortcutInfo::new(data)
+            },
+            open: info_modal_open.get(),
+        )
+    })
 }
-
-#[async_trait]
-impl Page for SelectHistory {
-    type Msg = ();
-
-    async fn init(
-        _arg: (),
-        _sender: Sender<Self::Msg>,
-        navigator: Navigator,
-        state: State,
-    ) -> Result<Self> {
-        Ok(Self::new(state.history.clone(), navigator))
-    }
-}
-
-impl Router for SelectHistory {}

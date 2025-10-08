@@ -8,20 +8,14 @@ pub mod app;
 pub mod cache;
 pub mod components;
 pub mod errors;
-pub mod events;
 pub mod file_list;
 pub mod hooks;
 pub mod novel;
 pub mod pages;
-pub mod quick_start;
-pub mod router;
-pub mod routes;
 pub mod utils;
 
 pub use cache::*;
 pub use errors::Result;
-pub use events::Events;
-pub use router::*;
 
 use crate::app::AppProps;
 

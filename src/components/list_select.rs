@@ -3,8 +3,14 @@ use crate::{
     hooks::UseThemeConfig,
 };
 use crossterm::event::{Event, KeyCode, KeyEventKind};
-use ratatui::widgets::Block;
-use ratatui_kit::{AnyElement, Handler, Hooks, Props, UseEvents, UseState, component, element};
+use ratatui::{
+    layout::{Alignment, Constraint},
+    widgets::Block,
+};
+use ratatui_kit::{
+    AnyElement, Handler, Hooks, Props, UseEvents, UseState, component, element,
+    prelude::{Border, Center, Text},
+};
 use tui_widget_list::ListState;
 
 #[derive(Props)]
@@ -20,6 +26,7 @@ where
     pub is_editing: bool,
     pub render_item: RenderItem<'static>,
     pub state: Option<ratatui_kit::State<ListState>>,
+    pub empty_message: String,
 }
 
 impl<T> Default for ListSelectProps<T>
@@ -36,6 +43,7 @@ where
             is_editing: false,
             render_item: RenderItem::default(),
             state: None,
+            empty_message: String::default(),
         }
     }
 }
@@ -54,6 +62,7 @@ where
         state.select(props.default_value);
         state
     });
+    let is_empty = props.items.is_empty();
 
     let state = props.state.unwrap_or(state);
 
@@ -97,10 +106,34 @@ where
         border = border.title_bottom(title);
     }
 
+    if is_empty {
+        return element!(
+            Border(
+                top_title: props.top_title.clone(),
+                bottom_title: props.bottom_title.clone(),
+                border_style: theme.basic.border,
+            ){
+                Center(
+                    height:Constraint::Length(5),
+                    width:Constraint::Percentage(50)
+                ){
+                    Text(
+                        text: props.empty_message.clone(),
+                        alignment: Alignment::Center,
+                        style: theme.colors.warning_color,
+                        wrap: true,
+                    )
+                }
+            }
+        )
+        .into_any();
+    }
+
     element!(ListView(
         state: state,
         block: border,
         render_item: props.render_item.take(),
         item_count: props.items.len(),
     ))
+    .into_any()
 }

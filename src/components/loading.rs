@@ -15,7 +15,7 @@ pub struct LoadingProps {
 }
 
 #[component]
-pub fn Loading2(props: &LoadingProps, mut hooks: Hooks) -> impl Into<AnyElement<'static>> {
+pub fn Loading(props: &LoadingProps, mut hooks: Hooks) -> impl Into<AnyElement<'static>> {
     let theme = hooks.use_theme_config();
     let state = hooks.use_state(ThrobberState::default);
 

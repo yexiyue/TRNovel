@@ -1,25 +1,17 @@
 use crate::{
-    RoutePage,
-    components::{Loading2, WarningModal, file_select::FileSelect, search_input::SearchInput},
+    components::{Loading, WarningModal, file_select::FileSelect, search_input::SearchInput},
     file_list::NovelFiles,
     hooks::UseInitState,
 };
-use std::{env::current_dir, path::PathBuf};
-
-pub mod select_file;
 use ratatui::text::Line;
 use ratatui_kit::{
     AnyElement, Hooks, UseRouter, UseState, component, element,
     prelude::{Fragment, View},
 };
-use select_file::SelectFile;
-
-pub fn local_novel_first_page(path: Option<PathBuf>) -> Box<dyn RoutePage> {
-    SelectFile::to_page_route(path)
-}
+use std::{env::current_dir, path::PathBuf};
 
 #[component]
-pub fn SelectFile2(mut hooks: Hooks) -> impl Into<AnyElement<'static>> {
+pub fn SelectFile(mut hooks: Hooks) -> impl Into<AnyElement<'static>> {
     let dir_path = hooks.use_route_state::<PathBuf>();
     let is_inputting = hooks.use_state(|| false);
     let mut path = hooks.use_state(|| dir_path.map(|p| (*p).clone()));
@@ -41,7 +33,7 @@ pub fn SelectFile2(mut hooks: Hooks) -> impl Into<AnyElement<'static>> {
         .unwrap_or_default();
 
     if loading.get() {
-        return element!(Loading2(tip:"搜索小说中...")).into_any();
+        return element!(Loading(tip:"搜索小说中...")).into_any();
     }
 
     element!(Fragment {

@@ -6,17 +6,13 @@ use ratatui_kit::{
     routes,
 };
 
-pub mod state;
-pub use state::State;
-
 use crate::{
     History, TRNovel, ThemeConfig,
     book_source::BookSourceCache,
-    components::{Loading2, WarningModal},
+    components::{Loading, WarningModal},
     errors::Errors,
     pages::{
-        home::Home, local_novel::SelectFile2, playground::Playground,
-        select_history2::SelectHistory2,
+        home::Home, local_novel::SelectFile, playground::Playground, select_history::SelectHistory2,
     },
     utils::novel_catch_dir,
 };
@@ -66,7 +62,7 @@ pub fn App(_props: &AppProps, mut hooks: Hooks) -> impl Into<AnyElement<'static>
         "/"=>Home,
         "/playground"=>Playground,
         "/select-history"=>SelectHistory2,
-        "/select-file"=>SelectFile2,
+        "/select-file"=>SelectFile,
     );
 
     if error.read().is_some() {
@@ -79,7 +75,7 @@ pub fn App(_props: &AppProps, mut hooks: Hooks) -> impl Into<AnyElement<'static>
     } else {
         element!(Fragment{
             #(if loading.get() {
-                element!(Loading2(tip:"加载缓存中...")).into_any()
+                element!(Loading(tip:"加载缓存中...")).into_any()
             } else {
                 element!(
                     ContextProvider(value:Context::owned(theme_config_state)){

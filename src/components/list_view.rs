@@ -1,12 +1,43 @@
-use crate::components::widget_wrapper::WidgetWrapper;
+use ratatui::widgets::{Widget, WidgetRef};
 use ratatui::{
     style::Style,
     widgets::{Block, Clear},
 };
 use ratatui_kit::{Component, Props, State};
+use std::{ops::Deref, sync::Arc};
 use tui_widget_list::{
     ListBuildContext, ListBuilder, ListState, ListView as TuiListView, ScrollAxis,
 };
+
+#[derive(Clone)]
+pub struct WidgetWrapper {
+    widget: Arc<dyn WidgetRef + Send + Sync>,
+}
+
+impl Widget for WidgetWrapper {
+    fn render(self, area: ratatui::layout::Rect, buf: &mut ratatui::buffer::Buffer) {
+        self.widget.render_ref(area, buf);
+    }
+}
+
+impl<T> From<T> for WidgetWrapper
+where
+    T: WidgetRef + Send + Sync + 'static,
+{
+    fn from(widget: T) -> Self {
+        Self {
+            widget: Arc::new(widget),
+        }
+    }
+}
+
+impl Deref for WidgetWrapper {
+    type Target = dyn WidgetRef + Send + Sync;
+
+    fn deref(&self) -> &Self::Target {
+        &*self.widget
+    }
+}
 
 pub struct RenderItem<'a>(
     bool,

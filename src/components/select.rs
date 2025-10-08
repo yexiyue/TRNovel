@@ -1,10 +1,12 @@
 use crossterm::event::{Event, KeyCode, KeyEventKind};
 use ratatui::{
+    layout::{Alignment, Constraint},
     text::Line,
     widgets::{List, ListItem, ListState},
 };
 use ratatui_kit::{
-    AnyElement, Handler, Hooks, Props, UseEvents, UseState, component, element, prelude::Border,
+    AnyElement, Handler, Hooks, Props, UseEvents, UseState, component, element,
+    prelude::{Border, Center, Text},
 };
 
 use crate::hooks::{UseScrollbar, UseThemeConfig};
@@ -20,6 +22,7 @@ where
     pub top_title: Option<Line<'static>>,
     pub bottom_title: Option<Line<'static>>,
     pub is_editing: bool,
+    pub empty_message: String,
 }
 
 #[component]
@@ -29,6 +32,7 @@ where
 {
     let state = hooks.use_state(|| ListState::default().with_selected(props.default_value));
     let theme = hooks.use_theme_config();
+    let is_empty = props.items.is_empty();
 
     let list = List::new(props.items.clone())
         .style(theme.basic.text)
@@ -64,11 +68,33 @@ where
         }
     });
 
+    if is_empty {
+        return element!(
+            Border(
+                top_title: props.top_title.clone(),
+                bottom_title: props.bottom_title.clone(),
+                border_style: theme.basic.border,
+            ){
+                Center(
+                    height:Constraint::Length(5),
+                    width:Constraint::Percentage(50)
+                ){
+                    Text(
+                        text: props.empty_message.clone(),
+                        alignment: Alignment::Center,
+                        style: theme.colors.warning_color,
+                        wrap: true,
+                    )
+                }
+            }
+        );
+    }
+
     element!(Border(
         border_style: theme.basic.border,
         top_title:props.top_title.clone(),
         bottom_title:props.bottom_title.clone()
     ){
-         $(list,state)
+        $(list,state)
     })
 }

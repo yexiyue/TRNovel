@@ -1,6 +1,6 @@
+use crate::cache::LocalNovelCache;
 use crate::errors::Result;
 use crate::history::HistoryItem;
-use crate::{cache::LocalNovelCache, errors::Errors};
 
 use anyhow::anyhow;
 use async_trait::async_trait;
@@ -23,6 +23,9 @@ pub struct LocalNovel {
     pub encoding: &'static encoding_rs::Encoding,
     pub path: PathBuf,
 }
+
+unsafe impl Send for LocalNovel {}
+unsafe impl Sync for LocalNovel {}
 
 impl Deref for LocalNovel {
     type Target = NovelChapters<(String, usize)>;
@@ -107,49 +110,35 @@ impl Novel for LocalNovel {
         Self::from_path(args).await
     }
 
-    fn request_chapters<T: FnMut(Result<Vec<Self::Chapter>>) + Send + 'static>(
-        &self,
-        mut callback: T,
-    ) -> Result<()> {
+    async fn request_chapters(&self) -> Result<Vec<Self::Chapter>> {
         let path = self.path.clone();
         let encoding = self.encoding;
 
-        tokio::task::spawn(async move {
-            let res = async {
-                let file = File::open(path).await?;
+        let file = File::open(path).await?;
 
-                let mut buf_reader = BufReader::new(file);
-                let regexp = regex::Regex::new(r"第.+章").unwrap();
-                let mut chapter_offset = Vec::new();
-                let mut offset = 0;
+        let mut buf_reader = BufReader::new(file);
+        let regexp = regex::Regex::new(r"第.+章").unwrap();
+        let mut chapter_offset = Vec::new();
+        let mut offset = 0;
 
-                let mut line = vec![];
+        let mut line = vec![];
 
-                while let Ok(chunk_size) = buf_reader.read_until(b'\n', &mut line).await {
-                    if chunk_size == 0 {
-                        break;
-                    }
-                    let (new_line, _, _) = encoding.decode(&line);
-
-                    if regexp.is_match(&new_line) {
-                        chapter_offset.push((new_line.trim().to_string(), offset));
-                    }
-                    line.clear();
-                    offset += chunk_size;
-                }
-                Ok(chapter_offset)
+        while let Ok(chunk_size) = buf_reader.read_until(b'\n', &mut line).await {
+            if chunk_size == 0 {
+                break;
             }
-            .await;
+            let (new_line, _, _) = encoding.decode(&line);
 
-            callback(res);
-        });
-        Ok(())
+            if regexp.is_match(&new_line) {
+                chapter_offset.push((new_line.trim().to_string(), offset));
+            }
+            line.clear();
+            offset += chunk_size;
+        }
+        Ok(chapter_offset)
     }
 
-    fn get_content<T: FnMut(Result<String>) + Send + 'static>(
-        &mut self,
-        mut callback: T,
-    ) -> Result<()> {
+    async fn get_content(&self) -> Result<String> {
         let start = if self.current_chapter == 0 {
             0
         } else {
@@ -167,31 +156,23 @@ impl Novel for LocalNovel {
 
         let file = self.file.clone();
         let encoding = self.encoding;
-        tokio::spawn(async move {
-            let res = async {
-                let mut file = file.lock().await;
+        let mut file = file.lock().await;
 
-                let end = if is_last {
-                    file.metadata().await?.len() as usize
-                } else {
-                    end.ok_or(anyhow!("找不到下一章"))?
-                };
+        let end = if is_last {
+            file.metadata().await?.len() as usize
+        } else {
+            end.ok_or(anyhow!("找不到下一章"))?
+        };
 
-                let mut buffer = vec![0; end - start];
-                file.seek(SeekFrom::Start(start as u64)).await?;
-                file.read_exact(&mut buffer).await?;
+        let mut buffer = vec![0; end - start];
+        file.seek(SeekFrom::Start(start as u64)).await?;
+        file.read_exact(&mut buffer).await?;
 
-                let (str, _, has_error) = encoding.decode(&buffer);
-                if has_error {
-                    return Err(anyhow::anyhow!("解码错误").into());
-                }
-                Ok::<String, Errors>(str.to_string())
-            }
-            .await;
-
-            callback(res);
-        });
-        Ok(())
+        let (str, _, has_error) = encoding.decode(&buffer);
+        if has_error {
+            return Err(anyhow::anyhow!("解码错误").into());
+        }
+        Ok(str.to_string())
     }
 
     fn get_current_chapter_name(&self) -> Result<String> {

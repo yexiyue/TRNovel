@@ -1,8 +1,5 @@
 use super::{Novel, NovelChapters};
-use crate::{
-    Result, book_source::BookSourceCache, cache::NetworkNovelCache, errors::Errors,
-    history::HistoryItem,
-};
+use crate::{Result, book_source::BookSourceCache, cache::NetworkNovelCache, history::HistoryItem};
 use anyhow::anyhow;
 use async_trait::async_trait;
 use parse_book_source::{BookInfo, BookListItem, BookSourceParser, Chapter};
@@ -19,6 +16,9 @@ pub struct NetworkNovel {
     pub book_info: Option<BookInfo>,
     pub novel_chapters: NovelChapters<Chapter>,
 }
+
+unsafe impl Send for NetworkNovel {}
+unsafe impl Sync for NetworkNovel {}
 
 impl NetworkNovel {
     pub async fn from_url(url: &str, book_sources: Arc<Mutex<BookSourceCache>>) -> Result<Self> {
@@ -87,24 +87,15 @@ impl Novel for NetworkNovel {
             .map(|chapter| chapter.chapter_name)
     }
 
-    fn request_chapters<T: FnMut(Result<Vec<Self::Chapter>>) + Send + 'static>(
-        &self,
-        mut callback: T,
-    ) -> Result<()> {
+    async fn request_chapters(&self) -> Result<Vec<Self::Chapter>> {
         let book_source = self.book_source.clone();
         let book_info = self.book_info.clone().ok_or("book_info is none")?;
 
-        tokio::spawn(async move {
-            let res = book_source
-                .lock()
-                .await
-                .get_chapters(&book_info.toc_url)
-                .await
-                .map_err(Errors::from);
-
-            callback(res);
-        });
-        Ok(())
+        Ok(book_source
+            .lock()
+            .await
+            .get_chapters(&book_info.toc_url)
+            .await?)
     }
 
     fn get_chapters_names(&self) -> Result<Vec<(String, usize)>> {
@@ -116,24 +107,15 @@ impl Novel for NetworkNovel {
             .collect())
     }
 
-    fn get_content<T: FnMut(Result<String>) + Send + 'static>(
-        &mut self,
-        mut callback: T,
-    ) -> Result<()> {
+    async fn get_content(&self) -> Result<String> {
         let book_source = self.book_source.clone();
         let chapter = self.get_current_chapter()?;
 
-        tokio::spawn(async move {
-            let res = book_source
-                .lock()
-                .await
-                .get_content(&chapter.chapter_url)
-                .await
-                .map_err(Errors::from);
-
-            callback(res);
-        });
-        Ok(())
+        Ok(book_source
+            .lock()
+            .await
+            .get_content(&chapter.chapter_url)
+            .await?)
     }
 
     fn to_history_item(&self) -> Result<HistoryItem> {

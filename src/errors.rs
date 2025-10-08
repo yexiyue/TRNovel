@@ -1,6 +1,4 @@
-use crate::Events;
 use thiserror::Error;
-use tokio::sync::mpsc::error::SendError;
 
 #[derive(Debug, Error)]
 pub enum Errors {
@@ -9,9 +7,6 @@ pub enum Errors {
 
     #[error("{0}")]
     Warning(String),
-
-    #[error(transparent)]
-    SendError(#[from] SendError<Events>),
 
     #[error(transparent)]
     Io(#[from] std::io::Error),

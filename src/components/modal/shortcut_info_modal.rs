@@ -1,3 +1,5 @@
+use std::ops::{Deref, DerefMut};
+
 use ratatui::{
     layout::{Constraint, Margin},
     style::{Style, Stylize},
@@ -9,7 +11,52 @@ use ratatui_kit::{
     prelude::{Modal, ScrollView, View},
 };
 
-use crate::{components::KeyShortcutInfo, hooks::UseThemeConfig};
+use crate::hooks::UseThemeConfig;
+
+#[derive(Debug, Clone, Default)]
+pub struct KeyShortcutInfo(pub Vec<(String, String)>);
+
+impl Deref for KeyShortcutInfo {
+    type Target = Vec<(String, String)>;
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+impl DerefMut for KeyShortcutInfo {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.0
+    }
+}
+
+impl From<KeyShortcutInfo> for Vec<(String, String)> {
+    fn from(value: KeyShortcutInfo) -> Self {
+        value.0
+    }
+}
+
+impl KeyShortcutInfo {
+    pub fn new(data: Vec<(&str, &str)>) -> Self {
+        Self(
+            data.into_iter()
+                .map(|(k, v)| (k.to_string(), v.to_string()))
+                .collect(),
+        )
+    }
+
+    pub fn rows(&self) -> Vec<Row<'static>> {
+        self.0
+            .iter()
+            .map(|(key, info)| Row::new(vec![key.clone(), info.clone()]))
+            .collect::<Vec<_>>()
+    }
+}
+
+impl From<Vec<(&str, &str)>> for KeyShortcutInfo {
+    fn from(data: Vec<(&str, &str)>) -> Self {
+        Self::new(data)
+    }
+}
 
 #[derive(Debug, Clone, Props, Default)]
 pub struct ShortcutInfoModalProps {

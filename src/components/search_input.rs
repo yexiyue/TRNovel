@@ -22,6 +22,7 @@ pub struct SearchInputProps {
     pub clear_on_submit: bool,
     pub clear_on_escape: bool,
     pub is_editing: Option<State<bool>>,
+    pub on_clear: Handler<'static, ()>,
 }
 
 #[component]
@@ -41,6 +42,7 @@ pub fn SearchInput(
     let clear_on_submit = props.clear_on_submit;
     let clear_on_escape = props.clear_on_escape;
     let mut on_submit = props.on_submit.take();
+    let mut on_clear = props.on_clear.take();
 
     hooks.use_events(move |event| {
         if let Event::Key(key) = event
@@ -56,6 +58,7 @@ pub fn SearchInput(
                         value.write().reset();
                         is_valid.set(None);
                         status_message.set(String::new());
+                        on_clear(());
                     }
                 }
                 KeyCode::Enter if is_editing.get() => {
@@ -65,6 +68,7 @@ pub fn SearchInput(
                             value.write().reset();
                             is_valid.set(None);
                             status_message.set(String::new());
+                            on_clear(());
                         }
                         if valid {
                             is_editing.set(false);
