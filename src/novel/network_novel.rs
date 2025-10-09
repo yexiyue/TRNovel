@@ -1,7 +1,6 @@
 use super::{Novel, NovelChapters};
 use crate::{Result, book_source::BookSourceCache, cache::NetworkNovelCache, history::HistoryItem};
 use anyhow::anyhow;
-use async_trait::async_trait;
 use parse_book_source::{BookInfo, BookListItem, BookSourceParser, Chapter};
 use std::{
     ops::{Deref, DerefMut},
@@ -73,7 +72,6 @@ impl DerefMut for NetworkNovel {
     }
 }
 
-#[async_trait]
 impl Novel for NetworkNovel {
     type Chapter = Chapter;
     type Args = Self;

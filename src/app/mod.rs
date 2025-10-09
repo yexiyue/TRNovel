@@ -1,8 +1,8 @@
-use std::fs::File;
+use std::{any::Any, fs::File, path::PathBuf, sync::Arc};
 
 use ratatui_kit::{
     AnyElement, Context, Hooks, Props, UseFuture, UseState, UseTerminalSize, component, element,
-    prelude::{ContextProvider, Fragment, RouterProvider},
+    prelude::{ContextProvider, Fragment, RouteState, RouterProvider},
     routes,
 };
 
@@ -11,8 +11,10 @@ use crate::{
     book_source::BookSourceCache,
     components::{Loading, WarningModal},
     errors::Errors,
+    novel::local_novel::LocalNovel,
     pages::{
-        home::Home, local_novel::SelectFile, playground::Playground, select_history::SelectHistory2,
+        ReadNovel, home::Home, local_novel::SelectFile, playground::Playground,
+        select_history::SelectHistory2,
     },
     utils::novel_catch_dir,
 };
@@ -62,8 +64,13 @@ pub fn App(_props: &AppProps, mut hooks: Hooks) -> impl Into<AnyElement<'static>
         "/"=>Home,
         "/playground"=>Playground,
         "/select-history"=>SelectHistory2,
-        "/select-file"=>SelectFile,
+        "/select-file"=> SelectFile,
+        "/local-novel"=> ReadNovel<LocalNovel>,
     );
+
+    let default_state = RouteState::new(PathBuf::from(
+        "/Users/yexiyue/rust-project/TRNovel/test-novels/遮天.txt",
+    ));
 
     if error.read().is_some() {
         element!(WarningModal(
@@ -83,7 +90,8 @@ pub fn App(_props: &AppProps, mut hooks: Hooks) -> impl Into<AnyElement<'static>
                             ContextProvider(value:Context::owned(book_sources_catch_state)){
                                 RouterProvider(
                                     routes:routes,
-                                    index_path:"/select-file",
+                                    index_path:"/local-novel",
+                                    state: default_state
                                 )
                             }
                         }

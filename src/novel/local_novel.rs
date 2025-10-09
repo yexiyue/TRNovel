@@ -1,10 +1,10 @@
+use super::{Novel, NovelChapters};
 use crate::cache::LocalNovelCache;
 use crate::errors::Result;
 use crate::history::HistoryItem;
-
 use anyhow::anyhow;
-use async_trait::async_trait;
 use std::ops::{Deref, DerefMut};
+use std::time::Duration;
 use std::{
     io::SeekFrom,
     path::{Path, PathBuf},
@@ -13,8 +13,6 @@ use std::{
 use tokio::fs::File;
 use tokio::io::{AsyncBufReadExt, AsyncReadExt, AsyncSeekExt, BufReader};
 use tokio::sync::Mutex;
-
-use super::{Novel, NovelChapters};
 
 #[derive(Debug, Clone)]
 pub struct LocalNovel {
@@ -101,7 +99,6 @@ impl LocalNovel {
     }
 }
 
-#[async_trait]
 impl Novel for LocalNovel {
     type Chapter = (String, usize);
     type Args = PathBuf;

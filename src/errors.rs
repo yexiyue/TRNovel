@@ -19,6 +19,9 @@ pub enum Errors {
 
     #[error(transparent)]
     ParseBookSource(#[from] parse_book_source::ParseError),
+
+    #[error(transparent)]
+    Task(#[from] tokio::task::JoinError),
 }
 
 impl From<String> for Errors {

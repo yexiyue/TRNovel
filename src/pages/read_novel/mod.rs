@@ -1,31 +1,24 @@
-use anyhow::anyhow;
-use ratatui::{text::Line, widgets::ListItem};
-use ratatui_kit::{
-    AnyElement, Handler, Hooks, Props, UseMemo, UseRouter, UseState, component, element,
-    prelude::{Fragment, View},
-};
-
 use crate::{
-    components::{Loading, WarningModal, search_input::SearchInput, select::Select},
+    components::{Loading, WarningModal},
     errors::Errors,
     hooks::UseInitState,
     novel::Novel,
 };
-
-#[derive(Default, Clone)]
-pub struct ChapterName(pub String, pub usize);
-
-impl From<(String, usize)> for ChapterName {
-    fn from(value: (String, usize)) -> Self {
-        Self(value.0, value.1)
-    }
-}
-
-impl From<ChapterName> for ListItem<'_> {
-    fn from(value: ChapterName) -> Self {
-        ListItem::new(value.0)
-    }
-}
+use crossterm::event::{Event, KeyCode, KeyEventKind};
+use futures::FutureExt;
+use ratatui::layout::Direction;
+use ratatui_kit::{
+    AnyElement, Hooks, UseEffect, UseEvents, UseRouter, UseState, UseTerminalSize, component,
+    element,
+    prelude::{Fragment, View},
+};
+mod select_chapter;
+pub use select_chapter::*;
+mod read_content;
+pub use read_content::*;
+use std::sync::Arc;
+use tokio::sync::Notify;
+use tokio::time::{Duration, sleep};
 
 #[component]
 pub fn ReadNovel<T>(mut hooks: Hooks) -> impl Into<AnyElement<'static>>
@@ -33,106 +26,180 @@ where
     T: Novel + Send + Sync + Unpin + 'static,
 {
     let route_state = hooks.use_route_state::<T::Args>();
-    let (novel, loading, error) = hooks.use_init_state(async move {
-        let args = route_state.clone().ok_or(anyhow!("缺少参数"))?;
-        let args = args.as_ref().clone();
-        let res = T::init(args).await?;
+    let mut chapters = hooks.use_state(|| vec![]);
+    let mut current_chapter = hooks.use_state(|| 0usize);
+    let mut content = hooks.use_state(String::default);
+    let mut is_read_mode = hooks.use_state(|| false);
+    let (width, height) = hooks.use_terminal_size();
 
-        Ok::<T, Errors>(res)
+    let mut content_loading = hooks.use_state(|| false);
+
+    let line_percent = hooks.use_state(|| 0.0);
+
+    let (novel, loading, error) = hooks.use_init_state(async move {
+        let args = route_state.as_ref().clone();
+
+        tokio::spawn(async move {
+            let mut res = T::init(args).await?;
+
+            if res.get_chapters().is_none() {
+                let chapters = res.request_chapters().await?;
+                res.set_chapters(&chapters);
+            }
+            chapters.set(
+                res.get_chapters_names()?
+                    .into_iter()
+                    .map(ChapterName::from)
+                    .collect(),
+            );
+
+            current_chapter.set(res.current_chapter);
+            content_loading.set(true);
+            content.set(res.get_content().await?);
+            content_loading.set(false);
+
+            Ok::<T, Errors>(res)
+        })
+        .await?
+    });
+
+    hooks.use_async_effect(
+        async move {
+            let notify = Arc::new(Notify::new());
+            let notify_clone = notify.clone();
+            // 启动定时器，200ms后如果还在加载则显示loading
+            let show_loading_handle = tokio::spawn(async move {
+                sleep(Duration::from_millis(200)).await;
+                // 如果notify还没被唤醒，说明内容还在加载
+                if notify_clone.notified().now_or_never().is_none() {
+                    content_loading.set(true);
+                }
+            });
+
+            let novel = novel.read().clone();
+            let content_result = novel.map(|n| tokio::spawn(async move { n.get_content().await }));
+
+            if let Some(fut) = content_result {
+                match fut.await {
+                    Ok(c) => match c {
+                        Ok(c) => {
+                            content.set(c);
+                        }
+                        Err(e) => {
+                            error.write().replace(e);
+                        }
+                    },
+                    Err(e) => {
+                        error.write().replace(e.into());
+                    }
+                }
+            }
+
+            notify.notify_one();
+            content_loading.set(false);
+            let _ = show_loading_handle.await;
+        },
+        current_chapter.get(),
+    );
+
+    hooks.use_events(move |event| {
+        if let Event::Key(key) = event
+            && key.kind == KeyEventKind::Press
+        {
+            match key.code {
+                KeyCode::Tab => {
+                    is_read_mode.set(!is_read_mode.get());
+                }
+                _ => {}
+            }
+        }
     });
 
     if loading.get() {
-        return element!(Loading(tip:"搜索小说中...")).into_any();
+        return element!(Loading(tip:"加载小说中...")).into_any();
     }
 
-    element!(Fragment {
-        View{
+    let chapter_name = novel
+        .read()
+        .as_ref()
+        .and_then(|n| n.get_current_chapter_name().ok())
+        .unwrap_or_default();
 
-            WarningModal(
-                tip: format!("加载失败:{:?}", error.read().as_ref()),
-                is_error: error.read().is_some(),
-                open: error.read().is_some(),
-            )
-        }
+    let chapter_percent = novel
+        .read()
+        .as_ref()
+        .and_then(|n| n.chapter_percent().ok())
+        .unwrap_or_default();
+
+    element!(Fragment {
+        #(if is_read_mode.get(){
+            element!(View{
+                ReadContent(
+                    is_scroll: true,
+                    width: width,
+                    height: height,
+                    content: content.read().clone(),
+                    chapter_name: chapter_name,
+                    chapter_percent: chapter_percent,
+                    is_loading: content_loading.get(),
+                    on_next: move |_| {
+                        let new_chapter=current_chapter.get() + 1;
+                        if let Some(novel) = novel.write().as_mut() {
+                            if new_chapter >= chapters.read().len() {
+                                return;
+                            }
+                            if let Err(e) = novel.set_chapter(new_chapter) {
+                                error.write().replace(e);
+                                return;
+                            }
+                            current_chapter.set(new_chapter);
+                        }
+                    },
+                    on_prev: move |_| {
+                        let new_chapter= current_chapter.get().saturating_sub(1);
+                        if let Some(novel) = novel.write().as_mut() {
+                            if let Err(e) = novel.set_chapter(new_chapter) {
+                                error.write().replace(e);
+                                return;
+                            }
+                            current_chapter.set(new_chapter);
+                        }
+                    },
+                    line_percent: line_percent,
+                )
+            })
+        }else{
+            element!(View(flex_direction:Direction::Horizontal){
+                SelectChapter(
+                    chapters: chapters.read().clone(),
+                    default_value: current_chapter.get(),
+                    on_select: move |index| {
+                        if let Some(novel) = novel.write().as_mut() {
+                            if let Err(e)=novel.set_chapter(index){
+                                error.write().replace(e);
+                                return;
+                            }
+                            current_chapter.set(index);
+                            is_read_mode.set(true);
+                        };
+                    },
+                )
+                ReadContent(
+                    content: content.read().clone(),
+                    chapter_name: chapter_name,
+                    chapter_percent: chapter_percent,
+                    width: width / 2,
+                    height: height,
+                    is_loading: content_loading.get(),
+                    line_percent: line_percent,
+                )
+            })
+        })
+        WarningModal(
+            tip: format!("加载失败:{:?}", error.read().as_ref()),
+            is_error: error.read().is_some(),
+            open: error.read().is_some(),
+        )
     })
     .into_any()
-}
-
-#[derive(Default, Props)]
-pub struct SelectChapterProps {
-    chapters: Vec<ChapterName>,
-    on_select: Handler<'static, usize>,
-}
-
-#[component]
-pub fn SelectChapter(
-    props: &mut SelectChapterProps,
-    mut hooks: Hooks,
-) -> impl Into<AnyElement<'static>> {
-    let mut filter_text = hooks.use_state(String::default);
-    let is_inputting = hooks.use_state(|| false);
-    let items = hooks.use_memo(
-        || {
-            props
-                .chapters
-                .iter()
-                .filter(|&chapter_name| {
-                    if filter_text.read().is_empty() {
-                        true
-                    } else if filter_text.read().starts_with('$') {
-                        let index_str = &filter_text.read()[1..];
-                        if let Ok(index) = index_str.parse::<usize>() {
-                            index == chapter_name.1
-                        } else {
-                            false
-                        }
-                    } else {
-                        chapter_name.0.contains(filter_text.read().as_str())
-                    }
-                })
-                .cloned()
-                .collect::<Vec<_>>()
-        },
-        filter_text.read().clone(),
-    );
-
-    let mut on_select = props.on_select.take();
-
-    element!(Fragment {
-        SearchInput(
-            placeholder: "按s搜索章节,以$开头输入数字表示索引",
-            on_submit: move |text| {
-                filter_text.set(text);
-                true
-            },
-            on_clear: move |_| {
-                filter_text.set(String::default());
-            },
-            validate: |input: String| {
-                if input.starts_with('$') {
-                    if input[1..].parse::<usize>().is_ok() {
-                        (true, "".to_owned())
-                    } else {
-                        (false, "请输入正确的数字".to_owned())
-                    }
-                } else {
-                    (true, "".to_owned())
-                }
-            },
-            is_editing: is_inputting,
-        )
-        Select<ChapterName>(
-            items: items,
-            top_title: Line::from("目录").centered(),
-            empty_message: if filter_text.read().is_empty() {
-                "暂无章节".to_owned()
-            } else {
-                "无匹配章节".to_owned()
-            },
-            on_select: move |item: ChapterName| {
-                on_select(item.1);
-            },
-            is_editing: !is_inputting.get(),
-        )
-    })
 }

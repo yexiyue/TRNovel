@@ -12,7 +12,7 @@ use std::{env::current_dir, path::PathBuf};
 
 #[component]
 pub fn SelectFile(mut hooks: Hooks) -> impl Into<AnyElement<'static>> {
-    let dir_path = hooks.use_route_state::<PathBuf>();
+    let dir_path = hooks.try_use_route_state::<PathBuf>();
     let is_inputting = hooks.use_state(|| false);
     let mut path = hooks.use_state(|| dir_path.map(|p| (*p).clone()));
 
