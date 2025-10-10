@@ -46,6 +46,7 @@ where
                 let chapters = res.request_chapters().await?;
                 res.set_chapters(&chapters);
             }
+
             chapters.set(
                 res.get_chapters_names()?
                     .into_iter()
@@ -132,7 +133,7 @@ where
         .unwrap_or_default();
 
     element!(Fragment {
-        #(if is_read_mode.get(){
+        #(if is_read_mode.get() {
             element!(View{
                 ReadContent(
                     is_scroll: true,

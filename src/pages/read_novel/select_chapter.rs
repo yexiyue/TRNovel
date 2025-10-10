@@ -36,27 +36,29 @@ pub fn SelectChapter(
     let is_inputting = hooks.use_state(|| false);
     let items = hooks.use_memo(
         || {
-            props
-                .chapters
-                .iter()
-                .filter(|&chapter_name| {
-                    if filter_text.read().is_empty() {
-                        true
-                    } else if filter_text.read().starts_with('$') {
-                        let index_str = &filter_text.read()[1..];
-                        if let Ok(index) = index_str.parse::<usize>() {
-                            index == chapter_name.1
+            if filter_text.read().is_empty() {
+                props.chapters.clone()
+            } else {
+                props
+                    .chapters
+                    .iter()
+                    .filter(|&chapter_name| {
+                        if filter_text.read().starts_with('$') {
+                            let index_str = &filter_text.read()[1..];
+                            if let Ok(index) = index_str.parse::<usize>() {
+                                index == chapter_name.1
+                            } else {
+                                false
+                            }
                         } else {
-                            false
+                            chapter_name.0.contains(filter_text.read().as_str())
                         }
-                    } else {
-                        chapter_name.0.contains(filter_text.read().as_str())
-                    }
-                })
-                .cloned()
-                .collect::<Vec<_>>()
+                    })
+                    .cloned()
+                    .collect::<Vec<_>>()
+            }
         },
-        filter_text.read().clone(),
+        (filter_text.read().clone(), props.chapters.len()),
     );
 
     let mut on_select = props.on_select.take();

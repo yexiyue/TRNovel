@@ -7,7 +7,7 @@ use ratatui::{
     text::Line,
 };
 use ratatui_kit::{
-    AnyElement, Handler, Hooks, Props, State, UseEvents, UseState, component, element,
+    AnyElement, Handler, Hooks, Props, State, UseEffect, UseEvents, UseState, component, element,
     prelude::{Border, Input, tui_input},
 };
 use tui_input::backend::crossterm::EventHandler;
@@ -16,6 +16,7 @@ use crate::hooks::UseThemeConfig;
 
 #[derive(Default, Props)]
 pub struct SearchInputProps {
+    pub value: String,
     pub placeholder: String,
     pub validate: Handler<'static, String, (bool, String)>,
     pub on_submit: Handler<'static, String, bool>,
@@ -33,7 +34,7 @@ pub fn SearchInput(
     let is_editing = hooks.use_state(|| false);
     let mut is_editing = props.is_editing.take().unwrap_or(is_editing);
 
-    let value = hooks.use_state(tui_input::Input::default);
+    let mut value = hooks.use_state(tui_input::Input::default);
     let mut is_valid = hooks.use_state(|| None::<bool>);
     let mut validate_fn = props.validate.take();
     let mut status_message = hooks.use_state(|| String::new());
@@ -43,6 +44,14 @@ pub fn SearchInput(
     let clear_on_escape = props.clear_on_escape;
     let mut on_submit = props.on_submit.take();
     let mut on_clear = props.on_clear.take();
+
+    hooks.use_effect(
+        || {
+            let new_value = value.read().clone().with_value(props.value.clone());
+            value.set(new_value);
+        },
+        props.value.clone(),
+    );
 
     hooks.use_events(move |event| {
         if let Event::Key(key) = event

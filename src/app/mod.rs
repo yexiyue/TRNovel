@@ -1,10 +1,12 @@
-use std::{any::Any, fs::File, path::PathBuf, sync::Arc};
+use std::{fs::File, sync::Arc, time::Duration};
 
+use futures::FutureExt;
 use ratatui_kit::{
     AnyElement, Context, Hooks, Props, UseFuture, UseState, UseTerminalSize, component, element,
-    prelude::{ContextProvider, Fragment, RouteState, RouterProvider},
+    prelude::{ContextProvider, Fragment, RouterProvider},
     routes,
 };
+use tokio::sync::Notify;
 
 use crate::{
     History, TRNovel, ThemeConfig,
@@ -12,12 +14,11 @@ use crate::{
     components::{Loading, WarningModal},
     errors::Errors,
     novel::local_novel::LocalNovel,
-    pages::{
-        ReadNovel, home::Home, local_novel::SelectFile, playground::Playground,
-        select_history::SelectHistory2,
-    },
+    pages::{ReadNovel, home::Home, local_novel::SelectFile, select_history::SelectHistory},
     utils::novel_catch_dir,
 };
+mod layout;
+use layout::Layout;
 
 #[derive(Debug, Props)]
 pub struct AppProps {
@@ -34,8 +35,17 @@ pub fn App(_props: &AppProps, mut hooks: Hooks) -> impl Into<AnyElement<'static>
     let error = hooks.use_state(|| None::<String>);
 
     hooks.use_future(async move {
-        loading.set(true);
-        tokio::time::sleep(std::time::Duration::from_millis(1000)).await;
+        let notify = Arc::new(Notify::new());
+        tokio::spawn({
+            let notify = notify.clone();
+            async move {
+                tokio::time::sleep(Duration::from_millis(200)).await;
+                if notify.notified().now_or_never().is_none() {
+                    loading.set(true);
+                }
+            }
+        });
+
         match (move || {
             let history = History::load()?;
             history_state.write().replace(history);
@@ -57,20 +67,18 @@ pub fn App(_props: &AppProps, mut hooks: Hooks) -> impl Into<AnyElement<'static>
             }
         }
 
+        notify.notify_one();
         loading.set(false);
     });
 
     let routes = routes!(
-        "/"=>Home,
-        "/playground"=>Playground,
-        "/select-history"=>SelectHistory2,
-        "/select-file"=> SelectFile,
-        "/local-novel"=> ReadNovel<LocalNovel>,
+        "/"=>Layout{
+            "/home"=>Home,
+            "/select-history"=>SelectHistory,
+            "/select-file"=> SelectFile,
+            "/local-novel"=> ReadNovel<LocalNovel>,
+        }
     );
-
-    let default_state = RouteState::new(PathBuf::from(
-        "/Users/yexiyue/rust-project/TRNovel/test-novels/遮天.txt",
-    ));
 
     if error.read().is_some() {
         element!(WarningModal(
@@ -90,8 +98,7 @@ pub fn App(_props: &AppProps, mut hooks: Hooks) -> impl Into<AnyElement<'static>
                             ContextProvider(value:Context::owned(book_sources_catch_state)){
                                 RouterProvider(
                                     routes:routes,
-                                    index_path:"/local-novel",
-                                    state: default_state
+                                    index_path:"/home",
                                 )
                             }
                         }

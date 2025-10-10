@@ -4,7 +4,6 @@ use crate::errors::Result;
 use crate::history::HistoryItem;
 use anyhow::anyhow;
 use std::ops::{Deref, DerefMut};
-use std::time::Duration;
 use std::{
     io::SeekFrom,
     path::{Path, PathBuf},

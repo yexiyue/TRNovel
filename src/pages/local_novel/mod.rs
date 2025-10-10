@@ -13,6 +13,7 @@ use std::{env::current_dir, path::PathBuf};
 #[component]
 pub fn SelectFile(mut hooks: Hooks) -> impl Into<AnyElement<'static>> {
     let dir_path = hooks.try_use_route_state::<PathBuf>();
+    let mut navigate = hooks.use_navigate();
     let is_inputting = hooks.use_state(|| false);
     let mut path = hooks.use_state(|| dir_path.map(|p| (*p).clone()));
 
@@ -23,7 +24,7 @@ pub fn SelectFile(mut hooks: Hooks) -> impl Into<AnyElement<'static>> {
             let path = dir_path.clone();
             async move { tokio::spawn(async move { NovelFiles::from_path(path) }).await? }
         },
-        dir_path,
+        dir_path.clone(),
     );
 
     let tree_items = data
@@ -39,6 +40,7 @@ pub fn SelectFile(mut hooks: Hooks) -> impl Into<AnyElement<'static>> {
     element!(Fragment {
         View{
             SearchInput(
+                value: dir_path.to_string_lossy().to_string(),
                 placeholder: "请输入小说文件夹路径",
                 is_editing: is_inputting,
                 validate: |input: String| {
@@ -63,13 +65,12 @@ pub fn SelectFile(mut hooks: Hooks) -> impl Into<AnyElement<'static>> {
                     }
                 },
             )
-
             FileSelect(
                 is_editing: !is_inputting.get(),
                 top_title: Line::from(format!("本地小说")).centered(),
                 items: tree_items,
                 on_select: move |item:PathBuf| {
-
+                    navigate.push_with_state("/local-novel", item);
                 },
                 empty_message: "未搜索到小说文件，请确认路径是否正确，或按i开始输入路径",
             )

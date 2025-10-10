@@ -100,7 +100,7 @@ impl WidgetRef for ListItem {
 }
 
 #[component]
-pub fn SelectHistory2(mut hooks: Hooks) -> impl Into<AnyElement<'static>> {
+pub fn SelectHistory(mut hooks: Hooks) -> impl Into<AnyElement<'static>> {
     let theme = hooks.use_theme_config();
     let history = hooks.use_context::<State<Option<History>>>();
 

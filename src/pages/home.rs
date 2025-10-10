@@ -1,8 +1,8 @@
 use crate::{
+    History,
     components::{KeyShortcutInfo, ShortcutInfoModal},
     hooks::UseThemeConfig,
 };
-
 use crossterm::event::{Event, KeyCode, KeyEventKind};
 use ratatui::{
     layout::Constraint,
@@ -10,7 +10,8 @@ use ratatui::{
     widgets::{List, ListState, Paragraph, Wrap},
 };
 use ratatui_kit::{
-    AnyElement, Hooks, UseEvents, UseRouter, UseState, UseTerminalSize, component, element,
+    AnyElement, Hooks, State, UseContext, UseEvents, UseRouter, UseState, UseTerminalSize,
+    component, element,
     prelude::{Center, View},
 };
 use tui_big_text::{BigText, PixelSize};
@@ -19,10 +20,12 @@ use tui_big_text::{BigText, PixelSize};
 pub fn Home(mut hooks: Hooks) -> impl Into<AnyElement<'static>> {
     let state = hooks.use_state(ListState::default);
     let mut info_modal_open = hooks.use_state(|| false);
+    let history = hooks.use_context::<State<Option<History>>>();
+    let local_path = history.read().as_ref().and_then(|h| h.local_path.clone());
 
     let theme = hooks.use_theme_config();
 
-    let navigate = hooks.use_navigate();
+    let mut navigate = hooks.use_navigate();
 
     hooks.use_terminal_size();
 
@@ -50,21 +53,26 @@ pub fn Home(mut hooks: Hooks) -> impl Into<AnyElement<'static>> {
                     }
                     KeyCode::Enter => {
                         if let Some(index) = state.read().selected() {
-                            // match index {
-                            //     0 => {
-                            //         navigate.push(local_novel_first_page(None));
-                            //     }
-                            //     1 => {
-                            //         navigate.push(network_novel_first_page().unwrap());
-                            //     }
-                            //     2 => {
-                            //         navigate.push(SelectHistory::to_page_route());
-                            //     }
-                            //     3 => {
-                            //         navigate.push(ThemeSettingPage::to_page_route());
-                            //     }
-                            //     _ => {}
-                            // }
+                            match index {
+                                0 => {
+                                    if let Some(path) = &local_path {
+                                        navigate.push_with_state("/select-file", path.clone());
+                                    } else {
+                                        navigate.push("/select-file");
+                                    }
+                                }
+                                1 => {
+                                    // navigate.push(network_novel_first_page().unwrap());
+                                }
+                                2 => {
+                                    // navigate.push(SelectHistory::to_page_route());
+                                    navigate.push("/select-history");
+                                }
+                                3 => {
+                                    // navigate.push(ThemeSettingPage::to_page_route());
+                                }
+                                _ => {}
+                            }
                         }
                     }
                     _ => {}
