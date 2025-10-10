@@ -5,7 +5,7 @@ use ratatui::{
     widgets::{List, ListItem, ListState},
 };
 use ratatui_kit::{
-    AnyElement, Handler, Hooks, Props, UseEvents, UseState, component, element,
+    AnyElement, Handler, Hooks, Props, UseEffect, UseEvents, UseState, component, element,
     prelude::{Border, Center, Text},
 };
 
@@ -18,7 +18,7 @@ where
 {
     pub items: Vec<T>,
     pub on_select: Handler<'static, T>,
-    pub default_value: Option<usize>,
+    pub value: Option<usize>,
     pub top_title: Option<Line<'static>>,
     pub bottom_title: Option<Line<'static>>,
     pub is_editing: bool,
@@ -30,9 +30,16 @@ pub fn Select<T>(props: &mut SelectProps<T>, mut hooks: Hooks) -> impl Into<AnyE
 where
     T: Into<ListItem<'static>> + Sync + Send + Clone + 'static,
 {
-    let state = hooks.use_state(|| ListState::default().with_selected(props.default_value));
+    let state = hooks.use_state(|| ListState::default().with_selected(props.value));
     let theme = hooks.use_theme_config();
     let is_empty = props.items.is_empty();
+
+    hooks.use_effect(
+        || {
+            state.write().select(props.value);
+        },
+        props.value,
+    );
 
     let list = List::new(props.items.clone())
         .style(theme.basic.text)

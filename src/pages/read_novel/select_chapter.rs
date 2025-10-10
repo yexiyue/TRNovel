@@ -99,7 +99,7 @@ pub fn SelectChapter(
                 on_select(item.1);
             },
             is_editing: !is_inputting.get(),
-            default_value: props.default_value,
+            value: props.default_value,
         )
     })
 }

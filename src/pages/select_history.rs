@@ -6,7 +6,7 @@ use ratatui::{
     widgets::{Block, Padding, Paragraph, Widget, WidgetRef},
 };
 use ratatui_kit::{
-    AnyElement, Hooks, State, UseContext, UseEvents, UseState, component, element,
+    AnyElement, Hooks, State, UseContext, UseEvents, UseMemo, UseState, component, element,
     prelude::Fragment,
 };
 use tui_widget_list::{ListBuildContext, ListState};
@@ -108,7 +108,15 @@ pub fn SelectHistory(mut hooks: Hooks) -> impl Into<AnyElement<'static>> {
     let mut info_modal_open = hooks.use_state(|| false);
 
     let state = hooks.use_state(ListState::default);
-    let history = history.clone();
+
+    let history = hooks.use_memo(
+        || {
+            let new_history = History::load().ok();
+            *history.write() = new_history;
+            history.clone()
+        },
+        (),
+    );
 
     let histories = history
         .read()

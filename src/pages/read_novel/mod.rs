@@ -1,4 +1,5 @@
 use crate::{
+    History,
     components::{Loading, WarningModal},
     errors::Errors,
     hooks::UseInitState,
@@ -8,8 +9,8 @@ use crossterm::event::{Event, KeyCode, KeyEventKind};
 use futures::FutureExt;
 use ratatui::layout::Direction;
 use ratatui_kit::{
-    AnyElement, Hooks, UseEffect, UseEvents, UseRouter, UseState, UseTerminalSize, component,
-    element,
+    AnyElement, Hooks, State, UseContext, UseEffect, UseEvents, UseOnDrop, UseRouter, UseState,
+    UseTerminalSize, component, element,
     prelude::{Fragment, View},
 };
 mod select_chapter;
@@ -26,6 +27,7 @@ where
     T: Novel + Send + Sync + Unpin + 'static,
 {
     let route_state = hooks.use_route_state::<T::Args>();
+    let history = hooks.use_context::<State<Option<History>>>().clone();
     let mut chapters = hooks.use_state(|| vec![]);
     let mut current_chapter = hooks.use_state(|| 0usize);
     let mut content = hooks.use_state(String::default);
@@ -33,8 +35,6 @@ where
     let (width, height) = hooks.use_terminal_size();
 
     let mut content_loading = hooks.use_state(|| false);
-
-    let line_percent = hooks.use_state(|| 0.0);
 
     let (novel, loading, error) = hooks.use_init_state(async move {
         let args = route_state.as_ref().clone();
@@ -62,6 +62,32 @@ where
             Ok::<T, Errors>(res)
         })
         .await?
+    });
+
+    let line_percent = hooks.use_state(|| {
+        novel
+            .read()
+            .as_ref()
+            .map(|n| n.line_percent)
+            .unwrap_or_default()
+    });
+
+    hooks.use_on_drop({
+        let mut novel = novel.read().clone();
+        let mut history = history.read().clone();
+
+        move || {
+            if let Some(novel) = novel.as_mut() {
+                novel.line_percent = line_percent.get();
+                novel.current_chapter = current_chapter.get();
+
+                if let Some(history) = history.as_mut() {
+                    let history_item = novel.to_history_item().expect("to_history_item failed");
+                    history.add(&novel.get_id(), history_item);
+                    history.save().expect("save history failed");
+                }
+            }
+        }
     });
 
     hooks.use_async_effect(
