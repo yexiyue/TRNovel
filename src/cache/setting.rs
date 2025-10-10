@@ -1,17 +1,8 @@
 use crate::Result;
+use crate::utils::novel_catch_dir;
 use ratatui::style::{Color, Style, Stylize};
 use serde::{Deserialize, Serialize};
-use std::{fs::File, sync::LazyLock};
-
-use crate::utils::novel_catch_dir;
-
-pub static THEME_CONFIG: LazyLock<ThemeConfig> = LazyLock::new(|| {
-    let path = novel_catch_dir().unwrap().join("theme.json");
-    match File::open(path.clone()) {
-        Ok(file) => serde_json::from_reader(file).unwrap_or_default(),
-        Err(_) => ThemeConfig::default(),
-    }
-});
+use std::fs::File;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]

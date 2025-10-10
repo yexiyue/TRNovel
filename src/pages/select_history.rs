@@ -1,3 +1,8 @@
+use crate::{
+    History, HistoryItem, ThemeConfig,
+    components::{ConfirmModal, KeyShortcutInfo, ShortcutInfoModal, list_select::ListSelect},
+    hooks::UseThemeConfig,
+};
 use crossterm::event::{Event, KeyCode, KeyEventKind};
 use ratatui::{
     layout::{Constraint, Layout},
@@ -11,15 +16,10 @@ use ratatui_kit::{
 };
 use tui_widget_list::{ListBuildContext, ListState};
 
-use crate::{
-    History, HistoryItem, THEME_CONFIG,
-    components::{ConfirmModal, KeyShortcutInfo, ShortcutInfoModal, list_select::ListSelect},
-    hooks::UseThemeConfig,
-};
-
 pub struct ListItem {
     pub history: HistoryItem,
     pub selected: bool,
+    pub theme: ThemeConfig,
 }
 
 impl Widget for ListItem {
@@ -33,7 +33,7 @@ impl WidgetRef for ListItem {
         let block = if self.selected {
             Block::bordered()
                 .padding(Padding::horizontal(0))
-                .style(THEME_CONFIG.selected)
+                .style(self.theme.selected)
         } else {
             Block::bordered().padding(Padding::horizontal(0))
         };
@@ -47,9 +47,9 @@ impl WidgetRef for ListItem {
                 .areas(bottom);
 
         let text_color = if self.selected {
-            THEME_CONFIG.basic.text.patch(THEME_CONFIG.selected)
+            self.theme.basic.text.patch(self.theme.selected)
         } else {
-            THEME_CONFIG.basic.text
+            self.theme.basic.text
         };
 
         match &self.history {
@@ -62,7 +62,7 @@ impl WidgetRef for ListItem {
                 .render(top, buf);
 
                 Span::from("本地小说")
-                    .style(THEME_CONFIG.basic.border_info.patch(text_color))
+                    .style(self.theme.basic.border_info.patch(text_color))
                     .render(bottom_left, buf);
 
                 Text::from(format!(
@@ -70,7 +70,7 @@ impl WidgetRef for ListItem {
                     item.percent,
                     item.last_read_at.format("%Y-%m-%d %H:%M:%S")
                 ))
-                .style(THEME_CONFIG.basic.border_info.patch(text_color))
+                .style(self.theme.basic.border_info.patch(text_color))
                 .right_aligned()
                 .render(bottom_right, buf);
             }
@@ -83,7 +83,7 @@ impl WidgetRef for ListItem {
                 .render(top, buf);
 
                 Span::from(format!("书源：{}", item.book_source))
-                    .style(THEME_CONFIG.basic.border_info.patch(text_color))
+                    .style(self.theme.basic.border_info.patch(text_color))
                     .render(bottom_left, buf);
 
                 Text::from(format!(
@@ -91,7 +91,7 @@ impl WidgetRef for ListItem {
                     item.percent,
                     item.last_read_at.format("%Y-%m-%d %H:%M:%S")
                 ))
-                .style(THEME_CONFIG.basic.border_info.patch(text_color))
+                .style(self.theme.basic.border_info.patch(text_color))
                 .right_aligned()
                 .render(bottom_right, buf);
             }
@@ -157,15 +157,19 @@ pub fn SelectHistory(mut hooks: Hooks) -> impl Into<AnyElement<'static>> {
                     histories.len())
                 )
                 .style(theme.basic.border_info.not_dim()),
-            render_item: move |context:&ListBuildContext| {
-                let (_, item) = &histories[context.index];
-                (
-                    ListItem {
-                        history: item.clone(),
-                        selected: context.is_selected,
-                    }.into(),
-                    5,
-                )
+            render_item: {
+                let theme=theme.clone();
+                move |context:&ListBuildContext| {
+                    let (_, item) = &histories[context.index];
+                    (
+                        ListItem {
+                            history: item.clone(),
+                            selected: context.is_selected,
+                            theme: theme.clone(),
+                        }.into(),
+                        5,
+                    )
+                }
             },
             empty_message: "暂无历史记录",
         )

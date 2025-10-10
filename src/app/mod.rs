@@ -14,7 +14,10 @@ use crate::{
     components::{Loading, WarningModal},
     errors::Errors,
     novel::local_novel::LocalNovel,
-    pages::{ReadNovel, home::Home, local_novel::SelectFile, select_history::SelectHistory},
+    pages::{
+        ReadNovel, home::Home, local_novel::SelectFile,
+        network_novel::import_book_source::ImportBookSource, select_history::SelectHistory,
+    },
     utils::novel_catch_dir,
 };
 mod layout;
@@ -77,6 +80,7 @@ pub fn App(_props: &AppProps, mut hooks: Hooks) -> impl Into<AnyElement<'static>
             "/select-history"=>SelectHistory,
             "/select-file"=> SelectFile,
             "/local-novel"=> ReadNovel<LocalNovel>,
+            "/import-book-source"=> ImportBookSource,
         }
     );
 
@@ -98,7 +102,7 @@ pub fn App(_props: &AppProps, mut hooks: Hooks) -> impl Into<AnyElement<'static>
                             ContextProvider(value:Context::owned(book_sources_catch_state)){
                                 RouterProvider(
                                     routes:routes,
-                                    index_path:"/home",
+                                    index_path:"/import-book-source",
                                 )
                             }
                         }
