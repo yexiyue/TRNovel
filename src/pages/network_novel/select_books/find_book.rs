@@ -11,7 +11,7 @@ use ratatui::{
     widgets::{Block, Padding, Paragraph, WidgetRef, Wrap},
 };
 use ratatui_kit::prelude::*;
-use tui_widget_list::ListBuildContext;
+use tui_widget_list::{ListBuildContext, ListState};
 
 #[derive(Props)]
 pub struct FindBooksProps {
@@ -27,6 +27,7 @@ pub fn FindBooks(props: &FindBooksProps, mut hooks: Hooks) -> impl Into<AnyEleme
     let is_inputting = hooks.use_state(|| false);
     let mut page = hooks.use_state(|| 1);
     let page_size = hooks.use_state(|| 20);
+    let list_state = hooks.use_state(|| ListState::default());
 
     let is_editing = props.is_editing;
 
@@ -80,8 +81,11 @@ pub fn FindBooks(props: &FindBooksProps, mut hooks: Hooks) -> impl Into<AnyEleme
 
             async move {
                 if let Some(future) = future {
-                    return Ok(future.await??);
+                    let res = future.await??;
+                    list_state.write().select(Some(0));
+                    return Ok(res);
                 }
+
                 Ok::<BookList, Errors>(vec![].into())
             }
         },
@@ -118,7 +122,7 @@ pub fn FindBooks(props: &FindBooksProps, mut hooks: Hooks) -> impl Into<AnyEleme
             ).centered(),
             bottom_title: if books.read().as_ref().map(|b|b.len()).unwrap_or(0)>0{
                 Line::from(
-                    format!("第 {} 页, 共 {} 本书", page.get(), books.read().as_ref().map(|b|b.len()).unwrap_or(0))
+                    format!("第 {} 页, {}/{}", page.get(), list_state.read().selected.unwrap_or(0)+1, books.read().as_ref().map(|b|b.len()).unwrap_or(0))
                 ).centered()
             }else{
                 Line::from("暂无书籍").centered()
@@ -139,6 +143,7 @@ pub fn FindBooks(props: &FindBooksProps, mut hooks: Hooks) -> impl Into<AnyEleme
                     theme: theme.clone(),
                 }.into(),8)
             },
+            state: list_state,
         )
         WarningModal(
             tip: format!("{:?}", error.read().as_ref()),

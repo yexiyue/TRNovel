@@ -32,6 +32,11 @@ pub fn SelectChapter(
 ) -> impl Into<AnyElement<'static>> {
     let mut filter_text = hooks.use_state(String::default);
     let is_inputting = hooks.use_state(|| false);
+    let state = hooks.use_state(|| {
+        let mut state = ratatui::widgets::ListState::default();
+        state.select(props.default_value);
+        state
+    });
     let items = hooks.use_memo(
         || {
             if filter_text.read().is_empty() {
@@ -86,7 +91,6 @@ pub fn SelectChapter(
             is_editing: is_inputting,
         )
         Select<ChapterName>(
-            items: items,
             top_title: Line::from("目录").centered(),
             empty_message: if filter_text.read().is_empty() {
                 "暂无章节".to_owned()
@@ -97,7 +101,15 @@ pub fn SelectChapter(
                 on_select(item.1);
             },
             is_editing: !is_inputting.get(),
-            value: props.default_value,
+            state: state,
+            bottom_title: Line::from(
+                format!(
+                    "{}/{}",
+                    state.read().selected().unwrap_or(0) + 1,
+                    items.len()
+                )
+            ),
+            items: items,
         )
     })
 }

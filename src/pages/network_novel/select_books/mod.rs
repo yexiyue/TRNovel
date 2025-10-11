@@ -9,7 +9,7 @@ use ratatui::{
     layout::{Constraint, Margin},
     style::{Style, Stylize},
     text::Line,
-    widgets::ListItem,
+    widgets::{ListItem, ListState},
 };
 use ratatui_kit::prelude::*;
 use std::hash::Hash;
@@ -17,7 +17,7 @@ mod find_book;
 use find_book::*;
 
 #[derive(Debug, Clone, Hash)]
-pub struct ExploreListItem(pub ExploreItem, pub usize);
+pub struct ExploreListItem(pub ExploreItem);
 
 impl From<ExploreListItem> for ListItem<'_> {
     fn from(value: ExploreListItem) -> Self {
@@ -30,6 +30,8 @@ pub fn SelectBooks(mut hooks: Hooks) -> impl Into<AnyElement<'static>> {
     let book_source = hooks.use_route_state::<BookSource>();
     let mut explores = hooks.use_state(|| vec![]);
     let theme = hooks.use_theme_config();
+
+    let list_state = hooks.use_state(ListState::default);
     let mut is_explore_open = hooks.use_state(|| true);
     let mut current_explore = hooks.use_state(|| None::<ExploreListItem>);
 
@@ -38,7 +40,8 @@ pub fn SelectBooks(mut hooks: Hooks) -> impl Into<AnyElement<'static>> {
         let book_source_explores = res.get_explores().await?;
 
         if let Some(explore) = book_source_explores.first() {
-            current_explore.set(Some(ExploreListItem(explore.clone(), 0)));
+            current_explore.set(Some(ExploreListItem(explore.clone())));
+            list_state.write().select_first();
         }
 
         explores.set(book_source_explores);
@@ -63,8 +66,7 @@ pub fn SelectBooks(mut hooks: Hooks) -> impl Into<AnyElement<'static>> {
             explores
                 .read()
                 .iter()
-                .enumerate()
-                .map(|(i, item)| ExploreListItem(item.clone(), i))
+                .map(|item| ExploreListItem(item.clone()))
                 .collect::<Vec<_>>()
         },
         explores.read().len(),
@@ -94,7 +96,7 @@ pub fn SelectBooks(mut hooks: Hooks) -> impl Into<AnyElement<'static>> {
             ){
                 Select<ExploreListItem>(
                     items: explores_list.clone(),
-                    value: current_explore.read().as_ref().map(|e| e.1),
+                    state: list_state,
                     on_select: move |item:ExploreListItem| {
                         current_explore.set(Some(item.clone()));
                         is_explore_open.set(false);

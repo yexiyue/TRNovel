@@ -145,7 +145,7 @@ pub fn ImportBookSource(
             }
         )
         MultiListSelect<BookSource>(
-            value: selected,
+            state: selected,
             is_editing: !is_inputting.get() && props.is_editing,
             empty_message: "暂无数据",
             loading: loading.get(),

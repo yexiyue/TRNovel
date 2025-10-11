@@ -14,7 +14,7 @@ where
 {
     pub items: Vec<T>,
     pub on_select: Handler<'static, T>,
-    pub value: Option<usize>,
+    pub state: Option<State<ListState>>,
     pub top_title: Option<Line<'static>>,
     pub bottom_title: Option<Line<'static>>,
     pub is_editing: bool,
@@ -29,7 +29,7 @@ where
         Self {
             items: vec![],
             on_select: Handler::default(),
-            value: None,
+            state: None,
             top_title: None,
             bottom_title: None,
             is_editing: false,
@@ -43,16 +43,11 @@ pub fn Select<T>(props: &mut SelectProps<T>, mut hooks: Hooks) -> impl Into<AnyE
 where
     T: Into<ListItem<'static>> + Sync + Send + Clone + 'static,
 {
-    let state = hooks.use_state(|| ListState::default().with_selected(props.value));
+    let state = hooks.use_state(|| ListState::default());
+    let state = props.state.clone().unwrap_or(state);
+
     let theme = hooks.use_theme_config();
     let is_empty = props.items.is_empty();
-
-    hooks.use_effect(
-        || {
-            state.write().select(props.value);
-        },
-        props.value,
-    );
 
     let list = List::new(props.items.clone())
         .style(theme.basic.text)

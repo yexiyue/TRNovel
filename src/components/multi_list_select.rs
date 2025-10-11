@@ -26,7 +26,7 @@ where
     pub is_editing: bool,
     pub render_item: RenderItem<'static>,
     pub empty_message: String,
-    pub value: Option<State<HashSet<usize>>>,
+    pub state: Option<State<HashSet<usize>>>,
     pub loading: bool,
     pub loading_tip: String,
 }
@@ -44,7 +44,7 @@ where
             is_editing: false,
             render_item: RenderItem::default(),
             empty_message: String::default(),
-            value: None,
+            state: None,
             loading: false,
             loading_tip: String::from("加载中..."),
         }
@@ -62,7 +62,7 @@ where
     let theme = hooks.use_theme_config();
     let state = hooks.use_state(ListState::default);
     let selected = hooks.use_state(HashSet::<usize>::default);
-    let selected = props.value.unwrap_or(selected);
+    let selected = props.state.unwrap_or(selected);
 
     let is_empty = props.items.is_empty();
 
