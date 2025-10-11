@@ -1,4 +1,4 @@
-use anyhow::{anyhow, Result};
+use anyhow::{Result, anyhow};
 use chrono::DateTime;
 use std::{
     env,
@@ -36,7 +36,7 @@ pub fn get_md5_string<T: ToString>(value: T) -> String {
 
 pub fn time_to_string(timestamp: u64) -> anyhow::Result<String> {
     // 将时间戳转换为NaiveDateTime
-    let naive = DateTime::from_timestamp_millis(timestamp as i64).unwrap();
+    let naive = DateTime::from_timestamp_millis(timestamp as i64).ok_or(anyhow!("时间戳无效"))?;
 
     // 格式化为指定的字符串格式
     Ok(naive.format("%Y-%m-%d %H:%M:%S").to_string())

@@ -1,8 +1,8 @@
 use crate::{
-    errors::Errors,
-    novel::{network_novel::NetworkNovel, Novel},
-    utils::{get_md5_string, novel_catch_dir},
     Result,
+    errors::Errors,
+    novel::{Novel, network_novel::NetworkNovel},
+    utils::{get_md5_string, novel_catch_dir},
 };
 use parse_book_source::BookListItem;
 use serde::{Deserialize, Serialize};

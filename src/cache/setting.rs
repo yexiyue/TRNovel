@@ -1,17 +1,8 @@
 use crate::Result;
+use crate::utils::novel_catch_dir;
 use ratatui::style::{Color, Style, Stylize};
 use serde::{Deserialize, Serialize};
-use std::{fs::File, sync::LazyLock};
-
-use crate::utils::novel_catch_dir;
-
-pub static THEME_CONFIG: LazyLock<ThemeConfig> = LazyLock::new(|| {
-    let path = novel_catch_dir().unwrap().join("theme.json");
-    match File::open(path.clone()) {
-        Ok(file) => serde_json::from_reader(file).unwrap_or_default(),
-        Err(_) => ThemeConfig::default(),
-    }
-});
+use std::fs::File;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -75,10 +66,11 @@ impl ThemeConfig {
             highlight: Style::new().fg(primary_color),
             empty: Style::new().fg(warning_color).bold(),
             search: SearchSetting {
-                success_border: Style::new().fg(success_color),
-                error_border: Style::new().fg(error_color),
-                error_border_info: Style::new().fg(info_color),
-                placeholder: Style::new().fg(primary_color),
+                success_border: Style::new().fg(success_color).dim(),
+                success_border_info: Style::new().fg(success_color).not_dim(),
+                error_border: Style::new().fg(error_color).dim(),
+                error_border_info: Style::new().fg(error_color).not_dim(),
+                placeholder: Style::new().fg(text_color).dark_gray(),
                 text: Style::new().fg(text_color),
             },
             loading_modal: BasicSetting {
@@ -133,6 +125,7 @@ pub struct BasicSetting {
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct SearchSetting {
     pub success_border: Style,
+    pub success_border_info: Style,
     pub error_border: Style,
     pub error_border_info: Style,
     pub placeholder: Style,

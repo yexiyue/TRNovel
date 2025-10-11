@@ -1,18 +1,28 @@
-# cargo fmt --all --check
-# cargo clippy --all-targets --all-features --workspace -- -D warnings
-# cargo release changes
-# cargo release version patch --execute --no-confirm --workspace
-# cargo release commit --execute --no-confirm
-# cargo release publish --registry crates-io --execute --no-confirm --workspace
-# cargo release tag --execute --no-confirm --workspace
-# cargo release push --execute --no-confirm --workspace
 
-# 没有workspace的情况下
-cargo fmt --all --check
-cargo clippy --all-targets --all-features -- -D warnings
-cargo release changes
-cargo release version patch --execute --no-confirm
-cargo release commit --execute --no-confirm
-cargo release publish --registry crates-io --execute --no-confirm
-cargo release tag --execute --no-confirm
-cargo release push --execute --no-confirm
+# 交互式选择要排除的 crate
+ALL_CRATES=(parse-book-source trnovel)
+EXCLUDE_CRATES=()
+echo "可选排除的 crate 列表："
+select crate in "${ALL_CRATES[@]}" "全部选择完毕"; do
+  if [[ $REPLY -gt 0 && $REPLY -le ${#ALL_CRATES[@]} ]]; then
+    EXCLUDE_CRATES+=$crate
+    echo "$crate 已加入排除列表。"
+  elif [[ $REPLY -eq $((${#ALL_CRATES[@]}+1)) ]]; then
+    break
+  else
+    echo "无效选择，请重新输入。"
+  fi
+done
+
+EXCLUDE_ARGS=""
+for crate in "${EXCLUDE_CRATES[@]}"; do
+  EXCLUDE_ARGS+="--exclude $crate "
+done
+
+echo "最终排除参数: $EXCLUDE_ARGS"
+
+cargo release version minor --workspace $EXCLUDE_ARGS --no-confirm --execute
+cargo release hook --no-confirm --execute
+cargo release commit --no-confirm --execute
+cargo release tag --workspace $EXCLUDE_ARGS --execute --no-confirm
+git push origin main --tags

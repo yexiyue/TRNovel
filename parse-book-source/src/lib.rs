@@ -21,6 +21,9 @@ pub struct BookSourceParser {
     pub temp: Option<String>,
 }
 
+unsafe impl Send for BookSourceParser {}
+unsafe impl Sync for BookSourceParser {}
+
 impl TryFrom<BookSource> for BookSourceParser {
     type Error = ParseError;
 
