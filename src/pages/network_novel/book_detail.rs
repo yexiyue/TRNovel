@@ -116,10 +116,9 @@ pub fn BookDetail(mut hooks: Hooks) -> impl Into<AnyElement<'static>> {
         }else{
             element!(ScrollView(
                 gap:1,
-                scroll_bars:{
-                let mut scroll_bars = ScrollBars::default();
-                    scroll_bars.horizontal_scrollbar_visibility = ScrollbarVisibility::Never;
-                    scroll_bars
+                scroll_bars:ScrollBars{
+                    vertical_scrollbar_visibility: ScrollbarVisibility::Always,
+                    ..Default::default()
                 }
             ){
                 View(height:Constraint::Length(paragraph.line_count(size.width.saturating_sub(4)) as u16), margin: Margin::new(1,0)){

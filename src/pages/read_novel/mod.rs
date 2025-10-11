@@ -23,8 +23,8 @@ where
     T: Novel + Send + Sync + Unpin + 'static,
 {
     let route_state = hooks.use_route_state::<T::Args>();
-    let history = hooks.use_context::<State<Option<History>>>().clone();
-    let mut chapters = hooks.use_state(|| vec![]);
+    let history = *hooks.use_context::<State<Option<History>>>();
+    let mut chapters = hooks.use_state(std::vec::Vec::new);
     let mut current_chapter = hooks.use_state(|| 0usize);
     let mut content = hooks.use_state(String::default);
     let mut is_read_mode = hooks.use_state(|| false);
@@ -128,13 +128,9 @@ where
     hooks.use_events(move |event| {
         if let Event::Key(key) = event
             && key.kind == KeyEventKind::Press
+            && key.code == KeyCode::Tab
         {
-            match key.code {
-                KeyCode::Tab => {
-                    is_read_mode.set(!is_read_mode.get());
-                }
-                _ => {}
-            }
+            is_read_mode.set(!is_read_mode.get());
         }
     });
 

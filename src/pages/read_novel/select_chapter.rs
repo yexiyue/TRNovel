@@ -78,8 +78,8 @@ pub fn SelectChapter(
                 filter_text.set(String::default());
             },
             validate: |input: String| {
-                if input.starts_with('$') {
-                    if input[1..].parse::<usize>().is_ok() {
+                if let Some(stripped) = input.strip_prefix('$') {
+                    if stripped.parse::<usize>().is_ok() {
                         (true, "".to_owned())
                     } else {
                         (false, "请输入正确的数字".to_owned())

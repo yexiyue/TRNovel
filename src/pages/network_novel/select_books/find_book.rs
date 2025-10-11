@@ -28,7 +28,7 @@ pub fn FindBooks(props: &FindBooksProps, mut hooks: Hooks) -> impl Into<AnyEleme
     let is_inputting = hooks.use_state(|| false);
     let mut page = hooks.use_state(|| 1);
     let page_size = hooks.use_state(|| 20);
-    let list_state = hooks.use_state(|| ListState::default());
+    let list_state = hooks.use_state(ListState::default);
     let mut navigate = hooks.use_navigate();
     let is_editing = props.is_editing;
 
@@ -87,7 +87,7 @@ pub fn FindBooks(props: &FindBooksProps, mut hooks: Hooks) -> impl Into<AnyEleme
                     return Ok(res);
                 }
 
-                Ok::<BookList, Errors>(vec![].into())
+                Ok::<BookList, Errors>(vec![])
             }
         },
         (
@@ -101,7 +101,7 @@ pub fn FindBooks(props: &FindBooksProps, mut hooks: Hooks) -> impl Into<AnyEleme
     element!(View{
         SearchInput(
             is_editing: is_inputting,
-            placeholder: "按s搜索书籍",
+            placeholder: "按s键搜索书籍, 按tab键切换频道",
             on_submit: move |text| {
                 filter_text.set(text);
                 page.set(1);
@@ -118,7 +118,7 @@ pub fn FindBooks(props: &FindBooksProps, mut hooks: Hooks) -> impl Into<AnyEleme
                 if let Some(explore)= &props.current_explore{
                     format!("选择书籍 ({})",explore.0.title)
                 }else{
-                    format!("选择书籍")
+                    "选择书籍".to_string()
                 }
             ).centered(),
             bottom_title: if books.read().as_ref().map(|b|b.len()).unwrap_or(0)>0{

@@ -209,21 +209,19 @@ impl AnalyzerManager {
         let p_left = new_rule.rfind("{{");
         let p_right = new_rule.rfind("}}");
 
-        if p_left.is_some() && p_right.is_some() {
-            let left = p_left.unwrap();
-            let right = p_right.unwrap();
-
-            if left < right {
-                return replace_all(&EXPRESSION, &new_rule, |captures| {
-                    let sub_rule = captures.get(1).map(|m| m.as_str().trim()).unwrap_or("");
-                    if extra.is_some()
-                        && let Some(extra_value) = extra.as_ref().unwrap().get(sub_rule)
-                    {
-                        return value_to_string(extra_value);
-                    }
-                    self.get_string(sub_rule, data, None)
-                });
-            }
+        if let Some(left) = p_left
+            && let Some(right) = p_right
+            && left < right
+        {
+            return replace_all(&EXPRESSION, &new_rule, |captures| {
+                let sub_rule = captures.get(1).map(|m| m.as_str().trim()).unwrap_or("");
+                if extra.is_some()
+                    && let Some(extra_value) = extra.as_ref().unwrap().get(sub_rule)
+                {
+                    return value_to_string(extra_value);
+                }
+                self.get_string(sub_rule, data, None)
+            });
         }
 
         // 处理普通规则

@@ -80,9 +80,7 @@ pub fn SelectBookSource(
     props: &SelectBookSourceProps,
     mut hooks: Hooks,
 ) -> impl Into<AnyElement<'static>> {
-    let book_source_cache = hooks
-        .use_context::<State<Option<BookSourceCache>>>()
-        .clone();
+    let book_source_cache = *hooks.use_context::<State<Option<BookSourceCache>>>();
     let mut navigate = hooks.use_navigate();
     let theme = hooks.use_theme_config();
     let state = hooks.use_state(ListState::default);
@@ -147,15 +145,13 @@ pub fn SelectBookSource(
             content: "确认删除该书源吗？",
             open: delete_modal_open.get() && props.is_editing,
             on_confirm:move |_| {
-                let selected= state.read().selected.clone();
-                if let Some(index) = selected {
-                    if let Some(book_source_cache) = book_source_cache.write().as_mut() {
-                        if index < book_source_cache.book_sources.len() {
+                let selected= state.read().selected;
+                if let Some(index) = selected
+                    && let Some(book_source_cache) = book_source_cache.write().as_mut()
+                        && index < book_source_cache.book_sources.len() {
                             book_source_cache.book_sources.remove(index);
                             state.write().select(Some(index.saturating_sub(1)));
                         }
-                    }
-                }
                 delete_modal_open.set(false);
             },
             on_cancel:move |_| {

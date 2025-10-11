@@ -43,8 +43,8 @@ pub fn Select<T>(props: &mut SelectProps<T>, mut hooks: Hooks) -> impl Into<AnyE
 where
     T: Into<ListItem<'static>> + Sync + Send + Clone + 'static,
 {
-    let state = hooks.use_state(|| ListState::default());
-    let state = props.state.clone().unwrap_or(state);
+    let state = hooks.use_state(ListState::default);
+    let state = props.state.unwrap_or(state);
 
     let theme = hooks.use_theme_config();
     let is_empty = props.items.is_empty();

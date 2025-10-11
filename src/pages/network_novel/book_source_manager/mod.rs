@@ -13,9 +13,7 @@ use crate::book_source::BookSourceCache;
 
 #[component]
 pub fn BookSourceManager(mut hooks: Hooks) -> impl Into<AnyElement<'static>> {
-    let book_source_cache = hooks
-        .use_context::<State<Option<BookSourceCache>>>()
-        .clone();
+    let book_source_cache = *hooks.use_context::<State<Option<BookSourceCache>>>();
 
     let mut import_mode = hooks.use_state(|| false);
     let mut only_select = hooks.use_state(|| {

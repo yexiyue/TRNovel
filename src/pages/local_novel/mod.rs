@@ -64,7 +64,7 @@ pub fn SelectFile(mut hooks: Hooks) -> impl Into<AnyElement<'static>> {
             )
             FileSelect(
                 is_editing: !is_inputting.get(),
-                top_title: Line::from(format!("本地小说")).centered(),
+                top_title: Line::from("本地小说".to_string()).centered(),
                 items: tree_items,
                 on_select: move |item:PathBuf| {
                     navigate.push_with_state("/local-novel", item);

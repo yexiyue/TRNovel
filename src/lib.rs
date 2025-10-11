@@ -1,3 +1,5 @@
+#![allow(clippy::needless_update)]
+
 use app::App;
 use clap::{Parser, Subcommand};
 use ratatui_kit::{ElementExt, element};

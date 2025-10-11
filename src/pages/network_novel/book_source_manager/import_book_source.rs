@@ -98,12 +98,10 @@ pub fn ImportBookSource(
     let selected = hooks.use_state(HashSet::<usize>::default);
     let mut book_source_url = hooks.use_state(String::new);
     let is_inputting = hooks.use_state(|| false);
-    let is_inputting = props.is_inputting.clone().unwrap_or(is_inputting);
+    let is_inputting = props.is_inputting.unwrap_or(is_inputting);
     let theme = hooks.use_theme_config();
 
-    let book_source_cache = hooks
-        .use_context::<State<Option<BookSourceCache>>>()
-        .clone();
+    let book_source_cache = *hooks.use_context::<State<Option<BookSourceCache>>>();
 
     let (book_source, loading, error) = hooks.use_effect_state(
         async move {

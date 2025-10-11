@@ -32,7 +32,7 @@ pub fn SearchInput(
     let mut value = hooks.use_state(tui_input::Input::default);
     let mut is_valid = hooks.use_state(|| None::<bool>);
     let mut validate_fn = props.validate.take();
-    let mut status_message = hooks.use_state(|| String::new());
+    let mut status_message = hooks.use_state(String::new);
     let theme = hooks.use_theme_config();
 
     let clear_on_submit = props.clear_on_submit;
@@ -108,9 +108,9 @@ pub fn SearchInput(
                     },
             top_title: if let Some(valid)=is_valid.get() && !status_message.read().is_empty() && is_editing.get(){
                 if valid {
-                    Some(Line::from(format!("{}",status_message.read().deref())).style(theme.search.success_border_info))
+                    Some(Line::from(status_message.read().deref().to_string()).style(theme.search.success_border_info))
                 } else {
-                    Some(Line::from(format!("{}",status_message.read().deref())).style(theme.search.error_border_info))
+                    Some(Line::from(status_message.read().deref().to_string()).style(theme.search.error_border_info))
                 }
             } else {
                 None

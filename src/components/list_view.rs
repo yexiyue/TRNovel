@@ -39,6 +39,7 @@ impl Deref for WidgetWrapper {
     }
 }
 
+#[allow(clippy::type_complexity)]
 pub struct RenderItem<'a>(
     bool,
     Box<dyn Fn(&ListBuildContext) -> (WidgetWrapper, u16) + Sync + Send + 'a>,
@@ -92,7 +93,7 @@ impl Component for ListView {
         Self: 'a;
     fn new(props: &Self::Props<'_>) -> Self {
         Self {
-            state: props.state.clone(),
+            state: props.state,
             scroll_axis: props.scroll_axis,
             style: props.style,
             block: props.block.clone(),
@@ -110,7 +111,7 @@ impl Component for ListView {
         _updater: &mut ratatui_kit::ComponentUpdater,
     ) {
         *self = Self {
-            state: props.state.clone(),
+            state: props.state,
             scroll_axis: props.scroll_axis,
             style: props.style,
             block: props.block.clone(),

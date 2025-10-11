@@ -28,11 +28,12 @@ impl From<ExploreListItem> for ListItem<'_> {
 #[component]
 pub fn SelectBooks(mut hooks: Hooks) -> impl Into<AnyElement<'static>> {
     let book_source = hooks.use_route_state::<BookSource>();
-    let mut explores = hooks.use_state(|| vec![]);
+    let mut explores = hooks.use_state(std::vec::Vec::new);
     let theme = hooks.use_theme_config();
 
     let list_state = hooks.use_state(ListState::default);
-    let mut is_explore_open = hooks.use_state(|| true);
+    let mut is_explore_open = hooks.use_state(|| false);
+
     let mut current_explore = hooks.use_state(|| None::<ExploreListItem>);
 
     let (book_source_parser, _, error) = hooks.use_init_state(async move {
@@ -51,13 +52,9 @@ pub fn SelectBooks(mut hooks: Hooks) -> impl Into<AnyElement<'static>> {
     hooks.use_events(move |event| {
         if let Event::Key(key) = event
             && key.kind == KeyEventKind::Press
+            && key.code == KeyCode::Tab
         {
-            match key.code {
-                KeyCode::Tab => {
-                    is_explore_open.set(!is_explore_open.get());
-                }
-                _ => {}
-            }
+            is_explore_open.set(!is_explore_open.get());
         }
     });
 

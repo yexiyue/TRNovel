@@ -23,7 +23,7 @@ pub struct FileSelectProps {
 
 #[component]
 pub fn FileSelect(props: &mut FileSelectProps, mut hooks: Hooks) -> impl Into<AnyElement<'static>> {
-    let state = hooks.use_state(|| TreeState::default());
+    let state = hooks.use_state(TreeState::default);
     let theme = hooks.use_theme_config();
 
     let is_empty = props.items.is_empty();

@@ -116,7 +116,7 @@ pub fn ReadContent(
 
     element!(Border(
         border_style: theme.basic.border,
-        top_title: Line::from(format!("{}", props.chapter_name)).style(theme.novel.chapter).centered()
+        top_title: Line::from(props.chapter_name.to_string()).style(theme.novel.chapter).centered()
     ){
         #(if props.is_loading {
             element!(Loading(tip:"加载内容中...")).into_any()

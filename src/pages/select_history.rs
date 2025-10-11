@@ -110,7 +110,7 @@ pub fn SelectHistory(mut hooks: Hooks) -> impl Into<AnyElement<'static>> {
         || {
             let new_history = History::load().ok();
             *history.write() = new_history;
-            history.clone()
+            *history
         },
         (),
     );
@@ -175,15 +175,13 @@ pub fn SelectHistory(mut hooks: Hooks) -> impl Into<AnyElement<'static>> {
             content: "确认删除该历史记录吗？",
             open: delete_modal_open.get(),
             on_confirm:move |_| {
-                let selected= state.read().selected.clone();
-                if let Some(index) = selected {
-                    if let Some(histories) = history.write().as_mut() {
-                        if index < histories.histories.len() {
+                let selected= state.read().selected;
+                if let Some(index) = selected
+                    && let Some(histories) = history.write().as_mut()
+                        && index < histories.histories.len() {
                             histories.histories.remove(index);
                             state.write().select(Some(index.saturating_sub(1)));
                         }
-                    }
-                }
                 delete_modal_open.set(false);
             },
             on_cancel:move |_| {
