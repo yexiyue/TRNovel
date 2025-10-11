@@ -4,13 +4,13 @@ pub type BookList = Vec<BookListItem>;
 pub type ChapterList = Vec<Chapter>;
 pub type ExploreList = Vec<ExploreItem>;
 
-#[derive(Debug, Clone, Serialize, Deserialize, Hash, PartialEq, Eq)]
+#[derive(Default, Debug, Clone, Serialize, Deserialize, Hash, PartialEq, Eq)]
 pub struct ExploreItem {
     pub title: String,
     pub url: String,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, Hash, PartialEq, Eq)]
+#[derive(Default, Debug, Clone, Serialize, Deserialize, Hash, PartialEq, Eq)]
 pub struct BookListItem {
     pub book_url: String,
 
@@ -18,7 +18,7 @@ pub struct BookListItem {
     pub book_info: BookInfo,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, Hash, PartialEq, Eq)]
+#[derive(Default, Debug, Clone, Serialize, Deserialize, Hash, PartialEq, Eq)]
 pub struct BookInfo {
     pub author: String,
     pub cover_url: String,
@@ -30,7 +30,7 @@ pub struct BookInfo {
     pub word_count: String,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, Hash, PartialEq, Eq)]
+#[derive(Default, Debug, Clone, Serialize, Deserialize, Hash, PartialEq, Eq)]
 pub struct Chapter {
     pub chapter_name: String,
     pub chapter_url: String,

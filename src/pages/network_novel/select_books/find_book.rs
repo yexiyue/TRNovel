@@ -3,6 +3,7 @@ use crate::{
     components::{WarningModal, list_select::ListSelect, search_input::SearchInput},
     errors::Errors,
     hooks::{UseInitState, UseThemeConfig},
+    pages::network_novel::book_detail::BookDetailState,
 };
 use crossterm::event::{Event, KeyCode, KeyEventKind};
 use parse_book_source::{BookList, BookListItem, BookSourceParser};
@@ -28,7 +29,7 @@ pub fn FindBooks(props: &FindBooksProps, mut hooks: Hooks) -> impl Into<AnyEleme
     let mut page = hooks.use_state(|| 1);
     let page_size = hooks.use_state(|| 20);
     let list_state = hooks.use_state(|| ListState::default());
-
+    let mut navigate = hooks.use_navigate();
     let is_editing = props.is_editing;
 
     hooks.use_events(move |event| {
@@ -144,6 +145,20 @@ pub fn FindBooks(props: &FindBooksProps, mut hooks: Hooks) -> impl Into<AnyEleme
                 }.into(),8)
             },
             state: list_state,
+            on_select: {
+                let parser = props.parser.read().clone();
+                move |item:BookListItem| {
+                    if let Some(parser)=&parser{
+                        navigate.push_with_state(
+                            "/book-detail",
+                            BookDetailState{
+                                book_list_item: item,
+                                network_novel: parser.clone(),
+                            },
+                        );
+                    }
+                }
+            },
         )
         WarningModal(
             tip: format!("{:?}", error.read().as_ref()),

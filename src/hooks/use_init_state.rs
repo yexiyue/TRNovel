@@ -45,7 +45,7 @@ impl UseInitState for Hooks<'_, '_> {
             let join_handler = tokio::spawn({
                 let notify = notify.clone();
                 async move {
-                    tokio::time::sleep(std::time::Duration::from_millis(300)).await;
+                    tokio::time::sleep(std::time::Duration::from_millis(200)).await;
                     if notify.notified().now_or_never().is_none() {
                         loading.set(true);
                     }
@@ -90,7 +90,7 @@ impl UseInitState for Hooks<'_, '_> {
                 let join_handler = tokio::spawn({
                     let notify = notify.clone();
                     async move {
-                        tokio::time::sleep(std::time::Duration::from_millis(300)).await;
+                        tokio::time::sleep(std::time::Duration::from_millis(200)).await;
                         if notify.notified().now_or_never().is_none() {
                             loading.set(true);
                         }

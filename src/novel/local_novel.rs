@@ -21,9 +21,6 @@ pub struct LocalNovel {
     pub path: PathBuf,
 }
 
-unsafe impl Send for LocalNovel {}
-unsafe impl Sync for LocalNovel {}
-
 impl Deref for LocalNovel {
     type Target = NovelChapters<(String, usize)>;
     fn deref(&self) -> &Self::Target {

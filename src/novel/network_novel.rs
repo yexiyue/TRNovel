@@ -16,15 +16,10 @@ pub struct NetworkNovel {
     pub novel_chapters: NovelChapters<Chapter>,
 }
 
-unsafe impl Send for NetworkNovel {}
-unsafe impl Sync for NetworkNovel {}
-
 impl NetworkNovel {
-    pub async fn from_url(url: &str, book_sources: Arc<Mutex<BookSourceCache>>) -> Result<Self> {
+    pub async fn from_url(url: &str, book_sources: &BookSourceCache) -> Result<Self> {
         let network_cache = NetworkNovelCache::try_from(url)?;
         let json_source = book_sources
-            .lock()
-            .await
             .find_book_source(
                 &network_cache.book_source_url,
                 &network_cache.book_source_name,
@@ -45,10 +40,10 @@ impl NetworkNovel {
         Ok(novel)
     }
 
-    pub fn new(book_list_item: BookListItem, book_source: Arc<Mutex<BookSourceParser>>) -> Self {
+    pub fn new(book_list_item: BookListItem, book_source: BookSourceParser) -> Self {
         Self {
             book_list_item,
-            book_source,
+            book_source: Arc::new(Mutex::new(book_source)),
             book_info: None,
             novel_chapters: NovelChapters::new(),
         }

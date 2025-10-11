@@ -13,12 +13,15 @@ use crate::{
     book_source::BookSourceCache,
     components::{Loading, WarningModal},
     errors::Errors,
-    novel::local_novel::LocalNovel,
+    novel::{local_novel::LocalNovel, network_novel::NetworkNovel},
     pages::{
         ReadNovel,
         home::Home,
         local_novel::SelectFile,
-        network_novel::{book_source_manager::BookSourceManager, select_books::SelectBooks},
+        network_novel::{
+            book_detail::BookDetail, book_source_manager::BookSourceManager,
+            select_books::SelectBooks,
+        },
         select_history::SelectHistory,
     },
     utils::novel_catch_dir,
@@ -83,8 +86,10 @@ pub fn App(_props: &AppProps, mut hooks: Hooks) -> impl Into<AnyElement<'static>
             "/select-history"=>SelectHistory,
             "/select-file"=> SelectFile,
             "/local-novel"=> ReadNovel<LocalNovel>,
+            "/network-novel"=> ReadNovel<NetworkNovel>,
             "/book-source"=> BookSourceManager,
             "/select-books"=> SelectBooks,
+            "/book-detail"=> BookDetail,
         }
     );
 

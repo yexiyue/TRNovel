@@ -10,7 +10,7 @@ pub struct HttpConfig {
     pub rate_limit: Option<RateLimit>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[derive(Default, Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct RateLimit {
     /// 每秒钟最大请求次数
