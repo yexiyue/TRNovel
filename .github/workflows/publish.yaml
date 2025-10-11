@@ -4,6 +4,7 @@ on:
   push:
     tags:
       - "*-v*"
+      - "v*"
   workflow_dispatch:
 
 jobs:
@@ -23,8 +24,15 @@ jobs:
         id: extract
         run: |
           TAG_NAME=${GITHUB_REF#refs/tags/}
-          PREFIX=$(echo "$TAG_NAME" | sed -E 's/(.*)-v[0-9].*/\1/')
-          VERSION=$(echo "$TAG_NAME" | sed -E 's/.*-v([0-9].*)/\1/')
+          if [[ "$TAG_NAME" =~ ^v([0-9].*) ]]; then
+            # Format: v0.5.3
+            PREFIX="trnovel"
+            VERSION=$(echo "$TAG_NAME" | sed -E 's/^v([0-9].*)/\1/')
+          else
+            # Format: parse-book-source-v0.1.6
+            PREFIX=$(echo "$TAG_NAME" | sed -E 's/(.*)-v[0-9].*/\1/')
+            VERSION=$(echo "$TAG_NAME" | sed -E 's/.*-v([0-9].*)/\1/')
+          fi
           echo "prefix=$PREFIX" >> $GITHUB_OUTPUT
           echo "version=$VERSION" >> $GITHUB_OUTPUT
 
@@ -45,11 +53,12 @@ jobs:
         id: changelog
         run: |
           VERSION=${{ steps.extract.outputs.version }}
-          # 先尝试 [0.2.1] 这种格式
+          PREFIX=${{ steps.extract.outputs.prefix }}
+          # 先尝试 [0.2.1] 这种格式（用于trnovel）
           awk "/^##? \\[${VERSION}]/ {flag=1;next} /^##? /{flag=0}flag" CHANGELOG.md > RELEASE_BODY.md
-          # 如果没内容，再尝试 [crate-name-v0.2.1] 这种格式
+          # 如果没内容，再尝试 [parse-book-source-v0.1.1] 这种格式
           if [ ! -s RELEASE_BODY.md ]; then
-            awk "/^##? \\[${{ steps.extract.outputs.prefix }}-v${VERSION}]/ {flag=1;next} /^##? /{flag=0}flag" CHANGELOG.md > RELEASE_BODY.md
+            awk "/^##? \\[${PREFIX}-v${VERSION}]/ {flag=1;next} /^##? /{flag=0}flag" CHANGELOG.md > RELEASE_BODY.md
           fi
           echo 'body<<EOF' >> $GITHUB_OUTPUT
           cat RELEASE_BODY.md >> $GITHUB_OUTPUT
