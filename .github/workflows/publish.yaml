@@ -44,15 +44,8 @@ jobs:
         env:
           CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
         run: |
-          # 发布前先检查包内容和 dry-run，提前发现问题
-          if [ "${{ steps.extract.outputs.prefix }}" = "trnovel" ]; then
-            echo "Check package (trnovel)"
-            cargo package --locked
-            echo "Dry run publish (trnovel)"
-            cargo publish --locked --dry-run --token "$CARGO_REGISTRY_TOKEN"
-            echo "Publish (trnovel)"
-            cargo publish --locked --token "$CARGO_REGISTRY_TOKEN"
-          elif [ "${{ steps.extract.outputs.prefix }}" = "parse-book-source" ]; then
+          echo "Publishing ${{ steps.extract.outputs.prefix }} ${{ steps.extract.outputs.version }}"
+          if [ "${{ steps.extract.outputs.prefix }}" = "parse-book-source" ]; then
             cd parse-book-source
             echo "Check package (parse-book-source)"
             cargo package --locked
@@ -61,7 +54,12 @@ jobs:
             echo "Publish (parse-book-source)"
             cargo publish --locked --token "$CARGO_REGISTRY_TOKEN"
           else
-            echo "Unknown crate prefix: ${{ steps.extract.outputs.prefix }}" && exit 1
+            echo "Check package (trnovel)"
+            cargo package --locked
+            echo "Dry run publish (trnovel)"
+            cargo publish --locked --dry-run --token "$CARGO_REGISTRY_TOKEN"
+            echo "Publish (trnovel)"
+            cargo publish --locked --token "$CARGO_REGISTRY_TOKEN"
           fi
 
       - name: Extract release notes from CHANGELOG
