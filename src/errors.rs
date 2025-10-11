@@ -1,6 +1,4 @@
-use crate::Events;
 use thiserror::Error;
-use tokio::sync::mpsc::error::SendError;
 
 #[derive(Debug, Error)]
 pub enum Errors {
@@ -9,9 +7,6 @@ pub enum Errors {
 
     #[error("{0}")]
     Warning(String),
-
-    #[error(transparent)]
-    SendError(#[from] SendError<Events>),
 
     #[error(transparent)]
     Io(#[from] std::io::Error),
@@ -24,6 +19,9 @@ pub enum Errors {
 
     #[error(transparent)]
     ParseBookSource(#[from] parse_book_source::ParseError),
+
+    #[error(transparent)]
+    Task(#[from] tokio::task::JoinError),
 }
 
 impl From<String> for Errors {

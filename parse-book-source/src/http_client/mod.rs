@@ -2,8 +2,8 @@ use crate::{HttpConfig, Result};
 use anyhow::anyhow;
 use rate_limiter::TokenBucket;
 use reqwest::{
-    header::{HeaderMap, HeaderName, HeaderValue},
     Body, Client, ClientBuilder,
+    header::{HeaderMap, HeaderName, HeaderValue},
 };
 use std::time::Duration;
 pub mod rate_limiter;

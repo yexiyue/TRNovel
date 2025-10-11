@@ -1,7 +1,7 @@
 use crate::{AnalyzerManager, BookInfo, BookListItem, Chapter, ExploreItem, Result};
 use serde::{Deserialize, Serialize};
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Default, Debug, Clone, Serialize, Deserialize, Hash, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 pub struct RuleSearch {
     pub book_list: String,
@@ -23,7 +23,7 @@ impl RuleSearch {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Default, Debug, Clone, Serialize, Deserialize, Hash, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 pub struct RuleExploreItem {
     pub title: String,
@@ -43,7 +43,7 @@ impl RuleExploreItem {
     }
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone)]
+#[derive(Default, Debug, Serialize, Deserialize, Clone, Hash, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 pub struct RuleBookInfo {
     pub name: String,
@@ -81,7 +81,7 @@ impl RuleBookInfo {
     }
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone)]
+#[derive(Default, Debug, Serialize, Deserialize, Clone, Hash, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 pub struct RuleToc {
     pub chapter_list: String,
@@ -102,7 +102,7 @@ impl RuleToc {
     }
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone)]
+#[derive(Debug, Serialize, Deserialize, Clone, Hash, PartialEq, Eq)]
 #[serde(untagged)]
 pub enum RuleContent {
     #[serde(rename_all = "camelCase")]

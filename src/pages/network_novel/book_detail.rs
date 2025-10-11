@@ -1,181 +1,144 @@
-use crate::{
-    app::State,
-    components::{Component, KeyShortcutInfo, LoadingWrapper, LoadingWrapperInit},
-    novel::network_novel::NetworkNovel,
-    pages::ReadNovel,
-    Navigator, Result, RoutePage, Router, THEME_CONFIG,
-};
-use async_trait::async_trait;
-use crossterm::event::{KeyCode, KeyEvent, KeyEventKind};
-use parse_book_source::BookInfo;
+use crossterm::event::{Event, KeyCode, KeyEventKind};
+use parse_book_source::{BookInfo, BookListItem, BookSourceParser};
 use ratatui::{
-    buffer::Buffer,
-    layout::{Constraint, Layout, Margin, Size},
+    layout::{Constraint, Margin},
+    style::Stylize,
     text::{Line, Span},
-    widgets::{Block, Padding, Paragraph, Widget, WidgetRef, Wrap},
+    widgets::{Paragraph, Wrap},
 };
-use tui_scrollview::{ScrollView, ScrollViewState, ScrollbarVisibility};
+use ratatui_kit::prelude::*;
 
-pub struct BookDetail {
-    pub book_info: BookInfo,
-    pub novel: NetworkNovel,
-    pub navigator: Navigator,
-    pub other_paragraph: Paragraph<'static>,
-    pub intro_paragraph: Paragraph<'static>,
-    pub state: ScrollViewState,
+use crate::{
+    components::{Loading, WarningModal},
+    errors::Errors,
+    hooks::{UseInitState, UseThemeConfig},
+    novel::network_novel::NetworkNovel,
+};
+
+#[derive(Debug, Clone)]
+pub struct BookDetailState {
+    pub network_novel: BookSourceParser,
+    pub book_list_item: BookListItem,
 }
 
-impl BookDetail {
-    pub fn new(book_info: BookInfo, navigator: Navigator, mut novel: NetworkNovel) -> Self {
-        let title = vec![
-            Span::from("名称：").style(THEME_CONFIG.detail_info),
-            Span::from(book_info.name.clone()).style(THEME_CONFIG.basic.text),
-        ];
-        let author = vec![
-            Span::from("作者：").style(THEME_CONFIG.detail_info),
-            Span::from(book_info.author.clone()).style(THEME_CONFIG.basic.text),
-        ];
-        let kind = vec![
-            Span::from("类型：").style(THEME_CONFIG.detail_info),
-            Span::from(book_info.kind.clone()).style(THEME_CONFIG.basic.text),
-        ];
-        let word_count = vec![
-            Span::from("字数：").style(THEME_CONFIG.detail_info),
-            Span::from(book_info.word_count.clone()).style(THEME_CONFIG.basic.text),
-        ];
+#[component]
+pub fn BookDetail(mut hooks: Hooks) -> impl Into<AnyElement<'static>> {
+    let book_detail_state = hooks.use_route_state::<BookDetailState>();
+    let mut book_info = hooks.use_state(|| None::<BookInfo>);
+    let size = hooks.use_previous_size();
+    let theme = hooks.use_theme_config();
+    let mut navigate = hooks.use_navigate();
 
-        let last_chapter = vec![
-            Span::from("最新章节：").style(THEME_CONFIG.detail_info),
-            Span::from(book_info.last_chapter.clone()).style(THEME_CONFIG.basic.text),
-        ];
-
-        let text = vec![
-            Line::from(title),
-            Line::from(""),
-            Line::from(author),
-            Line::from(""),
-            Line::from(kind),
-            Line::from(""),
-            Line::from(word_count),
-            Line::from(""),
-            Line::from(last_chapter),
-            Line::from(""),
-        ];
-
-        let paragraph = Paragraph::new(text).wrap(Wrap { trim: true });
-
-        let intro = Paragraph::new(book_info.intro.clone())
-            .style(THEME_CONFIG.basic.text)
-            .wrap(Wrap { trim: true });
-
-        novel.set_book_info(&book_info);
-
-        Self {
-            book_info,
-            navigator,
-            other_paragraph: paragraph,
-            intro_paragraph: intro,
-            state: ScrollViewState::default(),
-            novel,
-        }
-    }
-    pub fn to_page_route(novel: NetworkNovel) -> Box<dyn RoutePage> {
-        LoadingWrapper::<BookDetail>::route_page("加载书籍详情中...", novel, None)
-    }
-
-    fn render_content(&mut self, buf: &mut Buffer) {
-        let [top, bottom] = Layout::vertical([
-            Constraint::Length(self.other_paragraph.line_count(buf.area.width) as u16),
-            Constraint::Length(self.intro_paragraph.line_count(buf.area.width) as u16),
-        ])
-        .areas(buf.area);
-
-        let [left, right] =
-            Layout::horizontal([Constraint::Length(6), Constraint::Fill(1)]).areas(bottom);
-
-        self.other_paragraph.render_ref(top, buf);
-        Line::from("简介：")
-            .style(THEME_CONFIG.detail_info)
-            .render(left, buf);
-        self.intro_paragraph.render_ref(right, buf);
-    }
-}
-
-#[async_trait]
-impl Component for BookDetail {
-    fn render(&mut self, frame: &mut ratatui::Frame, area: ratatui::prelude::Rect) -> Result<()> {
-        let block = Block::bordered()
-            .title(
-                Line::from("书籍详情")
-                    .centered()
-                    .style(THEME_CONFIG.basic.border_title),
-            )
-            .border_style(THEME_CONFIG.basic.border)
-            .padding(Padding::new(3, 0, 1, 1));
-
-        let inner_area = block.inner(area).inner(Margin::new(1, 0));
-        let height = self.intro_paragraph.line_count(inner_area.width)
-            + self.other_paragraph.line_count(inner_area.width);
-
-        let mut scroll_view = ScrollView::new(Size::new(inner_area.width, height as u16))
-            .horizontal_scrollbar_visibility(ScrollbarVisibility::Never);
-
-        self.render_content(scroll_view.buf_mut());
-
-        frame.render_stateful_widget(scroll_view, block.inner(area), &mut self.state);
-        frame.render_widget(block, area);
-        Ok(())
-    }
-
-    async fn handle_key_event(
-        &mut self,
-        key: KeyEvent,
-        _state: State,
-    ) -> crate::Result<Option<KeyEvent>> {
-        if key.kind != KeyEventKind::Press {
-            return Ok(Some(key));
-        }
-        match key.code {
-            KeyCode::Enter | KeyCode::Char('\n' | ' ') => {
-                self.navigator
-                    .push(Box::new(ReadNovel::<NetworkNovel>::to_page_route(
-                        self.novel.clone(),
-                    )))?;
-                Ok(None)
-            }
-            KeyCode::Char('j') | KeyCode::Down => {
-                self.state.scroll_down();
-                Ok(None)
-            }
-            KeyCode::Char('k') | KeyCode::Up => {
-                self.state.scroll_up();
-                Ok(None)
-            }
-            _ => Ok(Some(key)),
-        }
-    }
-    fn key_shortcut_info(&self) -> crate::components::KeyShortcutInfo {
-        KeyShortcutInfo::new(vec![
-            ("向下滚动", "J / ▼"),
-            ("向上滚动", "K / ▲"),
-            ("进入阅读模式", "Enter"),
-        ])
-    }
-}
-
-#[async_trait]
-impl LoadingWrapperInit for BookDetail {
-    type Arg = NetworkNovel;
-    async fn init(novel: Self::Arg, navigator: Navigator, _state: State) -> Result<Option<Self>> {
-        let book_info = novel
+    let (book_source_parser, loading, error) = hooks.use_init_state(async move {
+        let mut novel = NetworkNovel::new(
+            book_detail_state.book_list_item.clone(),
+            book_detail_state.network_novel.clone(),
+        );
+        let res = novel
             .book_source
             .lock()
             .await
             .get_book_info(&novel.book_list_item.book_url)
             .await?;
 
-        Ok(Some(BookDetail::new(book_info, navigator, novel)))
-    }
-}
+        novel.set_book_info(&res);
 
-impl Router for BookDetail {}
+        book_info.set(Some(res));
+
+        Ok::<NetworkNovel, Errors>(novel)
+    });
+
+    hooks.use_events(move |event| {
+        if let Event::Key(key) = event
+            && key.kind == KeyEventKind::Press
+        {
+            match key.code {
+                KeyCode::Char('l') | KeyCode::Right | KeyCode::Enter => {
+                    if let Some(novel) = book_source_parser.read().clone() {
+                        navigate.push_with_state("/network-novel", novel);
+                    }
+                }
+                _ => {}
+            }
+        }
+    });
+
+    let book_info = book_info.read().clone().unwrap_or_default();
+
+    let title = vec![
+        Span::from("名称：").style(theme.detail_info),
+        Span::from(book_info.name.clone()).style(theme.basic.text),
+    ];
+    let author = vec![
+        Span::from("作者：").style(theme.detail_info),
+        Span::from(book_info.author.clone()).style(theme.basic.text),
+    ];
+    let kind = vec![
+        Span::from("类型：").style(theme.detail_info),
+        Span::from(book_info.kind.clone()).style(theme.basic.text),
+    ];
+    let word_count = vec![
+        Span::from("字数：").style(theme.detail_info),
+        Span::from(book_info.word_count.clone()).style(theme.basic.text),
+    ];
+
+    let last_chapter = vec![
+        Span::from("最新章节：").style(theme.detail_info),
+        Span::from(book_info.last_chapter.clone()).style(theme.basic.text),
+    ];
+
+    let text = vec![
+        Line::from(title),
+        Line::from(""),
+        Line::from(author),
+        Line::from(""),
+        Line::from(kind),
+        Line::from(""),
+        Line::from(word_count),
+        Line::from(""),
+        Line::from(last_chapter),
+    ];
+
+    let paragraph = Paragraph::new(text).wrap(Wrap { trim: true });
+
+    let intro = Paragraph::new(vec![
+        Line::from("简介：").style(theme.detail_info),
+        Line::from(book_info.intro),
+    ])
+    .wrap(Wrap { trim: true });
+
+    element!(Border(
+        top_title: Line::from("小说详情").centered().style(theme.highlight.not_dim()),
+        border_style: theme.basic.border,
+    ){
+        #(if loading.get(){
+            element!(Loading(tip: "加载中...")).into_any()
+        }else{
+            element!(ScrollView(
+                gap:1,
+                scroll_bars:ScrollBars{
+                    vertical_scrollbar_visibility: ScrollbarVisibility::Always,
+                    ..Default::default()
+                }
+            ){
+                View(height:Constraint::Length(paragraph.line_count(size.width.saturating_sub(4)) as u16), margin: Margin::new(1,0)){
+                    Text(
+                        text: paragraph,
+                        style: theme.basic.text,
+                    )
+                }
+                View(height:Constraint::Length(intro.line_count(size.width.saturating_sub(4)) as u16),margin: Margin::new(1,0)){
+                    Text(
+                        text: intro,
+                        style: theme.basic.text,
+                    )
+                }
+            }).into_any()
+        })
+        WarningModal(
+            tip: format!("{:?}", error.read().as_ref()),
+            is_error: error.read().is_some(),
+            open: error.read().is_some(),
+        )
+    })
+}

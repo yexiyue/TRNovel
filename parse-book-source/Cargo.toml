@@ -1,7 +1,7 @@
 [package]
 name = "parse-book-source"
 version = "0.1.6"
-edition = "2021"
+edition = "2024"
 description = "Terminal reader for novel"
 authors = ["yexiyue <yexiyue666@qq.com>"]
 license = "MIT"
@@ -10,7 +10,7 @@ repository = "https://github.com/yexiyue/parse-book-source"
 
 [dependencies]
 reqwest = { version = "0.12.12", features = ["json", "rustls-tls", "cookies"] }
-jsonpath-rust = "0.7.3"
+jsonpath-rust = "0.7.5"
 anyhow = { workspace = true }
 regex = { workspace = true }
 serde = { workspace = true }
@@ -20,7 +20,7 @@ tokio = { workspace = true }
 tokio-util = { workspace = true }
 futures = { workspace = true }
 async-trait = { workspace = true }
-scraper = "0.22.0"
+scraper = "0.24.0"
 
 
 # scraper = "0.21.0"

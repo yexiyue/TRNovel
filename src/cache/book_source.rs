@@ -4,7 +4,7 @@ use std::{
     path::PathBuf,
 };
 
-use crate::{utils::novel_catch_dir, Result};
+use crate::{Result, utils::novel_catch_dir};
 use parse_book_source::BookSource;
 use serde::{Deserialize, Serialize};
 

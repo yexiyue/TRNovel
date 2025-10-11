@@ -1,0 +1,65 @@
+name: Publish Rust Crate by Tag
+
+on:
+  push:
+    tags:
+      - "*-v*"
+  workflow_dispatch:
+
+jobs:
+  publish:
+    permissions:
+      contents: write
+
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Extract crate prefix and version from tag
+        id: extract
+        run: |
+          TAG_NAME=${GITHUB_REF#refs/tags/}
+          PREFIX=$(echo "$TAG_NAME" | sed -E 's/(.*)-v[0-9].*/\1/')
+          VERSION=$(echo "$TAG_NAME" | sed -E 's/.*-v([0-9].*)/\1/')
+          echo "prefix=$PREFIX" >> $GITHUB_OUTPUT
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+
+      - name: Publish crate
+        env:
+          CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
+        run: |
+          if [ "${{ steps.extract.outputs.prefix }}" = "trnovel" ]; then
+            cargo publish --token "$CARGO_REGISTRY_TOKEN"
+          elif [ "${{ steps.extract.outputs.prefix }}" = "parse-book-source" ]; then
+            cd parse-book-source
+            cargo publish --token "$CARGO_REGISTRY_TOKEN"
+          else
+            echo "Unknown crate prefix: ${{ steps.extract.outputs.prefix }}" && exit 1
+          fi
+
+      - name: Extract release notes from CHANGELOG
+        id: changelog
+        run: |
+          VERSION=${{ steps.extract.outputs.version }}
+          # 先尝试 [0.2.1] 这种格式
+          awk "/^##? \\[${VERSION}]/ {flag=1;next} /^##? /{flag=0}flag" CHANGELOG.md > RELEASE_BODY.md
+          # 如果没内容，再尝试 [crate-name-v0.2.1] 这种格式
+          if [ ! -s RELEASE_BODY.md ]; then
+            awk "/^##? \\[${{ steps.extract.outputs.prefix }}-v${VERSION}]/ {flag=1;next} /^##? /{flag=0}flag" CHANGELOG.md > RELEASE_BODY.md
+          fi
+          echo 'body<<EOF' >> $GITHUB_OUTPUT
+          cat RELEASE_BODY.md >> $GITHUB_OUTPUT
+          echo 'EOF' >> $GITHUB_OUTPUT
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.ref_name }}
+          name: ${{ github.ref_name }}
+          body: ${{ steps.changelog.outputs.body }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

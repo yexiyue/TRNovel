@@ -1,6 +1,6 @@
 use crate::errors::{Errors, Result};
-use crate::novel::local_novel::LocalNovel;
 use crate::novel::Novel;
+use crate::novel::local_novel::LocalNovel;
 use crate::utils::{get_path_md5, novel_catch_dir};
 
 use serde::{Deserialize, Serialize};

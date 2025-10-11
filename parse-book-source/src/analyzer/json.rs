@@ -1,6 +1,6 @@
 use super::Analyzer;
-use crate::utils::json_path;
 use crate::Result;
+use crate::utils::json_path;
 use serde_json::Value;
 
 pub struct JsonPathAnalyzer {
