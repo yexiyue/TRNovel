@@ -80,19 +80,13 @@ where
                 && is_editing
             {
                 match key.code {
-                    KeyCode::Char('h') | KeyCode::Left => {
-                        state.write().select(None);
-                    }
                     KeyCode::Char('j') | KeyCode::Down => {
                         state.write().next();
                     }
                     KeyCode::Char('k') | KeyCode::Up => {
                         state.write().previous();
                     }
-                    KeyCode::Char('l')
-                    | KeyCode::Right
-                    | KeyCode::Char('\n')
-                    | KeyCode::Char(' ') => {
+                    KeyCode::Char('\n') | KeyCode::Char(' ') => {
                         if let Some(item) = state.read().selected {
                             let is_included = selected.read().contains(&item);
                             if is_included {

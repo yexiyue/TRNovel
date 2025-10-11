@@ -16,7 +16,7 @@ use crate::{
     novel::local_novel::LocalNovel,
     pages::{
         ReadNovel, home::Home, local_novel::SelectFile,
-        network_novel::import_book_source::ImportBookSource, select_history::SelectHistory,
+        network_novel::book_source_manager::BookSourceManager, select_history::SelectHistory,
     },
     utils::novel_catch_dir,
 };
@@ -80,7 +80,7 @@ pub fn App(_props: &AppProps, mut hooks: Hooks) -> impl Into<AnyElement<'static>
             "/select-history"=>SelectHistory,
             "/select-file"=> SelectFile,
             "/local-novel"=> ReadNovel<LocalNovel>,
-            "/import-book-source"=> ImportBookSource,
+            "/book-source"=> BookSourceManager,
         }
     );
 
@@ -102,7 +102,7 @@ pub fn App(_props: &AppProps, mut hooks: Hooks) -> impl Into<AnyElement<'static>
                             ContextProvider(value:Context::owned(book_sources_catch_state)){
                                 RouterProvider(
                                     routes:routes,
-                                    index_path:"/import-book-source",
+                                    index_path:"/book-source",
                                 )
                             }
                         }

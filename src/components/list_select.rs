@@ -76,16 +76,13 @@ where
                 && is_editing
             {
                 match key.code {
-                    KeyCode::Char('h') | KeyCode::Left => {
-                        state.write().select(None);
-                    }
                     KeyCode::Char('j') | KeyCode::Down => {
                         state.write().next();
                     }
                     KeyCode::Char('k') | KeyCode::Up => {
                         state.write().previous();
                     }
-                    KeyCode::Char('l') | KeyCode::Right | KeyCode::Enter => {
+                    KeyCode::Enter => {
                         let res = state.read().selected;
                         if let Some(path) = res {
                             on_select(data[path].clone());
