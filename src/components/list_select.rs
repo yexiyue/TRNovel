@@ -1,5 +1,8 @@
 use crate::{
-    components::list_view::{ListView, RenderItem},
+    components::{
+        Loading,
+        list_view::{ListView, RenderItem},
+    },
     hooks::UseThemeConfig,
 };
 use crossterm::event::{Event, KeyCode, KeyEventKind};
@@ -7,10 +10,7 @@ use ratatui::{
     layout::{Alignment, Constraint},
     widgets::Block,
 };
-use ratatui_kit::{
-    AnyElement, Handler, Hooks, Props, UseEvents, UseState, component, element,
-    prelude::{Border, Center, Text},
-};
+use ratatui_kit::prelude::*;
 use tui_widget_list::ListState;
 
 #[derive(Props)]
@@ -27,6 +27,8 @@ where
     pub render_item: RenderItem<'static>,
     pub state: Option<ratatui_kit::State<ListState>>,
     pub empty_message: String,
+    pub loading: bool,
+    pub loading_tip: String,
 }
 
 impl<T> Default for ListSelectProps<T>
@@ -44,6 +46,8 @@ where
             render_item: RenderItem::default(),
             state: None,
             empty_message: String::default(),
+            loading: false,
+            loading_tip: String::from("加载中..."),
         }
     }
 }
@@ -101,6 +105,19 @@ where
     }
     if let Some(title) = props.bottom_title.clone() {
         border = border.title_bottom(title);
+    }
+
+    if props.loading {
+        return element!(
+            Border(
+                top_title: props.top_title.clone(),
+                bottom_title: props.bottom_title.clone(),
+                border_style: theme.basic.border,
+            ){
+                Loading(tip: props.loading_tip.clone())
+            }
+        )
+        .into_any();
     }
 
     if is_empty {

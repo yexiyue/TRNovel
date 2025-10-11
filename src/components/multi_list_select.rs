@@ -1,5 +1,3 @@
-use std::collections::HashSet;
-
 use crate::{
     components::{
         Loading,
@@ -12,10 +10,8 @@ use ratatui::{
     layout::{Alignment, Constraint},
     widgets::Block,
 };
-use ratatui_kit::{
-    AnyElement, Handler, Hooks, Props, State, UseEvents, UseState, component, element,
-    prelude::{Border, Center, Text},
-};
+use ratatui_kit::prelude::*;
+use std::collections::HashSet;
 use tui_widget_list::ListState;
 
 #[derive(Props)]

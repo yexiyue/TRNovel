@@ -1,17 +1,13 @@
+use crate::hooks::{UseScrollbar, UseThemeConfig};
 use crossterm::event::{Event, KeyCode, KeyEventKind};
 use ratatui::{
     layout::{Alignment, Constraint},
     text::Line,
     widgets::{List, ListItem, ListState},
 };
-use ratatui_kit::{
-    AnyElement, Handler, Hooks, Props, UseEffect, UseEvents, UseState, component, element,
-    prelude::{Border, Center, Text},
-};
+use ratatui_kit::prelude::*;
 
-use crate::hooks::{UseScrollbar, UseThemeConfig};
-
-#[derive(Default, Props)]
+#[derive(Props)]
 pub struct SelectProps<T>
 where
     T: Into<ListItem<'static>> + Sync + Send + Clone,
@@ -23,6 +19,23 @@ where
     pub bottom_title: Option<Line<'static>>,
     pub is_editing: bool,
     pub empty_message: String,
+}
+
+impl<T> Default for SelectProps<T>
+where
+    T: Into<ListItem<'static>> + Sync + Send + Clone,
+{
+    fn default() -> Self {
+        Self {
+            items: vec![],
+            on_select: Handler::default(),
+            value: None,
+            top_title: None,
+            bottom_title: None,
+            is_editing: false,
+            empty_message: "暂无数据".to_string(),
+        }
+    }
 }
 
 #[component]

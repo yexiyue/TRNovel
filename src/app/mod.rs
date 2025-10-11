@@ -15,8 +15,11 @@ use crate::{
     errors::Errors,
     novel::local_novel::LocalNovel,
     pages::{
-        ReadNovel, home::Home, local_novel::SelectFile,
-        network_novel::book_source_manager::BookSourceManager, select_history::SelectHistory,
+        ReadNovel,
+        home::Home,
+        local_novel::SelectFile,
+        network_novel::{book_source_manager::BookSourceManager, select_books::SelectBooks},
+        select_history::SelectHistory,
     },
     utils::novel_catch_dir,
 };
@@ -81,6 +84,7 @@ pub fn App(_props: &AppProps, mut hooks: Hooks) -> impl Into<AnyElement<'static>
             "/select-file"=> SelectFile,
             "/local-novel"=> ReadNovel<LocalNovel>,
             "/book-source"=> BookSourceManager,
+            "/select-books"=> SelectBooks,
         }
     );
 

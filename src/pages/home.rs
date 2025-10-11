@@ -9,11 +9,7 @@ use ratatui::{
     text::Line,
     widgets::{List, ListState, Paragraph, Wrap},
 };
-use ratatui_kit::{
-    AnyElement, Hooks, State, UseContext, UseEvents, UseRouter, UseState, UseTerminalSize,
-    component, element,
-    prelude::{Center, View},
-};
+use ratatui_kit::prelude::*;
 use tui_big_text::{BigText, PixelSize};
 
 #[component]

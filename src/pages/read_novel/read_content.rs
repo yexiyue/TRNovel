@@ -8,11 +8,7 @@ use ratatui::{
     text::Line,
     widgets::Paragraph,
 };
-use ratatui_kit::{
-    AnyElement, Handler, Hooks, Props, State, UseEvents, UseFuture, UseMemo, UseState, component,
-    element,
-    prelude::{Border, Text, View},
-};
+use ratatui_kit::prelude::*;
 use std::time::Duration;
 
 #[derive(Default, Props)]

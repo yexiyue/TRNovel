@@ -1,18 +1,13 @@
-use std::ops::Deref;
-
+use crate::hooks::UseThemeConfig;
 use crossterm::event::{Event, KeyCode, KeyEventKind};
 use ratatui::{
     layout::Constraint,
     style::{Style, Stylize},
     text::Line,
 };
-use ratatui_kit::{
-    AnyElement, Handler, Hooks, Props, State, UseEffect, UseEvents, UseState, component, element,
-    prelude::{Border, Input, tui_input},
-};
+use ratatui_kit::prelude::*;
+use std::ops::Deref;
 use tui_input::backend::crossterm::EventHandler;
-
-use crate::hooks::UseThemeConfig;
 
 #[derive(Default, Props)]
 pub struct SearchInputProps {

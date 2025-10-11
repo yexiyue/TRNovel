@@ -4,10 +4,7 @@ use crate::{
     hooks::UseInitState,
 };
 use ratatui::text::Line;
-use ratatui_kit::{
-    AnyElement, Hooks, UseRouter, UseState, component, element,
-    prelude::{Fragment, View},
-};
+use ratatui_kit::prelude::*;
 use std::{env::current_dir, path::PathBuf};
 
 #[component]

@@ -1,13 +1,8 @@
-use std::time::Duration;
-
-use ratatui::layout::{Constraint, Flex};
-use ratatui_kit::{
-    AnyElement, Hooks, Props, UseFuture, UseState, component, element,
-    prelude::{Border, Center, View},
-};
-use throbber_widgets_tui::{Throbber, ThrobberState};
-
 use crate::hooks::UseThemeConfig;
+use ratatui::layout::{Constraint, Flex};
+use ratatui_kit::prelude::*;
+use std::time::Duration;
+use throbber_widgets_tui::{Throbber, ThrobberState};
 
 #[derive(Debug, Clone, Default, Props)]
 pub struct LoadingProps {

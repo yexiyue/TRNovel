@@ -3,7 +3,7 @@ use ratatui::{
     style::Style,
     widgets::{Block, Clear},
 };
-use ratatui_kit::{Component, Props, State};
+use ratatui_kit::prelude::*;
 use std::{ops::Deref, sync::Arc};
 use tui_widget_list::{
     ListBuildContext, ListBuilder, ListState, ListView as TuiListView, ScrollAxis,

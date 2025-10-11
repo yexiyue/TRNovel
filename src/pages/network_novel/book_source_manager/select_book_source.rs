@@ -6,10 +6,7 @@ use ratatui::{
     text::Line,
     widgets::{Block, Padding, Widget, WidgetRef},
 };
-use ratatui_kit::{
-    AnyElement, Hooks, Props, State, UseContext, UseEvents, UseState, component, element,
-    prelude::View,
-};
+use ratatui_kit::prelude::*;
 use tui_widget_list::{ListBuildContext, ListState};
 
 use crate::{
@@ -86,6 +83,7 @@ pub fn SelectBookSource(
     let book_source_cache = hooks
         .use_context::<State<Option<BookSourceCache>>>()
         .clone();
+    let mut navigate = hooks.use_navigate();
     let theme = hooks.use_theme_config();
     let state = hooks.use_state(ListState::default);
     let mut delete_modal_open = hooks.use_state(|| false);
@@ -117,7 +115,12 @@ pub fn SelectBookSource(
         ListSelect<BookSource>(
             items: book_sources.clone(),
             state: state,
-            on_select: |_| {},
+            on_select:move |book_source: BookSource| {
+                navigate.push_with_state(
+                    "/select-books",
+                    book_source,
+                );
+            },
             is_editing: !delete_modal_open.get() && props.is_editing,
             empty_message: "暂无书源，请先导入书源",
             top_title: Line::from("选择书源 (回车确认)").style(
