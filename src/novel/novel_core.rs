@@ -23,7 +23,6 @@ where
     }
 }
 
-// #[async_trait]
 pub trait Novel: Deref<Target = NovelChapters<Self::Chapter>> + DerefMut + Sized + Clone {
     type Chapter: Sync + Send + Clone;
     type Args: Sync + Send + Clone;
