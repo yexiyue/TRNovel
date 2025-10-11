@@ -2,6 +2,39 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.6.0] - 2025-10-11
+
+### 🚀 Features
+
+- 添加use_theme_config hook
+- 重构搜索输入组件
+- 完成select组件
+- Add file select component
+- 添加file select组件
+- 添加list select组件
+- 搜索小说文件
+- 重构小说阅读页面
+- 添加路由导航
+- 重构导入书源页面
+- 重构书源管理
+- 重构书籍列表
+- 优化find book页面
+- 重构书籍详情页面
+
+### 🐛 Bug Fixes
+
+- 删除旧架构
+- 优化章节目录选择
+
+### 💼 Other
+
+- Home page
+- Ci/cd
+
+### 🎨 Styling
+
+- Clippy
+
 ## [0.5.4] - 2025-02-05
 
 ### 🐛 Bug Fixes
