@@ -20,12 +20,25 @@ use crate::{
 #[derive(Debug, Clone)]
 pub enum BookDetailState {
     New {
-        network_novel: BookSourceParser,
+        network_novel: Box<BookSourceParser>,
         book_list_item: BookListItem,
     },
     Cache {
         url: String,
     },
+}
+
+impl BookDetailState {
+    pub fn new(book_list_item: BookListItem, network_novel: BookSourceParser) -> Self {
+        Self::New {
+            network_novel: Box::new(network_novel),
+            book_list_item,
+        }
+    }
+
+    pub fn from_cache(url: String) -> Self {
+        Self::Cache { url }
+    }
 }
 
 #[component]
@@ -43,7 +56,7 @@ pub fn BookDetail(mut hooks: Hooks) -> impl Into<AnyElement<'static>> {
             BookDetailState::New {
                 network_novel,
                 book_list_item,
-            } => NetworkNovel::new(book_list_item.clone(), network_novel.clone()),
+            } => NetworkNovel::new(book_list_item.clone(), *network_novel.clone()),
             BookDetailState::Cache { url } => {
                 let book_source_cache = book_source_cache
                     .read()

@@ -43,7 +43,7 @@ pub fn Layout(mut hooks: Hooks) -> impl Into<AnyElement<'static>> {
                                 HistoryItem::Network(_) => {
                                     navigate.push_with_state(
                                         "/book-detail",
-                                        BookDetailState::Cache { url: path.clone() },
+                                        BookDetailState::from_cache(path.clone()),
                                     );
                                 }
                             }
