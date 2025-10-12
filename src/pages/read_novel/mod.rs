@@ -1,6 +1,6 @@
 use crate::{
     History,
-    components::{Loading, WarningModal},
+    components::{Loading, ShortcutInfoModal, WarningModal},
     errors::Errors,
     hooks::UseInitState,
     novel::Novel,
@@ -31,6 +31,7 @@ where
     let (width, height) = hooks.use_terminal_size();
 
     let mut content_loading = hooks.use_state(|| false);
+    let mut info_modal_open = hooks.use_state(|| false);
 
     let (novel, loading, error) = hooks.use_init_state(async move {
         let args = route_state.as_ref().clone();
@@ -128,9 +129,16 @@ where
     hooks.use_events(move |event| {
         if let Event::Key(key) = event
             && key.kind == KeyEventKind::Press
-            && key.code == KeyCode::Tab
         {
-            is_read_mode.set(!is_read_mode.get());
+            match key.code {
+                KeyCode::Tab => {
+                    is_read_mode.set(!is_read_mode.get());
+                }
+                KeyCode::Char('i') | KeyCode::Char('I') => {
+                    info_modal_open.set(!info_modal_open.get());
+                }
+                _ => {}
+            }
         }
     });
 
@@ -218,6 +226,32 @@ where
             tip: format!("加载失败:{:?}", error.read().as_ref()),
             is_error: error.read().is_some(),
             open: error.read().is_some(),
+        )
+        ShortcutInfoModal(
+            key_shortcut_info: {
+                if is_read_mode.get() {
+                    vec![
+                        ("切换章节选择模式", "Tab"),
+                        ("向上滚动", "↑ / K"),
+                        ("向下滚动", "↓ / J"),
+                        ("上一章", "← / H"),
+                        ("下一章", "→ / L"),
+                        ("上一页", "PageUp"),
+                        ("下一页", "PageDown"),
+                        ("跳到开头", "Home"),
+                        ("跳到结尾", "End"),
+                    ]
+                } else {
+                    vec![
+                        ("切换阅读模式", "Tab"),
+                        ("选择上一章", "↑ / K"),
+                        ("选择下一章", "↓ / J"),
+                        ("确认选择章节", "Enter"),
+                        ("搜索章节", "S"),
+                    ]
+                }
+            },
+            open: info_modal_open.get(),
         )
     })
     .into_any()

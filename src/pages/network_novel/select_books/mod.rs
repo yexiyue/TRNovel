@@ -1,3 +1,4 @@
+use crate::components::modal::shortcut_info_modal::ShortcutInfoModal;
 use crate::{
     components::{WarningModal, select::Select},
     errors::Errors,
@@ -27,6 +28,7 @@ impl From<ExploreListItem> for ListItem<'_> {
 
 #[component]
 pub fn SelectBooks(mut hooks: Hooks) -> impl Into<AnyElement<'static>> {
+    let mut info_modal_open = hooks.use_state(|| false);
     let book_source = hooks.use_route_state::<BookSource>();
     let mut explores = hooks.use_state(std::vec::Vec::new);
     let theme = hooks.use_theme_config();
@@ -52,9 +54,16 @@ pub fn SelectBooks(mut hooks: Hooks) -> impl Into<AnyElement<'static>> {
     hooks.use_events(move |event| {
         if let Event::Key(key) = event
             && key.kind == KeyEventKind::Press
-            && key.code == KeyCode::Tab
         {
-            is_explore_open.set(!is_explore_open.get());
+            match key.code {
+                KeyCode::Tab => {
+                    is_explore_open.set(!is_explore_open.get());
+                }
+                KeyCode::Char('i') | KeyCode::Char('I') => {
+                    info_modal_open.set(!info_modal_open.get());
+                }
+                _ => {}
+            }
         }
     });
 
@@ -81,6 +90,17 @@ pub fn SelectBooks(mut hooks: Hooks) -> impl Into<AnyElement<'static>> {
             tip: format!("{:?}", error.read().as_ref()),
             is_error: error.read().is_some(),
             open: error.read().is_some(),
+        )
+        ShortcutInfoModal(
+            key_shortcut_info: vec![
+                ("切换分类弹窗", "Tab"),
+                ("上下移动", "J / K / ↑ / ↓"),
+                ("选择/进入", "Enter"),
+                ("上一页", "H / ←"),
+                ("下一页", "L / →"),
+                ("搜索书籍", "S"),
+            ],
+            open: info_modal_open.get(),
         )
         Modal(
             width: Constraint::Length(30),

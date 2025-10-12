@@ -1,8 +1,12 @@
 use crate::{
-    components::{Loading, WarningModal, file_select::FileSelect, search_input::SearchInput},
+    components::{
+        Loading, WarningModal, file_select::FileSelect,
+        modal::shortcut_info_modal::ShortcutInfoModal, search_input::SearchInput,
+    },
     file_list::NovelFiles,
     hooks::UseInitState,
 };
+use crossterm::event::{Event, KeyCode, KeyEventKind};
 use ratatui::text::Line;
 use ratatui_kit::prelude::*;
 use std::{env::current_dir, path::PathBuf};
@@ -13,6 +17,7 @@ pub fn SelectFile(mut hooks: Hooks) -> impl Into<AnyElement<'static>> {
     let mut navigate = hooks.use_navigate();
     let is_inputting = hooks.use_state(|| false);
     let mut path = hooks.use_state(|| dir_path.map(|p| (*p).clone()));
+    let mut info_modal_open = hooks.use_state(|| false);
 
     let dir_path = path.read().clone().unwrap_or(current_dir().unwrap());
 
@@ -30,6 +35,20 @@ pub fn SelectFile(mut hooks: Hooks) -> impl Into<AnyElement<'static>> {
         .map(|i| i.into_tree_item())
         .unwrap_or_default();
 
+    hooks.use_events(move |event| {
+        if let Event::Key(key) = event
+            && key.kind == KeyEventKind::Press
+            && !is_inputting.get()
+        {
+            match key.code {
+                KeyCode::Char('i') | KeyCode::Char('I') => {
+                    info_modal_open.set(!info_modal_open.get());
+                }
+                _ => {}
+            }
+        }
+    });
+
     if loading.get() {
         return element!(Loading(tip:"搜索小说中...")).into_any();
     }
@@ -38,7 +57,7 @@ pub fn SelectFile(mut hooks: Hooks) -> impl Into<AnyElement<'static>> {
         View{
             SearchInput(
                 value: dir_path.to_string_lossy().to_string(),
-                placeholder: "请输入小说文件夹路径",
+                placeholder: "按s 开始输入小说文件夹路径",
                 is_editing: is_inputting,
                 validate: |input: String| {
                     let path = PathBuf::from(input);
@@ -63,7 +82,7 @@ pub fn SelectFile(mut hooks: Hooks) -> impl Into<AnyElement<'static>> {
                 },
             )
             FileSelect(
-                is_editing: !is_inputting.get(),
+                is_editing: !is_inputting.get() && !info_modal_open.get(),
                 top_title: Line::from("本地小说".to_string()).centered(),
                 items: tree_items,
                 on_select: move |item:PathBuf| {
@@ -75,6 +94,17 @@ pub fn SelectFile(mut hooks: Hooks) -> impl Into<AnyElement<'static>> {
                 tip: format!("加载失败:{:?}", error.read().as_ref()),
                 is_error: error.read().is_some(),
                 open: error.read().is_some(),
+            )
+            ShortcutInfoModal(
+                key_shortcut_info: vec![
+                    ("展开文件夹", "L / ► / Enter"),
+                    ("折叠文件夹", "H / ◄"),
+                    ("选择下一个", "J / ▼"),
+                    ("选择上一个", "K / ▲"),
+                    ("选择小说文件", "Enter"),
+                    ("开始输入路径", "S")
+                ],
+                open: info_modal_open.get(),
             )
         }
     })

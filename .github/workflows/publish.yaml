@@ -71,10 +71,6 @@ jobs:
           PREFIX=${{ steps.extract.outputs.prefix }}
           # 先尝试 [0.2.1] 这种格式（用于trnovel）
           awk "/^##? \\[${VERSION}]/ {flag=1;next} /^##? /{flag=0}flag" CHANGELOG.md > RELEASE_BODY.md
-          # 如果没内容，再尝试 [parse-book-source-v0.1.1] 这种格式
-          if [ ! -s RELEASE_BODY.md ]; then
-            awk "/^##? \\[${PREFIX}-v${VERSION}]/ {flag=1;next} /^##? /{flag=0}flag" CHANGELOG.md > RELEASE_BODY.md
-          fi
           # 如果还没内容，尝试去掉前后空格再匹配一次
           if [ ! -s RELEASE_BODY.md ]; then
             awk -v ver="${VERSION}" '/^##? \[ *"ver" *\]/ {flag=1;next} /^##? /{flag=0}flag' CHANGELOG.md > RELEASE_BODY.md

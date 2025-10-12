@@ -4,3 +4,4 @@ pub mod home;
 pub mod local_novel;
 pub mod network_novel;
 pub mod select_history;
+pub mod theme_setting;
