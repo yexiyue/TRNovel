@@ -2,6 +2,12 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.6.2] - 2025-10-12
+
+### 🚀 Features
+
+- 添加快捷键信息
+
 ## [0.6.1] - 2025-10-12
 
 ### 🚀 Features
@@ -11,6 +17,10 @@ All notable changes to this project will be documented in this file.
 ### 💼 Other
 
 - Clippy
+
+### ⚙️ Miscellaneous Tasks
+
+- Release
 
 ## [0.6.0] - 2025-10-12
 
