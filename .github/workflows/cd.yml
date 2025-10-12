@@ -52,14 +52,14 @@ jobs:
             target: aarch64-unknown-linux-gnu
             architecture: arm64
             binary-postfix: ""
-            use-cross: false
+            use-cross: true
             binary-name: trnovel
           - os: ubuntu-latest
             os-name: linux
             target: i686-unknown-linux-gnu
             architecture: i686
             binary-postfix: ""
-            use-cross: false
+            use-cross: true
             binary-name: trnovel
 
     steps:
@@ -74,21 +74,19 @@ jobs:
 
           profile: minimal
           override: true
-      # - name: Install Openssl
-      #   if: matrix.target == 'aarch64-unknown-linux-gnu' || matrix.target == 'i686-unknown-linux-gnu'
-      #   run: |
-      #     sudo apt-get update
-      #     if [[ ${{ matrix.target }} == i686-unknown-linux-gnu ]]; then
-      #       sudo dpkg --add-architecture i386
-      #       sudo apt-get update
-      #       sudo apt-get install pkg-config libssl-dev openssl gcc-multilib libssl-dev:i386
-      #     elif [[ ${{ matrix.target }} == aarch64-unknown-linux-gnu ]]; then
-      #       sudo dpkg --add-architecture arm64
-      #       sudo apt-get update
-      #       sudo apt-get install pkg-config libssl-dev openssl gcc-aarch64-linux-gnu libssl-dev:arm64
-      #     else
-      #       sudo apt-get install pkg-config libssl-dev openssl
-      #     fi
+      - name: Install Openssl
+        if: matrix.target == 'aarch64-unknown-linux-gnu' || matrix.target == 'i686-unknown-linux-gnu'
+        run: |
+          sudo apt-get update
+          if [[ ${{ matrix.target }} == i686-unknown-linux-gnu ]]; then
+            sudo apt-get update
+            sudo apt-get install pkg-config libssl-dev openssl
+          elif [[ ${{ matrix.target }} == aarch64-unknown-linux-gnu ]]; then
+            sudo apt-get update
+            sudo apt-get install pkg-config libssl-dev openssl gcc-aarch64-linux-gnu
+          else
+            sudo apt-get install pkg-config libssl-dev openssl
+          fi
       - uses: Swatinem/rust-cache@v2
       - name: Cargo build
         uses: actions-rs/cargo@v1
