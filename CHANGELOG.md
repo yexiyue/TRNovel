@@ -2,7 +2,32 @@
 
 All notable changes to this project will be documented in this file.
 
-## [0.6.0] - 2025-10-11
+## [0.6.1] - 2025-10-12
+
+### 🚀 Features
+
+- 优化整体交互逻辑
+
+### 💼 Other
+
+- Clippy
+
+## [0.6.0] - 2025-10-12
+
+### 💼 Other
+
+- Modify publish.yaml
+- Modify publish.yaml
+- Modify publish.yaml
+- Modify publish.yaml
+- Remove dependencies
+- Update ci.yml
+- Cd.yml
+- Cd.yml
+- Update ci.yml
+- Update ci.yml
+
+## [parse-book-source-v0.2.0] - 2025-10-11
 
 ### 🚀 Features
 
@@ -34,6 +59,10 @@ All notable changes to this project will be documented in this file.
 ### 🎨 Styling
 
 - Clippy
+
+### ⚙️ Miscellaneous Tasks
+
+- Release
 
 ## [0.5.4] - 2025-02-05
 
