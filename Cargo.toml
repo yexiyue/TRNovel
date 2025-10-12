@@ -45,6 +45,7 @@ ratatui-kit = { version = "0.5.6", features = ["full"] }
 #     "full",
 # ], path = "../ratatui-kit/packages/ratatui-kit" }
 textwrap = { version = "0.16.2" }
+dirs = "6.0.0"
 # rodio = { version = "0.21.1", default-features = false, features = [
 #     "wav",
 #     "playback",

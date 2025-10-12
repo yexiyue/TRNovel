@@ -1,19 +1,10 @@
 use anyhow::{Result, anyhow};
 use chrono::DateTime;
-use std::{
-    env,
-    path::{Path, PathBuf},
-};
+use std::path::{Path, PathBuf};
 
 /// 获取小说缓存目录
 pub fn novel_catch_dir() -> Result<PathBuf> {
-    let home = match env::var("HOME") {
-        Ok(home) => PathBuf::from(home),
-        Err(_) => env::current_exe()?
-            .parent()
-            .ok_or(anyhow!("获取当前执行文件路径失败"))?
-            .to_path_buf(),
-    };
+    let home = dirs::home_dir().ok_or(anyhow!("无法获取用户主目录"))?;
 
     let novel_catch_path = PathBuf::new().join(&home).join(".novel");
 
