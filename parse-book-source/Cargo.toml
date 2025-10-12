@@ -19,7 +19,11 @@ tokio = { workspace = true }
 tokio-util = { workspace = true }
 futures = { workspace = true }
 scraper = "0.24.0"
-reqwest = { version = "0.12.23", features = ["json", "rustls-tls", "cookies"] }
+reqwest = { version = "0.12.23", default-features = false, features = [
+    "json",
+    "rustls-tls",
+    "cookies",
+] }
 
 
 # scraper = "0.21.0"
