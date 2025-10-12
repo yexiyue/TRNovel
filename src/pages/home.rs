@@ -14,7 +14,7 @@ use tui_big_text::{BigText, PixelSize};
 
 #[component]
 pub fn Home(mut hooks: Hooks) -> impl Into<AnyElement<'static>> {
-    let state = hooks.use_state(ListState::default);
+    let state = hooks.use_state(|| ListState::default().with_selected(Some(0)));
     let mut info_modal_open = hooks.use_state(|| false);
     let history = hooks.use_context::<State<Option<History>>>();
     let local_path = history.read().as_ref().and_then(|h| h.local_path.clone());
@@ -58,10 +58,9 @@ pub fn Home(mut hooks: Hooks) -> impl Into<AnyElement<'static>> {
                                     }
                                 }
                                 1 => {
-                                    // navigate.push(network_novel_first_page().unwrap());
+                                    navigate.push("/book-source");
                                 }
                                 2 => {
-                                    // navigate.push(SelectHistory::to_page_route());
                                     navigate.push("/select-history");
                                 }
                                 3 => {

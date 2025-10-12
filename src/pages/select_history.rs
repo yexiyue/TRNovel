@@ -2,6 +2,7 @@ use crate::{
     History, HistoryItem, ThemeConfig,
     components::{ConfirmModal, KeyShortcutInfo, ShortcutInfoModal, list_select::ListSelect},
     hooks::UseThemeConfig,
+    pages::network_novel::book_detail::BookDetailState,
 };
 use crossterm::event::{Event, KeyCode, KeyEventKind};
 use ratatui::{
@@ -101,6 +102,7 @@ pub fn SelectHistory(mut hooks: Hooks) -> impl Into<AnyElement<'static>> {
     let theme = hooks.use_theme_config();
     let history = hooks.use_context::<State<Option<History>>>();
 
+    let mut navigate = hooks.use_navigate();
     let mut delete_modal_open = hooks.use_state(|| false);
     let mut info_modal_open = hooks.use_state(|| false);
 
@@ -169,6 +171,22 @@ pub fn SelectHistory(mut hooks: Hooks) -> impl Into<AnyElement<'static>> {
                 }
             },
             empty_message: "暂无历史记录",
+            on_select: move |(path, item)| {
+                match item {
+                    HistoryItem::Local(_) => {
+                        navigate.push_with_state(
+                            "/local-novel",
+                            path,
+                        );
+                    }
+                    HistoryItem::Network(_) => {
+                        navigate.push_with_state(
+                            "/book-detail",
+                            BookDetailState::Cache { url: path },
+                        );
+                    }
+                }
+            },
         )
         ConfirmModal(
             title: Line::from("警告").centered().style(theme.basic.border_title),

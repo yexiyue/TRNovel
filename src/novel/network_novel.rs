@@ -17,7 +17,7 @@ pub struct NetworkNovel {
 }
 
 impl NetworkNovel {
-    pub async fn from_url(url: &str, book_sources: &BookSourceCache) -> Result<Self> {
+    pub fn from_url(url: &str, book_sources: &BookSourceCache) -> Result<Self> {
         let network_cache = NetworkNovelCache::try_from(url)?;
         let json_source = book_sources
             .find_book_source(

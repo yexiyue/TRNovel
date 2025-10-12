@@ -3,7 +3,7 @@ use std::{fs::File, sync::Arc, time::Duration};
 use futures::FutureExt;
 use ratatui_kit::{
     AnyElement, Context, Hooks, Props, UseFuture, UseState, UseTerminalSize, component, element,
-    prelude::{ContextProvider, Fragment, RouterProvider},
+    prelude::{ContextProvider, Fragment, RouteState, RouterProvider},
     routes,
 };
 use tokio::sync::Notify;
@@ -35,7 +35,7 @@ pub struct AppProps {
 }
 
 #[component]
-pub fn App(_props: &AppProps, mut hooks: Hooks) -> impl Into<AnyElement<'static>> {
+pub fn App(props: &AppProps, mut hooks: Hooks) -> impl Into<AnyElement<'static>> {
     hooks.use_terminal_size();
     let mut loading = hooks.use_state(|| true);
     let mut theme_config_state = hooks.use_state(ThemeConfig::default);
@@ -84,12 +84,14 @@ pub fn App(_props: &AppProps, mut hooks: Hooks) -> impl Into<AnyElement<'static>
         "/"=>Layout{
             "/home"=>Home,
             "/select-history"=>SelectHistory,
+            // 本地小说
             "/select-file"=> SelectFile,
             "/local-novel"=> ReadNovel<LocalNovel>,
-            "/network-novel"=> ReadNovel<NetworkNovel>,
+            // 网络小说
             "/book-source"=> BookSourceManager,
             "/select-books"=> SelectBooks,
             "/book-detail"=> BookDetail,
+            "/network-novel"=> ReadNovel<NetworkNovel>,
         }
     );
 
@@ -110,8 +112,9 @@ pub fn App(_props: &AppProps, mut hooks: Hooks) -> impl Into<AnyElement<'static>
                         ContextProvider(value:Context::owned(history_state)){
                             ContextProvider(value:Context::owned(book_sources_catch_state)){
                                 RouterProvider(
-                                    routes:routes,
-                                    index_path:"/book-source",
+                                    routes: routes,
+                                    index_path: "/home",
+                                    state: RouteState::new(props.trnovel.clone())
                                 )
                             }
                         }

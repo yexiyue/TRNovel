@@ -1,3 +1,4 @@
+use anyhow::anyhow;
 use crossterm::event::{Event, KeyCode, KeyEventKind};
 use parse_book_source::{BookInfo, BookListItem, BookSourceParser};
 use ratatui::{
@@ -9,6 +10,7 @@ use ratatui::{
 use ratatui_kit::prelude::*;
 
 use crate::{
+    book_source::BookSourceCache,
     components::{Loading, WarningModal},
     errors::Errors,
     hooks::{UseInitState, UseThemeConfig},
@@ -16,24 +18,41 @@ use crate::{
 };
 
 #[derive(Debug, Clone)]
-pub struct BookDetailState {
-    pub network_novel: BookSourceParser,
-    pub book_list_item: BookListItem,
+pub enum BookDetailState {
+    New {
+        network_novel: BookSourceParser,
+        book_list_item: BookListItem,
+    },
+    Cache {
+        url: String,
+    },
 }
 
 #[component]
 pub fn BookDetail(mut hooks: Hooks) -> impl Into<AnyElement<'static>> {
     let book_detail_state = hooks.use_route_state::<BookDetailState>();
+    let book_source_cache = *hooks.use_context::<State<Option<BookSourceCache>>>();
+
     let mut book_info = hooks.use_state(|| None::<BookInfo>);
     let size = hooks.use_previous_size();
     let theme = hooks.use_theme_config();
     let mut navigate = hooks.use_navigate();
 
     let (book_source_parser, loading, error) = hooks.use_init_state(async move {
-        let mut novel = NetworkNovel::new(
-            book_detail_state.book_list_item.clone(),
-            book_detail_state.network_novel.clone(),
-        );
+        let mut novel = match &(*book_detail_state) {
+            BookDetailState::New {
+                network_novel,
+                book_list_item,
+            } => NetworkNovel::new(book_list_item.clone(), network_novel.clone()),
+            BookDetailState::Cache { url } => {
+                let book_source_cache = book_source_cache
+                    .read()
+                    .clone()
+                    .ok_or(anyhow!("没有书源缓存"))?;
+                NetworkNovel::from_url(url, &book_source_cache)?
+            }
+        };
+
         let res = novel
             .book_source
             .lock()

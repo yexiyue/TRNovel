@@ -151,7 +151,7 @@ pub fn FindBooks(props: &FindBooksProps, mut hooks: Hooks) -> impl Into<AnyEleme
                     if let Some(parser)=&parser{
                         navigate.push_with_state(
                             "/book-detail",
-                            BookDetailState{
+                            BookDetailState::New{
                                 book_list_item: item,
                                 network_novel: parser.clone(),
                             },

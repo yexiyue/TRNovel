@@ -43,7 +43,7 @@ where
     Ok(())
 }
 
-#[derive(Parser, Debug)]
+#[derive(Parser, Debug, Clone, Hash, PartialEq, Eq)]
 #[command(
     author,
     version,
@@ -74,7 +74,7 @@ pub struct TRNovel {
     pub subcommand: Option<Commands>,
 }
 
-#[derive(Debug, Subcommand)]
+#[derive(Debug, Subcommand, Clone, Hash, PartialEq, Eq)]
 pub enum Commands {
     /// 快速模式，接着上一次阅读的位置继续阅读
     #[command(short_flag = 'q')]
