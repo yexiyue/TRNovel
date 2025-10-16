@@ -5,7 +5,8 @@ use crate::{
 use crossterm::event::{Event, KeyCode, KeyEventKind};
 use ratatui::{
     layout::{Constraint, Direction, Flex, Margin},
-    text::Line,
+    style::Style,
+    text::{Line, Span},
     widgets::Paragraph,
 };
 use ratatui_kit::prelude::*;
@@ -35,6 +36,7 @@ pub fn ReadContent(
     let paragraph = hooks.use_memo(
         || {
             let content = textwrap::fill(&props.content, (props.width as usize).saturating_sub(2));
+            // Paragraph::new(highlight_text(content, 3, 106, Style::default().green()))
             Paragraph::new(content)
         },
         (props.content.clone(), props.width),
@@ -133,4 +135,69 @@ pub fn ReadContent(
             $Line::from(format!("{:.2}% {}",props.chapter_percent, current_time.read().clone())).style(theme.novel.progress).right_aligned()
         }
     })
+}
+
+fn highlight_text(
+    text: String,
+    start: usize,
+    end: usize,
+    highlight_style: Style,
+) -> Vec<Line<'static>> {
+    let mut last_index = 0;
+
+    let mut lines = vec![];
+    for line in text.lines() {
+        let mut spans = vec![];
+        let count = line.chars().count();
+        let new_index = last_index + count;
+
+        if start >= last_index && start < new_index {
+            let start_in_line = start - last_index;
+            let end_in_line = end.min(new_index) - last_index;
+
+            // 安全地获取字节索引位置
+            let char_indices: Vec<_> = line.char_indices().collect();
+
+            // 获取起始字节位置
+            let start_byte = if start_in_line < char_indices.len() {
+                char_indices[start_in_line].0
+            } else {
+                line.len()
+            };
+
+            // 获取结束字节位置
+            let end_byte = if end_in_line < char_indices.len() {
+                char_indices[end_in_line].0
+            } else {
+                line.len()
+            };
+
+            let (before, rest) = line.split_at(start_byte);
+            let (highlighted, after) = rest.split_at(end_byte - start_byte);
+
+            spans.push(Span::from(before.to_string()));
+            spans.push(Span::styled(highlighted.to_string(), highlight_style));
+            spans.push(Span::from(after.to_string()));
+        } else if end > last_index && end < new_index {
+            // 同样需要处理字节索引
+            let char_indices: Vec<_> = line.char_indices().collect();
+            let end_byte = if end - last_index < char_indices.len() {
+                char_indices[end - last_index].0
+            } else {
+                line.len()
+            };
+
+            let (before, rest) = line.split_at(end_byte);
+            spans.push(Span::styled(before.to_string(), highlight_style));
+            spans.push(Span::from(rest.to_string()));
+        } else if last_index > start && new_index < end {
+            spans.push(Span::styled(line.to_string(), highlight_style));
+        } else {
+            lines.push(Line::from(line.to_string()));
+        }
+        lines.push(Line::from(spans));
+        last_index = new_index;
+    }
+
+    lines
 }

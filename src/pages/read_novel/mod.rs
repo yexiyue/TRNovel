@@ -61,7 +61,7 @@ where
         .await?
     });
 
-    let line_percent = hooks.use_state(|| {
+    let mut line_percent = hooks.use_state(|| {
         novel
             .read()
             .as_ref()
@@ -180,16 +180,27 @@ where
                                 return;
                             }
                             current_chapter.set(new_chapter);
+                            line_percent.set(0.0);
                         }
                     },
-                    on_prev: move |_| {
-                        let new_chapter= current_chapter.get().saturating_sub(1);
+                    on_prev: move |is_scroll_top| {
+                        if current_chapter.get() == 0 {
+                            return;
+                        }
+                        let new_chapter = current_chapter.get().saturating_sub(1);
+
                         if let Some(novel) = novel.write().as_mut() {
+
                             if let Err(e) = novel.set_chapter(new_chapter) {
                                 error.write().replace(e);
                                 return;
                             }
                             current_chapter.set(new_chapter);
+                            if is_scroll_top {
+                                line_percent.set(1.0);
+                            } else {
+                                line_percent.set(0.0);
+                            }
                         }
                     },
                     line_percent: line_percent,
