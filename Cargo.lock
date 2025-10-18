@@ -526,6 +526,21 @@ dependencies = [
 ]
 
 [[package]]
+name = "crossbeam-channel"
+version = "0.5.15"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "82b8f8f868b36967f9606790d1903570de9ceaf870a7bf9fbbd3016d636a2cb2"
+dependencies = [
+ "crossbeam-utils",
+]
+
+[[package]]
+name = "crossbeam-utils"
+version = "0.8.21"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d0a5c400df2834b80a4c3327b3aad3a4c4cd4de0629063962b03235697506a28"
+
+[[package]]
 name = "crossterm"
 version = "0.28.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1596,6 +1611,27 @@ dependencies = [
 ]
 
 [[package]]
+name = "kokoro-tts"
+version = "0.3.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "216a3c1f61f8a2bed05c0061413460a7f44176a7113ddff6a1759e71e314caf2"
+dependencies = [
+ "bincode",
+ "cc",
+ "chinese-number",
+ "futures",
+ "jieba-rs",
+ "log",
+ "ndarray",
+ "ort",
+ "pin-project",
+ "pinyin",
+ "rand 0.10.0-rc.0",
+ "regex",
+ "tokio",
+]
+
+[[package]]
 name = "lazy_static"
 version = "1.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1853,6 +1889,17 @@ checksum = "650eef8c711430f1a879fdd01d4745a7deea475becfb90269c06775983bbf086"
 [[package]]
 name = "novel-tts"
 version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "dirs",
+ "futures",
+ "kokoro-tts 0.3.0",
+ "reqwest",
+ "rodio",
+ "thiserror 2.0.17",
+ "tokio",
+ "tokio-util",
+]
 
 [[package]]
 name = "num-bigint"
@@ -2746,6 +2793,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e40ecf59e742e03336be6a3d53755e789fd05a059fa22dfa0ed624722319e183"
 dependencies = [
  "cpal",
+ "crossbeam-channel",
  "dasp_sample",
  "num-rational",
  "symphonia",
@@ -3622,7 +3670,7 @@ dependencies = [
  "dirs",
  "encoding_rs",
  "futures",
- "kokoro-tts",
+ "kokoro-tts 0.2.9",
  "md5",
  "parse-book-source",
  "ratatui",
