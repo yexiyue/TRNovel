@@ -36,7 +36,7 @@ jobs:
           CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
         run: |
           # 根据前缀确定路径
-          if [ "$PREFIX" = "parse-book-source" ] || [ "$PREFIX" = "novel-tts" ]; then
+          if [ $PREFIX = "parse-book-source" ] || [ $PREFIX = "novel-tts" ]; then
             CRATE_PATH="crates/${PREFIX}"
           else
             CRATE_PATH="./"
@@ -46,7 +46,7 @@ jobs:
             echo "Crate path $CRATE_PATH not found!" && exit 1
           fi
 
-          cd "$CRATE_PATH"
+          cd $CRATE_PATH
           ls 
           cargo publish --token "$CARGO_REGISTRY_TOKEN"
 
