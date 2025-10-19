@@ -106,7 +106,7 @@ impl ChapterTTS {
                         audio_buffers.lock().await.push(buffer);
 
                         if index==0 {
-                            position_tx.send((0,char_count)).await.unwrap();
+                            position_tx.send((0,char_count)).await.ok();
                         }
 
                         tokio::spawn({
@@ -125,7 +125,7 @@ impl ChapterTTS {
                                 let char_positions = char_ranges.lock().await;
                                 let ranges = char_positions.get((index+1).min(line_count));
                                 if let Some(range) = ranges {
-                                    position_tx.send(*range).await.unwrap();
+                                    position_tx.send(*range).await.ok();
                                 }
                             }
                         });
