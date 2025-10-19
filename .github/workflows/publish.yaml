@@ -24,15 +24,8 @@ jobs:
         id: extract
         run: |
           TAG_NAME=${GITHUB_REF#refs/tags/}
-          # 处理主应用标签格式: v0.6.2
-          if [[ $TAG_NAME =~ ^v[0-9]+\. ]]; then
-            PREFIX="trnovel"
-            VERSION=$(echo "$TAG_NAME" | sed -E 's/v([0-9].*)/\1/')
-          else
-            # 处理crates标签格式: parse-book-source-v0.2.1 或 novel-tts-v0.1.0
-            PREFIX=$(echo "$TAG_NAME" | sed -E 's/(.*)-v[0-9].*/\1/')
-            VERSION=$(echo "$TAG_NAME" | sed -E 's/.*-v([0-9].*)/\1/')
-          fi
+          PREFIX=$(echo "$TAG_NAME" | sed -E 's/(.*)-v[0-9].*/\1/')
+          VERSION=$(echo "$TAG_NAME" | sed -E 's/.*-v([0-9].*)/\1/')
           echo "prefix=$PREFIX" >> $GITHUB_OUTPUT
           echo "version=$VERSION" >> $GITHUB_OUTPUT
 
@@ -41,19 +34,16 @@ jobs:
           CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
         run: |
           # 根据前缀确定路径
-          if [ "$PREFIX" = "trnovel" ]; then
-            echo "Main application tag detected, skipping cargo publish"
-            exit 0
-          elif [ "$PREFIX" = "parse-book-source" ] || [ "$PREFIX" = "novel-tts" ]; then
+          if [ "$PREFIX" = "parse-book-source" ] || [ "$PREFIX" = "novel-tts" ]; then
             CRATE_PATH="crates/${PREFIX}"
           else
-            echo "Unknown prefix: $PREFIX" && exit 1
+            CRATE_PATH="."
           fi
-          
+
           if [ ! -f "$CRATE_PATH/Cargo.toml" ]; then
             echo "Crate path $CRATE_PATH not found!" && exit 1
           fi
-          
+
           cd "$CRATE_PATH"
           cargo publish --token "$CARGO_REGISTRY_TOKEN"
 
@@ -62,7 +52,7 @@ jobs:
         run: |
           TAG_NAME=${GITHUB_REF#refs/tags/}
           VERSION=${{ steps.extract.outputs.version }}
-          
+
           # 对于主应用使用 [0.6.2] 格式
           if [[ $TAG_NAME =~ ^v[0-9]+\. ]]; then
             awk "/^##? \\[${VERSION}]/ {flag=1;next} /^##? /{flag=0}flag" CHANGELOG.md > RELEASE_BODY.md
@@ -70,7 +60,7 @@ jobs:
             # 对于crates使用 [parse-book-source-v0.2.1] 格式
             awk "/^##? \\[$TAG_NAME]/ {flag=1;next} /^##? /{flag=0}flag" CHANGELOG.md > RELEASE_BODY.md
           fi
-          
+
           echo 'body<<EOF' >> $GITHUB_OUTPUT
           cat RELEASE_BODY.md >> $GITHUB_OUTPUT
           echo 'EOF' >> $GITHUB_OUTPUT

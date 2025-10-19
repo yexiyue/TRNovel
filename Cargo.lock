@@ -1859,7 +1859,7 @@ checksum = "650eef8c711430f1a879fdd01d4745a7deea475becfb90269c06775983bbf086"
 
 [[package]]
 name = "novel-tts"
-version = "0.2.0"
+version = "0.1.0"
 dependencies = [
  "anyhow",
  "dirs",
@@ -2609,6 +2609,8 @@ dependencies = [
 [[package]]
 name = "ratatui-kit"
 version = "0.5.6"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "aaa0839948ac915609378b659333786016e1c597e2f83f52a7c2f92ff6f2e344"
 dependencies = [
  "any_key",
  "crossterm",
@@ -2625,6 +2627,8 @@ dependencies = [
 [[package]]
 name = "ratatui-kit-macros"
 version = "0.5.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "22bf3a8e830d8a0db564c642d017597c912580049a7569e79708007acef9de73"
 dependencies = [
  "proc-macro2",
  "quote",

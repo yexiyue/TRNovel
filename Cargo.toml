@@ -41,13 +41,13 @@ tokio = { workspace = true }
 tokio-util = { workspace = true }
 futures = { workspace = true }
 dirs = { workspace = true }
-# ratatui-kit = { version = "0.5.6", features = ["full"] }
-ratatui-kit = { features = [
-    "full",
-], path = "../ratatui-kit/packages/ratatui-kit" }
+ratatui-kit = { version = "0.5.6", features = ["full"] }
+# ratatui-kit = { features = [
+#     "full",
+# ], path = "../ratatui-kit/packages/ratatui-kit" }
 textwrap = { version = "0.16.2" }
 rodio = { version = "0.21.1", default-features = false, features = ["playback", "wav"] }
-novel-tts = { path = "crates/novel-tts", version = "0.2.0" }
+novel-tts = { path = "crates/novel-tts", version = "0.1.0" }
 
 
 [workspace]

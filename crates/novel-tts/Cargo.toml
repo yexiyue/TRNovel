@@ -1,7 +1,12 @@
 [package]
 name = "novel-tts"
-version = "0.2.0"
+version = "0.1.0"
 edition = "2024"
+description = "Terminal reader for novel"
+authors = ["yexiyue <yexiyue666@qq.com>"]
+license = "MIT"
+keywords = ["Novel", "TTS"]
+repository = "https://github.com/yexiyue/parse-book-source"
 
 [dependencies]
 anyhow.workspace = true
