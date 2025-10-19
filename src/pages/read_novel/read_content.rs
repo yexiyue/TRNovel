@@ -259,7 +259,7 @@ pub fn ReadContent(
     })
 }
 
-fn highlight_text(
+pub fn highlight_text(
     text: String,
     start: usize,
     end: usize,

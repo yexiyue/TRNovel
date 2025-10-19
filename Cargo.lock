@@ -1583,7 +1583,9 @@ dependencies = [
 
 [[package]]
 name = "kokoro-tts"
-version = "0.2.9"
+version = "0.3.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "216a3c1f61f8a2bed05c0061413460a7f44176a7113ddff6a1759e71e314caf2"
 dependencies = [
  "bincode",
  "cc",
