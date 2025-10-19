@@ -37,7 +37,7 @@ jobs:
         run: |
           # 根据前缀确定路径
           if [ ${{steps.extract.outputs.prefix}} = "parse-book-source" ] || [ ${{steps.extract.outputs.prefix}} = "novel-tts" ]; then
-            CRATE_PATH="crates/${PREFIX}"
+            CRATE_PATH="crates/${{steps.extract.outputs.prefix}}"
           else
             CRATE_PATH="./"
           fi
