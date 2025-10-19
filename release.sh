@@ -21,7 +21,7 @@ done
 
 echo "最终排除参数: $EXCLUDE_ARGS"
 
-cargo release version patch --workspace $EXCLUDE_ARGS --no-confirm --execute
+cargo release version minor --workspace $EXCLUDE_ARGS --no-confirm --execute
 cargo release hook --no-confirm --execute
 cargo release commit --no-confirm --execute
 cargo release tag --workspace $EXCLUDE_ARGS --execute --no-confirm

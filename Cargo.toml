@@ -1,6 +1,6 @@
 [package]
 name = "trnovel"
-version = "0.6.2"
+version = "0.7.0"
 edition = "2024"
 default-run = "trnovel"
 description = "Terminal reader for novel"
@@ -47,7 +47,7 @@ ratatui-kit = { features = [
 ], path = "../ratatui-kit/packages/ratatui-kit" }
 textwrap = { version = "0.16.2" }
 rodio = { version = "0.21.1", default-features = false, features = ["playback", "wav"] }
-novel-tts = { path = "crates/novel-tts", version = "0.1.0" }
+novel-tts = { path = "crates/novel-tts", version = "0.2.0" }
 
 
 [workspace]

@@ -2,11 +2,34 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.7.0] - 2025-10-19
+
+### 🚀 Features
+
+- Use dirs create
+- Add novel-tts
+- 支持流式小说转语音
+- 添加听书设置
+- 支持播放暂停
+
+### 🐛 Bug Fixes
+
+- Clippy
+- Clippy
+
+### 💼 Other
+
+- Update publish.yaml
+
 ## [0.6.2] - 2025-10-12
 
 ### 🚀 Features
 
 - 添加快捷键信息
+
+### ⚙️ Miscellaneous Tasks
+
+- Release
 
 ## [0.6.1] - 2025-10-12
 
