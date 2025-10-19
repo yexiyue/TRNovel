@@ -19,6 +19,10 @@ jobs:
 
       - name: Set up Rust
         uses: dtolnay/rust-toolchain@stable
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt install libasound2-dev
 
       - name: Extract crate prefix and version from tag
         id: extract
