@@ -16,6 +16,8 @@ pub use read_content::*;
 use std::sync::Arc;
 use tokio::sync::Notify;
 use tokio::time::{Duration, sleep};
+mod tts;
+pub use tts::*;
 
 #[component]
 pub fn ReadNovel<T>(mut hooks: Hooks) -> impl Into<AnyElement<'static>>
@@ -28,6 +30,7 @@ where
     let mut current_chapter = hooks.use_state(|| 0usize);
     let mut content = hooks.use_state(String::default);
     let mut is_read_mode = hooks.use_state(|| false);
+    let mut is_tts_open = hooks.use_state(|| false);
     let (width, height) = hooks.use_terminal_size();
 
     let mut content_loading = hooks.use_state(|| false);
@@ -61,7 +64,7 @@ where
         .await?
     });
 
-    let line_percent = hooks.use_state(|| {
+    let mut line_percent = hooks.use_state(|| {
         novel
             .read()
             .as_ref()
@@ -137,6 +140,9 @@ where
                 KeyCode::Char('i') | KeyCode::Char('I') => {
                     info_modal_open.set(!info_modal_open.get());
                 }
+                KeyCode::Char('t') | KeyCode::Char('T') => {
+                    is_tts_open.set(!is_tts_open.get());
+                }
                 _ => {}
             }
         }
@@ -162,7 +168,7 @@ where
         #(if is_read_mode.get() {
             element!(View{
                 ReadContent(
-                    is_scroll: true,
+                    is_scroll: !is_tts_open.get(),
                     width: width,
                     height: height,
                     content: content.read().clone(),
@@ -180,19 +186,33 @@ where
                                 return;
                             }
                             current_chapter.set(new_chapter);
+                            line_percent.set(0.0);
                         }
                     },
-                    on_prev: move |_| {
-                        let new_chapter= current_chapter.get().saturating_sub(1);
+                    on_prev: move |is_scroll_top| {
+                        if current_chapter.get() == 0 {
+                            return;
+                        }
+                        let new_chapter = current_chapter.get().saturating_sub(1);
+
                         if let Some(novel) = novel.write().as_mut() {
+
                             if let Err(e) = novel.set_chapter(new_chapter) {
                                 error.write().replace(e);
                                 return;
                             }
                             current_chapter.set(new_chapter);
+                            if is_scroll_top {
+                                line_percent.set(1.0);
+                            } else {
+                                line_percent.set(0.0);
+                            }
                         }
                     },
                     line_percent: line_percent,
+                )
+                TTSManager(
+                    open: is_tts_open.get(),
                 )
             })
         }else{

@@ -7,3 +7,5 @@ pub mod history;
 pub use history::*;
 pub mod setting;
 pub use setting::*;
+pub mod tts;
+pub use tts::*;

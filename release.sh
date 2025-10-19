@@ -1,6 +1,6 @@
 
 # 交互式选择要排除的 crate
-ALL_CRATES=(parse-book-source trnovel)
+ALL_CRATES=(parse-book-source novel-tts trnovel)
 EXCLUDE_CRATES=()
 echo "可选排除的 crate 列表："
 select crate in "${ALL_CRATES[@]}" "全部选择完毕"; do
