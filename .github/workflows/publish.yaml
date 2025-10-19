@@ -26,6 +26,8 @@ jobs:
           TAG_NAME=${GITHUB_REF#refs/tags/}
           PREFIX=$(echo "$TAG_NAME" | sed -E 's/(.*)-v[0-9].*/\1/')
           VERSION=$(echo "$TAG_NAME" | sed -E 's/.*-v([0-9].*)/\1/')
+          echo $PREFIX
+          echo $VERSION
           echo "prefix=$PREFIX" >> $GITHUB_OUTPUT
           echo "version=$VERSION" >> $GITHUB_OUTPUT
 
@@ -37,7 +39,7 @@ jobs:
           if [ "$PREFIX" = "parse-book-source" ] || [ "$PREFIX" = "novel-tts" ]; then
             CRATE_PATH="crates/${PREFIX}"
           else
-            CRATE_PATH="."
+            CRATE_PATH="./"
           fi
 
           if [ ! -f "$CRATE_PATH/Cargo.toml" ]; then
