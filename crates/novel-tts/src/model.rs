@@ -21,6 +21,7 @@ static VOICES_URL: &str =
 ///
 /// 负责管理TTS引擎所需的检查点模型文件，包括下载、路径管理和状态检查。
 /// 该结构体是对Download的封装，提供了更具体的模型文件管理功能。
+#[derive(Debug, Clone)]
 pub struct CheckpointModel(Download);
 
 impl CheckpointModel {
@@ -68,6 +69,7 @@ impl Default for CheckpointModel {
 ///
 /// 负责管理TTS引擎所需的语音数据文件，包括下载、路径管理和状态检查。
 /// 该结构体是对Download的封装，提供了更具体的语音数据文件管理功能。
+#[derive(Debug, Clone)]
 pub struct VoicesData(Download);
 
 impl VoicesData {

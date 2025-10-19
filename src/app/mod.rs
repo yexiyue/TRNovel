@@ -1,6 +1,7 @@
 use std::{fs::File, sync::Arc, time::Duration};
 
 use futures::FutureExt;
+use novel_tts::NovelTTS;
 use ratatui_kit::{
     AnyElement, Context, Hooks, Props, UseFuture, UseState, UseTerminalSize, component, element,
     prelude::{ContextProvider, Fragment, RouteState, RouterProvider},
@@ -9,7 +10,7 @@ use ratatui_kit::{
 use tokio::sync::Notify;
 
 use crate::{
-    History, TRNovel, ThemeConfig,
+    History, TRNovel, TTSConfig, ThemeConfig,
     book_source::BookSourceCache,
     components::{Loading, WarningModal},
     errors::Errors,
@@ -41,6 +42,8 @@ pub fn App(props: &AppProps, mut hooks: Hooks) -> impl Into<AnyElement<'static>>
     let mut theme_config_state = hooks.use_state(ThemeConfig::default);
     let history_state = hooks.use_state(|| None::<History>);
     let book_sources_catch_state = hooks.use_state(|| None::<BookSourceCache>);
+    let novel_tts_state = hooks.use_state(|| None::<NovelTTS>);
+    let mut tts_config = hooks.use_state(TTSConfig::default);
     let error = hooks.use_state(|| None::<String>);
 
     hooks.use_future(async move {
@@ -61,6 +64,9 @@ pub fn App(props: &AppProps, mut hooks: Hooks) -> impl Into<AnyElement<'static>>
 
             let book_sources = BookSourceCache::load()?;
             book_sources_catch_state.write().replace(book_sources);
+
+            let tts_config_cache = TTSConfig::load()?;
+            tts_config.set(tts_config_cache);
 
             let path = novel_catch_dir()?.join("theme.json");
 
@@ -111,11 +117,15 @@ pub fn App(props: &AppProps, mut hooks: Hooks) -> impl Into<AnyElement<'static>>
                     ContextProvider(value:Context::owned(theme_config_state)){
                         ContextProvider(value:Context::owned(history_state)){
                             ContextProvider(value:Context::owned(book_sources_catch_state)){
-                                RouterProvider(
-                                    routes: routes,
-                                    index_path: "/home",
-                                    state: RouteState::new(props.trnovel.clone())
-                                )
+                                ContextProvider(value:Context::owned(tts_config)){
+                                    ContextProvider(value:Context::owned(novel_tts_state)){
+                                        RouterProvider(
+                                            routes: routes,
+                                            index_path: "/home",
+                                            state: RouteState::new(props.trnovel.clone())
+                                        )
+                                    }
+                                }
                             }
                         }
                     }

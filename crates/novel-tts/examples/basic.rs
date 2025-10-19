@@ -4,8 +4,8 @@ use novel_tts::{CheckpointModel, NovelTTS, VoicesData};
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // 初始化模型和语音数据
-    let model = CheckpointModel::default();
-    let voices = VoicesData::default();
+    let mut model = CheckpointModel::default();
+    let mut voices = VoicesData::default();
 
     // 检查并下载必要的模型文件
     if !model.is_downloaded() {
@@ -34,7 +34,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // 流式处理文本到音频
     let (audio_queue, mut position_rx) = chapter_tts.stream(text, Voice::Zf006(1), |error| {
         eprintln!("TTS处理错误: {:?}", error)
-    })?;
+    });
 
     // 监听字符位置更新
     tokio::spawn(async move {

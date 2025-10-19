@@ -24,6 +24,9 @@ pub enum NovelTTSError {
     /// 其他未分类的错误
     #[error(transparent)]
     OtherError(#[from] anyhow::Error),
+
+    #[error("Cancelled: {0}")]
+    Cancel(String),
 }
 
 /// novel-tts库的Result类型别名

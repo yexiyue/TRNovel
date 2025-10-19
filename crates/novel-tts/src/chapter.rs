@@ -8,7 +8,7 @@
 //! * 异步处理：使用Tokio异步运行时，保证主线程不被阻塞
 //! * 可取消操作：支持中途取消TTS处理任务
 
-use crate::{NovelTTSError, Result};
+use crate::NovelTTSError;
 use kokoro_tts::{KokoroTts, Voice};
 use rodio::{
     buffer::SamplesBuffer,
@@ -57,7 +57,7 @@ impl ChapterTTS {
     /// * `on_error` - 错误处理回调
     ///
     /// # 返回值
-    /// 返回Result包装的元组，包含音频队列输出和字符位置接收器
+    /// 返回元组，包含音频队列输出和字符位置接收器
     ///
     /// # 注意事项
     /// * 音频是流式生成的，可以边生成边播放
@@ -68,7 +68,7 @@ impl ChapterTTS {
         text: String,
         voice: Voice,
         on_error: impl Fn(NovelTTSError) + Send + Sync + 'static,
-    ) -> Result<(SourcesQueueOutput, Receiver<(usize, usize)>)> {
+    ) -> (SourcesQueueOutput, Receiver<(usize, usize)>) {
         let (audio_queue_tx, audio_queue_rx) = queue::queue(true);
         let (position_tx, position_rx) = tokio::sync::mpsc::channel::<(usize, usize)>(1);
 
@@ -112,10 +112,14 @@ impl ChapterTTS {
                         tokio::spawn({
                             let char_ranges = char_ranges.clone();
                             let position_tx = position_tx.clone();
+                            let cancel_token = cancel_token.clone();
                             async move {
                                 loop {
                                     if signal.recv().is_ok() {
                                         break;
+                                    }
+                                    if cancel_token.is_cancelled() {
+                                        return;
                                     }
                                 }
                                 let char_positions = char_ranges.lock().await;
@@ -133,7 +137,7 @@ impl ChapterTTS {
                 }
             }
         });
-        Ok((audio_queue_rx, position_rx))
+        (audio_queue_rx, position_rx)
     }
 
     /// 取消当前的TTS处理

@@ -16,6 +16,8 @@ pub use read_content::*;
 use std::sync::Arc;
 use tokio::sync::Notify;
 use tokio::time::{Duration, sleep};
+mod tts;
+pub use tts::*;
 
 #[component]
 pub fn ReadNovel<T>(mut hooks: Hooks) -> impl Into<AnyElement<'static>>
@@ -28,6 +30,7 @@ where
     let mut current_chapter = hooks.use_state(|| 0usize);
     let mut content = hooks.use_state(String::default);
     let mut is_read_mode = hooks.use_state(|| false);
+    let mut is_tts_open = hooks.use_state(|| false);
     let (width, height) = hooks.use_terminal_size();
 
     let mut content_loading = hooks.use_state(|| false);
@@ -137,6 +140,9 @@ where
                 KeyCode::Char('i') | KeyCode::Char('I') => {
                     info_modal_open.set(!info_modal_open.get());
                 }
+                KeyCode::Char('t') | KeyCode::Char('T') => {
+                    is_tts_open.set(!is_tts_open.get());
+                }
                 _ => {}
             }
         }
@@ -162,7 +168,7 @@ where
         #(if is_read_mode.get() {
             element!(View{
                 ReadContent(
-                    is_scroll: true,
+                    is_scroll: !is_tts_open.get(),
                     width: width,
                     height: height,
                     content: content.read().clone(),
@@ -204,6 +210,9 @@ where
                         }
                     },
                     line_percent: line_percent,
+                )
+                TTSManager(
+                    open: is_tts_open.get(),
                 )
             })
         }else{

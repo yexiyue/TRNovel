@@ -8,7 +8,6 @@ use utils::novel_catch_dir;
 
 pub mod app;
 pub mod cache;
-pub mod chapter_tts;
 pub mod components;
 pub mod errors;
 pub mod file_list;

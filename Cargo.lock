@@ -374,15 +374,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "a1d728cc89cf3aee9ff92b05e62b19ee65a02b5702cff7d5a377e32c6ae29d8d"
 
 [[package]]
-name = "cmudict-fast"
-version = "0.8.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "2c9f73004e928ed46c3e7fd7406d2b12c8674153295f08af084b49860276dc02"
-dependencies = [
- "thiserror 1.0.69",
-]
-
-[[package]]
 name = "colorchoice"
 version = "1.0.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1597,28 +1588,6 @@ dependencies = [
  "bincode",
  "cc",
  "chinese-number",
- "cmudict-fast",
- "futures",
- "jieba-rs",
- "log",
- "ndarray",
- "ort",
- "pin-project",
- "pinyin",
- "rand 0.10.0-rc.0",
- "regex",
- "tokio",
-]
-
-[[package]]
-name = "kokoro-tts"
-version = "0.3.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "216a3c1f61f8a2bed05c0061413460a7f44176a7113ddff6a1759e71e314caf2"
-dependencies = [
- "bincode",
- "cc",
- "chinese-number",
  "futures",
  "jieba-rs",
  "log",
@@ -1893,7 +1862,7 @@ dependencies = [
  "anyhow",
  "dirs",
  "futures",
- "kokoro-tts 0.3.0",
+ "kokoro-tts",
  "reqwest",
  "rodio",
  "thiserror 2.0.17",
@@ -2638,8 +2607,6 @@ dependencies = [
 [[package]]
 name = "ratatui-kit"
 version = "0.5.6"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "aaa0839948ac915609378b659333786016e1c597e2f83f52a7c2f92ff6f2e344"
 dependencies = [
  "any_key",
  "crossterm",
@@ -2656,8 +2623,6 @@ dependencies = [
 [[package]]
 name = "ratatui-kit-macros"
 version = "0.5.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "22bf3a8e830d8a0db564c642d017597c912580049a7569e79708007acef9de73"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -3670,8 +3635,8 @@ dependencies = [
  "dirs",
  "encoding_rs",
  "futures",
- "kokoro-tts 0.2.9",
  "md5",
+ "novel-tts",
  "parse-book-source",
  "ratatui",
  "ratatui-kit",

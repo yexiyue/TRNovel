@@ -34,8 +34,8 @@ use kokoro_tts::Voice;
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // 初始化模型和语音数据
-    let model = CheckpointModel::default();
-    let voices = VoicesData::default();
+    let mut model = CheckpointModel::default();
+    let mut voices = VoicesData::default();
     
     // 检查并下载必要的模型文件
     if !model.is_downloaded() {

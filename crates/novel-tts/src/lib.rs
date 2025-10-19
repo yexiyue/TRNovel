@@ -61,15 +61,20 @@
 //! ```
 
 mod chapter;
-mod download;
+pub mod download;
 mod error;
 mod model;
+mod player;
 
 // 重新导出公共类型
 pub use chapter::*;
 pub use error::*;
+pub use kokoro_tts;
+pub use player::*;
+
 use kokoro_tts::KokoroTts;
 pub use model::*;
+use rodio::{OutputStream, queue::SourcesQueueOutput};
 
 use std::sync::Arc;
 
@@ -77,7 +82,8 @@ use std::sync::Arc;
 ///
 /// 负责管理TTS引擎实例，是整个TTS功能的核心入口点。
 pub struct NovelTTS {
-    tts: Arc<KokoroTts>,
+    pub tts: Arc<KokoroTts>,
+    pub output_stream: OutputStream,
 }
 
 impl NovelTTS {
@@ -91,7 +97,12 @@ impl NovelTTS {
     /// 返回Result包装的NovelTTS实例，如果模型或语音数据加载失败则返回错误
     pub async fn new(model: &CheckpointModel, voices: &VoicesData) -> Result<Self> {
         let tts = KokoroTts::new(&model.path, &voices.path).await?;
-        Ok(Self { tts: Arc::new(tts) })
+        let output_stream = rodio::OutputStreamBuilder::open_default_stream()?;
+
+        Ok(Self {
+            tts: Arc::new(tts),
+            output_stream,
+        })
     }
 
     /// 创建章节TTS处理器
@@ -101,4 +112,20 @@ impl NovelTTS {
     pub fn chapter_tts(&self) -> ChapterTTS {
         ChapterTTS::new(self.tts.clone())
     }
+
+    /// 创建一个新的音频播放器实例
+    ///
+    /// 该函数接收一个音频源队列输出，并使用内部的音频输出流混音器创建一个播放器
+    ///
+    /// # 参数
+    /// * `output` - 音频源队列输出，包含待播放的音频数据
+    ///
+    /// # 返回值
+    /// 返回一个新的Player实例，可用于控制音频播放
+    pub fn player(&self, output: SourcesQueueOutput) -> Player {
+        Player::new(output, self.output_stream.mixer())
+    }
 }
+
+unsafe impl Send for NovelTTS {}
+unsafe impl Sync for NovelTTS {}

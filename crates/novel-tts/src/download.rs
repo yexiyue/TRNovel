@@ -50,7 +50,7 @@ where
     let path = format!("{}.download", dest.display());
 
     let (mut downloaded, mut file) = if let Ok(metadata) = std::fs::metadata(&path) {
-        let mut file = fs::File::open(&path).await?;
+        let mut file = fs::File::options().append(true).open(&path).await?;
         file.seek(SeekFrom::Start(metadata.len())).await?;
         (metadata.len(), file)
     } else {
@@ -135,7 +135,7 @@ impl Download {
     ///
     /// # 返回值
     /// 返回Result，启动成功返回Ok，失败返回Err
-    pub fn download<F, E>(&mut self, on_progress: F, mut on_error: E) -> Result<()>
+    pub fn download<F, E>(&mut self, on_progress: F, mut on_error: E)
     where
         F: FnMut(u64, u64) + Send + 'static,
         E: FnMut(NovelTTSError) + Send + 'static,
@@ -148,7 +148,7 @@ impl Download {
         tokio::spawn(async move {
             select! {
                 _ = cancel_token.cancelled() => {
-
+                    on_error(NovelTTSError::Cancel("download".into()));
                 }
                 res = download_from_url(&url, &path, on_progress) =>{
                     if let Err(e) = res {
@@ -157,7 +157,6 @@ impl Download {
                 }
             }
         });
-        Ok(())
     }
 
     /// 启动下载任务（异步方式）
@@ -167,10 +166,12 @@ impl Download {
     ///
     /// # 返回值
     /// 返回Result，下载成功返回Ok，失败返回Err
-    pub async fn async_download<F>(&self, on_progress: F) -> Result<()>
+    pub async fn async_download<F>(&mut self, on_progress: F) -> Result<()>
     where
         F: FnMut(u64, u64) + Send + 'static,
     {
+        let cancel_token = CancellationToken::new();
+        self.token = cancel_token.clone();
         select! {
             _ = self.token.cancelled() => {
                 Ok(())
