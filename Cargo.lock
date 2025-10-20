@@ -1865,6 +1865,7 @@ dependencies = [
  "dirs",
  "futures",
  "kokoro-tts",
+ "regex",
  "reqwest",
  "rodio",
  "thiserror 2.0.17",

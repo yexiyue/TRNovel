@@ -73,9 +73,9 @@ pub fn ReadContent(
                     && player.read().is_none()
                     && chapter_tts.read().is_none()
                 {
-                    let mut chapter = tts.chapter_tts();
+                    let mut chapter = tts.chapter_tts(&content);
                     let (queue_output, _receiver) =
-                        chapter.stream(content, tts_config.read().voice.into(), |e| {
+                        chapter.stream(tts_config.read().voice.into(), |e| {
                             eprintln!("{e:?}");
                         });
 
@@ -208,14 +208,11 @@ pub fn ReadContent(
                             is_listening.set(true);
                         }
                     } else if let Some(tts) = novel_tts.read().as_ref() {
-                        let mut chapter = tts.chapter_tts();
-                        let (queue_output, _receiver) = chapter.stream(
-                            props_content.clone(),
-                            tts_config.read().voice.into(),
-                            |e| {
+                        let mut chapter = tts.chapter_tts(&props_content);
+                        let (queue_output, _receiver) =
+                            chapter.stream(tts_config.read().voice.into(), |e| {
                                 eprintln!("{e:?}");
-                            },
-                        );
+                            });
 
                         // tokio::spawn(async move {
                         //     while let Some(highlight) = receiver.recv().await {

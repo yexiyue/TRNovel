@@ -65,17 +65,16 @@ pub mod download;
 mod error;
 mod model;
 mod player;
+mod utils;
 
 // 重新导出公共类型
 pub use chapter::*;
 pub use error::*;
 pub use kokoro_tts;
-pub use player::*;
-
 use kokoro_tts::KokoroTts;
 pub use model::*;
+pub use player::*;
 use rodio::{OutputStream, queue::SourcesQueueOutput};
-
 use std::sync::Arc;
 
 /// NovelTTS主结构体
@@ -109,8 +108,8 @@ impl NovelTTS {
     ///
     /// # 返回值
     /// 返回一个新的ChapterTTS实例，用于处理特定章节的文本转语音
-    pub fn chapter_tts(&self) -> ChapterTTS {
-        ChapterTTS::new(self.tts.clone())
+    pub fn chapter_tts(&self, text: &str) -> ChapterTTS {
+        ChapterTTS::new(self.tts.clone(), text)
     }
 
     /// 创建一个新的音频播放器实例

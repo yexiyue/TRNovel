@@ -8,7 +8,7 @@
 //! * 异步处理：使用Tokio异步运行时，保证主线程不被阻塞
 //! * 可取消操作：支持中途取消TTS处理任务
 
-use crate::NovelTTSError;
+use crate::{NovelTTSError, utils::preprocess_text};
 use kokoro_tts::{KokoroTts, Voice};
 use rodio::{
     buffer::SamplesBuffer,
@@ -21,12 +21,12 @@ use tokio_util::sync::CancellationToken;
 /// TTS章节处理器，负责将文本转换为音频并管理播放队列
 #[derive(Clone)]
 pub struct ChapterTTS {
-    /// 字符范围映射，记录每个音频片段对应的文本位置
-    pub char_ranges: Arc<Mutex<Vec<(usize, usize)>>>,
+    pub texts: Vec<String>,
     /// 音频缓冲区集合
-    pub audio_buffers: Arc<Mutex<Vec<SamplesBuffer>>>,
+    pub segments: Arc<Mutex<Vec<SamplesBuffer>>>,
     /// 取消令牌，用于取消TTS处理
     pub cancel_token: CancellationToken,
+    pub active_index: Arc<Mutex<usize>>,
     pub tts: Arc<KokoroTts>,
 }
 
@@ -38,12 +38,13 @@ impl ChapterTTS {
     ///
     /// # 返回值
     /// 返回一个新的ChapterTTS实例
-    pub fn new(tts: Arc<KokoroTts>) -> Self {
+    pub fn new(tts: Arc<KokoroTts>, text: &str) -> Self {
         Self {
-            char_ranges: Arc::new(Mutex::new(Vec::new())),
-            audio_buffers: Arc::new(Mutex::new(Vec::new())),
+            segments: Arc::new(Mutex::new(Vec::new())),
             cancel_token: CancellationToken::new(),
+            active_index: Arc::new(Mutex::new(0)),
             tts,
+            texts: preprocess_text(text, 200),
         }
     }
 
@@ -65,74 +66,57 @@ impl ChapterTTS {
     /// * 如果需要取消处理，可以调用cancel方法
     pub fn stream(
         &mut self,
-        text: String,
         voice: Voice,
         on_error: impl Fn(NovelTTSError) + Send + Sync + 'static,
-    ) -> (SourcesQueueOutput, Receiver<(usize, usize)>) {
+    ) -> (SourcesQueueOutput, Receiver<usize>) {
         let (audio_queue_tx, audio_queue_rx) = queue::queue(true);
-        let (position_tx, position_rx) = tokio::sync::mpsc::channel::<(usize, usize)>(1);
+        let (position_tx, position_rx) = tokio::sync::mpsc::channel::<usize>(1);
 
         self.cancel_token = CancellationToken::new();
 
         let cancel_token = self.cancel_token.clone();
-        let audio_buffers = self.audio_buffers.clone();
-        let char_ranges = self.char_ranges.clone();
+        let chunks = self.segments.clone();
         let tts = self.tts.clone();
+        let active_index = self.active_index.clone();
+        let texts = self.texts.clone();
 
         tokio::spawn(async move {
-            char_ranges.lock().await.clear();
-            audio_buffers.lock().await.clear();
-            let mut char_index = 0;
-            let line_count = text.lines().count();
-
-            for (index, line) in text.lines().enumerate() {
+            chunks.lock().await.clear();
+            let n = *active_index.lock().await;
+            for (index, chunk_text) in texts.iter().skip(n).enumerate() {
                 tokio::select! {
                     _ = cancel_token.cancelled() => {
                         break;
                     }
-                    res=tts.synth(line, voice)=>{
+                    res = tts.synth(chunk_text, voice) =>{
                         let Ok((data, _)) = res else{
                             on_error(NovelTTSError::from(res.err().unwrap()));
                             continue;
                         };
                         let buffer = SamplesBuffer::new(1, 24000, data);
 
-                        let char_count = line.chars().count();
-                        let next_index = char_index + char_count;
-
-                        char_ranges.lock().await.push((char_index, next_index));
-
                         let signal = audio_queue_tx.append_with_signal(buffer.clone());
-                        audio_buffers.lock().await.push(buffer);
 
-                        if index==0 {
-                            position_tx.send((0,char_count)).await.ok();
+                        chunks.lock().await.push(buffer);
+
+                        if index == 0 {
+                            let _ = position_tx.send(*active_index.lock().await).await;
                         }
 
                         tokio::spawn({
-                            let char_ranges = char_ranges.clone();
                             let position_tx = position_tx.clone();
-                            let cancel_token = cancel_token.clone();
+                            let active_index = active_index.clone();
                             async move {
                                 loop {
-                                    if signal.recv().is_ok() {
+                                    if signal.recv().is_ok(){
                                         break;
                                     }
-                                    if cancel_token.is_cancelled() {
-                                        return;
-                                    }
                                 }
-                                let char_positions = char_ranges.lock().await;
-                                let ranges = char_positions.get((index+1).min(line_count));
-                                if let Some(range) = ranges {
-                                    position_tx.send(*range).await.ok();
-                                }
+                                let new_index = *active_index.lock().await + 1;
+                                *active_index.lock().await= new_index;
+                                let _ = position_tx.send(new_index).await;
                             }
                         });
-
-
-                        char_index = next_index;
-
                     }
                 }
             }

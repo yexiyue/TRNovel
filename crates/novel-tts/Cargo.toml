@@ -13,6 +13,7 @@ anyhow.workspace = true
 dirs.workspace = true
 futures.workspace = true
 kokoro-tts = "0.3.1"
+regex.workspace = true
 # kokoro-tts = { path = "/Users/yexiyue/rust-project/kokoro" }
 reqwest = { version = "0.12.24", default-features = false, features = [
     "json",
