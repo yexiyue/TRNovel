@@ -2,6 +2,17 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.7.1] - 2025-10-20
+
+### 🚀 Features
+
+- 添加tts快捷键信息
+
+### 🐛 Bug Fixes
+
+- Ci
+- Publish with log
+
 ## [0.7.0] - 2025-10-19
 
 ### 🚀 Features
@@ -17,14 +28,21 @@ All notable changes to this project will be documented in this file.
 - Clippy
 - Clippy
 - Ci
+- Publish.yaml
+- Publish.yaml
 
 ### 💼 Other
 
 - Update publish.yaml
+- Changelog
 
 ### ⚙️ Miscellaneous Tasks
 
 - Release
+- Test
+- Test
+- Test
+- Test
 
 ## [0.6.2] - 2025-10-12
 
