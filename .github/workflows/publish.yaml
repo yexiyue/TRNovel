@@ -58,11 +58,10 @@ jobs:
         id: changelog
         run: |
           VERSION=${{ steps.extract.outputs.version }}
-          # 先尝试 [0.2.1] 这种格式
-          awk "/^##? \\[${VERSION}]/ {flag=1;next} /^##? /{flag=0}flag" CHANGELOG.md > RELEASE_BODY.md
-          # 如果没内容，再尝试 [crate-name-v0.2.1] 这种格式
-          if [ ! -s RELEASE_BODY.md ]; then
-            awk "/^##? \\[${{ steps.extract.outputs.prefix }}-v${VERSION}]/ {flag=1;next} /^##? /{flag=0}flag" CHANGELOG.md > RELEASE_BODY.md
+          if [ ${{steps.extract.outputs.prefix}} = "parse-book-source" ] || [ ${{steps.extract.outputs.prefix}} = "novel-tts" ]; then
+            awk "/^##? \\[${{ steps.extract.outputs.prefix }}-v${VERSION}]/ {flag=1;next} /^##? /{flag=0}flag" CHANGELOG.md > RELEASE_BODY.md  
+          else
+            awk "/^##? \\[${VERSION}]/ {flag=1;next} /^##? /{flag=0}flag" CHANGELOG.md > RELEASE_BODY.md
           fi
           echo 'body<<EOF' >> $GITHUB_OUTPUT
           cat RELEASE_BODY.md >> $GITHUB_OUTPUT
