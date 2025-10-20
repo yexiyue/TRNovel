@@ -62,10 +62,10 @@ pub fn SpeedSetting(
             && is_editing
         {
             match key.code {
-                KeyCode::Left | KeyCode::Char('h') | KeyCode::Char('+') => {
+                KeyCode::Left | KeyCode::Char('h') => {
                     tts_config.write().decrease_speed();
                 }
-                KeyCode::Right | KeyCode::Char('l') | KeyCode::Char('-') => {
+                KeyCode::Right | KeyCode::Char('l') => {
                     tts_config.write().increase_speed();
                 }
                 _ => {}
@@ -98,10 +98,10 @@ pub fn VolumeSetting(
             && is_editing
         {
             match key.code {
-                KeyCode::Left | KeyCode::Char('h') | KeyCode::Char('+') => {
+                KeyCode::Left | KeyCode::Char('h') => {
                     tts_config.write().decrease_volume();
                 }
-                KeyCode::Right | KeyCode::Char('l') | KeyCode::Char('-') => {
+                KeyCode::Right | KeyCode::Char('l') => {
                     tts_config.write().increase_volume();
                 }
                 _ => {}

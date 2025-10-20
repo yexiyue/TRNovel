@@ -16,6 +16,7 @@ mod voice_select;
 #[derive(Props, Default)]
 pub struct TTSManagerProps {
     pub open: bool,
+    pub is_editing: bool,
 }
 
 #[component]
@@ -24,6 +25,7 @@ pub fn TTSManager(props: &TTSManagerProps, mut hooks: Hooks) -> impl Into<AnyEle
     let voices_data = hooks.use_state(VoicesData::default);
 
     let mut novel_tts = *hooks.use_context::<State<Option<NovelTTS>>>();
+    let is_editing = props.is_editing;
 
     hooks.use_async_effect(
         {
@@ -55,6 +57,7 @@ pub fn TTSManager(props: &TTSManagerProps, mut hooks: Hooks) -> impl Into<AnyEle
         if let Event::Key(key) = event
             && key.kind == KeyEventKind::Press
             && is_open
+            && is_editing
         {
             match key.code {
                 KeyCode::Char('j') | KeyCode::Down => {
@@ -85,30 +88,29 @@ pub fn TTSManager(props: &TTSManagerProps, mut hooks: Hooks) -> impl Into<AnyEle
                     DownloadProgress::<CheckpointModel>(..DownloadProgressProps {
                         title: "检查点模型".to_string(),
                         state: checkpoint_model,
-                        is_editing: index.get() == 0,
-
+                        is_editing: index.get() == 0 && is_editing,
                     })
                 }
                 View(height:Constraint::Length(3)){
                     DownloadProgress::<VoicesData>(..DownloadProgressProps {
                         title: "语音数据".to_string(),
                         state: voices_data,
-                        is_editing: index.get() == 1,
+                        is_editing: index.get() == 1 && is_editing,
                     })
                 }
                 View(height:Constraint::Length(3)){
                     SpeedSetting(
-                        is_editing: index.get() == 2,
+                        is_editing: index.get() == 2 && is_editing,
                     )
                 }
                 View(height:Constraint::Length(3)){
                     VolumeSetting(
-                        is_editing: index.get() == 3,
+                        is_editing: index.get() == 3 && is_editing,
                     )
                 }
                 View(height:Constraint::Length(3)){
                     AutoPlaySetting(
-                        is_editing: index.get() == 4,
+                        is_editing: index.get() == 4 && is_editing,
                     )
                 }
             }

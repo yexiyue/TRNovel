@@ -12,7 +12,7 @@ repository = "https://github.com/yexiyue/parse-book-source"
 anyhow.workspace = true
 dirs = "6.0.0"
 futures.workspace = true
-kokoro-tts = "0.3.0"
+kokoro-tts = "0.3.1"
 # kokoro-tts = { path = "/Users/yexiyue/rust-project/kokoro" }
 reqwest = { version = "0.12.24", default-features = false, features = [
     "json",

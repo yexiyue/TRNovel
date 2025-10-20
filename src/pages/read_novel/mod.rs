@@ -190,7 +190,7 @@ where
                         }
                     },
                     on_prev: move |is_scroll_top| {
-                        if current_chapter.get() == 0 {
+                        if current_chapter.get() == 0 || is_scroll_top {
                             return;
                         }
                         let new_chapter = current_chapter.get().saturating_sub(1);
@@ -202,17 +202,53 @@ where
                                 return;
                             }
                             current_chapter.set(new_chapter);
-                            if is_scroll_top {
-                                line_percent.set(1.0);
-                            } else {
-                                line_percent.set(0.0);
-                            }
+                            // if is_scroll_top {
+                            //     line_percent.set(1.0);
+                            // } else {
+                            //     line_percent.set(0.0);
+                            // }
+                            line_percent.set(0.0);
                         }
                     },
                     line_percent: line_percent,
                 )
                 TTSManager(
                     open: is_tts_open.get(),
+                    is_editing: is_tts_open.get() && !info_modal_open.get(),
+                )
+                ShortcutInfoModal(
+                    key_shortcut_info: {
+                        if is_tts_open.get() {
+                            vec![
+                                ("切换章节选择模式", "Tab"),
+                                ("关闭TTS设置模式", "T"),
+                                ("上一项", "↑ / K"),
+                                ("下一项", "↓ / J"),
+                                ("确认/开始下载", "Enter"),
+                                ("取消下载", "Esc"),
+                                ("减小速度/音量", "← / H"),
+                                ("增大速度/音量", "→ / L"),
+                                ("切换自动播放", "← / →"),
+                            ]
+                        } else {
+                            vec![
+                                ("切换章节选择模式", "Tab"),
+                                ("打开TTS设置模式", "T"),
+                                ("播放/暂停", "P"),
+                                ("增大音量", "+"),
+                                ("减小音量", "-"),
+                                ("向上滚动", "↑ / K"),
+                                ("向下滚动", "↓ / J"),
+                                ("上一章", "← / H"),
+                                ("下一章", "→ / L"),
+                                ("上一页", "PageUp"),
+                                ("下一页", "PageDown"),
+                                ("跳到开头", "Home"),
+                                ("跳到结尾", "End"),
+                            ]
+                        }
+                    },
+                    open: info_modal_open.get(),
                 )
             })
         }else{
@@ -240,38 +276,22 @@ where
                     is_loading: content_loading.get(),
                     line_percent: line_percent,
                 )
+                ShortcutInfoModal(
+                    key_shortcut_info: vec![
+                        ("切换阅读模式", "Tab"),
+                        ("选择上一章", "↑ / K"),
+                        ("选择下一章", "↓ / J"),
+                        ("确认选择章节", "Enter"),
+                        ("搜索章节", "S"),
+                    ],
+                    open: info_modal_open.get(),
+                )
             })
         })
         WarningModal(
             tip: format!("加载失败:{:?}", error.read().as_ref()),
             is_error: error.read().is_some(),
             open: error.read().is_some(),
-        )
-        ShortcutInfoModal(
-            key_shortcut_info: {
-                if is_read_mode.get() {
-                    vec![
-                        ("切换章节选择模式", "Tab"),
-                        ("向上滚动", "↑ / K"),
-                        ("向下滚动", "↓ / J"),
-                        ("上一章", "← / H"),
-                        ("下一章", "→ / L"),
-                        ("上一页", "PageUp"),
-                        ("下一页", "PageDown"),
-                        ("跳到开头", "Home"),
-                        ("跳到结尾", "End"),
-                    ]
-                } else {
-                    vec![
-                        ("切换阅读模式", "Tab"),
-                        ("选择上一章", "↑ / K"),
-                        ("选择下一章", "↓ / J"),
-                        ("确认选择章节", "Enter"),
-                        ("搜索章节", "S"),
-                    ]
-                }
-            },
-            open: info_modal_open.get(),
         )
     })
     .into_any()

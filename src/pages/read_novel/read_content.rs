@@ -158,7 +158,6 @@ pub fn ReadContent(
                         line_percent.set(current_line as f64 / line_count as f64);
                     } else {
                         on_prev(true);
-                        line_percent.set(1.0);
                     }
                 }
                 KeyCode::Down | KeyCode::Char('j') => {
@@ -167,16 +166,13 @@ pub fn ReadContent(
                         line_percent.set(current_line as f64 / line_count as f64);
                     } else {
                         on_next(());
-                        line_percent.set(0.0);
                     }
                 }
                 KeyCode::Left | KeyCode::Char('h') => {
                     on_prev(false);
-                    line_percent.set(0.0);
                 }
                 KeyCode::Right | KeyCode::Char('l') => {
                     on_next(());
-                    line_percent.set(0.0);
                 }
                 KeyCode::PageUp => {
                     current_line = current_line.saturating_sub(5);
@@ -191,6 +187,12 @@ pub fn ReadContent(
                 }
                 KeyCode::End => {
                     line_percent.set(1.0);
+                }
+                KeyCode::Char('+') => {
+                    tts_config.write().increase_volume();
+                }
+                KeyCode::Char('-') => {
+                    tts_config.write().decrease_volume();
                 }
                 KeyCode::Char('p') => {
                     if let Some(player) = player.read().as_ref() {

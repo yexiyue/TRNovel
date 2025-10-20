@@ -53,7 +53,7 @@ where
                         );
                     }
                 }
-                KeyCode::Char('c') => {
+                KeyCode::Esc => {
                     state.write().cancel_download();
                 }
                 _ => {}
