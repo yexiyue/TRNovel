@@ -28,8 +28,15 @@ jobs:
         id: extract
         run: |
           TAG_NAME=${GITHUB_REF#refs/tags/}
-          PREFIX=$(echo "$TAG_NAME" | sed -E 's/(.*)-v[0-9].*/\1/')
-          VERSION=$(echo "$TAG_NAME" | sed -E 's/.*-v([0-9].*)/\1/')
+          if [[ "$TAG_NAME" =~ ^v[0-9].* ]]; then
+            # Handle tags like "v0.7.2"
+            PREFIX="trnovel"
+            VERSION=$(echo "$TAG_NAME" | sed -E 's/v([0-9].*)/\1/')
+          else
+            # Handle tags like "parse-book-source-v0.1.6"
+            PREFIX=$(echo "$TAG_NAME" | sed -E 's/(.*)-v[0-9].*/\1/')
+            VERSION=$(echo "$TAG_NAME" | sed -E 's/.*-v([0-9].*)/\1/')
+          fi
           echo $PREFIX
           echo $VERSION
           echo "prefix=$PREFIX" >> $GITHUB_OUTPUT
