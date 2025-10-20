@@ -4,7 +4,6 @@ use crate::{
     hooks::{UseScrollbar, UseThemeConfig},
 };
 use crossterm::event::{Event, KeyCode, KeyEventKind};
-use novel_tts::kokoro_tts::Voice;
 use ratatui::{
     layout::{Constraint, Direction, Flex, Margin},
     style::Style,
@@ -75,9 +74,10 @@ pub fn ReadContent(
                     && chapter_tts.read().is_none()
                 {
                     let mut chapter = tts.chapter_tts();
-                    let (queue_output, _receiver) = chapter.stream(content, Voice::Zf001(1), |e| {
-                        eprintln!("{e:?}");
-                    });
+                    let (queue_output, _receiver) =
+                        chapter.stream(content, tts_config.read().voice.into(), |e| {
+                            eprintln!("{e:?}");
+                        });
 
                     // tokio::spawn(async move {
                     //     while let Some(highlight) = receiver.recv().await {
@@ -93,7 +93,11 @@ pub fn ReadContent(
                 }
             }
         },
-        (props.content.clone(), novel_tts.read().is_some()),
+        (
+            props.content.clone(),
+            novel_tts.read().is_some(),
+            // tts_config.read().voice, (暂时不支持立即切换声音)
+        ),
     );
 
     let paragraph = hooks.use_memo(
@@ -205,10 +209,13 @@ pub fn ReadContent(
                         }
                     } else if let Some(tts) = novel_tts.read().as_ref() {
                         let mut chapter = tts.chapter_tts();
-                        let (queue_output, _receiver) =
-                            chapter.stream(props_content.clone(), Voice::Zf001(1), |e| {
+                        let (queue_output, _receiver) = chapter.stream(
+                            props_content.clone(),
+                            tts_config.read().voice.into(),
+                            |e| {
                                 eprintln!("{e:?}");
-                            });
+                            },
+                        );
 
                         // tokio::spawn(async move {
                         //     while let Some(highlight) = receiver.recv().await {

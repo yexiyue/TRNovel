@@ -12,6 +12,7 @@ mod settings;
 use crate::hooks::UseThemeConfig;
 pub use settings::*;
 mod voice_select;
+pub use voice_select::*;
 
 #[derive(Props, Default)]
 pub struct TTSManagerProps {
@@ -61,7 +62,7 @@ pub fn TTSManager(props: &TTSManagerProps, mut hooks: Hooks) -> impl Into<AnyEle
         {
             match key.code {
                 KeyCode::Char('j') | KeyCode::Down => {
-                    index.set((index.get() + 1).min(4));
+                    index.set((index.get() + 1).min(5));
                 }
                 KeyCode::Char('k') | KeyCode::Up => {
                     index.set(index.get().saturating_sub(1));
@@ -99,18 +100,23 @@ pub fn TTSManager(props: &TTSManagerProps, mut hooks: Hooks) -> impl Into<AnyEle
                     })
                 }
                 View(height:Constraint::Length(3)){
-                    SpeedSetting(
+                    VoiceSelect(
                         is_editing: index.get() == 2 && is_editing,
                     )
                 }
                 View(height:Constraint::Length(3)){
-                    VolumeSetting(
+                    SpeedSetting(
                         is_editing: index.get() == 3 && is_editing,
                     )
                 }
                 View(height:Constraint::Length(3)){
-                    AutoPlaySetting(
+                    VolumeSetting(
                         is_editing: index.get() == 4 && is_editing,
+                    )
+                }
+                View(height:Constraint::Length(3)){
+                    AutoPlaySetting(
+                        is_editing: index.get() == 5 && is_editing,
                     )
                 }
             }
