@@ -26,10 +26,12 @@ pub struct ChapterTTS {
     pub segments: Arc<Mutex<Vec<SamplesBuffer>>>,
     /// 取消令牌，用于取消TTS处理
     pub cancel_token: CancellationToken,
+    // todo 可以使用原子类型优化
     pub active_index: Arc<Mutex<usize>>,
     pub tts: Arc<KokoroTts>,
 }
 
+// todo 考虑自定义实现queue和Source trait
 impl ChapterTTS {
     /// 创建新的TTS章节处理器
     ///
@@ -100,7 +102,7 @@ impl ChapterTTS {
                         chunks.lock().await.push(buffer);
 
                         if index == 0 {
-                            let _ = position_tx.send(*active_index.lock().await).await;
+                            let _ = position_tx.send(n).await;
                         }
 
                         tokio::spawn({
@@ -112,8 +114,8 @@ impl ChapterTTS {
                                         break;
                                     }
                                 }
-                                let new_index = *active_index.lock().await + 1;
-                                *active_index.lock().await= new_index;
+                                let new_index = n + index + 1;
+                                *active_index.lock().await = new_index;
                                 let _ = position_tx.send(new_index).await;
                             }
                         });

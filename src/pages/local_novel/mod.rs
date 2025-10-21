@@ -1,4 +1,5 @@
 use crate::{
+    History,
     components::{
         Loading, WarningModal, file_select::FileSelect,
         modal::shortcut_info_modal::ShortcutInfoModal, search_input::SearchInput,
@@ -18,6 +19,7 @@ pub fn SelectFile(mut hooks: Hooks) -> impl Into<AnyElement<'static>> {
     let is_inputting = hooks.use_state(|| false);
     let mut path = hooks.use_state(|| dir_path.map(|p| (*p).clone()));
     let mut info_modal_open = hooks.use_state(|| false);
+    let history = *hooks.use_context::<State<Option<History>>>();
 
     let dir_path = path.read().clone().unwrap_or(current_dir().unwrap());
 
@@ -74,7 +76,9 @@ pub fn SelectFile(mut hooks: Hooks) -> impl Into<AnyElement<'static>> {
                 on_submit: move |input: String| {
                     let new_path = PathBuf::from(input);
                     if new_path.exists() {
-                        path.set(Some(new_path));
+                        path.set(Some(new_path.clone()));
+                        // 更新历史记录中的本地路径
+                        if let Some(h) = history.write().as_mut() { h.local_path=new_path.canonicalize().ok(); }
                         true
                     } else {
                         false
@@ -88,7 +92,7 @@ pub fn SelectFile(mut hooks: Hooks) -> impl Into<AnyElement<'static>> {
                 on_select: move |item:PathBuf| {
                     navigate.push_with_state("/local-novel", item);
                 },
-                empty_message: "未搜索到小说文件，请确认路径是否正确，或按i开始输入路径",
+                empty_message: "未搜索到小说文件，请确认路径是否正确，或按s 开始输入路径",
             )
             WarningModal(
                 tip: format!("加载失败:{:?}", error.read().as_ref()),
