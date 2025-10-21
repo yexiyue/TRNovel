@@ -2,11 +2,27 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.7.3] - 2025-10-21
+
+### 🚀 Features
+
+- 支持切换声音
+- *(novel-tts)* 文本预处理
+
+### 🐛 Bug Fixes
+
+- 修复发布流程识别不到changelog问题
+- 修复本地路径持久化 Close #36
+
 ## [0.7.2] - 2025-10-20
 
 ### 🐛 Bug Fixes
 
 - 更新publish workflow
+
+### ⚙️ Miscellaneous Tasks
+
+- Release
 
 ## [0.7.1] - 2025-10-20
 
