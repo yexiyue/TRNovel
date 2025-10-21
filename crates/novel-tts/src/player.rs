@@ -1,4 +1,4 @@
-use rodio::{Sink, mixer::Mixer, queue::SourcesQueueOutput};
+use rodio::{Sink, Source, mixer::Mixer};
 use std::ops::{Deref, DerefMut};
 
 /// TTS播放器结构体
@@ -19,7 +19,7 @@ impl Player {
     ///
     /// # 返回值
     /// 返回一个新的Player实例
-    pub fn new(input: SourcesQueueOutput, mixer: &Mixer) -> Self {
+    pub fn new<T: Source + Send + 'static>(input: T, mixer: &Mixer) -> Self {
         let sink = rodio::Sink::connect_new(mixer);
         sink.append(input);
         Self { sink }

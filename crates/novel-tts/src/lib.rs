@@ -74,7 +74,8 @@ pub use kokoro_tts;
 use kokoro_tts::KokoroTts;
 pub use model::*;
 pub use player::*;
-use rodio::{OutputStream, queue::SourcesQueueOutput};
+pub mod queue;
+use rodio::{OutputStream, Source};
 use std::sync::Arc;
 
 /// NovelTTS主结构体
@@ -121,7 +122,7 @@ impl NovelTTS {
     ///
     /// # 返回值
     /// 返回一个新的Player实例，可用于控制音频播放
-    pub fn player(&self, output: SourcesQueueOutput) -> Player {
+    pub fn player<T: Source + Send + 'static>(&self, output: T) -> Player {
         Player::new(output, self.output_stream.mixer())
     }
 }

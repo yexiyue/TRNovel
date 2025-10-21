@@ -8,12 +8,13 @@
 //! * 异步处理：使用Tokio异步运行时，保证主线程不被阻塞
 //! * 可取消操作：支持中途取消TTS处理任务
 
-use crate::{NovelTTSError, utils::preprocess_text};
-use kokoro_tts::{KokoroTts, Voice};
-use rodio::{
-    buffer::SamplesBuffer,
-    queue::{self, SourcesQueueOutput},
+use crate::{
+    NovelTTSError,
+    queue::{self, TTSQueueOutput},
+    utils::preprocess_text,
 };
+use kokoro_tts::{KokoroTts, Voice};
+use rodio::buffer::SamplesBuffer;
 use std::sync::Arc;
 use tokio::sync::{Mutex, mpsc::Receiver};
 use tokio_util::sync::CancellationToken;
@@ -31,7 +32,6 @@ pub struct ChapterTTS {
     pub tts: Arc<KokoroTts>,
 }
 
-// todo 考虑自定义实现queue和Source trait
 impl ChapterTTS {
     /// 创建新的TTS章节处理器
     ///
@@ -70,8 +70,8 @@ impl ChapterTTS {
         &mut self,
         voice: Voice,
         on_error: impl Fn(NovelTTSError) + Send + Sync + 'static,
-    ) -> (SourcesQueueOutput, Receiver<usize>) {
-        let (audio_queue_tx, audio_queue_rx) = queue::queue(true);
+    ) -> (TTSQueueOutput<SamplesBuffer>, Receiver<usize>) {
+        let (audio_queue_tx, audio_queue_rx) = queue::queue();
         let (position_tx, position_rx) = tokio::sync::mpsc::channel::<usize>(1);
 
         self.cancel_token = CancellationToken::new();
@@ -85,6 +85,7 @@ impl ChapterTTS {
         tokio::spawn(async move {
             chunks.lock().await.clear();
             let n = *active_index.lock().await;
+            let len: usize = texts.len() - n;
             for (index, chunk_text) in texts.iter().skip(n).enumerate() {
                 tokio::select! {
                     _ = cancel_token.cancelled() => {
@@ -97,26 +98,26 @@ impl ChapterTTS {
                         };
                         let buffer = SamplesBuffer::new(1, 24000, data);
 
-                        let signal = audio_queue_tx.append_with_signal(buffer.clone());
+                        let mut signal = audio_queue_tx.append_with_signal(buffer.clone());
 
                         chunks.lock().await.push(buffer);
 
-                        if index == 0 {
-                            let _ = position_tx.send(n).await;
+                        // 如果是最后一个片段，设置队列为完成状态
+                        if index == len-1{
+                            audio_queue_tx.set_is_finished(true);
                         }
 
                         tokio::spawn({
                             let position_tx = position_tx.clone();
                             let active_index = active_index.clone();
                             async move {
-                                loop {
-                                    if signal.recv().is_ok(){
-                                        break;
+                                while let Some(end) = signal.recv().await {
+                                    if !end{
+                                        let _ = position_tx.send(n+index).await;
+                                        *active_index.lock().await = n+index;
                                     }
                                 }
-                                let new_index = n + index + 1;
-                                *active_index.lock().await = new_index;
-                                let _ = position_tx.send(new_index).await;
+
                             }
                         });
                     }
