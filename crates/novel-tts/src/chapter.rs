@@ -70,9 +70,9 @@ impl ChapterTTS {
         &mut self,
         voice: Voice,
         on_error: impl Fn(NovelTTSError) + Send + Sync + 'static,
-    ) -> (TTSQueueOutput<SamplesBuffer>, Receiver<usize>) {
+    ) -> (TTSQueueOutput<SamplesBuffer>, Receiver<Option<usize>>) {
         let (audio_queue_tx, audio_queue_rx) = queue::queue();
-        let (position_tx, position_rx) = tokio::sync::mpsc::channel::<usize>(1);
+        let (position_tx, position_rx) = tokio::sync::mpsc::channel::<Option<usize>>(1);
 
         self.cancel_token = CancellationToken::new();
 
@@ -112,9 +112,11 @@ impl ChapterTTS {
                             let active_index = active_index.clone();
                             async move {
                                 while let Some(end) = signal.recv().await {
-                                    if !end{
-                                        let _ = position_tx.send(n+index).await;
+                                    if !end {
+                                        let _ = position_tx.send(Some(n+index)).await;
                                         *active_index.lock().await = n+index;
+                                    } else if index == len-1 {
+                                        let _ = position_tx.send(None).await;
                                     }
                                 }
 

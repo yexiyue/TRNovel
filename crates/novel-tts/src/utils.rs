@@ -45,6 +45,7 @@ pub fn preprocess_text_recursive(text: &str, limit: usize, regex: &Regex) -> Vec
     res
 }
 
+// todo 优化，返回每段文字在原始位置的byte位置方便高亮
 pub fn preprocess_text(text: &str, limit: usize) -> Vec<String> {
     preprocess_text_recursive(text, limit, &STOP_REGEX)
 }

@@ -32,11 +32,14 @@ pub fn SelectChapter(
 ) -> impl Into<AnyElement<'static>> {
     let mut filter_text = hooks.use_state(String::default);
     let is_inputting = hooks.use_state(|| false);
-    let state = hooks.use_state(|| {
-        let mut state = ratatui::widgets::ListState::default();
-        state.select(props.default_value);
-        state
-    });
+    let state = hooks.use_state(ratatui::widgets::ListState::default);
+
+    hooks.use_effect(
+        || {
+            state.write().select(props.default_value);
+        },
+        props.default_value,
+    );
     let items = hooks.use_memo(
         || {
             if filter_text.read().is_empty() {
