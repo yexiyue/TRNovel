@@ -65,7 +65,7 @@ pub mod download;
 mod error;
 mod model;
 mod player;
-mod utils;
+pub mod utils;
 
 // 重新导出公共类型
 pub use chapter::*;

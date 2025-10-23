@@ -2,9 +2,9 @@
 //!
 //! 该模块实现了TTS文本转语音的队列处理机制，允许将多个音频片段按顺序排队播放，
 //! 并支持在播放过程中动态添加新的音频片段。核心组件包括:
-//! - [TTSQueueInput](TTSQueueInput): 队列输入端，用于添加音频片段
-//! - [TTSQueueOutput](TTSQueueOutput): 队列输出端，实现了rodio的Source trait，可直接用于播放
-//! - [SoundOrSilence](SoundOrSilence): 音频或静音枚举，用于处理队列中的空闲状态
+//! - [TTSQueueInput]: 队列输入端，用于添加音频片段
+//! - [TTSQueueOutput]: 队列输出端，实现了rodio的Source trait，可直接用于播放
+//! - [SoundOrSilence]: 音频或静音枚举，用于处理队列中的空闲状态
 
 mod queue_input;
 mod queue_output;

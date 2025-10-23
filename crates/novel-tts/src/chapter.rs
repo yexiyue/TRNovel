@@ -11,7 +11,7 @@
 use crate::{
     NovelTTSError,
     queue::{self, TTSQueueOutput},
-    utils::preprocess_text,
+    utils::{TextSegment, preprocess_text},
 };
 use kokoro_tts::{KokoroTts, Voice};
 use rodio::buffer::SamplesBuffer;
@@ -22,7 +22,7 @@ use tokio_util::sync::CancellationToken;
 /// TTS章节处理器，负责将文本转换为音频并管理播放队列
 #[derive(Clone)]
 pub struct ChapterTTS {
-    pub texts: Vec<String>,
+    pub texts: Vec<TextSegment>,
     /// 音频缓冲区集合
     pub segments: Arc<Mutex<Vec<SamplesBuffer>>>,
     /// 取消令牌，用于取消TTS处理
@@ -86,12 +86,12 @@ impl ChapterTTS {
             chunks.lock().await.clear();
             let n = *active_index.lock().await;
             let len: usize = texts.len() - n;
-            for (index, chunk_text) in texts.iter().skip(n).enumerate() {
+            for (index, TextSegment { text, .. }) in texts.iter().skip(n).enumerate() {
                 tokio::select! {
                     _ = cancel_token.cancelled() => {
                         break;
                     }
-                    res = tts.synth(chunk_text, voice) =>{
+                    res = tts.synth(text, voice) =>{
                         let Ok((data, _)) = res else{
                             on_error(NovelTTSError::from(res.err().unwrap()));
                             continue;
