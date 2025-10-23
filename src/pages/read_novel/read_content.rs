@@ -40,6 +40,15 @@ pub fn ReadContent(
     let novel_tts = *hooks.use_context::<State<Option<novel_tts::NovelTTS>>>();
     let mut chapter_tts = hooks.use_state(|| None::<novel_tts::ChapterTTS>);
     let mut player = hooks.use_state(|| None::<novel_tts::Player>);
+    let mut is_listening_done = hooks.use_state(|| false);
+    let mut on_prev = props.on_prev.take();
+    let mut on_next = props.on_next.take();
+
+    // 自动播放下一章节
+    if is_listening_done.get() && tts_config.read().auto_play {
+        on_next(());
+        is_listening_done.set(false);
+    }
 
     hooks.use_effect(
         move || {
@@ -85,7 +94,7 @@ pub fn ReadContent(
                             if let Some(index) = index {
                                 highlight_range.set(Some(texts[index].clone()));
                             } else {
-                                // println!("播放完成");
+                                is_listening_done.set(true);
                             }
                         }
                     });
@@ -151,9 +160,6 @@ pub fn ReadContent(
     });
 
     hooks.use_scrollbar(line_count, Some(current_line));
-
-    let mut on_prev = props.on_prev.take();
-    let mut on_next = props.on_next.take();
 
     let props_content = props.content.clone();
     hooks.use_events(move |event| {
@@ -226,7 +232,7 @@ pub fn ReadContent(
                                 if let Some(index) = index {
                                     highlight_range.set(Some(texts[index].clone()));
                                 } else {
-                                    // println!("播放完成");
+                                    is_listening_done.set(true);
                                 }
                             }
                         });
