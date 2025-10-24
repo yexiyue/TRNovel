@@ -2,6 +2,16 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.7.4] - 2025-10-24
+
+### 🚀 Features
+
+- 添加 tts queue
+- 支持文本高亮
+- *(novel-tts)* 实现文本高亮与精确位置追踪
+- 实现听书自动播放下一章节功能
+- 添加防抖效果钩子并优化声音选择功能
+
 ## [0.7.3] - 2025-10-21
 
 ### 🚀 Features
@@ -13,6 +23,10 @@ All notable changes to this project will be documented in this file.
 
 - 修复发布流程识别不到changelog问题
 - 修复本地路径持久化 Close #36
+
+### ⚙️ Miscellaneous Tasks
+
+- Release
 
 ## [0.7.2] - 2025-10-20
 
