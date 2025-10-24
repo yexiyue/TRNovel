@@ -79,10 +79,14 @@ pub fn ReadContent(
             async move {
                 if let Some(tts) = novel_tts.read().as_ref()
                     && tts_config.read().auto_play
-                    && player.read().is_none()
-                    && chapter_tts.read().is_none()
                 {
-                    let mut chapter = tts.chapter_tts(&content);
+                    let mut chapter = if let Some(chapter_tts) = chapter_tts.read().as_ref() {
+                        chapter_tts.cancel();
+                        chapter_tts.clone()
+                    } else {
+                        tts.chapter_tts(&content)
+                    };
+
                     let (queue_output, mut receiver) =
                         chapter.stream(tts_config.read().voice.into(), |e| {
                             eprintln!("{e:?}");
@@ -98,9 +102,11 @@ pub fn ReadContent(
                             }
                         }
                     });
+
                     let p = tts.player(queue_output);
                     p.set_speed(tts_config.read().speed);
                     p.set_volume(tts_config.read().volume);
+
                     is_listening.set(true);
                     player.set(Some(p));
                     chapter_tts.set(Some(chapter));
@@ -110,7 +116,7 @@ pub fn ReadContent(
         (
             props.content.clone(),
             novel_tts.read().is_some(),
-            // tts_config.read().voice, (暂时不支持立即切换声音)
+            tts_config.read().voice,
         ),
     );
 

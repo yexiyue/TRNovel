@@ -1,5 +1,10 @@
+use std::time::Duration;
+
 use super::settings::{SettingItem, SettingItemProps};
-use crate::{TTSConfig, Voices, hooks::UseThemeConfig};
+use crate::{
+    TTSConfig, Voices,
+    hooks::{DebounceOptions, UseDebounceEffect, UseThemeConfig},
+};
 use crossterm::event::{Event, KeyCode, KeyEventKind};
 use ratatui::{
     layout::{Constraint, Direction, Flex},
@@ -13,13 +18,16 @@ use strum::IntoEnumIterator;
 pub fn VoiceSelect(props: &SettingItemProps, mut hooks: Hooks) -> impl Into<AnyElement<'static>> {
     let tts_config = *hooks.use_context::<State<TTSConfig>>();
     let theme = hooks.use_theme_config();
-    let current_voice = tts_config.read().voice;
+    let mut current_voice = hooks.use_state(|| tts_config.read().voice);
+
     let is_editing = props.is_editing;
 
     let (prev, current, next) = hooks.use_memo(
         || {
             let data = Voices::iter().collect::<Vec<_>>();
-            let index = Voices::iter().position(|i| i == current_voice).unwrap_or(0);
+            let index = Voices::iter()
+                .position(|i| i == current_voice.get())
+                .unwrap_or(0);
             let prev = if index == 0 {
                 data.len() - 1
             } else {
@@ -42,22 +50,30 @@ pub fn VoiceSelect(props: &SettingItemProps, mut hooks: Hooks) -> impl Into<AnyE
         {
             match key.code {
                 KeyCode::Left | KeyCode::Char('h') => {
-                    tts_config.write().voice = prev;
+                    current_voice.set(prev);
                 }
                 KeyCode::Right | KeyCode::Char('l') => {
-                    tts_config.write().voice = next;
+                    current_voice.set(next);
                 }
                 _ => {}
             }
         }
     });
 
+    hooks.use_debounce_effect(
+        move || {
+            tts_config.write().voice = current_voice.get();
+        },
+        current_voice.get(),
+        DebounceOptions::default().wait(Duration::from_secs(1)),
+    );
+
     element!(SettingItem(
         is_editing: props.is_editing,
     ) {
         View(flex_direction: Direction::Horizontal, gap:1){
-            View(width:Constraint::Length(10)) {
-                $Line::from("选择声音:").style(theme.basic.text)
+            View(width:Constraint::Length(18)) {
+                $Line::from("选择声音: ".to_string()).style(theme.basic.text)
             }
             View(flex_direction: Direction::Horizontal, gap:1,justify_content:Flex::Center) {
                 View(width:Constraint::Length(8)) {

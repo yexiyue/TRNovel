@@ -10,7 +10,7 @@
 
 use crate::{
     NovelTTSError,
-    queue::{self, TTSQueueOutput},
+    queue::{self, TTSQueueInput, TTSQueueOutput},
     utils::{TextSegment, preprocess_text},
 };
 use kokoro_tts::{KokoroTts, Voice};
@@ -23,13 +23,12 @@ use tokio_util::sync::CancellationToken;
 #[derive(Clone)]
 pub struct ChapterTTS {
     pub texts: Vec<TextSegment>,
-    /// 音频缓冲区集合
-    pub segments: Arc<Mutex<Vec<SamplesBuffer>>>,
     /// 取消令牌，用于取消TTS处理
     pub cancel_token: CancellationToken,
-    // todo 可以使用原子类型优化
     pub active_index: Arc<Mutex<usize>>,
     pub tts: Arc<KokoroTts>,
+    pub queue: Option<Arc<TTSQueueInput<SamplesBuffer>>>,
+    pub generate_index: usize,
 }
 
 impl ChapterTTS {
@@ -42,11 +41,12 @@ impl ChapterTTS {
     /// 返回一个新的ChapterTTS实例
     pub fn new(tts: Arc<KokoroTts>, text: &str) -> Self {
         Self {
-            segments: Arc::new(Mutex::new(Vec::new())),
             cancel_token: CancellationToken::new(),
             active_index: Arc::new(Mutex::new(0)),
             tts,
             texts: preprocess_text(text, 200),
+            queue: None,
+            generate_index: 0,
         }
     }
 
@@ -72,18 +72,19 @@ impl ChapterTTS {
         on_error: impl Fn(NovelTTSError) + Send + Sync + 'static,
     ) -> (TTSQueueOutput<SamplesBuffer>, Receiver<Option<usize>>) {
         let (audio_queue_tx, audio_queue_rx) = queue::queue();
+        self.queue.replace(audio_queue_tx.clone());
+
         let (position_tx, position_rx) = tokio::sync::mpsc::channel::<Option<usize>>(1);
 
         self.cancel_token = CancellationToken::new();
 
         let cancel_token = self.cancel_token.clone();
-        let chunks = self.segments.clone();
         let tts = self.tts.clone();
         let active_index = self.active_index.clone();
         let texts = self.texts.clone();
+        self.generate_index = *self.active_index.try_lock().unwrap();
 
         tokio::spawn(async move {
-            chunks.lock().await.clear();
             let n = *active_index.lock().await;
             let len: usize = texts.len() - n;
             for (index, TextSegment { text, .. }) in texts.iter().skip(n).enumerate() {
@@ -100,7 +101,6 @@ impl ChapterTTS {
 
                         let mut signal = audio_queue_tx.append_with_signal(buffer.clone());
 
-                        chunks.lock().await.push(buffer);
 
                         // 如果是最后一个片段，设置队列为完成状态
                         if index == len-1{
@@ -134,5 +134,23 @@ impl ChapterTTS {
     /// 调用此方法会取消正在进行的TTS处理任务
     pub fn cancel(&self) {
         self.cancel_token.cancel();
+    }
+
+    /// 设置当前处理的章节索引
+    pub fn set_index(&self, index: usize) {
+        if index <= self.texts.len() {
+            let mut active_index = self.active_index.try_lock().unwrap();
+            *active_index = index;
+        }
+    }
+
+    /// 检索指定索引的音频队列输出
+    pub fn retrieve_output(&self, index: usize) -> Option<TTSQueueOutput<SamplesBuffer>> {
+        if index >= self.texts.len() || index < self.generate_index {
+            return None;
+        }
+        self.queue
+            .as_ref()
+            .map(|q| TTSQueueOutput::new(q.clone(), index))
     }
 }
