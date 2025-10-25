@@ -79,6 +79,7 @@ pub fn ReadContent(
             async move {
                 if let Some(tts) = novel_tts.read().as_ref()
                     && tts_config.read().auto_play
+                    && chapter_tts.read().is_none()
                 {
                     let mut chapter = if let Some(chapter_tts) = chapter_tts.read().as_ref() {
                         chapter_tts.cancel();
@@ -113,11 +114,39 @@ pub fn ReadContent(
                 }
             }
         },
-        (
-            props.content.clone(),
-            novel_tts.read().is_some(),
-            tts_config.read().voice,
-        ),
+        (props.content.clone(), novel_tts.read().is_some()),
+    );
+
+    hooks.use_async_effect(
+        async move {
+            if let Some(tts) = novel_tts.read().as_ref()
+                && let Some(chapter) = chapter_tts.write().as_mut()
+            {
+                let (queue_output, mut receiver) =
+                    chapter.stream(tts_config.read().voice.into(), |e| {
+                        eprintln!("{e:?}");
+                    });
+
+                let texts = chapter.texts.clone();
+                tokio::spawn(async move {
+                    while let Some(index) = receiver.recv().await {
+                        if let Some(index) = index {
+                            highlight_range.set(Some(texts[index].clone()));
+                        } else {
+                            is_listening_done.set(true);
+                        }
+                    }
+                });
+
+                let p = tts.player(queue_output);
+                p.set_speed(tts_config.read().speed);
+                p.set_volume(tts_config.read().volume);
+
+                is_listening.set(true);
+                player.set(Some(p));
+            }
+        },
+        tts_config.read().voice,
     );
 
     let paragraph = hooks.use_memo(
@@ -152,10 +181,10 @@ pub fn ReadContent(
     let is_scroll = props.is_scroll;
     let line_count = paragraph
         .line_count(props.width.saturating_sub(2))
-        .saturating_sub(props.height as usize - 1);
+        .saturating_sub((props.height as usize) - 1);
 
     let mut current_line = hooks.use_memo(
-        || (line_percent.get() * line_count as f64 * 1000.0).round() as usize / 1000,
+        || ((line_percent.get() * (line_count as f64) * 1000.0).round() as usize) / 1000,
         format!("{}-{}", line_count, line_percent.get()),
     );
     let mut current_time = hooks.use_state(String::default);
@@ -177,7 +206,7 @@ pub fn ReadContent(
                 KeyCode::Up | KeyCode::Char('k') => {
                     if current_line > 0 {
                         current_line -= 1;
-                        line_percent.set(current_line as f64 / line_count as f64);
+                        line_percent.set((current_line as f64) / (line_count as f64));
                     } else {
                         on_prev(true);
                     }
@@ -185,7 +214,7 @@ pub fn ReadContent(
                 KeyCode::Down | KeyCode::Char('j') => {
                     if current_line < line_count {
                         current_line += 1;
-                        line_percent.set(current_line as f64 / line_count as f64);
+                        line_percent.set((current_line as f64) / (line_count as f64));
                     } else {
                         on_next(());
                     }
@@ -198,11 +227,11 @@ pub fn ReadContent(
                 }
                 KeyCode::PageUp => {
                     current_line = current_line.saturating_sub(5);
-                    line_percent.set(current_line as f64 / line_count as f64);
+                    line_percent.set((current_line as f64) / (line_count as f64));
                 }
                 KeyCode::PageDown => {
                     current_line = (current_line + 5).min(line_count);
-                    line_percent.set(current_line as f64 / line_count as f64);
+                    line_percent.set((current_line as f64) / (line_count as f64));
                 }
                 KeyCode::Home => {
                     line_percent.set(0.0);

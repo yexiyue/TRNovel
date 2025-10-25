@@ -1,12 +1,12 @@
+use crate::{
+    Commands, History, HistoryItem, TRNovel, pages::network_novel::book_detail::BookDetailState,
+};
 use crossterm::event::{Event, KeyCode, KeyEventKind};
 use ratatui_kit::{
     AnyElement, Hooks, State, UseContext, UseEffect, UseEvents, UseExit, UseRouter, component,
     element, prelude::Outlet,
 };
-
-use crate::{
-    Commands, History, HistoryItem, TRNovel, pages::network_novel::book_detail::BookDetailState,
-};
+use std::path::PathBuf;
 
 #[component]
 pub fn Layout(mut hooks: Hooks) -> impl Into<AnyElement<'static>> {
@@ -38,7 +38,7 @@ pub fn Layout(mut hooks: Hooks) -> impl Into<AnyElement<'static>> {
                         {
                             match item {
                                 HistoryItem::Local(_) => {
-                                    navigate.push_with_state("/local-novel", path.clone());
+                                    navigate.push_with_state("/local-novel", PathBuf::from(path));
                                 }
                                 HistoryItem::Network(_) => {
                                     navigate.push_with_state(
