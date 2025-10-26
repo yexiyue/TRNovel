@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.7.5] - 2025-10-26
+
+### 🐛 Bug Fixes
+
+- 修复快速模式打开失败
+- 更新 ratatui-kit 版本并修复 tts 模态框交互逻辑
+
 ## [0.7.4] - 2025-10-24
 
 ### 🚀 Features
@@ -11,6 +18,10 @@ All notable changes to this project will be documented in this file.
 - *(novel-tts)* 实现文本高亮与精确位置追踪
 - 实现听书自动播放下一章节功能
 - 添加防抖效果钩子并优化声音选择功能
+
+### ⚙️ Miscellaneous Tasks
+
+- Release
 
 ## [0.7.3] - 2025-10-21
 
