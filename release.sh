@@ -5,7 +5,7 @@ EXCLUDE_CRATES=()
 echo "可选排除的 crate 列表："
 select crate in "${ALL_CRATES[@]}" "全部选择完毕"; do
   if [[ $REPLY -gt 0 && $REPLY -le ${#ALL_CRATES[@]} ]]; then
-    EXCLUDE_CRATES+=$crate
+    EXCLUDE_CRATES+=("$crate")
     echo "$crate 已加入排除列表。"
   elif [[ $REPLY -eq $((${#ALL_CRATES[@]}+1)) ]]; then
     break
@@ -13,6 +13,7 @@ select crate in "${ALL_CRATES[@]}" "全部选择完毕"; do
     echo "无效选择，请重新输入。"
   fi
 done
+
 
 EXCLUDE_ARGS=""
 for crate in "${EXCLUDE_CRATES[@]}"; do
