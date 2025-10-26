@@ -111,7 +111,7 @@ pub fn ShortcutInfoModal(
         open:props.open,
         style:Style::new().dim(),
     ){
-        ScrollView(margin:Margin::new(0,1)){
+        ScrollView(margin:Margin::new(1,1)){
             View(height:Constraint::Length(key_height+3)){
                 $key_table
             }

@@ -20,6 +20,7 @@ impl From<ChapterName> for ListItem<'_> {
 
 #[derive(Default, Props)]
 pub struct SelectChapterProps {
+    pub is_editing: bool,
     pub chapters: Vec<ChapterName>,
     pub on_select: Handler<'static, usize>,
     pub default_value: Option<usize>,
@@ -33,6 +34,7 @@ pub fn SelectChapter(
     let mut filter_text = hooks.use_state(String::default);
     let is_inputting = hooks.use_state(|| false);
     let state = hooks.use_state(ratatui::widgets::ListState::default);
+    let is_editing = props.is_editing;
 
     hooks.use_effect(
         || {
@@ -103,7 +105,7 @@ pub fn SelectChapter(
             on_select: move |item: ChapterName| {
                 on_select(item.1);
             },
-            is_editing: !is_inputting.get(),
+            is_editing: !is_inputting.get() && is_editing,
             state: state,
             bottom_title: Line::from(
                 format!(

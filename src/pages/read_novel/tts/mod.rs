@@ -6,6 +6,7 @@ use ratatui::{
     layout::{Constraint, Margin},
     style::{Style, Stylize},
     text::Line,
+    widgets::Block,
 };
 use ratatui_kit::prelude::*;
 mod settings;
@@ -79,12 +80,11 @@ pub fn TTSManager(props: &TTSManagerProps, mut hooks: Hooks) -> impl Into<AnyEle
         margin: Margin::new(1, 1),
         style:Style::default().dim(),
     ) {
-        Border(
-            top_title:Line::from("听书设置").centered(),
-            border_style:theme.basic.border.not_dim(),
-            margin: Margin::new(1, 1)
-        ){
-            ScrollView{
+        View(margin:Margin::new(1,1)){
+            ScrollView(
+                block: Block::bordered().border_style(theme.basic.border.not_dim()).title_top(Line::from("听书设置").centered()),
+                disabled: !is_editing,
+            ){
                 View(height:Constraint::Length(3)){
                     DownloadProgress::<CheckpointModel>(..DownloadProgressProps {
                         title: "检查点模型".to_string(),
@@ -120,6 +120,8 @@ pub fn TTSManager(props: &TTSManagerProps, mut hooks: Hooks) -> impl Into<AnyEle
                     )
                 }
             }
+
         }
+
     })
 }

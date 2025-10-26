@@ -141,7 +141,9 @@ where
                     info_modal_open.set(!info_modal_open.get());
                 }
                 KeyCode::Char('t') | KeyCode::Char('T') => {
-                    is_tts_open.set(!is_tts_open.get());
+                    if !info_modal_open.get() {
+                        is_tts_open.set(!is_tts_open.get());
+                    }
                 }
                 _ => {}
             }
@@ -168,7 +170,7 @@ where
         #(if is_read_mode.get() {
             element!(View{
                 ReadContent(
-                    is_scroll: !is_tts_open.get(),
+                    is_scroll: !is_tts_open.get() && !info_modal_open.get(),
                     width: width,
                     height: height,
                     content: content.read().clone(),
@@ -254,6 +256,7 @@ where
         }else{
             element!(View(flex_direction:Direction::Horizontal){
                 SelectChapter(
+                    is_editing: !info_modal_open.get(),
                     chapters: chapters.read().clone(),
                     default_value: current_chapter.get(),
                     on_select: move |index| {
