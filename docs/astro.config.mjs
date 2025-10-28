@@ -8,6 +8,7 @@ import starlightThemeNova from "starlight-theme-nova";
 
 // https://astro.build/config
 export default defineConfig({
+  base: "/TRNovel",
   integrations: [
     starlight({
       plugins: [
@@ -15,7 +16,7 @@ export default defineConfig({
         starlightSidebarTopicsPlugin([
           {
             label: "指南",
-            link: "/guides/intro",
+            link: "/TRNovel/guides/intro",
             icon: "open-book",
             items: [
               { label: "使用说明", autogenerate: { directory: "guides" } },
@@ -24,7 +25,7 @@ export default defineConfig({
           },
           {
             label: "书源参考",
-            link: "/book-source/bb",
+            link: "/TRNovel/book-source/bb",
             icon: "document",
             items: [
               {
@@ -42,7 +43,7 @@ export default defineConfig({
         {
           icon: "github",
           label: "GitHub",
-          href: "https://github.com/yexiyue/trnovel",
+          href: "https://github.com/yexiyue/TRNovel",
         },
       ],
     }),
