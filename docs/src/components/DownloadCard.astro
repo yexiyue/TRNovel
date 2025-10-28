@@ -1,0 +1,24 @@
+---
+import { Card } from '@astrojs/starlight/components'
+import { LinkButton } from 'starlight-theme-nova/components'
+
+type Props = {
+    title: string
+    downloadLink: string
+}
+const { title, downloadLink } = Astro.props
+---
+
+<Card title={title}>
+    <LinkButton
+        href={downloadLink}
+        download
+        style={{
+            cursor: 'pointer',
+            height: '2.4rem',
+        }}
+        class="download-button"
+    >
+        <slot />下载</LinkButton
+    >
+</Card>

@@ -1,0 +1,63 @@
+---
+title: 安装
+description: TRNovel 安装指南
+sidebar:
+    order: 2
+---
+
+import { Tabs, TabItem, Card, CardGrid, Icon } from "@astrojs/starlight/components";
+import DownloadCard from "../../../components/DownloadCard.astro";
+import { Icon as AstroIcon } from "astro-icon/components";
+
+## 包管理器安装
+
+如果您已经安装了 Rust 或 Node.js 环境，可以通过以下命令快速安装 TRNovel：
+
+<Tabs>
+    <TabItem value="cargo" label="cargo" icon="seti:rust">
+        ```bash title="使用 Cargo 安装（推荐）"
+        cargo install trnovel
+        ```
+    </TabItem>
+    <TabItem value="pnpm" label="pnpm" icon="pnpm"> 
+        ```bash title="使用 pnpm 安装"
+        pnpm add -g @trnovel/trnovel
+        ```
+    </TabItem>
+    <TabItem value="npm" label="npm" icon="seti:npm">
+        ```bash title="使用 npm 安装"
+        npm i -g @trnovel/trnovel
+        ```
+    </TabItem>
+</Tabs>
+
+安装完成后，运行以下命令验证安装是否成功：
+
+```bash
+trnovel -h
+```
+
+## 二进制文件安装
+
+如果您没有配置开发环境，可以直接下载预编译的二进制文件：
+
+<CardGrid>
+    <DownloadCard title="Windows" type="astro" downloadLink="https://github.com/yexiyue/TRNovel/releases/download/v0.7.5/trnovel-v0.7.5-windows-x86_64.tar.gz" >
+        <AstroIcon name="mdi:microsoft-windows" size="1.3rem" />
+    </DownloadCard>
+    <DownloadCard title="Macos(Apple)" downloadLink="https://github.com/yexiyue/TRNovel/releases/download/v0.7.5/trnovel-v0.7.5-macos-arm64.tar.gz" >
+        <Icon name="apple" size="1.3rem" />
+    </DownloadCard>
+    <DownloadCard title="Linux" icon="linux" downloadLink="https://github.com/yexiyue/TRNovel/releases/download/v0.7.5/trnovel-v0.7.5-linux-x86_64.tar.gz" >
+        <Icon name="linux" size="1.3rem" />
+    </DownloadCard>
+    <DownloadCard title="Macos(Inter)" icon="apple" downloadLink="https://github.com/yexiyue/TRNovel/releases/download/v0.7.5/trnovel-v0.7.5-macos-x86_64.tar.gz" >
+        <Icon name="apple" size="1.3rem" />
+    </DownloadCard>
+</CardGrid>
+
+下载完成后，解压文件并将可执行文件添加到系统 PATH 环境变量中。
+
+:::caution[注意]
+对于使用二进制文件的用户，请确保将可执行文件正确添加到 PATH 环境变量中，否则将无法在命令行中直接使用 trnovel 命令。
+:::

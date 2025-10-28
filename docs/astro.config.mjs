@@ -1,26 +1,51 @@
 // @ts-check
-import { defineConfig } from 'astro/config';
-import starlight from '@astrojs/starlight';
+
+import starlight from "@astrojs/starlight";
+import { defineConfig } from "astro/config";
+import icon from "astro-icon";
+import starlightSidebarTopicsPlugin from "starlight-sidebar-topics";
+import starlightThemeNova from "starlight-theme-nova";
 
 // https://astro.build/config
 export default defineConfig({
-	integrations: [
-		starlight({
-			title: 'My Docs',
-			social: [{ icon: 'github', label: 'GitHub', href: 'https://github.com/withastro/starlight' }],
-			sidebar: [
-				{
-					label: 'Guides',
-					items: [
-						// Each item here is one entry in the navigation menu.
-						{ label: 'Example Guide', slug: 'guides/example' },
-					],
-				},
-				{
-					label: 'Reference',
-					autogenerate: { directory: 'reference' },
-				},
-			],
-		}),
-	],
+  integrations: [
+    starlight({
+      plugins: [
+        starlightThemeNova(),
+        starlightSidebarTopicsPlugin([
+          {
+            label: "指南",
+            link: "/guides/intro",
+            icon: "open-book",
+            items: [
+              { label: "使用说明", autogenerate: { directory: "guides" } },
+              { label: "参考", autogenerate: { directory: "reference" } },
+            ],
+          },
+          {
+            label: "书源参考",
+            link: "/book-source/bb",
+            icon: "document",
+            items: [
+              {
+                label: "书源参考",
+                autogenerate: {
+                  directory: "book-source",
+                },
+              },
+            ],
+          },
+        ]),
+      ],
+      title: "TRNovel",
+      social: [
+        {
+          icon: "github",
+          label: "GitHub",
+          href: "https://github.com/yexiyue/trnovel",
+        },
+      ],
+    }),
+    icon(),
+  ],
 });
