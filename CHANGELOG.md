@@ -2,11 +2,25 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.7.8] - 2025-10-29
+
+### 🐛 Bug Fixes
+
+- 解决输入按键冲突
+
+### 📚 Documentation
+
+- 添加听书模式文档
+
 ## [0.7.7] - 2025-10-29
 
 ### 🐛 Bug Fixes
 
 - 修复前进后退按键冲突
+
+### ⚙️ Miscellaneous Tasks
+
+- Release
 
 ## [0.7.6] - 2025-10-29
 
