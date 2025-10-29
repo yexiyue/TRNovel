@@ -29,6 +29,7 @@ impl From<ExploreListItem> for ListItem<'_> {
 #[component]
 pub fn SelectBooks(mut hooks: Hooks) -> impl Into<AnyElement<'static>> {
     let mut info_modal_open = hooks.use_state(|| false);
+    let is_inputting = hooks.use_state(|| false);
     let book_source = hooks.use_route_state::<BookSource>();
     let mut explores = hooks.use_state(std::vec::Vec::new);
     let theme = hooks.use_theme_config();
@@ -54,6 +55,7 @@ pub fn SelectBooks(mut hooks: Hooks) -> impl Into<AnyElement<'static>> {
     hooks.use_events(move |event| {
         if let Event::Key(key) = event
             && key.kind == KeyEventKind::Press
+            && !is_inputting.get()
         {
             match key.code {
                 KeyCode::Tab => {
@@ -78,14 +80,14 @@ pub fn SelectBooks(mut hooks: Hooks) -> impl Into<AnyElement<'static>> {
         explores.read().len(),
     );
 
-    let books_list_props = FindBooksProps {
-        parser: book_source_parser,
-        current_explore: current_explore.read().clone(),
-        is_editing: !is_explore_open.get(),
-    };
-
     element!(View {
-        FindBooks(..books_list_props)
+        FindBooks(..FindBooksProps {
+                parser: book_source_parser,
+                current_explore: current_explore.read().clone(),
+                is_editing: !is_explore_open.get() && !info_modal_open.get(),
+                is_inputting,
+            }
+        )
         WarningModal(
             tip: format!("{:?}", error.read().as_ref()),
             is_error: error.read().is_some(),

@@ -31,6 +31,7 @@ where
     let mut content = hooks.use_state(String::default);
     let mut is_read_mode = hooks.use_state(|| false);
     let mut is_tts_open = hooks.use_state(|| false);
+    let is_inputting = hooks.use_state(|| false);
     let (width, height) = hooks.use_terminal_size();
 
     let mut content_loading = hooks.use_state(|| false);
@@ -132,6 +133,7 @@ where
     hooks.use_events(move |event| {
         if let Event::Key(key) = event
             && key.kind == KeyEventKind::Press
+            && !is_inputting.get()
         {
             match key.code {
                 KeyCode::Tab => {
@@ -269,6 +271,7 @@ where
                             is_read_mode.set(true);
                         };
                     },
+                    is_inputting: is_inputting,
                 )
                 ReadContent(
                     content: content.read().clone(),

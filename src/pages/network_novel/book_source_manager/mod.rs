@@ -28,6 +28,7 @@ pub fn BookSourceManager(mut hooks: Hooks) -> impl Into<AnyElement<'static>> {
     hooks.use_events(move |event| {
         if let Event::Key(key) = event
             && key.kind == KeyEventKind::Press
+            && !is_inputting.get()
         {
             match key.code {
                 KeyCode::Char('i') | KeyCode::Char('I') => {

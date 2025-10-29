@@ -17,8 +17,9 @@ pub struct SearchInputProps {
     pub on_submit: Handler<'static, String, bool>,
     pub clear_on_submit: bool,
     pub clear_on_escape: bool,
-    pub is_editing: Option<State<bool>>,
+    pub is_editing: bool,
     pub on_clear: Handler<'static, ()>,
+    pub on_editing_change: Handler<'static, bool>,
 }
 
 #[component]
@@ -26,8 +27,7 @@ pub fn SearchInput(
     props: &mut SearchInputProps,
     mut hooks: Hooks,
 ) -> impl Into<AnyElement<'static>> {
-    let is_editing = hooks.use_state(|| false);
-    let mut is_editing = props.is_editing.take().unwrap_or(is_editing);
+    let is_editing = props.is_editing;
 
     let mut value = hooks.use_state(tui_input::Input::default);
     let mut is_valid = hooks.use_state(|| None::<bool>);
@@ -39,6 +39,7 @@ pub fn SearchInput(
     let clear_on_escape = props.clear_on_escape;
     let mut on_submit = props.on_submit.take();
     let mut on_clear = props.on_clear.take();
+    let mut on_editing_change = props.on_editing_change.take();
 
     hooks.use_effect(
         || {
@@ -52,35 +53,32 @@ pub fn SearchInput(
         if let Event::Key(key) = event
             && key.kind == KeyEventKind::Press
         {
-            match key.code {
-                KeyCode::Char('s') if !is_editing.get() => {
-                    is_editing.set(true);
-                }
-                KeyCode::Esc if is_editing.get() => {
-                    is_editing.set(false);
-                    if clear_on_escape {
-                        value.write().reset();
-                        is_valid.set(None);
-                        status_message.set(String::new());
-                        on_clear(());
-                    }
-                }
-                KeyCode::Enter if is_editing.get() => {
-                    if !on_submit.is_default() {
-                        let valid = on_submit(value.read().value().to_string());
-                        if valid && clear_on_submit {
+            if is_editing {
+                match key.code {
+                    KeyCode::Esc => {
+                        if clear_on_escape {
                             value.write().reset();
                             is_valid.set(None);
                             status_message.set(String::new());
                             on_clear(());
                         }
-                        if valid {
-                            is_editing.set(false);
+                        on_editing_change(false);
+                    }
+                    KeyCode::Enter => {
+                        if !on_submit.is_default() {
+                            let valid = on_submit(value.read().value().to_string());
+                            if valid && clear_on_submit {
+                                value.write().reset();
+                                is_valid.set(None);
+                                status_message.set(String::new());
+                                on_clear(());
+                            }
+                            if valid {
+                                on_editing_change(false);
+                            }
                         }
                     }
-                }
-                _ => {
-                    if is_editing.get() {
+                    _ => {
                         value.write().handle_event(&event);
 
                         if !validate_fn.is_default() {
@@ -90,6 +88,8 @@ pub fn SearchInput(
                         }
                     }
                 }
+            } else if let KeyCode::Char('s') = key.code {
+                on_editing_change(true);
             }
         }
     });
@@ -97,7 +97,7 @@ pub fn SearchInput(
     element!(
         Border(
             height:Constraint::Length(3),
-            border_style: if let Some(valid)=is_valid.get() && is_editing.get(){
+            border_style: if let Some(valid)=is_valid.get() && is_editing{
                         if valid {
                             theme.search.success_border
                         } else {
@@ -106,7 +106,7 @@ pub fn SearchInput(
                     } else {
                        theme.basic.border
                     },
-            top_title: if let Some(valid)=is_valid.get() && !status_message.read().is_empty() && is_editing.get(){
+            top_title: if let Some(valid)=is_valid.get() && !status_message.read().is_empty() && is_editing{
                 if valid {
                     Some(Line::from(status_message.read().deref().to_string()).style(theme.search.success_border_info))
                 } else {
@@ -122,7 +122,7 @@ pub fn SearchInput(
                 style: theme.search.text,
                 placeholder: props.placeholder.clone(),
                 placeholder_style: theme.search.placeholder,
-                hide_cursor: !is_editing.get(),
+                hide_cursor: !is_editing,
             )
         }
     )

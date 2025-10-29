@@ -24,6 +24,7 @@ pub struct SelectChapterProps {
     pub chapters: Vec<ChapterName>,
     pub on_select: Handler<'static, usize>,
     pub default_value: Option<usize>,
+    pub is_inputting: Option<State<bool>>,
 }
 
 #[component]
@@ -33,6 +34,7 @@ pub fn SelectChapter(
 ) -> impl Into<AnyElement<'static>> {
     let mut filter_text = hooks.use_state(String::default);
     let is_inputting = hooks.use_state(|| false);
+    let mut is_inputting = props.is_inputting.unwrap_or(is_inputting);
     let state = hooks.use_state(ratatui::widgets::ListState::default);
     let is_editing = props.is_editing;
 
@@ -93,7 +95,12 @@ pub fn SelectChapter(
                     (true, "".to_owned())
                 }
             },
-            is_editing: is_inputting,
+            is_editing: is_inputting.get() && is_editing,
+            on_editing_change: move |inputting| {
+                if is_editing{
+                    is_inputting.set(inputting);
+                }
+            },
         )
         Select<ChapterName>(
             top_title: Line::from("目录").centered(),
