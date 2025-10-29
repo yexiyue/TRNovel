@@ -22,7 +22,7 @@ export default defineConfig({
         starlightSidebarTopicsPlugin([
           {
             label: "指南",
-            link: "/TRNovel/guides/intro",
+            link: "/guides/intro",
             icon: "open-book",
             items: [
               { label: "使用说明", autogenerate: { directory: "guides" } },
@@ -31,7 +31,7 @@ export default defineConfig({
           },
           {
             label: "书源参考",
-            link: "/TRNovel/book-source/bb",
+            link: "/book-source/intro",
             icon: "document",
             items: [
               {

@@ -64,18 +64,13 @@ pub fn Layout(mut hooks: Hooks) -> impl Into<AnyElement<'static>> {
                 KeyCode::Char('q') | KeyCode::Char('Q') => {
                     exit();
                 }
-                KeyCode::Char('g') | KeyCode::Char('G') | KeyCode::Esc => {
-                    if key
-                        .modifiers
-                        .contains(KeyModifiers::CONTROL | KeyModifiers::SHIFT)
-                    {
+                KeyCode::Char('g') | KeyCode::Char('G') => {
+                    if key.modifiers.contains(KeyModifiers::CONTROL) {
                         navigate.go(1);
                     }
                 }
-                KeyCode::Char('b') | KeyCode::Char('B') | KeyCode::Enter
-                    if key
-                        .modifiers
-                        .contains(KeyModifiers::CONTROL | KeyModifiers::SHIFT) =>
+                KeyCode::Char('b') | KeyCode::Char('B')
+                    if key.modifiers.contains(KeyModifiers::CONTROL) =>
                 {
                     navigate.go(-1);
                 }

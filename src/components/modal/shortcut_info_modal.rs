@@ -86,8 +86,8 @@ pub fn ShortcutInfoModal(
 
     let global_shortcut_info = KeyShortcutInfo::new(vec![
         ("退出程序", "Q / Ctrl + C"),
-        ("后退", "Ctrl + Shift + (B|Esc)"),
-        ("前进", "Ctrl + Shift + (G|Enter)"),
+        ("后退", "Ctrl + B"),
+        ("前进", "Ctrl + G"),
         ("显示/隐藏快捷键信息", "I"),
     ]);
 
