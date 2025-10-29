@@ -2,6 +2,12 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.7.7] - 2025-10-29
+
+### 🐛 Bug Fixes
+
+- 修复前进后退按键冲突
+
 ## [0.7.6] - 2025-10-29
 
 ### 🚀 Features
@@ -18,6 +24,10 @@ All notable changes to this project will be documented in this file.
 ### 📚 Documentation
 
 - 添加阅读文档
+
+### ⚙️ Miscellaneous Tasks
+
+- Release
 
 ## [0.7.5] - 2025-10-26
 

@@ -1,6 +1,6 @@
 [package]
 name = "trnovel"
-version = "0.7.6"
+version = "0.7.7"
 edition = "2024"
 default-run = "trnovel"
 description = "Terminal reader for novel"
