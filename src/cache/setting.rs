@@ -23,7 +23,7 @@ pub struct ThemeConfig {
     pub novel: NovelSetting,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ThemeColors {
     pub text_color: Color,

@@ -24,6 +24,7 @@ use crate::{
             select_books::SelectBooks,
         },
         select_history::SelectHistory,
+        theme_setting::ThemeSetting,
     },
     utils::novel_catch_dir,
 };
@@ -90,6 +91,7 @@ pub fn App(props: &AppProps, mut hooks: Hooks) -> impl Into<AnyElement<'static>>
         "/"=>Layout{
             "/home"=>Home,
             "/select-history"=>SelectHistory,
+            "/theme-setting"=>ThemeSetting,
             // 本地小说
             "/select-file"=> SelectFile,
             "/local-novel"=> ReadNovel<LocalNovel>,

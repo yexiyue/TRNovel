@@ -64,7 +64,7 @@ pub fn Home(mut hooks: Hooks) -> impl Into<AnyElement<'static>> {
                                     navigate.push("/select-history");
                                 }
                                 3 => {
-                                    // navigate.push(ThemeSettingPage::to_page_route());
+                                    navigate.push("/theme-setting");
                                 }
                                 _ => {}
                             }
