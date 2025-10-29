@@ -1,7 +1,7 @@
 use crate::{
     Commands, History, HistoryItem, TRNovel, pages::network_novel::book_detail::BookDetailState,
 };
-use crossterm::event::{Event, KeyCode, KeyEventKind};
+use crossterm::event::{Event, KeyCode, KeyEventKind, KeyModifiers};
 use ratatui_kit::{
     AnyElement, Hooks, State, UseContext, UseEffect, UseEvents, UseExit, UseRouter, component,
     element, prelude::Outlet,
@@ -64,10 +64,19 @@ pub fn Layout(mut hooks: Hooks) -> impl Into<AnyElement<'static>> {
                 KeyCode::Char('q') | KeyCode::Char('Q') => {
                     exit();
                 }
-                KeyCode::Char('g') | KeyCode::Char('G') => {
-                    navigate.go(1);
+                KeyCode::Char('g') | KeyCode::Char('G') | KeyCode::Esc => {
+                    if key
+                        .modifiers
+                        .contains(KeyModifiers::CONTROL | KeyModifiers::SHIFT)
+                    {
+                        navigate.go(1);
+                    }
                 }
-                KeyCode::Char('b') | KeyCode::Char('B') => {
+                KeyCode::Char('b') | KeyCode::Char('B') | KeyCode::Enter
+                    if key
+                        .modifiers
+                        .contains(KeyModifiers::CONTROL | KeyModifiers::SHIFT) =>
+                {
                     navigate.go(-1);
                 }
                 _ => {}

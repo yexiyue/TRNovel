@@ -1,0 +1,53 @@
+---
+title: 本地书籍
+sidebar:
+    order: 3
+---
+
+import { Steps, Tabs, TabItem } from "@astrojs/starlight/components";
+
+接下来将介绍如何使用 TRNovel 查找本地书籍。
+## 基础使用
+
+<Steps>
+
+1. 打开终端，运行以下命令启动 TRNovel：
+    <Tabs>
+        <TabItem value="default" label="通用命令" icon="terminal">
+            ```bash
+            trnovel
+            ```
+        </TabItem>
+        <TabItem value="short" label="简写命令" icon="terminal">
+            ```bash
+            trn
+            ```
+            :::caution[注意]
+            只有通过包管理器安装 TRNovel 时，才可以使用该缩写命令。
+            :::
+        </TabItem>
+    </Tabs>
+    
+2. 然后会进入 TRNovel 的交互式界面，在这里你可以选择“本地书籍”选项。
+    ![home](/src/assets/guides/home.png)
+    然后按回车键确认。
+3. 选择“本地书籍”后，TRNovel 会扫描当前执行目录及其子目录下的所以`.txt`文件。
+    ![file-tree](/src/assets/guides/file-tree.png)
+    这样就完成了本地书籍的查找基本步骤。
+4. 然后选择您想阅读的书籍，按回车键确认即可开始阅读。
+    ![read](/src/assets/guides/read.png)
+</Steps>
+
+## 进阶使用
+
+如果您想扫描指定目录下的书籍，可以在进入“本地书籍”页面后，按下快捷键`s`，然后输入您想扫描的目录路径，按回车确认即可。
+![local-path](/src/assets/guides/local-path.gif)
+:::note[提示]
+通过输入路径查找书籍搜索时，会保存该路径为历史记录，方便下次快速访问。
+:::
+:::tip[技巧]
+您也可以在启动 TRNovel 时，直接通过命令行参数指定扫描目录，例如：
+```bash
+trnovel -l /path/to/your/books
+```
+:::

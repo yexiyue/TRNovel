@@ -11,6 +11,12 @@ export default defineConfig({
   base: "/TRNovel",
   integrations: [
     starlight({
+      locales: {
+        root: {
+          label: "简体中文",
+          lang: "zh-CN",
+        }
+      },
       plugins: [
         starlightThemeNova(),
         starlightSidebarTopicsPlugin([
