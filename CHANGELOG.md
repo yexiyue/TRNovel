@@ -2,12 +2,33 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.7.6] - 2025-10-29
+
+### 🚀 Features
+
+- *(docs)* Init
+- 添加文档
+
+### 🐛 Bug Fixes
+
+- 修复排除 crate 列表的添加逻辑
+- Docs add base
+- 修复快捷键提示
+
+### 📚 Documentation
+
+- 添加阅读文档
+
 ## [0.7.5] - 2025-10-26
 
 ### 🐛 Bug Fixes
 
 - 修复快速模式打开失败
 - 更新 ratatui-kit 版本并修复 tts 模态框交互逻辑
+
+### ⚙️ Miscellaneous Tasks
+
+- Release
 
 ## [0.7.4] - 2025-10-24
 
