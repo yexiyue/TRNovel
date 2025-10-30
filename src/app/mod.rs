@@ -24,6 +24,7 @@ use crate::{
             select_books::SelectBooks,
         },
         select_history::SelectHistory,
+        theme_setting::ThemeSetting,
     },
     utils::novel_catch_dir,
 };
@@ -43,6 +44,7 @@ pub fn App(props: &AppProps, mut hooks: Hooks) -> impl Into<AnyElement<'static>>
     let history_state = hooks.use_state(|| None::<History>);
     let book_sources_catch_state = hooks.use_state(|| None::<BookSourceCache>);
     let novel_tts_state = hooks.use_state(|| None::<NovelTTS>);
+    let is_inputting = hooks.use_state(|| false);
     let mut tts_config = hooks.use_state(TTSConfig::default);
     let error = hooks.use_state(|| None::<String>);
 
@@ -98,6 +100,8 @@ pub fn App(props: &AppProps, mut hooks: Hooks) -> impl Into<AnyElement<'static>>
             "/select-books"=> SelectBooks,
             "/book-detail"=> BookDetail,
             "/network-novel"=> ReadNovel<NetworkNovel>,
+            // 主题设置
+            "/theme-setting"=> ThemeSetting,
         }
     );
 
@@ -119,11 +123,13 @@ pub fn App(props: &AppProps, mut hooks: Hooks) -> impl Into<AnyElement<'static>>
                             ContextProvider(value:Context::owned(book_sources_catch_state)){
                                 ContextProvider(value:Context::owned(tts_config)){
                                     ContextProvider(value:Context::owned(novel_tts_state)){
-                                        RouterProvider(
-                                            routes: routes,
-                                            index_path: "/home",
-                                            state: RouteState::new(props.trnovel.clone())
-                                        )
+                                        ContextProvider(value:Context::owned(is_inputting)){
+                                            RouterProvider(
+                                                routes: routes,
+                                                index_path: "/home",
+                                                state: RouteState::new(props.trnovel.clone())
+                                            )
+                                        }
                                     }
                                 }
                             }

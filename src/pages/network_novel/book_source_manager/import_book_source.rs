@@ -87,7 +87,6 @@ impl WidgetRef for ListItem {
 #[derive(Default, Props)]
 pub struct ImportBookSourceProps {
     pub is_editing: bool,
-    pub is_inputting: Option<State<bool>>,
 }
 
 #[component]
@@ -97,9 +96,8 @@ pub fn ImportBookSource(
 ) -> impl Into<AnyElement<'static>> {
     let selected = hooks.use_state(HashSet::<usize>::default);
     let mut book_source_url = hooks.use_state(String::new);
-    let is_inputting = hooks.use_state(|| false);
     let is_editing = props.is_editing;
-    let mut is_inputting = props.is_inputting.unwrap_or(is_inputting);
+    let is_inputting = *hooks.use_context::<State<bool>>();
     let theme = hooks.use_theme_config();
 
     let book_source_cache = *hooks.use_context::<State<Option<BookSourceCache>>>();
@@ -123,12 +121,7 @@ pub fn ImportBookSource(
         SearchInput(
             value: book_source_url.read().clone(),
             placeholder: "按s输入书源地址 (支持 http, https, file)",
-            is_editing: is_inputting.get() && is_editing,
-            on_editing_change: move |inputting| {
-                if is_editing{
-                    is_inputting.set(inputting);
-                }
-            },
+            is_editing: is_editing,
             validate:|value:String|{
                 if value.starts_with("http")
                     || value.starts_with("https")

@@ -16,7 +16,7 @@ use std::{env::current_dir, path::PathBuf};
 pub fn SelectFile(mut hooks: Hooks) -> impl Into<AnyElement<'static>> {
     let dir_path = hooks.try_use_route_state::<PathBuf>();
     let mut navigate = hooks.use_navigate();
-    let mut is_inputting = hooks.use_state(|| false);
+    let is_inputting = *hooks.use_context::<State<bool>>();
     let mut path = hooks.use_state(|| dir_path.map(|p| (*p).clone()));
     let mut info_modal_open = hooks.use_state(|| false);
     let history = *hooks.use_context::<State<Option<History>>>();
@@ -60,12 +60,7 @@ pub fn SelectFile(mut hooks: Hooks) -> impl Into<AnyElement<'static>> {
             SearchInput(
                 value: dir_path.to_string_lossy().to_string(),
                 placeholder: "按s 开始输入小说文件夹路径",
-                is_editing: is_inputting.get() && !info_modal_open.get(),
-                on_editing_change: move |is_editing| {
-                    if !info_modal_open.get() {
-                        is_inputting.set(is_editing);
-                    }
-                },
+                is_editing: !info_modal_open.get(),
                 validate: |input: String| {
                     let path = PathBuf::from(input);
                     if path.exists() {

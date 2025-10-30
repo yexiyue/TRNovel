@@ -19,7 +19,6 @@ pub struct SearchInputProps {
     pub clear_on_escape: bool,
     pub is_editing: bool,
     pub on_clear: Handler<'static, ()>,
-    pub on_editing_change: Handler<'static, bool>,
 }
 
 #[component]
@@ -28,6 +27,7 @@ pub fn SearchInput(
     mut hooks: Hooks,
 ) -> impl Into<AnyElement<'static>> {
     let is_editing = props.is_editing;
+    let mut is_inputting = *hooks.use_context::<State<bool>>();
 
     let mut value = hooks.use_state(tui_input::Input::default);
     let mut is_valid = hooks.use_state(|| None::<bool>);
@@ -39,7 +39,6 @@ pub fn SearchInput(
     let clear_on_escape = props.clear_on_escape;
     let mut on_submit = props.on_submit.take();
     let mut on_clear = props.on_clear.take();
-    let mut on_editing_change = props.on_editing_change.take();
 
     hooks.use_effect(
         || {
@@ -52,8 +51,9 @@ pub fn SearchInput(
     hooks.use_events(move |event| {
         if let Event::Key(key) = event
             && key.kind == KeyEventKind::Press
+            && is_editing
         {
-            if is_editing {
+            if is_inputting.get() {
                 match key.code {
                     KeyCode::Esc => {
                         if clear_on_escape {
@@ -62,7 +62,7 @@ pub fn SearchInput(
                             status_message.set(String::new());
                             on_clear(());
                         }
-                        on_editing_change(false);
+                        is_inputting.set(false);
                     }
                     KeyCode::Enter => {
                         if !on_submit.is_default() {
@@ -74,7 +74,7 @@ pub fn SearchInput(
                                 on_clear(());
                             }
                             if valid {
-                                on_editing_change(false);
+                                is_inputting.set(false);
                             }
                         }
                     }
@@ -89,7 +89,7 @@ pub fn SearchInput(
                     }
                 }
             } else if let KeyCode::Char('s') = key.code {
-                on_editing_change(true);
+                is_inputting.set(true);
             }
         }
     });
@@ -97,7 +97,7 @@ pub fn SearchInput(
     element!(
         Border(
             height:Constraint::Length(3),
-            border_style: if let Some(valid)=is_valid.get() && is_editing{
+            border_style: if let Some(valid)=is_valid.get() && is_inputting.get(){
                         if valid {
                             theme.search.success_border
                         } else {
@@ -106,7 +106,7 @@ pub fn SearchInput(
                     } else {
                        theme.basic.border
                     },
-            top_title: if let Some(valid)=is_valid.get() && !status_message.read().is_empty() && is_editing{
+            top_title: if let Some(valid)=is_valid.get() && !status_message.read().is_empty() && is_inputting.get(){
                 if valid {
                     Some(Line::from(status_message.read().deref().to_string()).style(theme.search.success_border_info))
                 } else {
@@ -122,7 +122,7 @@ pub fn SearchInput(
                 style: theme.search.text,
                 placeholder: props.placeholder.clone(),
                 placeholder_style: theme.search.placeholder,
-                hide_cursor: !is_editing,
+                hide_cursor: !is_inputting.get(),
             )
         }
     )

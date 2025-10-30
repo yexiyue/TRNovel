@@ -29,7 +29,7 @@ impl From<ExploreListItem> for ListItem<'_> {
 #[component]
 pub fn SelectBooks(mut hooks: Hooks) -> impl Into<AnyElement<'static>> {
     let mut info_modal_open = hooks.use_state(|| false);
-    let is_inputting = hooks.use_state(|| false);
+    let is_inputting = *hooks.use_context::<State<bool>>();
     let book_source = hooks.use_route_state::<BookSource>();
     let mut explores = hooks.use_state(std::vec::Vec::new);
     let theme = hooks.use_theme_config();
@@ -85,7 +85,6 @@ pub fn SelectBooks(mut hooks: Hooks) -> impl Into<AnyElement<'static>> {
                 parser: book_source_parser,
                 current_explore: current_explore.read().clone(),
                 is_editing: !is_explore_open.get() && !info_modal_open.get(),
-                is_inputting,
             }
         )
         WarningModal(

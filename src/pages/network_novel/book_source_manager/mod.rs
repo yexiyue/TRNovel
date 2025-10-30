@@ -22,7 +22,7 @@ pub fn BookSourceManager(mut hooks: Hooks) -> impl Into<AnyElement<'static>> {
             .as_ref()
             .is_some_and(|c| !c.book_sources.is_empty())
     });
-    let is_inputting = hooks.use_state(|| false);
+    let is_inputting = *hooks.use_context::<State<bool>>();
     let mut info_modal_open = hooks.use_state(|| false);
 
     hooks.use_events(move |event| {
@@ -65,7 +65,6 @@ pub fn BookSourceManager(mut hooks: Hooks) -> impl Into<AnyElement<'static>> {
         ){
             ImportBookSource(
                 is_editing: !info_modal_open.get(),
-                is_inputting: is_inputting,
             )
             SelectBookSource(
                 is_editing: false,

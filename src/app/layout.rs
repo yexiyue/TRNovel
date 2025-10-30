@@ -1,7 +1,7 @@
 use crate::{
     Commands, History, HistoryItem, TRNovel, pages::network_novel::book_detail::BookDetailState,
 };
-use crossterm::event::{Event, KeyCode, KeyEventKind, KeyModifiers};
+use crossterm::event::{Event, KeyCode, KeyEventKind};
 use ratatui_kit::{
     AnyElement, Hooks, State, UseContext, UseEffect, UseEvents, UseExit, UseRouter, component,
     element, prelude::Outlet,
@@ -14,6 +14,7 @@ pub fn Layout(mut hooks: Hooks) -> impl Into<AnyElement<'static>> {
     let mut exit = hooks.use_exit();
     let params = hooks.try_use_route_state::<TRNovel>();
     let history = *hooks.use_context::<State<Option<History>>>();
+    let is_inputting = *hooks.use_context::<State<bool>>();
 
     hooks.use_effect(
         || {
@@ -59,19 +60,16 @@ pub fn Layout(mut hooks: Hooks) -> impl Into<AnyElement<'static>> {
     hooks.use_events(move |event| {
         if let Event::Key(key) = event
             && key.kind == KeyEventKind::Press
+            && !is_inputting.get()
         {
             match key.code {
                 KeyCode::Char('q') | KeyCode::Char('Q') => {
                     exit();
                 }
                 KeyCode::Char('g') | KeyCode::Char('G') => {
-                    if key.modifiers.contains(KeyModifiers::CONTROL) {
-                        navigate.go(1);
-                    }
+                    navigate.go(1);
                 }
-                KeyCode::Char('b') | KeyCode::Char('B')
-                    if key.modifiers.contains(KeyModifiers::CONTROL) =>
-                {
+                KeyCode::Char('b') | KeyCode::Char('B') => {
                     navigate.go(-1);
                 }
                 _ => {}

@@ -19,14 +19,13 @@ pub struct FindBooksProps {
     pub parser: State<Option<BookSourceParser>>,
     pub current_explore: Option<super::ExploreListItem>,
     pub is_editing: bool,
-    pub is_inputting: State<bool>,
 }
 
 #[component]
 pub fn FindBooks(props: &FindBooksProps, mut hooks: Hooks) -> impl Into<AnyElement<'static>> {
     let mut filter_text = hooks.use_state(String::default);
     let theme = hooks.use_theme_config();
-    let mut is_inputting = props.is_inputting;
+    let is_inputting = *hooks.use_context::<State<bool>>();
     let mut page = hooks.use_state(|| 1);
     let page_size = hooks.use_state(|| 20);
     let list_state = hooks.use_state(ListState::default);
@@ -101,12 +100,7 @@ pub fn FindBooks(props: &FindBooksProps, mut hooks: Hooks) -> impl Into<AnyEleme
 
     element!(View{
         SearchInput(
-            is_editing: is_inputting.get() && is_editing,
-            on_editing_change: move |inputting| {
-                if is_editing{
-                    is_inputting.set(inputting);
-                }
-            },
+            is_editing: is_editing,
             placeholder: "按s键搜索书籍, 按tab键切换频道",
             on_submit: move |text| {
                 filter_text.set(text);
