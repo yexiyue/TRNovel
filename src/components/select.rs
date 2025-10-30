@@ -19,6 +19,8 @@ where
     pub bottom_title: Option<Line<'static>>,
     pub is_editing: bool,
     pub empty_message: String,
+    pub default_value: Option<usize>,
+    pub highlight_symbol: Option<&'static str>,
 }
 
 impl<T> Default for SelectProps<T>
@@ -34,6 +36,8 @@ where
             bottom_title: None,
             is_editing: false,
             empty_message: "暂无数据".to_string(),
+            default_value: None,
+            highlight_symbol: None,
         }
     }
 }
@@ -46,12 +50,23 @@ where
     let state = hooks.use_state(ListState::default);
     let state = props.state.unwrap_or(state);
 
+    hooks.use_effect(
+        || {
+            state.write().select(props.default_value);
+        },
+        props.default_value,
+    );
+
     let theme = hooks.use_theme_config();
     let is_empty = props.items.is_empty();
 
-    let list = List::new(props.items.clone())
+    let mut list = List::new(props.items.clone())
         .style(theme.basic.text)
         .highlight_style(theme.selected);
+
+    if let Some(highlight_symbol) = props.highlight_symbol {
+        list = list.highlight_symbol(highlight_symbol);
+    }
 
     let mut on_select = props.on_select.take();
 

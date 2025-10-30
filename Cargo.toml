@@ -41,7 +41,7 @@ tokio = { workspace = true }
 tokio-util = { workspace = true }
 futures = { workspace = true }
 dirs = { workspace = true }
-ratatui-kit = { version = "0.5.8", features = ["full"] }
+ratatui-kit = { version = "0.5.9", features = ["full"] }
 # ratatui-kit = { features = [
 #     "full",
 # ], path = "../ratatui-kit/packages/ratatui-kit" }
