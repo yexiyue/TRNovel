@@ -2,6 +2,16 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.7.9] - 2025-10-30
+
+### 🚀 Features
+
+- 添加主题设置界面
+
+### 🐛 Bug Fixes
+
+- 修复全局快捷键冲突 Close(#40)
+
 ## [0.7.8] - 2025-10-29
 
 ### 🐛 Bug Fixes
@@ -11,6 +21,10 @@ All notable changes to this project will be documented in this file.
 ### 📚 Documentation
 
 - 添加听书模式文档
+
+### ⚙️ Miscellaneous Tasks
+
+- Release
 
 ## [0.7.7] - 2025-10-29
 
