@@ -303,7 +303,11 @@ pub fn ReadContent(
         #(if props.is_loading {
             element!(Loading(tip:"加载内容中...")).into_any()
         }else{
-            element!(Text(text: paragraph, scroll: (current_line as u16,0))).into_any()
+            element!(Text(
+                text: paragraph,
+                style:theme.basic.text,
+                scroll: (current_line as u16,0))
+            ).into_any()
         })
         View(
             flex_direction: Direction::Horizontal,

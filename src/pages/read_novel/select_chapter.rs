@@ -1,7 +1,10 @@
 use ratatui::{text::Line, widgets::ListItem};
 use ratatui_kit::prelude::*;
 
-use crate::components::{search_input::SearchInput, select::Select};
+use crate::{
+    components::{search_input::SearchInput, select::Select},
+    hooks::UseThemeConfig,
+};
 
 #[derive(Default, Clone)]
 pub struct ChapterName(pub String, pub usize);
@@ -32,6 +35,7 @@ pub fn SelectChapter(
     mut hooks: Hooks,
 ) -> impl Into<AnyElement<'static>> {
     let mut filter_text = hooks.use_state(String::default);
+    let theme = hooks.use_theme_config();
     let is_inputting = *hooks.use_context::<State<bool>>();
     let state = hooks.use_state(ratatui::widgets::ListState::default);
 
@@ -91,7 +95,7 @@ pub fn SelectChapter(
             is_editing: is_editing,
         )
         Select<ChapterName>(
-            top_title: Line::from("目录").centered(),
+            top_title: Line::from("目录").style(theme.basic.border_title).centered(),
             empty_message: if filter_text.read().is_empty() {
                 "暂无章节".to_owned()
             } else {
@@ -108,7 +112,7 @@ pub fn SelectChapter(
                     state.read().selected().unwrap_or(0) + 1,
                     items.len()
                 )
-            ),
+            ).style(theme.basic.border_info),
             items: items,
             default_value: props.default_value,
         )

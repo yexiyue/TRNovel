@@ -56,12 +56,13 @@ impl ThemeConfig {
             text: Style::new().fg(text_color),
             border: Style::new().dim(),
             border_info: Style::new().dim().fg(info_color),
+            border_title: Style::new().dim().fg(primary_color),
             ..Default::default()
         };
         Self {
             colors,
             detail_info: Style::new().fg(warning_color).bold(),
-            logo: Style::new().light_green(),
+            logo: Style::new().fg(success_color),
             selected: Style::new().fg(success_color),
             highlight: Style::new().fg(primary_color),
             empty: Style::new().fg(warning_color).bold(),
