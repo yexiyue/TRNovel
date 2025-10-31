@@ -55,4 +55,12 @@ export default defineConfig({
     }),
     icon(),
   ],
+  image: {
+    service: {
+      entrypoint: 'astro/assets/services/sharp',
+      config: {
+        limitInputPixels: false,
+      },
+    }
+  }
 });
