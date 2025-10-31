@@ -36,6 +36,7 @@ where
 
     let mut content_loading = hooks.use_state(|| false);
     let mut info_modal_open = hooks.use_state(|| false);
+    let mut line_percent = hooks.use_state(|| 0.0);
 
     let (novel, loading, error) = hooks.use_init_state(async move {
         let args = route_state.as_ref().clone();
@@ -59,18 +60,11 @@ where
             content_loading.set(true);
             content.set(res.get_content().await?);
             content_loading.set(false);
+            line_percent.set(res.line_percent);
 
             Ok::<T, Errors>(res)
         })
         .await?
-    });
-
-    let mut line_percent = hooks.use_state(|| {
-        novel
-            .read()
-            .as_ref()
-            .map(|n| n.line_percent)
-            .unwrap_or_default()
     });
 
     hooks.use_on_drop({

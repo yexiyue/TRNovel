@@ -2,7 +2,6 @@ use crossterm::event::{Event, KeyCode, KeyEventKind};
 use parse_book_source::BookSource;
 use ratatui::{
     layout::{Constraint, Layout},
-    style::Stylize,
     text::Line,
     widgets::{Block, Padding, Widget, WidgetRef},
 };
@@ -121,13 +120,7 @@ pub fn SelectBookSource(
             },
             is_editing: !delete_modal_open.get() && props.is_editing,
             empty_message: "暂无书源，请先导入书源",
-            top_title: Line::from("选择书源 (回车确认)").style(
-                if props.is_editing {
-                    theme.highlight.not_dim()
-                } else {
-                    theme.basic.border_title
-                }
-            ).centered(),
+            top_title: Line::from("选择书源 (回车确认)").style(theme.basic.border_title).centered(),
             render_item:{
                 let theme=theme.clone();
                 move |context: &ListBuildContext| {
@@ -141,7 +134,7 @@ pub fn SelectBookSource(
             }
         )
         ConfirmModal(
-            title: Line::from("警告").centered().style(theme.basic.border_title),
+            title: "警告",
             content: "确认删除该书源吗？",
             open: delete_modal_open.get() && props.is_editing,
             on_confirm:move |_| {

@@ -98,14 +98,14 @@ pub fn SearchInput(
         Border(
             height:Constraint::Length(3),
             border_style: if let Some(valid)=is_valid.get() && is_inputting.get(){
-                        if valid {
-                            theme.search.success_border
-                        } else {
-                            theme.search.error_border
-                        }
-                    } else {
-                       theme.basic.border
-                    },
+                if valid {
+                    theme.search.success_border
+                } else {
+                    theme.search.error_border
+                }
+            } else {
+                theme.basic.border
+            },
             top_title: if let Some(valid)=is_valid.get() && !status_message.read().is_empty() && is_inputting.get(){
                 if valid {
                     Some(Line::from(status_message.read().deref().to_string()).style(theme.search.success_border_info))

@@ -120,13 +120,13 @@ pub fn FindBooks(props: &FindBooksProps, mut hooks: Hooks) -> impl Into<AnyEleme
                 }else{
                     "选择书籍".to_string()
                 }
-            ).centered(),
+            ).style(theme.basic.border_title).centered(),
             bottom_title: if books.read().as_ref().map(|b|b.len()).unwrap_or(0)>0{
                 Line::from(
                     format!("第 {} 页, {}/{}", page.get(), list_state.read().selected.unwrap_or(0)+1, books.read().as_ref().map(|b|b.len()).unwrap_or(0))
-                ).centered()
+                ).centered().style(theme.basic.border_info)
             }else{
-                Line::from("暂无书籍").centered()
+                Line::from("暂无书籍").centered().style(theme.basic.border_info)
             },
             is_editing: !is_inputting.get() && props.is_editing,
             empty_message: "暂无书籍，请切换频道，或者搜索",

@@ -82,7 +82,8 @@ pub fn ShortcutInfoModal(
                     .centered()
                     .style(theme.basic.border_title),
             ),
-        );
+        )
+        .style(theme.basic.text);
 
     let global_shortcut_info = KeyShortcutInfo::new(vec![
         ("退出程序", "Q / Ctrl + C"),

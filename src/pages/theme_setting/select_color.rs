@@ -125,7 +125,6 @@ pub fn SelectColor(
                 is_editing: props.is_editing && !is_inputting.get(),
                 default_value: default,
                 on_select: move |item: ColorItem| {
-                    println!("selected color: {:?}", item.0);
                     if let Some(tx) = tx.as_ref() {
                         let _ = tx.try_send(item.0);
                     }

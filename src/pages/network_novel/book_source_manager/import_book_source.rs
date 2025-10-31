@@ -9,7 +9,6 @@ use crate::{
 use parse_book_source::BookSource;
 use ratatui::{
     layout::{Constraint, Layout},
-    style::Stylize,
     text::{Line, Span},
     widgets::{Block, Padding, Widget, WidgetRef},
 };
@@ -147,11 +146,7 @@ pub fn ImportBookSource(
             empty_message: "暂无数据",
             loading: loading.get(),
             top_title: Line::from("选择要导入的书源 (空格选择, 回车确认)").style(
-                if props.is_editing {
-                    theme.highlight.not_dim()
-                } else {
-                    theme.basic.border_title
-                }
+               theme.basic.border_title
             ).centered(),
             loading_tip:"解析中...".to_string(),
             items: book_source.read().clone().unwrap_or_default(),
