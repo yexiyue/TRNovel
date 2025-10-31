@@ -191,7 +191,7 @@ pub fn SelectHistory(mut hooks: Hooks) -> impl Into<AnyElement<'static>> {
             },
         )
         ConfirmModal(
-            title: Line::from("警告").centered().style(theme.basic.border_title),
+            title: "警告",
             content: "确认删除该历史记录吗？",
             open: delete_modal_open.get(),
             on_confirm:move |_| {

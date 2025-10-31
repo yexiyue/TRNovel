@@ -1,10 +1,10 @@
 use crate::{
     ThemeConfig,
-    components::{KeyShortcutInfo, ShortcutInfoModal, list_select::ListSelect},
+    components::{ConfirmModal, KeyShortcutInfo, ShortcutInfoModal, list_select::ListSelect},
 };
 use crossterm::event::{Event, KeyCode, KeyEventKind};
 use ratatui::{
-    style::{Color, Stylize},
+    style::Color,
     text::Line,
     widgets::{Block, Padding, Widget, WidgetRef},
 };
@@ -110,6 +110,7 @@ pub fn ThemeSetting(mut hooks: Hooks) -> impl Into<AnyElement<'static>> {
     let theme = theme_config.read().clone();
     let mut current = hooks.use_state(|| None::<ColorItem>);
     let is_inputting = *hooks.use_context::<State<bool>>();
+    let mut reset_modal_open = hooks.use_state(|| false);
 
     hooks.use_events(move |event| {
         if let Event::Key(key) = event
@@ -119,6 +120,9 @@ pub fn ThemeSetting(mut hooks: Hooks) -> impl Into<AnyElement<'static>> {
             match key.code {
                 KeyCode::Char('i') | KeyCode::Char('I') if current.read().is_none() => {
                     info_modal_open.set(!info_modal_open.get());
+                }
+                KeyCode::Char('d') | KeyCode::Char('D') if current.read().is_none() => {
+                    reset_modal_open.set(!reset_modal_open.get());
                 }
                 KeyCode::Esc if current.read().is_some() => {
                     current.set(None);
@@ -135,7 +139,7 @@ pub fn ThemeSetting(mut hooks: Hooks) -> impl Into<AnyElement<'static>> {
         ListSelect<ColorItem>(
             items: ColorItem::all(),
             default_value: 0,
-            top_title: Line::from("主题设置").style(theme.highlight).centered().not_dim(),
+            top_title: Line::from("主题设置").style(theme.basic.border_title).centered(),
             render_item:move|ctx:&ListBuildContext|{
                 let color_item=color_items[ctx.index].clone();
                 let name = color_item.name().to_string();
@@ -148,7 +152,7 @@ pub fn ThemeSetting(mut hooks: Hooks) -> impl Into<AnyElement<'static>> {
                     theme: theme.clone(),
                 }.into(),3)
             },
-            is_editing: current.read().is_none() && !info_modal_open.get(),
+            is_editing: current.read().is_none() && !info_modal_open.get() && !reset_modal_open.get(),
             on_select: move |item:ColorItem| {
                 current.set(Some(item));
             },
@@ -156,7 +160,7 @@ pub fn ThemeSetting(mut hooks: Hooks) -> impl Into<AnyElement<'static>> {
         #(if let Some(selected_item) = current.read().clone() {
             element!(SelectColor(
                 color: selected_item.get_color(&theme_config.read().clone()),
-                is_editing: !info_modal_open.get(),
+                is_editing: true,
                 on_change: move |color| {
                     let mut theme = theme_config.read().clone();
                     selected_item.set_color(&mut theme, color);
@@ -178,5 +182,19 @@ pub fn ThemeSetting(mut hooks: Hooks) -> impl Into<AnyElement<'static>> {
                 open: info_modal_open.get(),
             )).into_any()
         })
+        ConfirmModal(
+            title: "重置主题",
+            content: "是否确定要重置主题？",
+            open: reset_modal_open.get(),
+            on_confirm: move |_| {
+                let new_theme = ThemeConfig::default();
+                let _ = new_theme.save();
+                *theme_config.write() = new_theme;
+                reset_modal_open.set(false);
+            },
+            on_cancel: move |_| {
+                reset_modal_open.set(false);
+            }
+        )
     })
 }

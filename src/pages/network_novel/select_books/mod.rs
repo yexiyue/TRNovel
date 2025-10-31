@@ -119,7 +119,7 @@ pub fn SelectBooks(mut hooks: Hooks) -> impl Into<AnyElement<'static>> {
                         current_explore.set(Some(item.clone()));
                         is_explore_open.set(false);
                     },
-                    top_title: Line::from("选择分类").style(theme.highlight.not_dim()).centered(),
+                    top_title: Line::from("选择分类").style(theme.basic.border_title).centered(),
                     is_editing: is_explore_open.get(),
                     empty_message: "暂无分类".to_string(),
                 )

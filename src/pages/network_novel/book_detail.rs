@@ -3,7 +3,6 @@ use crossterm::event::{Event, KeyCode, KeyEventKind};
 use parse_book_source::{BookInfo, BookListItem, BookSourceParser};
 use ratatui::{
     layout::{Constraint, Margin},
-    style::Stylize,
     text::{Line, Span},
     widgets::{Paragraph, Wrap},
 };
@@ -140,7 +139,7 @@ pub fn BookDetail(mut hooks: Hooks) -> impl Into<AnyElement<'static>> {
     .wrap(Wrap { trim: true });
 
     element!(Border(
-        top_title: Line::from("小说详情").centered().style(theme.highlight.not_dim()),
+        top_title: Line::from("小说详情").centered().style(theme.basic.border_title),
         border_style: theme.basic.border,
     ){
         #(if loading.get(){

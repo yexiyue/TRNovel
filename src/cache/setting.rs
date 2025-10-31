@@ -56,7 +56,7 @@ impl ThemeConfig {
             text: Style::new().fg(text_color),
             border: Style::new().dim(),
             border_info: Style::new().dim().fg(info_color),
-            border_title: Style::new().dim().fg(primary_color),
+            border_title: Style::new().fg(primary_color).not_dim(),
             ..Default::default()
         };
         Self {
