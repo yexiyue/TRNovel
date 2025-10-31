@@ -1,40 +1,42 @@
 ---
-title: Welcome to Starlight
-description: Get started building your docs site with Starlight.
-template: splash # Remove or comment out this line to display the site sidebar on this page.
+title: TRNovel
+description: TRNovel 是一个功能强大的终端小说阅读器，支持本地和网络小说阅读。
+template: splash
 hero:
-  tagline: Congrats on setting up a new Starlight project!
+  tagline: 基于 Rust 和 Ratatui-Kit 构建的现代化终端小说阅读器，专为小说爱好者设计。
   image:
     file: ../../assets/houston.webp
   actions:
-    - text: Example Guide
+    - text: 快速开始
       link: /TRNovel/guides/intro
       icon: right-arrow
-    - text: Read the Starlight docs
-      link: https://starlight.astro.build
+    - text: 点个 Star 支持我们
+      link: https://github.com/yexiyue/TRNovel
       icon: external
       variant: minimal
 ---
 
 import { Card, CardGrid } from '@astrojs/starlight/components';
 
-## Next steps
 
 <CardGrid stagger>
-	<Card title="Update content" icon="pencil">
-		Edit `src/content/docs/index.mdx` to see this page change.
+	<Card title="本地小说阅读" icon="document">
+		支持本地 TXT 格式小说文件的阅读，自动识别目录结构。
 	</Card>
-	<Card title="Change page layout" icon="document">
-		Delete `template: splash` in `src/content/docs/index.mdx` to display a
-		sidebar on this page.
+	<Card title="网络小说源" icon="open-book">
+		通过自定义书源配置，访问网络小说内容。
 	</Card>
-	<Card title="Add new content" icon="add-document">
-		Add Markdown or MDX files to `src/content/docs` to create new pages.
+	<Card title="历史记录管理" icon="bars">
+		自动记录阅读进度，方便继续阅读。
 	</Card>
-	<Card title="Configure your site" icon="setting">
-		Edit your `sidebar` and other config in `astro.config.mjs`.
+	<Card title="主题自定义" icon="setting">
+		支持自定义主题颜色，打造个性化阅读体验。
 	</Card>
-	<Card title="Read the docs" icon="open-book">
-		Learn more in [the Starlight Docs](https://starlight.astro.build/).
+	<Card title="听书功能" icon="star">
+		集成 TTS 语音合成功能，支持听书模式。
+	</Card>
+	<Card title="跨平台支持" icon="laptop">
+		支持 Windows、macOS 和 Linux 等主流操作系统。
 	</Card>
 </CardGrid>
+

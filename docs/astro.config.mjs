@@ -18,7 +18,16 @@ export default defineConfig({
         }
       },
       plugins: [
-        starlightThemeNova(),
+        starlightThemeNova({
+          nav: [
+            {
+              label: '文档', href: '/TRNovel/guides/intro/'
+            },
+            {
+              label: "ratatui-kit", href: "https://yexiyue.github.io/ratatui-kit-website/"
+            }
+          ]
+        }),
         starlightSidebarTopicsPlugin([
           {
             label: "指南",

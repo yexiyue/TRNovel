@@ -177,7 +177,7 @@ pub fn ThemeSetting(mut hooks: Hooks) -> impl Into<AnyElement<'static>> {
                     ("选择下一个", "J / ▼"),
                     ("选择上一个", "K / ▲"),
                     ("确认选择", "Enter"),
-                    ("显示帮助", "I"),
+                    ("重置主题", "D"),
                 ]),
                 open: info_modal_open.get(),
             )).into_any()
