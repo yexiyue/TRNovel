@@ -2,6 +2,26 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.8.0] - 2025-10-31
+
+### 🚀 Features
+
+- 添加重置主题功能
+
+### 🐛 Bug Fixes
+
+- 修复历史记录跳转到本地小说异常
+- 修复某些界面没有使用主题情况
+
+### 📚 Documentation
+
+- 添加网络小说文档
+- README
+
+### ⚙️ Miscellaneous Tasks
+
+- Minor version
+
 ## [0.7.9] - 2025-10-30
 
 ### 🚀 Features
@@ -11,6 +31,10 @@ All notable changes to this project will be documented in this file.
 ### 🐛 Bug Fixes
 
 - 修复全局快捷键冲突 Close(#40)
+
+### ⚙️ Miscellaneous Tasks
+
+- Release
 
 ## [0.7.8] - 2025-10-29
 
