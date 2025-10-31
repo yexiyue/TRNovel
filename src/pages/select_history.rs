@@ -1,3 +1,5 @@
+use std::path::PathBuf;
+
 use crate::{
     History, HistoryItem, ThemeConfig,
     components::{ConfirmModal, KeyShortcutInfo, ShortcutInfoModal, list_select::ListSelect},
@@ -176,7 +178,7 @@ pub fn SelectHistory(mut hooks: Hooks) -> impl Into<AnyElement<'static>> {
                     HistoryItem::Local(_) => {
                         navigate.push_with_state(
                             "/local-novel",
-                            path,
+                            PathBuf::from(path),
                         );
                     }
                     HistoryItem::Network(_) => {

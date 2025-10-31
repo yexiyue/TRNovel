@@ -34,14 +34,9 @@ pub fn SelectChapter(
     let mut filter_text = hooks.use_state(String::default);
     let is_inputting = *hooks.use_context::<State<bool>>();
     let state = hooks.use_state(ratatui::widgets::ListState::default);
+
     let is_editing = props.is_editing;
 
-    hooks.use_effect(
-        || {
-            state.write().select(props.default_value);
-        },
-        props.default_value,
-    );
     let items = hooks.use_memo(
         || {
             if filter_text.read().is_empty() {
@@ -115,6 +110,7 @@ pub fn SelectChapter(
                 )
             ),
             items: items,
+            default_value: props.default_value,
         )
     })
 }
