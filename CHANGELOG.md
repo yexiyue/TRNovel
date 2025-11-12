@@ -2,6 +2,16 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.8.1] - 2025-11-12
+
+### 🐛 Bug Fixes
+
+- 修复最后一段丢失bug (Close #44)
+
+### 📚 Documentation
+
+- Update home
+
 ## [0.8.0] - 2025-10-31
 
 ### 🚀 Features
@@ -21,6 +31,7 @@ All notable changes to this project will be documented in this file.
 ### ⚙️ Miscellaneous Tasks
 
 - Minor version
+- Release
 
 ## [0.7.9] - 2025-10-30
 
