@@ -181,7 +181,7 @@ pub fn ReadContent(
     let is_scroll = props.is_scroll;
     let line_count = paragraph
         .line_count(props.width.saturating_sub(2))
-        .saturating_sub((props.height as usize) - 1);
+        .saturating_sub((props.height as usize) - 3);
 
     let mut current_line = hooks.use_memo(
         || ((line_percent.get() * (line_count as f64) * 1000.0).round() as usize) / 1000,
