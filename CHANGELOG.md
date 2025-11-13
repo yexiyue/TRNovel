@@ -2,6 +2,16 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.8.2] - 2025-11-13
+
+### 🐛 Bug Fixes
+
+- 修复下载任务二次下载进度不统一问题 Close(#46)
+
+### 🎨 Styling
+
+- Clippy
+
 ## [0.8.1] - 2025-11-12
 
 ### 🐛 Bug Fixes
@@ -11,6 +21,10 @@ All notable changes to this project will be documented in this file.
 ### 📚 Documentation
 
 - Update home
+
+### ⚙️ Miscellaneous Tasks
+
+- Release
 
 ## [0.8.0] - 2025-10-31
 
