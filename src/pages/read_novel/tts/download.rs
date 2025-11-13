@@ -1,5 +1,6 @@
 use crate::{hooks::UseThemeConfig, pages::read_novel::SettingItem, utils::format_bytes};
 use crossterm::event::{Event, KeyCode, KeyEventKind};
+use novel_tts::NovelTTSError;
 use ratatui::{text::Line, widgets::Gauge};
 use ratatui_kit::prelude::*;
 use std::ops::DerefMut;
@@ -26,7 +27,7 @@ where
     let theme = hooks.use_theme_config();
     let mut downloading = hooks.use_state(|| false);
     let is_downloaded = state.read().is_downloaded();
-    let mut progress = hooks.use_state(|| (0usize, 1usize));
+    let mut progress = hooks.use_state(|| (0usize, 0usize));
     let mut error = hooks.use_state(|| None::<novel_tts::NovelTTSError>);
     let is_editing = props.is_editing;
 
@@ -38,6 +39,7 @@ where
             match key.code {
                 KeyCode::Enter => {
                     if !is_downloaded && !downloading.get() {
+                        error.set(None);
                         downloading.set(true);
                         state.write().download(
                             move |downloaded, total| {
@@ -47,7 +49,12 @@ where
                                 }
                             },
                             move |err| {
-                                error.set(Some(err));
+                                match err {
+                                    NovelTTSError::Cancel(_) => {}
+                                    _ => {
+                                        error.set(Some(err));
+                                    }
+                                }
                                 downloading.set(false);
                             },
                         );
@@ -73,18 +80,22 @@ where
         element!(Fragment{
             $Line::from(format!("文件地址: {}",state.read().path.display()))
         })
+    } else if let Some(err) = &*error.read() {
+        element!(Fragment{
+            $Line::from(format!("下载失败, 按Enter重新开始下载, Error:{}",err)).style(theme.colors.error_color)
+        })
     } else if !downloading.get() {
         element!(Fragment{
             $Line::from("未下载, 按Enter开始下载")
         })
-    } else if let Some(err) = &*error.read() {
-        element!(Fragment{
-            $Line::from(format!("{}, 下载失败, 按Enter重新开始下载",err))
-        })
     } else {
         let progress = progress.get();
         let gauge = Gauge::default()
-            .ratio(progress.0 as f64 / progress.1 as f64)
+            .ratio(if progress.1 == 0 {
+                0.0
+            } else {
+                (progress.0 as f64 / progress.1 as f64).min(1.0).max(0.0)
+            })
             .label(format!(
                 "{}/{}",
                 format_bytes(progress.0),

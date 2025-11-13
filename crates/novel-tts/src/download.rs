@@ -66,7 +66,7 @@ where
 
     let mut res = client.send().await?.error_for_status()?;
 
-    let content_length = res.content_length().unwrap_or(0);
+    let content_length = res.content_length().unwrap_or(0) + downloaded;
 
     on_progress(downloaded, content_length);
 
