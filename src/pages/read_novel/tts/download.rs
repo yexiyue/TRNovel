@@ -94,7 +94,7 @@ where
             .ratio(if progress.1 == 0 {
                 0.0
             } else {
-                (progress.0 as f64 / progress.1 as f64).min(1.0).max(0.0)
+                (progress.0 as f64 / progress.1 as f64).clamp(0.0, 1.0)
             })
             .label(format!(
                 "{}/{}",
