@@ -38,7 +38,7 @@ jobs:
             target: x86_64-unknown-linux-gnu
             architecture: x86_64
             binary-postfix: ""
-            use-cross: true
+            use-cross: false
             binary-name: trnovel
           - os: windows-latest
             os-name: windows
@@ -74,27 +74,40 @@ jobs:
 
           profile: minimal
           override: true
-      # - name: Install dependencies
-      #   if: matrix.os-name == 'linux'
-      #   run: |
-      #     sudo apt-get update
-      #     sudo apt install libasound2-dev
-      # - name: Install rodio dev
-      #   if: matrix.target == 'aarch64-unknown-linux-gnu' || matrix.target == 'i686-unknown-linux-gnu'
-      #   run: |
-      #     sudo apt-get update
-      #     if [[ ${{ matrix.target }} == i686-unknown-linux-gnu ]]; then
-      #       sudo apt-get update
-      #       sudo apt-get install pkg-config libssl-dev openssl
-      #     elif [[ ${{ matrix.target }} == aarch64-unknown-linux-gnu ]]; then
-      #       sudo apt-get update
-      #       sudo apt-get install pkg-config libssl-dev openssl gcc-aarch64-linux-gnu
-      #     else
-      #       sudo apt-get install pkg-config libssl-dev openssl
-      #     fi
+      - uses: mlugg/setup-zig@v2
+        if: matrix.target=='x86_64-unknown-linux-gnu'
+        with:
+          version: 0.15.1
+      - name: Install cargo-zigbuild
+        uses: taiki-e/install-action@v2
+        if: matrix.target=='x86_64-unknown-linux-gnu'
+
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        with:
+          tool: cargo-zigbuild
+      - name: Install dependencies
+        if: matrix.os-name == 'linux'
+        run: |
+          sudo apt-get update
+          sudo apt install libasound2-dev
+      - name: Install rodio dev
+        if: matrix.target == 'aarch64-unknown-linux-gnu' || matrix.target == 'i686-unknown-linux-gnu'
+        run: |
+          sudo apt-get update
+          if [[ ${{ matrix.target }} == i686-unknown-linux-gnu ]]; then
+            sudo apt-get update
+            sudo apt-get install pkg-config libssl-dev openssl
+          elif [[ ${{ matrix.target }} == aarch64-unknown-linux-gnu ]]; then
+            sudo apt-get update
+            sudo apt-get install pkg-config libssl-dev openssl gcc-aarch64-linux-gnu
+          else
+            sudo apt-get install pkg-config libssl-dev openssl
+          fi
       - uses: Swatinem/rust-cache@v2
       - name: Cargo build
         uses: actions-rs/cargo@v1
+        if: matrix.target != 'x86_64-unknown-linux-gnu'
         with:
           command: build
 
@@ -103,6 +116,10 @@ jobs:
           toolchain: stable
 
           args: --release --target ${{ matrix.target }}
+      - name: Cargo zigbuild
+        if: matrix.target == 'x86_64-unknown-linux-gnu'
+        run: |
+          cargo zigbuild --release --target ${{ matrix.target }}
 
       - name: install strip command
         shell: bash
