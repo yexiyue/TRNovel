@@ -91,8 +91,6 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install libasound2-dev pkg-config libssl-dev openssl
-          ls /usr/lib/ssl
-
       # - name: Install rodio dev
       #   if: matrix.target == 'aarch64-unknown-linux-gnu' || matrix.target == 'i686-unknown-linux-gnu'
       #   run: |
@@ -109,7 +107,7 @@ jobs:
       - uses: Swatinem/rust-cache@v2
       - name: Cargo build
         uses: actions-rs/cargo@v1
-        if: matrix.target != 'x86_64-unknown-linux-gnu'
+        # if: matrix.target != 'x86_64-unknown-linux-gnu'
         with:
           command: build
 
@@ -118,12 +116,10 @@ jobs:
           toolchain: stable
 
           args: --release --target ${{ matrix.target }}
-      - name: Cargo zigbuild
-        if: matrix.target == 'x86_64-unknown-linux-gnu'
-        env:
-          OPENSSL_DIR: /usr/lib/ssl
-        run: |
-          cargo zigbuild --release --target ${{ matrix.target }}
+      # - name: Cargo zigbuild
+      #   if: matrix.target == 'x86_64-unknown-linux-gnu'
+      #   run: |
+      #     cargo zigbuild --release --target ${{ matrix.target }}
 
       - name: install strip command
         shell: bash
