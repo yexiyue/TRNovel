@@ -90,7 +90,7 @@ jobs:
         if: matrix.target == 'x86_64-unknown-linux-gnu'
         run: |
           sudo apt-get update
-          sudo apt-get install libasound2-dev pkg-config libssl-dev
+          sudo apt-get install libasound2-dev pkg-config libssl-dev openssl
           ls /usr/lib
       # - name: Install rodio dev
       #   if: matrix.target == 'aarch64-unknown-linux-gnu' || matrix.target == 'i686-unknown-linux-gnu'
@@ -120,7 +120,7 @@ jobs:
       - name: Cargo zigbuild
         if: matrix.target == 'x86_64-unknown-linux-gnu'
         env:
-          OPENSSL_DIR: "/usr"
+          OPENSSL_DIR: /usr/lib/openssl
         run: |
           cargo zigbuild --release --target ${{ matrix.target }}
 
