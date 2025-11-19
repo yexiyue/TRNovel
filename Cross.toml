@@ -1,5 +1,5 @@
 [target.x86_64-unknown-linux-gnu]
 pre-build = [
-    "sudo apt-get update",
-    "sudo apt-get install pkg-config libssl-dev openssl libasound2-dev",
+    "apt-get update",
+    "apt install pkg-config libssl-dev openssl libasound2-dev",
 ]
