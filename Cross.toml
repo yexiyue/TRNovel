@@ -3,3 +3,7 @@ pre-build = [
     "dpkg --add-architecture $CROSS_DEB_ARCH",
     "apt-get update && apt-get --assume-yes install pkg-config openssl libasound2-dev libssl-dev:$CROSS_DEB_ARCH",
 ]
+env.passthrough = [
+    "ORT_STRATEGY=download", # 强制下载预编译库
+    "ORT_LIB_LOCATION=",     # 清空，让它用默认缓存路径
+]
