@@ -1,7 +1,29 @@
-# Changelog
+## [0.8.3] - 2025-11-30
 
-All notable changes to this project will be documented in this file.
+### 🐛 Bug Fixes
 
+- *(cd)* 调整Linux环境下的OpenSSL配置和依赖安装
+
+### 💼 Other
+
+- *(cd)* 切换到 cross 工具进行Linux跨平台构建
+- *(Cross.toml)* 更新依赖安装命令
+- *(Cross.toml)* 更新交叉编译依赖安装命令
+- *(Cross.toml)* 添加环境变量传递配置以支持预编译库下载
+- *(cd)* 配置 OpenSSL 环境变量以支持静态链接
+- *(cd)* 调整CI构建流程中的依赖安装和环境配置
+
+### 🎨 Styling
+
+- Clippy
+- Fmt
+
+### ⚙️ Miscellaneous Tasks
+
+- *(cd)* 调整 Linux 平台构建流程以支持 Zig 编译器
+- *(cd)* 调整 Linux 环境下的依赖安装逻辑
+- *(cd)* 更新Linux依赖安装命令
+- *(cd)* 更新linux环境下的openssl依赖配置
 ## [0.8.2] - 2025-11-13
 
 ### 🐛 Bug Fixes
@@ -12,6 +34,9 @@ All notable changes to this project will be documented in this file.
 
 - Clippy
 
+### ⚙️ Miscellaneous Tasks
+
+- Release
 ## [0.8.1] - 2025-11-12
 
 ### 🐛 Bug Fixes
@@ -25,7 +50,6 @@ All notable changes to this project will be documented in this file.
 ### ⚙️ Miscellaneous Tasks
 
 - Release
-
 ## [0.8.0] - 2025-10-31
 
 ### 🚀 Features
@@ -46,7 +70,6 @@ All notable changes to this project will be documented in this file.
 
 - Minor version
 - Release
-
 ## [0.7.9] - 2025-10-30
 
 ### 🚀 Features
@@ -60,7 +83,6 @@ All notable changes to this project will be documented in this file.
 ### ⚙️ Miscellaneous Tasks
 
 - Release
-
 ## [0.7.8] - 2025-10-29
 
 ### 🐛 Bug Fixes
@@ -74,7 +96,6 @@ All notable changes to this project will be documented in this file.
 ### ⚙️ Miscellaneous Tasks
 
 - Release
-
 ## [0.7.7] - 2025-10-29
 
 ### 🐛 Bug Fixes
@@ -84,7 +105,6 @@ All notable changes to this project will be documented in this file.
 ### ⚙️ Miscellaneous Tasks
 
 - Release
-
 ## [0.7.6] - 2025-10-29
 
 ### 🚀 Features
@@ -105,7 +125,6 @@ All notable changes to this project will be documented in this file.
 ### ⚙️ Miscellaneous Tasks
 
 - Release
-
 ## [0.7.5] - 2025-10-26
 
 ### 🐛 Bug Fixes
@@ -116,7 +135,6 @@ All notable changes to this project will be documented in this file.
 ### ⚙️ Miscellaneous Tasks
 
 - Release
-
 ## [0.7.4] - 2025-10-24
 
 ### 🚀 Features
@@ -130,7 +148,6 @@ All notable changes to this project will be documented in this file.
 ### ⚙️ Miscellaneous Tasks
 
 - Release
-
 ## [0.7.3] - 2025-10-21
 
 ### 🚀 Features
@@ -146,7 +163,6 @@ All notable changes to this project will be documented in this file.
 ### ⚙️ Miscellaneous Tasks
 
 - Release
-
 ## [0.7.2] - 2025-10-20
 
 ### 🐛 Bug Fixes
@@ -156,7 +172,6 @@ All notable changes to this project will be documented in this file.
 ### ⚙️ Miscellaneous Tasks
 
 - Release
-
 ## [0.7.1] - 2025-10-20
 
 ### 🚀 Features
@@ -171,7 +186,6 @@ All notable changes to this project will be documented in this file.
 ### ⚙️ Miscellaneous Tasks
 
 - Release
-
 ## [0.7.0] - 2025-10-19
 
 ### 🚀 Features
@@ -202,7 +216,6 @@ All notable changes to this project will be documented in this file.
 - Test
 - Test
 - Test
-
 ## [0.6.2] - 2025-10-12
 
 ### 🚀 Features
@@ -212,7 +225,6 @@ All notable changes to this project will be documented in this file.
 ### ⚙️ Miscellaneous Tasks
 
 - Release
-
 ## [0.6.1] - 2025-10-12
 
 ### 🚀 Features
@@ -226,7 +238,6 @@ All notable changes to this project will be documented in this file.
 ### ⚙️ Miscellaneous Tasks
 
 - Release
-
 ## [0.6.0] - 2025-10-12
 
 ### 💼 Other
@@ -241,7 +252,6 @@ All notable changes to this project will be documented in this file.
 - Cd.yml
 - Update ci.yml
 - Update ci.yml
-
 ## [parse-book-source-v0.2.0] - 2025-10-11
 
 ### 🚀 Features
@@ -278,7 +288,6 @@ All notable changes to this project will be documented in this file.
 ### ⚙️ Miscellaneous Tasks
 
 - Release
-
 ## [0.5.4] - 2025-02-05
 
 ### 🐛 Bug Fixes
@@ -288,7 +297,6 @@ All notable changes to this project will be documented in this file.
 ### ⚙️ Miscellaneous Tasks
 
 - Release
-
 ## [0.5.3] - 2025-01-24
 
 ### 🚀 Features
@@ -298,7 +306,6 @@ All notable changes to this project will be documented in this file.
 ### ⚙️ Miscellaneous Tasks
 
 - Release
-
 ## [0.5.2] - 2025-01-24
 
 ### 🚀 Features
@@ -308,13 +315,11 @@ All notable changes to this project will be documented in this file.
 ### ⚙️ Miscellaneous Tasks
 
 - Release
-
 ## [0.5.1] - 2025-01-17
 
 ### ⚙️ Miscellaneous Tasks
 
 - Release
-
 ## [0.5.0] - 2025-01-15
 
 ### 📚 Documentation
@@ -324,7 +329,6 @@ All notable changes to this project will be documented in this file.
 ### ⚙️ Miscellaneous Tasks
 
 - Release
-
 ## [0.4.9] - 2025-01-14
 
 ### 🚀 Features
@@ -341,7 +345,6 @@ All notable changes to this project will be documented in this file.
 ### ⚙️ Miscellaneous Tasks
 
 - Release
-
 ## [0.4.8] - 2025-01-10
 
 ### 💼 Other
@@ -351,7 +354,6 @@ All notable changes to this project will be documented in this file.
 ### ⚙️ Miscellaneous Tasks
 
 - Release
-
 ## [0.4.7] - 2025-01-09
 
 ### 🚀 Features
@@ -366,7 +368,6 @@ All notable changes to this project will be documented in this file.
 ### ⚙️ Miscellaneous Tasks
 
 - Release
-
 ## [0.4.6] - 2025-01-07
 
 ### 🚀 Features
@@ -384,7 +385,6 @@ All notable changes to this project will be documented in this file.
 ### ⚙️ Miscellaneous Tasks
 
 - Release
-
 ## [0.4.5] - 2025-01-06
 
 ### 🚀 Features
@@ -398,7 +398,6 @@ All notable changes to this project will be documented in this file.
 ### ⚙️ Miscellaneous Tasks
 
 - Release
-
 ## [0.4.4] - 2025-01-06
 
 ### 🚀 Features
@@ -408,7 +407,6 @@ All notable changes to this project will be documented in this file.
 ### ⚙️ Miscellaneous Tasks
 
 - Release
-
 ## [0.4.3] - 2025-01-05
 
 ### 🚀 Features
@@ -422,7 +420,6 @@ All notable changes to this project will be documented in this file.
 ### ⚙️ Miscellaneous Tasks
 
 - Release
-
 ## [0.4.2] - 2024-12-25
 
 ### 💼 Other
@@ -432,7 +429,6 @@ All notable changes to this project will be documented in this file.
 ### ⚙️ Miscellaneous Tasks
 
 - Release
-
 ## [0.4.1] - 2024-12-25
 
 ### 💼 Other
@@ -442,7 +438,6 @@ All notable changes to this project will be documented in this file.
 ### ⚙️ Miscellaneous Tasks
 
 - Release
-
 ## [0.4.0] - 2024-12-23
 
 ### 🐛 Bug Fixes
@@ -452,7 +447,6 @@ All notable changes to this project will be documented in this file.
 ### ⚙️ Miscellaneous Tasks
 
 - Release
-
 ## [0.3.7] - 2024-12-22
 
 ### 🚀 Features
@@ -466,7 +460,6 @@ All notable changes to this project will be documented in this file.
 ### ⚙️ Miscellaneous Tasks
 
 - Release
-
 ## [0.3.6] - 2024-12-21
 
 ### 🚀 Features
@@ -481,7 +474,6 @@ All notable changes to this project will be documented in this file.
 ### ⚙️ Miscellaneous Tasks
 
 - Release
-
 ## [0.3.5] - 2024-12-21
 
 ### 🚀 Features
@@ -491,7 +483,6 @@ All notable changes to this project will be documented in this file.
 ### ⚙️ Miscellaneous Tasks
 
 - Release
-
 ## [0.3.4] - 2024-12-21
 
 ### 💼 Other
@@ -502,7 +493,6 @@ All notable changes to this project will be documented in this file.
 ### ⚙️ Miscellaneous Tasks
 
 - Release
-
 ## [0.3.3] - 2024-12-21
 
 ### 🚀 Features
@@ -524,7 +514,6 @@ All notable changes to this project will be documented in this file.
 - Release
 - Release
 - Release
-
 ## [0.3.2] - 2024-12-19
 
 ### 🚀 Features
@@ -535,7 +524,6 @@ All notable changes to this project will be documented in this file.
 ### ⚙️ Miscellaneous Tasks
 
 - Release
-
 ## [0.3.1] - 2024-12-18
 
 ### 🚀 Features
@@ -558,7 +546,6 @@ All notable changes to this project will be documented in this file.
 ### ⚙️ Miscellaneous Tasks
 
 - Release
-
 ## [parse-book-source-v0.1.1] - 2024-12-16
 
 ### 🚀 Features
@@ -573,7 +560,6 @@ All notable changes to this project will be documented in this file.
 ### ⚙️ Miscellaneous Tasks
 
 - Release
-
 ## [0.3.0] - 2024-12-13
 
 ### 🚀 Features
@@ -588,19 +574,16 @@ All notable changes to this project will be documented in this file.
 ### 💼 Other
 
 - Remove test bin
-
 ## [0.2.2] - 2024-12-05
 
 ### 🚀 Features
 
 - 添加trn别名
-
 ## [0.2.1] - 2024-12-04
 
 ### 💼 Other
 
 - 修复确认框样式
-
 ## [0.2.0] - 2024-12-03
 
 ### 🚀 Features
@@ -618,13 +601,11 @@ All notable changes to this project will be documented in this file.
 ### 💼 Other
 
 - Fmt
-
 ## [0.1.1] - 2024-11-30
 
 ### 🐛 Bug Fixes
 
 - 区分警告和错误
-
 ## [0.1.0] - 2024-11-29
 
 ### 🚀 Features
@@ -648,5 +629,3 @@ All notable changes to this project will be documented in this file.
 ### 🧪 Testing
 
 - Ci
-
-<!-- generated by git-cliff -->

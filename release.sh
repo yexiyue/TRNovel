@@ -1,3 +1,4 @@
+#!/bin/bash
 
 # 交互式选择要排除的 crate
 ALL_CRATES=(parse-book-source novel-tts trnovel)
