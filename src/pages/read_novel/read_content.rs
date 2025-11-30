@@ -1,8 +1,4 @@
-use crate::{
-    TTSConfig,
-    components::Loading,
-    hooks::{UseScrollbar, UseThemeConfig},
-};
+use crate::{TTSConfig, ThemeConfig, components::Loading, hooks::UseScrollbar};
 use crossterm::event::{Event, KeyCode, KeyEventKind};
 use novel_tts::utils::TextSegment;
 use ratatui::{
@@ -12,7 +8,7 @@ use ratatui::{
     widgets::Paragraph,
 };
 use ratatui_kit::prelude::*;
-use std::time::Duration;
+use std::{ops::Not, time::Duration};
 
 #[derive(Default, Props)]
 pub struct ReadContentProps {
@@ -33,7 +29,8 @@ pub fn ReadContent(
     props: &mut ReadContentProps,
     mut hooks: Hooks,
 ) -> impl Into<AnyElement<'static>> {
-    let theme = hooks.use_theme_config();
+    let theme_config = hooks.use_context::<State<ThemeConfig>>().clone();
+    let theme = theme_config.read().clone();
     let mut is_listening = hooks.use_state(|| false);
     let mut highlight_range = hooks.use_state(|| None::<TextSegment>);
     let tts_config = *hooks.use_context::<State<TTSConfig>>();
@@ -279,6 +276,9 @@ pub fn ReadContent(
                         chapter_tts.set(Some(chapter));
                     }
                 }
+                KeyCode::Char('v') => {
+                    theme_config.write().novel.show_title = theme.novel.show_title.not();
+                }
                 _ => {}
             }
         }
@@ -286,19 +286,27 @@ pub fn ReadContent(
 
     element!(Border(
         border_style: theme.basic.border,
-        top_title: Line::from(props.chapter_name.to_string()).style(theme.novel.chapter).centered(),
-        bottom_title: (if is_listening.get(){
-            Line::from(
-                format!(
-                    "播放中: 播放速度{} / 音量{}",
-                    tts_config.read().speed,
-                    tts_config.read().volume,
-                )
-            )
-            .style(theme.novel.page)
+        top_title: if theme.novel.show_title {
+            Some(Line::from(props.chapter_name.to_string()).style(theme.novel.chapter).centered())
         }else{
-            Line::from("按 p 播放/暂停").style(theme.novel.page)
-        }).style(theme.novel.page).centered(),
+            None
+        },
+        bottom_title: if theme.novel.show_title {
+           Some((if is_listening.get(){
+                Line::from(
+                    format!(
+                        "播放中: 播放速度{} / 音量{}",
+                        tts_config.read().speed,
+                        tts_config.read().volume,
+                    )
+                )
+                .style(theme.novel.page)
+            }else{
+                Line::from("按 p 播放/暂停").style(theme.novel.page)
+            }).style(theme.novel.page).centered())
+        }else{
+            None
+        },
     ){
         #(if props.is_loading {
             element!(Loading(tip:"加载内容中...")).into_any()

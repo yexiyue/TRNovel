@@ -95,6 +95,7 @@ impl ThemeConfig {
                 page: basic.border_info,
                 progress: basic.border_info,
                 border: basic.border,
+                show_title: true,
             },
             basic,
         }
@@ -140,4 +141,10 @@ pub struct NovelSetting {
     pub content: Style,
     pub progress: Style,
     pub border: Style,
+    #[serde(default="default_show_title")]
+    pub show_title: bool,
+}
+
+fn default_show_title() -> bool {
+    true
 }
