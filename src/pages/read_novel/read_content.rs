@@ -29,7 +29,7 @@ pub fn ReadContent(
     props: &mut ReadContentProps,
     mut hooks: Hooks,
 ) -> impl Into<AnyElement<'static>> {
-    let theme_config = hooks.use_context::<State<ThemeConfig>>().clone();
+    let theme_config = *hooks.use_context::<State<ThemeConfig>>();
     let theme = theme_config.read().clone();
     let mut is_listening = hooks.use_state(|| false);
     let mut highlight_range = hooks.use_state(|| None::<TextSegment>);
