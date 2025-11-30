@@ -278,6 +278,7 @@ pub fn ReadContent(
                 }
                 KeyCode::Char('v') => {
                     theme_config.write().novel.show_title = theme.novel.show_title.not();
+                    let _ = theme_config.write().save();
                 }
                 _ => {}
             }
