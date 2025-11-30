@@ -141,7 +141,7 @@ pub struct NovelSetting {
     pub content: Style,
     pub progress: Style,
     pub border: Style,
-    #[serde(default="default_show_title")]
+    #[serde(default = "default_show_title")]
     pub show_title: bool,
 }
 
