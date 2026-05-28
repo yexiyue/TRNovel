@@ -1,4 +1,7 @@
 allow-branch = ["main"]
+# Tag every crate (including the root `trnovel`) as `<crate>-v<version>` so the
+# app tag (`trnovel-v*`) matches cargo-dist's tag-namespace trigger.
+tag-name = "{{crate_name}}-v{{version}}"
 pre-release-hook = [
     "git",
     "cliff",

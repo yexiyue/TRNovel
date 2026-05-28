@@ -1,5 +1,10 @@
 #!/bin/bash
 
+# 版本升级级别，可传 patch / minor / major，或直接指定版本号如 0.9.0；默认 patch
+# 用法示例：./release.sh minor  或  ./release.sh 0.9.0
+LEVEL=${1:-patch}
+echo "版本升级级别: $LEVEL"
+
 # 交互式选择要排除的 crate
 ALL_CRATES=(parse-book-source novel-tts trnovel)
 EXCLUDE_CRATES=()
@@ -23,7 +28,7 @@ done
 
 echo "最终排除参数: $EXCLUDE_ARGS"
 
-cargo release version patch --workspace $EXCLUDE_ARGS --no-confirm --execute
+cargo release version "$LEVEL" --workspace $EXCLUDE_ARGS --no-confirm --execute
 cargo release hook --no-confirm --execute
 cargo release commit --no-confirm --execute
 cargo release tag --workspace $EXCLUDE_ARGS --execute --no-confirm

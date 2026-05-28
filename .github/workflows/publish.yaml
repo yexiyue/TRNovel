@@ -10,7 +10,7 @@ on:
 jobs:
   publish:
     permissions:
-      contents: write
+      contents: read
 
     runs-on: ubuntu-latest
     steps:
@@ -58,27 +58,5 @@ jobs:
           fi
 
           cd "$CRATE_PATH"
-          ls 
+          ls
           cargo publish --token "$CARGO_REGISTRY_TOKEN"
-
-      - name: Extract release notes from CHANGELOG
-        id: changelog
-        run: |
-          VERSION=${{ steps.extract.outputs.version }}
-          if [ ${{steps.extract.outputs.prefix}} = "parse-book-source" ] || [ ${{steps.extract.outputs.prefix}} = "novel-tts" ]; then
-            awk "/^##? \\[${{ steps.extract.outputs.prefix }}-v${VERSION}]/ {flag=1;next} /^##? /{flag=0}flag" CHANGELOG.md > RELEASE_BODY.md  
-          else
-            awk "/^##? \\[${VERSION}]/ {flag=1;next} /^##? /{flag=0}flag" CHANGELOG.md > RELEASE_BODY.md
-          fi
-          echo 'body<<EOF' >> $GITHUB_OUTPUT
-          cat RELEASE_BODY.md >> $GITHUB_OUTPUT
-          echo 'EOF' >> $GITHUB_OUTPUT
-
-      - name: Create GitHub Release
-        uses: softprops/action-gh-release@v2
-        with:
-          tag_name: ${{ github.ref_name }}
-          name: ${{ github.ref_name }}
-          body: ${{ steps.changelog.outputs.body }}
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

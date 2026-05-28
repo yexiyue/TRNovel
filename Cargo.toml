@@ -8,6 +8,7 @@ authors = ["yexiyue <yexiyue666@qq.com>"]
 license = "MIT"
 keywords = ["CLI", "Terminal", "Novel", "Reader"]
 repository = "https://github.com/yexiyue/TRNovel"
+homepage = "https://yexiyue.github.io/TRNovel"
 
 [[bin]]
 name = "trnovel"
@@ -77,3 +78,37 @@ dirs = "6.0.0"
 lto = true
 opt-level = 3
 panic = "abort"
+
+# The profile that 'dist' will build with
+[profile.dist]
+inherits = "release"
+
+# Config for 'dist'
+[workspace.metadata.dist]
+# The preferred dist version to use in CI (Cargo.toml SemVer syntax)
+cargo-dist-version = "0.32.0"
+# CI backends to support
+ci = "github"
+# The installers to generate for each app
+installers = ["shell", "powershell", "npm", "homebrew"]
+# Target platforms to build apps for (Rust target-triple syntax)
+targets = ["aarch64-apple-darwin", "x86_64-apple-darwin", "x86_64-unknown-linux-gnu", "x86_64-pc-windows-msvc"]
+# A namespace to use when publishing this package to the npm registry
+npm-scope = "@trnovel"
+# Only treat tags prefixed with this namespace as dist releases (keeps the
+# workspace library tags like `parse-book-source-v*` from triggering this workflow)
+tag-namespace = "trnovel"
+# Publish jobs to run in CI (auto-publishes the npm package to the registry; needs NPM_TOKEN secret)
+# homebrew needs the `yexiyue/homebrew-tap` repo to exist + a HOMEBREW_TAP_TOKEN secret (PAT with repo scope)
+publish-jobs = ["npm", "homebrew"]
+# Homebrew tap repository that dist publishes the formula to
+tap = "yexiyue/homebrew-tap"
+# Path that installers should place binaries in
+install-path = "CARGO_HOME"
+# Whether to install an updater program
+install-updater = false
+
+[workspace.metadata.dist.dependencies.apt]
+libasound2-dev = '*'
+libssl-dev = '*'
+pkg-config = '*'

@@ -1,14 +1,36 @@
 ---
 title: 安装
 description: TRNovel 安装指南
-lastUpdated: 2025-10-29
+lastUpdated: 2026-05-28
 sidebar:
     order: 2
 ---
 
-import { Tabs, TabItem, Card, CardGrid, Icon } from "@astrojs/starlight/components";
-import DownloadCard from "../../../components/DownloadCard.astro";
-import { Icon as AstroIcon } from "astro-icon/components";
+import { Tabs, TabItem } from "@astrojs/starlight/components";
+
+## 一键安装脚本（推荐）
+
+无需配置开发环境，复制对应平台的命令即可自动下载并安装最新版本：
+
+<Tabs>
+    <TabItem value="macos-linux" label="macOS / Linux">
+        ```bash title="使用 Shell 脚本安装"
+        curl --proto '=https' --tlsv1.2 -LsSf https://github.com/yexiyue/TRNovel/releases/latest/download/trnovel-installer.sh | sh
+        ```
+    </TabItem>
+    <TabItem value="windows" label="Windows">
+        ```powershell title="使用 PowerShell 安装"
+        powershell -ExecutionPolicy Bypass -c "irm https://github.com/yexiyue/TRNovel/releases/latest/download/trnovel-installer.ps1 | iex"
+        ```
+    </TabItem>
+    <TabItem value="homebrew" label="Homebrew">
+        ```bash title="使用 Homebrew 安装（macOS / Linux）"
+        brew install yexiyue/tap/trnovel
+        ```
+    </TabItem>
+</Tabs>
+
+安装脚本会自动检测平台、下载对应二进制并加入 PATH 环境变量。
 
 ## 包管理器安装
 
@@ -16,11 +38,11 @@ import { Icon as AstroIcon } from "astro-icon/components";
 
 <Tabs>
     <TabItem value="cargo" label="cargo" icon="seti:rust">
-        ```bash title="使用 Cargo 安装（推荐）"
+        ```bash title="使用 Cargo 安装"
         cargo install trnovel
         ```
     </TabItem>
-    <TabItem value="pnpm" label="pnpm" icon="pnpm"> 
+    <TabItem value="pnpm" label="pnpm" icon="pnpm">
         ```bash title="使用 pnpm 安装"
         pnpm add -g @trnovel/trnovel
         ```
@@ -38,27 +60,10 @@ import { Icon as AstroIcon } from "astro-icon/components";
 trnovel -h
 ```
 
-## 二进制文件安装
+## 手动下载二进制文件
 
-如果您尚未配置开发环境，可直接下载预编译的二进制文件：
-
-<CardGrid>
-    <DownloadCard title="Windows" type="astro" downloadLink="https://github.com/yexiyue/TRNovel/releases/download/v0.8.0/trnovel-v0.8.0-windows-x86_64.tar.gz" >
-        <AstroIcon name="mdi:microsoft-windows" size="1.3rem" />
-    </DownloadCard>
-    <DownloadCard title="Macos(Apple)" downloadLink="https://github.com/yexiyue/TRNovel/releases/download/v0.8.0/trnovel-v0.8.0-macos-arm64.tar.gz" >
-        <Icon name="apple" size="1.3rem" />
-    </DownloadCard>
-    <DownloadCard title="Linux" icon="linux" downloadLink="https://github.com/yexiyue/TRNovel/releases/download/v0.8.0/trnovel-v0.8.0-linux-x86_64.tar.gz" >
-        <Icon name="linux" size="1.3rem" />
-    </DownloadCard>
-    <DownloadCard title="Macos(Inter)" icon="apple" downloadLink="https://github.com/yexiyue/TRNovel/releases/download/v0.8.0/trnovel-v0.8.0-macos-x86_64.tar.gz" >
-        <Icon name="apple" size="1.3rem" />
-    </DownloadCard>
-</CardGrid>
-
-下载完成后，请解压文件并将可执行文件添加到系统 PATH 环境变量中。
+也可前往 [GitHub Releases](https://github.com/yexiyue/TRNovel/releases/latest) 页面，根据平台下载预编译的压缩包（`.tar.gz` / `.zip`），解压后将可执行文件添加到系统 PATH 环境变量中。
 
 :::caution[注意]
-使用二进制文件的用户需确保将可执行文件正确添加到 PATH 环境变量中，否则将无法在命令行中直接使用 trnovel 命令。
+手动下载的用户需确保将可执行文件正确添加到 PATH 环境变量中，否则将无法在命令行中直接使用 trnovel 命令。
 :::
