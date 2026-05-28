@@ -107,6 +107,9 @@ tap = "yexiyue/homebrew-tap"
 install-path = "CARGO_HOME"
 # Whether to install an updater program
 install-updater = false
+# 动态链接 Windows C 运行时（默认 true=静态）。ort/onnxruntime 预编译库按动态 CRT 编译，
+# 静态链接会导致 __imp_tolower 等符号未解析的 LNK2001 链接错误，故必须设为 false。
+msvc-crt-static = false
 
 [workspace.metadata.dist.dependencies.apt]
 libasound2-dev = '*'
