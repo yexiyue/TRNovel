@@ -1,8 +1,18 @@
+## [0.9.0] - 2026-05-28
+
+### ⚙️ Miscellaneous Tasks
+
+- 用 cargo-dist 接管二进制发布与 npm/homebrew 分发
+- 移除不再使用的 Cross.toml (cargo-dist 原生构建，不走 cross)
 ## [0.8.4] - 2025-11-30
 
 ### 🐛 Bug Fixes
 
 - 修复显示隐藏标题未保存
+
+### ⚙️ Miscellaneous Tasks
+
+- Release
 ## [0.8.3] - 2025-11-30
 
 ### 🐛 Bug Fixes
