@@ -136,10 +136,8 @@ where
                 KeyCode::Char('i') | KeyCode::Char('I') => {
                     info_modal_open.set(!info_modal_open.get());
                 }
-                KeyCode::Char('t') | KeyCode::Char('T') => {
-                    if !info_modal_open.get() {
-                        is_tts_open.set(!is_tts_open.get());
-                    }
+                KeyCode::Char('t') | KeyCode::Char('T') if !info_modal_open.get() => {
+                    is_tts_open.set(!is_tts_open.get());
                 }
                 _ => {}
             }

@@ -37,28 +37,26 @@ where
             && is_editing
         {
             match key.code {
-                KeyCode::Enter => {
-                    if !is_downloaded && !downloading.get() {
-                        error.set(None);
-                        downloading.set(true);
-                        state.write().download(
-                            move |downloaded, total| {
-                                progress.set((downloaded as usize, total as usize));
-                                if downloaded == total {
-                                    downloading.set(false);
-                                }
-                            },
-                            move |err| {
-                                match err {
-                                    NovelTTSError::Cancel(_) => {}
-                                    _ => {
-                                        error.set(Some(err));
-                                    }
-                                }
+                KeyCode::Enter if !is_downloaded && !downloading.get() => {
+                    error.set(None);
+                    downloading.set(true);
+                    state.write().download(
+                        move |downloaded, total| {
+                            progress.set((downloaded as usize, total as usize));
+                            if downloaded == total {
                                 downloading.set(false);
-                            },
-                        );
-                    }
+                            }
+                        },
+                        move |err| {
+                            match err {
+                                NovelTTSError::Cancel(_) => {}
+                                _ => {
+                                    error.set(Some(err));
+                                }
+                            }
+                            downloading.set(false);
+                        },
+                    );
                 }
                 KeyCode::Esc => {
                     state.write().cancel_download();

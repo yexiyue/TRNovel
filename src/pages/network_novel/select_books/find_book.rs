@@ -39,10 +39,8 @@ pub fn FindBooks(props: &FindBooksProps, mut hooks: Hooks) -> impl Into<AnyEleme
             && !is_inputting.get()
         {
             match key.code {
-                KeyCode::Char('h') | KeyCode::Left => {
-                    if page.get() > 1 {
-                        page.set(page.get() - 1);
-                    }
+                KeyCode::Char('h') | KeyCode::Left if page.get() > 1 => {
+                    page.set(page.get() - 1);
                 }
                 KeyCode::Char('l') | KeyCode::Right => {
                     page.set(page.get() + 1);
