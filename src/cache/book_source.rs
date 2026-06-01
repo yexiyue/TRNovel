@@ -42,15 +42,13 @@ impl BookSourceCache {
         book_source_url: &str,
         book_source_name: &str,
     ) -> Option<usize> {
-        self.book_sources.iter().position(|item| {
-            item.book_source_url == book_source_url && item.book_source_name == book_source_name
-        })
+        self.book_sources
+            .iter()
+            .position(|item| item.url == book_source_url && item.name == book_source_name)
     }
 
     pub fn add_book_source(&mut self, book_source: BookSource) {
-        if let Some(index) =
-            self.find_book_source_index(&book_source.book_source_url, &book_source.book_source_name)
-        {
+        if let Some(index) = self.find_book_source_index(&book_source.url, &book_source.name) {
             self.book_sources.remove(index);
         }
 
@@ -62,9 +60,9 @@ impl BookSourceCache {
         book_source_url: &str,
         book_source_name: &str,
     ) -> Option<&BookSource> {
-        self.book_sources.iter().find(|bs| {
-            bs.book_source_url == book_source_url && bs.book_source_name == book_source_name
-        })
+        self.book_sources
+            .iter()
+            .find(|bs| bs.url == book_source_url && bs.name == book_source_name)
     }
 }
 

@@ -5,7 +5,7 @@ use crate::{
     hooks::{UseInitState, UseThemeConfig},
 };
 use crossterm::event::{Event, KeyCode, KeyEventKind};
-use parse_book_source::{BookSource, BookSourceParser, ExploreItem};
+use parse_book_source::{BookSource, Category, Engine};
 use ratatui::{
     layout::{Constraint, Margin},
     style::{Style, Stylize},
@@ -18,7 +18,7 @@ mod find_book;
 use find_book::*;
 
 #[derive(Debug, Clone, Hash)]
-pub struct ExploreListItem(pub ExploreItem);
+pub struct ExploreListItem(pub Category);
 
 impl From<ExploreListItem> for ListItem<'_> {
     fn from(value: ExploreListItem) -> Self {
@@ -39,9 +39,11 @@ pub fn SelectBooks(mut hooks: Hooks) -> impl Into<AnyElement<'static>> {
 
     let mut current_explore = hooks.use_state(|| None::<ExploreListItem>);
 
-    let (book_source_parser, _, error) = hooks.use_init_state(async move {
-        let mut res = BookSourceParser::new((*book_source).clone())?;
-        let book_source_explores = res.get_explores().await?;
+    let (book_source_engine, _, error) = hooks.use_init_state(async move {
+        let engine = crate::browser_assist::build_engine((*book_source).clone())?;
+        // 预热会话 cookie(若书源配置了 http.warmup)。
+        engine.warmup().await;
+        let book_source_explores = engine.explore_categories();
 
         if let Some(explore) = book_source_explores.first() {
             current_explore.set(Some(ExploreListItem(explore.clone())));
@@ -49,7 +51,7 @@ pub fn SelectBooks(mut hooks: Hooks) -> impl Into<AnyElement<'static>> {
         }
 
         explores.set(book_source_explores);
-        Ok::<BookSourceParser, Errors>(res)
+        Ok::<Engine, Errors>(engine)
     });
 
     hooks.use_events(move |event| {
@@ -82,7 +84,7 @@ pub fn SelectBooks(mut hooks: Hooks) -> impl Into<AnyElement<'static>> {
 
     element!(View {
         FindBooks(..FindBooksProps {
-                parser: book_source_parser,
+                engine: book_source_engine,
                 current_explore: current_explore.read().clone(),
                 is_editing: !is_explore_open.get() && !info_modal_open.get(),
             }

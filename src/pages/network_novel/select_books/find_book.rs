@@ -6,7 +6,7 @@ use crate::{
     pages::network_novel::book_detail::BookDetailState,
 };
 use crossterm::event::{Event, KeyCode, KeyEventKind};
-use parse_book_source::{BookList, BookListItem, BookSourceParser};
+use parse_book_source::{BookListItem, Engine};
 use ratatui::{
     text::{Line, Span},
     widgets::{Block, Padding, Paragraph, WidgetRef, Wrap},
@@ -16,7 +16,7 @@ use tui_widget_list::{ListBuildContext, ListState};
 
 #[derive(Props)]
 pub struct FindBooksProps {
-    pub parser: State<Option<BookSourceParser>>,
+    pub engine: State<Option<Engine>>,
     pub current_explore: Option<super::ExploreListItem>,
     pub is_editing: bool,
 }
@@ -59,22 +59,20 @@ pub fn FindBooks(props: &FindBooksProps, mut hooks: Hooks) -> impl Into<AnyEleme
 
     let (books, loading, error) = hooks.use_effect_state(
         {
-            let parser = props.parser.read().clone();
+            let engine = props.engine.read().clone();
             let url = props.current_explore.as_ref().map(|e| e.0.url.clone());
             let future = if filter_text.read().is_empty() {
-                parser.zip(url).map(|(mut parser, url)| {
+                engine.zip(url).map(|(engine, url)| {
                     let page = page.get();
                     let page_size = page_size.get();
-                    tokio::spawn(async move { parser.explore_books(&url, page, page_size).await })
+                    tokio::spawn(async move { engine.explore(&url, page, page_size).await })
                 })
             } else {
-                parser.map(|mut parser| {
+                engine.map(|engine| {
                     let page = page.get();
                     let page_size = page_size.get();
                     let filter_text = filter_text.read().clone();
-                    tokio::spawn(
-                        async move { parser.search_books(&filter_text, page, page_size).await },
-                    )
+                    tokio::spawn(async move { engine.search(&filter_text, page, page_size).await })
                 })
             };
 
@@ -85,13 +83,13 @@ pub fn FindBooks(props: &FindBooksProps, mut hooks: Hooks) -> impl Into<AnyEleme
                     return Ok(res);
                 }
 
-                Ok::<BookList, Errors>(vec![])
+                Ok::<Vec<BookListItem>, Errors>(vec![])
             }
         },
         (
             props.current_explore.clone(),
             filter_text.read().clone(),
-            props.parser.read().is_some(),
+            props.engine.read().is_some(),
             page.get(),
         ),
     );
@@ -144,12 +142,12 @@ pub fn FindBooks(props: &FindBooksProps, mut hooks: Hooks) -> impl Into<AnyEleme
             },
             state: list_state,
             on_select: {
-                let parser = props.parser.read().clone();
+                let engine = props.engine.read().clone();
                 move |item:BookListItem| {
-                    if let Some(parser)=&parser{
+                    if let Some(engine)=&engine{
                         navigate.push_with_state(
                             "/book-detail",
-                            BookDetailState::new(item,parser.clone()),
+                            BookDetailState::new(item,engine.clone()),
                         );
                     }
                 }
@@ -192,60 +190,60 @@ impl WidgetRef for FindBookItem {
 
         let mut text = vec![];
 
-        if !item.book_info.name.is_empty() {
+        if !item.info.name.is_empty() {
             text.push(
                 Line::from(vec![
                     Span::from("名称：").style(self.theme.basic.border_info),
-                    Span::from(&item.book_info.name),
+                    Span::from(&item.info.name),
                 ])
                 .style(text_style),
             );
         }
-        if !item.book_info.author.is_empty() {
+        if !item.info.author.is_empty() {
             text.push(
                 Line::from(vec![
                     Span::from("作者：").style(self.theme.basic.border_info),
-                    Span::from(&item.book_info.author),
+                    Span::from(&item.info.author),
                 ])
                 .style(text_style),
             );
         }
 
-        if !item.book_info.kind.is_empty() {
+        if !item.info.kind.is_empty() {
             text.push(
                 Line::from(vec![
                     Span::from("类型：").style(self.theme.basic.border_info),
-                    Span::from(&item.book_info.kind),
+                    Span::from(&item.info.kind),
                 ])
                 .style(text_style),
             );
         }
 
-        if !item.book_info.last_chapter.is_empty() {
+        if !item.info.last_chapter.is_empty() {
             text.push(
                 Line::from(vec![
                     Span::from("最新章节：").style(self.theme.basic.border_info),
-                    Span::from(&item.book_info.last_chapter),
+                    Span::from(&item.info.last_chapter),
                 ])
                 .style(text_style),
             );
         }
 
-        if !item.book_info.word_count.is_empty() {
+        if !item.info.word_count.is_empty() {
             text.push(
                 Line::from(vec![
                     Span::from("字数：").style(self.theme.basic.border_info),
-                    Span::from(&item.book_info.word_count),
+                    Span::from(&item.info.word_count),
                 ])
                 .style(text_style),
             );
         }
 
-        if !item.book_info.intro.is_empty() {
+        if !item.info.intro.is_empty() {
             text.push(
                 Line::from(vec![
                     Span::from("简介：").style(self.theme.basic.border_info),
-                    Span::from(&item.book_info.intro),
+                    Span::from(&item.info.intro),
                 ])
                 .style(text_style),
             );

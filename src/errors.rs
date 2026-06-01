@@ -18,7 +18,7 @@ pub enum Errors {
     Json(#[from] serde_json::Error),
 
     #[error(transparent)]
-    ParseBookSource(#[from] parse_book_source::ParseError),
+    BookSource(#[from] parse_book_source::BookSourceError),
 
     #[error(transparent)]
     Task(#[from] tokio::task::JoinError),
