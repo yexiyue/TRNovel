@@ -1,6 +1,6 @@
 [package]
 name = "trnovel"
-version = "0.9.0"
+version = "0.10.0"
 edition = "2024"
 default-run = "trnovel"
 description = "Terminal reader for novel"
@@ -53,7 +53,7 @@ textwrap = { version = "0.16.2" }
 # 注:rodio 0.22 为音频 API 重构(OutputStreamBuilder / Sink::connect_new / SamplesBuffer·Zero 签名变更),
 # 需配合音频实测单独迁移,暂留 0.21.x。
 rodio = { version = "0.21.1", default-features = false, features = ["playback", "wav"] }
-novel-tts = { path = "crates/novel-tts", version = "0.1.6" }
+novel-tts = { path = "crates/novel-tts", version = "0.1.7" }
 strum = { version = "0.28", features = ["derive"] }
 
 

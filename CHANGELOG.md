@@ -1,9 +1,39 @@
-## [0.9.0] - 2026-05-28
+## [0.10.0] - 2026-06-01
+
+### 🚀 Features
+
+- *(docs)* 添加关于使用 cargo-dist 发布 TRNovel 的详细文档
+- 本地章节智能识别+分卷 & 书源引擎 v2 重写 + doctor 命令
+- *(book-source)* 反爬支持——挑战检测 + 系统浏览器解挑战(cookie 烤箱)
+- *(parse-book-source)* Schemars 从类型自动生成 JSON Schema + 防漂移测试
+- *(skills)* Booksource-generator —— 据网站自动生成书源 + 真实站点评测
+
+### 🐛 Bug Fixes
+
+- 消除 clippy collapsible_match 警告 (新版 stable lint)
+- *(docs)* 声明 pnpm onlyBuiltDependencies 修复 GitHub Pages 部署
+- *(docs)* 钉定 pnpm@10.32.1 修复 latest pnpm 不识别 onlyBuiltDependencies 的部署失败
+
+### 📚 Documentation
+
+- 增加 CLAUDE.md 与 OpenSpec 设计(toc-rule-engine、ai-friendly-book-source)
+- *(browser-fetcher)* OpenSpec 设计(proposal/design/specs/tasks)+ 反爬浏览器辅助参考文档
+- Refresh README and add evolution blog
+
+### ⚙️ Miscellaneous Tasks
+
+- Gitignore 忽略本地工具目录 .claude / .obsidian
+## [trnovel-v0.9.0] - 2026-05-28
+
+### 🐛 Bug Fixes
+
+- Windows 动态链接 C 运行时 (msvc-crt-static=false)
 
 ### ⚙️ Miscellaneous Tasks
 
 - 用 cargo-dist 接管二进制发布与 npm/homebrew 分发
 - 移除不再使用的 Cross.toml (cargo-dist 原生构建，不走 cross)
+- Release
 ## [0.8.4] - 2025-11-30
 
 ### 🐛 Bug Fixes
