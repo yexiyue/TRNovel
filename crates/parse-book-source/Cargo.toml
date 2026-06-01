@@ -36,10 +36,21 @@ chromiumoxide = { version = "0.7", default-features = false, features = [
 ], optional = true }
 futures-util = { version = "0.3", optional = true }
 
+# 从 Rust 类型自动生成 JSON Schema(尊重 serde 属性);以 `schema` feature 门控,
+# 默认构建不含。配套 `examples/gen_schema.rs` + 防漂移测试 `schema_is_in_sync`。
+schemars = { version = "0.8", optional = true }
+
 [features]
 default = []
 # 启用基于系统浏览器的反爬取页(BrowserFetcher / EscalatingFetcher)。
 browser = ["dep:chromiumoxide", "dep:futures-util"]
+# 启用 JSON Schema 生成(schemars 派生 + gen 示例 + 防漂移测试)。
+schema = ["dep:schemars"]
+
+# gen_schema 示例:`cargo run -p parse-book-source --features schema --example gen_schema`
+[[example]]
+name = "gen_schema"
+required-features = ["schema"]
 
 
 # scraper = "0.21.0"

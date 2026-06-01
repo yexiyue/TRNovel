@@ -1,0 +1,256 @@
+{
+  "metadata": {
+    "skill_name": "booksource-generator",
+    "skill_path": "<path/to/skill>",
+    "executor_model": "<model-name>",
+    "analyzer_model": "<model-name>",
+    "timestamp": "2026-06-01T13:26:36Z",
+    "evals_run": [
+      0,
+      1
+    ],
+    "runs_per_configuration": 3
+  },
+  "runs": [
+    {
+      "eval_id": 0,
+      "configuration": "with_skill",
+      "run_number": 1,
+      "result": {
+        "pass_rate": 1.0,
+        "passed": 6,
+        "failed": 0,
+        "total": 6,
+        "time_seconds": 471.0,
+        "tokens": 90794,
+        "tool_calls": 0,
+        "errors": 0
+      },
+      "expectations": [
+        {
+          "text": "\u8f93\u51fa\u76ee\u5f55\u4ea7\u51fa\u4e00\u4e2a trnovel-booksource/v2 \u4e66\u6e90 JSON(\u542b schema:trnovel-booksource/v2)",
+          "passed": true,
+          "evidence": "shuhaige.v2.json \u542b trnovel-booksource/v2"
+        },
+        {
+          "text": "trn doctor:\u914d\u7f6e \u2713(JSON \u80fd\u88ab\u5f15\u64ce\u89e3\u6790)",
+          "passed": true,
+          "evidence": "\u2713 \u914d\u7f6e     \u4e66\u6e90\u300c\u4e66\u6d77\u9601\u5c0f\u8bf4\u7f51\u300d"
+        },
+        {
+          "text": "trn doctor:\u4e66\u8be6\u60c5 \u2713",
+          "passed": true,
+          "evidence": "\u2713 \u4e66\u8be6\u60c5    \u5168\u80fd\u4e3b\u89d2\u5bfc\u5e08"
+        },
+        {
+          "text": "trn doctor:\u76ee\u5f55 \u2713(\u7ae0\u8282\u6570 > 0)",
+          "passed": true,
+          "evidence": "\u2713 \u76ee\u5f55     0 \u5377 / 2272 \u7ae0"
+        },
+        {
+          "text": "trn doctor:\u6b63\u6587 \u2713(\u53d6\u5230\u975e\u7a7a\u6b63\u6587)",
+          "passed": true,
+          "evidence": "\u2713 \u6b63\u6587     1829 \u5b57"
+        },
+        {
+          "text": "trn doctor:\u641c\u7d22 \u2713(\u52a0\u5206\u9879,\u975e\u5fc5\u987b)",
+          "passed": true,
+          "evidence": "\u2713 \u641c\u7d22     \u300c\u5168\u80fd\u4e3b\u89d2\u5bfc\u5e08\u300d\u2192 20 \u672c"
+        }
+      ],
+      "notes": []
+    },
+    {
+      "eval_id": 1,
+      "configuration": "with_skill",
+      "run_number": 1,
+      "result": {
+        "pass_rate": 1.0,
+        "passed": 6,
+        "failed": 0,
+        "total": 6,
+        "time_seconds": 821.0,
+        "tokens": 140022,
+        "tool_calls": 0,
+        "errors": 0
+      },
+      "expectations": [
+        {
+          "text": "\u8f93\u51fa\u76ee\u5f55\u4ea7\u51fa\u4e00\u4e2a trnovel-booksource/v2 \u4e66\u6e90 JSON(\u542b schema:trnovel-booksource/v2)",
+          "passed": true,
+          "evidence": "bqgui.v2.json \u542b trnovel-booksource/v2"
+        },
+        {
+          "text": "trn doctor:\u914d\u7f6e \u2713(JSON \u80fd\u88ab\u5f15\u64ce\u89e3\u6790)",
+          "passed": true,
+          "evidence": "\u2713 \u914d\u7f6e     \u4e66\u6e90\u300c\u7b14\u8da3\u9601(bqgui)\u300d"
+        },
+        {
+          "text": "trn doctor:\u4e66\u8be6\u60c5 \u2713",
+          "passed": true,
+          "evidence": "\u2713 \u4e66\u8be6\u60c5    \u51e1\u4eba\u4fee\u4ed9\u4f20"
+        },
+        {
+          "text": "trn doctor:\u76ee\u5f55 \u2713(\u7ae0\u8282\u6570 > 0)",
+          "passed": true,
+          "evidence": "\u2713 \u76ee\u5f55     0 \u5377 / 2456 \u7ae0"
+        },
+        {
+          "text": "trn doctor:\u6b63\u6587 \u2713(\u53d6\u5230\u975e\u7a7a\u6b63\u6587)",
+          "passed": true,
+          "evidence": "\u2713 \u6b63\u6587     1124 \u5b57"
+        },
+        {
+          "text": "trn doctor:\u641c\u7d22 \u2713(\u52a0\u5206\u9879,\u975e\u5fc5\u987b)",
+          "passed": true,
+          "evidence": "\u2713 \u641c\u7d22     \u300c\u51e1\u4eba\u4fee\u4ed9\u4f20\u300d\u2192 24 \u672c"
+        }
+      ],
+      "notes": []
+    },
+    {
+      "eval_id": 0,
+      "configuration": "without_skill",
+      "run_number": 1,
+      "result": {
+        "pass_rate": 1.0,
+        "passed": 6,
+        "failed": 0,
+        "total": 6,
+        "time_seconds": 435.9,
+        "tokens": 92010,
+        "tool_calls": 0,
+        "errors": 0
+      },
+      "expectations": [
+        {
+          "text": "\u8f93\u51fa\u76ee\u5f55\u4ea7\u51fa\u4e00\u4e2a trnovel-booksource/v2 \u4e66\u6e90 JSON(\u542b schema:trnovel-booksource/v2)",
+          "passed": true,
+          "evidence": "shuhaige.v2.json \u542b trnovel-booksource/v2"
+        },
+        {
+          "text": "trn doctor:\u914d\u7f6e \u2713(JSON \u80fd\u88ab\u5f15\u64ce\u89e3\u6790)",
+          "passed": true,
+          "evidence": "\u2713 \u914d\u7f6e     \u4e66\u6e90\u300c\u4e66\u6d77\u9601\u5c0f\u8bf4\u7f51\u300d"
+        },
+        {
+          "text": "trn doctor:\u4e66\u8be6\u60c5 \u2713",
+          "passed": true,
+          "evidence": "\u2713 \u4e66\u8be6\u60c5    \u5168\u804c\u6cd5\u5e08"
+        },
+        {
+          "text": "trn doctor:\u76ee\u5f55 \u2713(\u7ae0\u8282\u6570 > 0)",
+          "passed": true,
+          "evidence": "\u2713 \u76ee\u5f55     0 \u5377 / 3387 \u7ae0"
+        },
+        {
+          "text": "trn doctor:\u6b63\u6587 \u2713(\u53d6\u5230\u975e\u7a7a\u6b63\u6587)",
+          "passed": true,
+          "evidence": "\u2713 \u6b63\u6587     2943 \u5b57"
+        },
+        {
+          "text": "trn doctor:\u641c\u7d22 \u2713(\u52a0\u5206\u9879,\u975e\u5fc5\u987b)",
+          "passed": true,
+          "evidence": "\u2713 \u641c\u7d22     \u300c\u5168\u804c\u6cd5\u5e08\u300d\u2192 20 \u672c"
+        }
+      ],
+      "notes": []
+    },
+    {
+      "eval_id": 1,
+      "configuration": "without_skill",
+      "run_number": 1,
+      "result": {
+        "pass_rate": 0.6666666666666666,
+        "passed": 4,
+        "failed": 2,
+        "total": 6,
+        "time_seconds": 672.8,
+        "tokens": 96856,
+        "tool_calls": 0,
+        "errors": 0
+      },
+      "expectations": [
+        {
+          "text": "\u8f93\u51fa\u76ee\u5f55\u4ea7\u51fa\u4e00\u4e2a trnovel-booksource/v2 \u4e66\u6e90 JSON(\u542b schema:trnovel-booksource/v2)",
+          "passed": true,
+          "evidence": "bqgui.v2.json \u542b trnovel-booksource/v2"
+        },
+        {
+          "text": "trn doctor:\u914d\u7f6e \u2713(JSON \u80fd\u88ab\u5f15\u64ce\u89e3\u6790)",
+          "passed": true,
+          "evidence": "\u2713 \u914d\u7f6e     \u4e66\u6e90\u300c\u7b14\u8da3\u9601(bqgui)\u300d"
+        },
+        {
+          "text": "trn doctor:\u4e66\u8be6\u60c5 \u2713",
+          "passed": true,
+          "evidence": "\u2713 \u4e66\u8be6\u60c5    \u6597\u7f57\u5927\u9646V\u91cd\u751f\u5510\u4e09"
+        },
+        {
+          "text": "trn doctor:\u76ee\u5f55 \u2713(\u7ae0\u8282\u6570 > 0)",
+          "passed": true,
+          "evidence": "\u2713 \u76ee\u5f55     0 \u5377 / 1184 \u7ae0"
+        },
+        {
+          "text": "trn doctor:\u6b63\u6587 \u2713(\u53d6\u5230\u975e\u7a7a\u6b63\u6587)",
+          "passed": false,
+          "evidence": "\u2717 \u6b63\u6587     \u6b63\u6587\u4e3a\u7a7a"
+        },
+        {
+          "text": "trn doctor:\u641c\u7d22 \u2713(\u52a0\u5206\u9879,\u975e\u5fc5\u987b)",
+          "passed": false,
+          "evidence": "\u25cb \u641c\u7d22     \u672a\u914d\u7f6e"
+        }
+      ],
+      "notes": []
+    }
+  ],
+  "run_summary": {
+    "with_skill": {
+      "pass_rate": {
+        "mean": 1.0,
+        "stddev": 0.0,
+        "min": 1.0,
+        "max": 1.0
+      },
+      "time_seconds": {
+        "mean": 646.0,
+        "stddev": 247.4874,
+        "min": 471.0,
+        "max": 821.0
+      },
+      "tokens": {
+        "mean": 115408.0,
+        "stddev": 34809.4526,
+        "min": 90794,
+        "max": 140022
+      }
+    },
+    "without_skill": {
+      "pass_rate": {
+        "mean": 0.8333,
+        "stddev": 0.2357,
+        "min": 0.6667,
+        "max": 1.0
+      },
+      "time_seconds": {
+        "mean": 554.35,
+        "stddev": 167.5136,
+        "min": 435.9,
+        "max": 672.8
+      },
+      "tokens": {
+        "mean": 94433.0,
+        "stddev": 3426.6395,
+        "min": 92010,
+        "max": 96856
+      }
+    },
+    "delta": {
+      "pass_rate": "+0.17",
+      "time_seconds": "+91.6",
+      "tokens": "+20975"
+    }
+  },
+  "notes": []
+}

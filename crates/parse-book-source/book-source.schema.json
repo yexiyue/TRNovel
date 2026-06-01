@@ -1,0 +1,792 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "BookSource",
+  "description": "v2 书源。",
+  "type": "object",
+  "required": [
+    "bookInfo",
+    "content",
+    "name",
+    "schema",
+    "toc",
+    "url"
+  ],
+  "properties": {
+    "bookInfo": {
+      "$ref": "#/definitions/BookRules"
+    },
+    "content": {
+      "$ref": "#/definitions/ContentRules"
+    },
+    "explore": {
+      "anyOf": [
+        {
+          "$ref": "#/definitions/ExploreOp"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "group": {
+      "type": "string"
+    },
+    "http": {
+      "default": {
+        "charset": "auto",
+        "cookies": {},
+        "fetcher": "auto",
+        "headers": {},
+        "warmup": []
+      },
+      "allOf": [
+        {
+          "$ref": "#/definitions/Http"
+        }
+      ]
+    },
+    "name": {
+      "type": "string"
+    },
+    "samples": {
+      "type": "array",
+      "items": {
+        "$ref": "#/definitions/Sample"
+      }
+    },
+    "schema": {
+      "description": "固定为 `\"trnovel-booksource/v2\"`。",
+      "type": "string"
+    },
+    "search": {
+      "anyOf": [
+        {
+          "$ref": "#/definitions/SearchOp"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "toc": {
+      "$ref": "#/definitions/TocRules"
+    },
+    "url": {
+      "description": "站点基址,用于相对链接解析与 `{{base}}`。",
+      "type": "string"
+    }
+  },
+  "additionalProperties": false,
+  "definitions": {
+    "BookRules": {
+      "description": "一本书的字段抽取规则(均可省略)。",
+      "type": "object",
+      "properties": {
+        "author": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/Rule"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "bookUrl": {
+          "description": "列表项:指向书详情页的链接(搜索/浏览结果用;bookInfo 阶段忽略)。",
+          "anyOf": [
+            {
+              "$ref": "#/definitions/Rule"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "cover": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/Rule"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "intro": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/Rule"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "kind": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/Rule"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "lastChapter": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/Rule"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "name": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/Rule"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "tocUrl": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/Rule"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "wordCount": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/Rule"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "additionalProperties": false
+    },
+    "Category": {
+      "description": "浏览分类。",
+      "type": "object",
+      "required": [
+        "title",
+        "url"
+      ],
+      "properties": {
+        "title": {
+          "type": "string"
+        },
+        "url": {
+          "$ref": "#/definitions/UrlOrRule"
+        }
+      },
+      "additionalProperties": false
+    },
+    "Charset": {
+      "description": "字符集。",
+      "type": "string",
+      "enum": [
+        "auto",
+        "utf8",
+        "gbk",
+        "gb18030",
+        "big5"
+      ]
+    },
+    "CleanStep": {
+      "description": "单步后处理。",
+      "type": "object",
+      "properties": {
+        "append": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "prepend": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "regex": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "replace": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "trim": {
+          "type": [
+            "boolean",
+            "null"
+          ]
+        }
+      },
+      "additionalProperties": false
+    },
+    "ContentRules": {
+      "description": "正文规则(可选分页)。",
+      "type": "object",
+      "required": [
+        "value"
+      ],
+      "properties": {
+        "maxPages": {
+          "default": 100,
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0.0
+        },
+        "nextPage": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/Rule"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "value": {
+          "$ref": "#/definitions/Rule"
+        }
+      },
+      "additionalProperties": false
+    },
+    "Expect": {
+      "description": "样例期望不变量。",
+      "type": "object",
+      "properties": {
+        "minChapters": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "uint",
+          "minimum": 0.0
+        },
+        "minContentChars": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "uint",
+          "minimum": 0.0
+        },
+        "name": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "volumes": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "uint",
+          "minimum": 0.0
+        }
+      }
+    },
+    "ExploreOp": {
+      "description": "浏览操作。",
+      "type": "object",
+      "required": [
+        "categories",
+        "item",
+        "list"
+      ],
+      "properties": {
+        "categories": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/Category"
+          }
+        },
+        "item": {
+          "$ref": "#/definitions/BookRules"
+        },
+        "list": {
+          "$ref": "#/definitions/Rule"
+        }
+      },
+      "additionalProperties": false
+    },
+    "Extract": {
+      "description": "取值方式(枚举字符串 或 `{ \"attr\": \"...\" }`)。",
+      "anyOf": [
+        {
+          "$ref": "#/definitions/ExtractOp"
+        },
+        {
+          "type": "object",
+          "required": [
+            "attr"
+          ],
+          "properties": {
+            "attr": {
+              "type": "string"
+            }
+          }
+        }
+      ]
+    },
+    "ExtractOp": {
+      "description": "文本/HTML 取值算子。",
+      "type": "string",
+      "enum": [
+        "text",
+        "ownText",
+        "html",
+        "innerHtml",
+        "outerHtml"
+      ]
+    },
+    "FetchMode": {
+      "description": "取页模式:是否动用浏览器解反爬挑战。 真正是否开浏览器还需 app/用户级授权(两级取交集,见 OpenSpec change `browser-fetcher` D12)。",
+      "oneOf": [
+        {
+          "description": "默认:平时 reqwest,撞挑战才升级浏览器。",
+          "type": "string",
+          "enum": [
+            "auto"
+          ]
+        },
+        {
+          "description": "永不开浏览器,撞挑战即降级。",
+          "type": "string",
+          "enum": [
+            "reqwest"
+          ]
+        },
+        {
+          "description": "整站强制走浏览器(首请求即被挑战 / 整页 JS 渲染)。",
+          "type": "string",
+          "enum": [
+            "browser"
+          ]
+        }
+      ]
+    },
+    "Http": {
+      "description": "HTTP 配置块。",
+      "type": "object",
+      "properties": {
+        "charset": {
+          "default": "auto",
+          "allOf": [
+            {
+              "$ref": "#/definitions/Charset"
+            }
+          ]
+        },
+        "cookies": {
+          "description": "静态 cookie;也是运行时注入 clearance cookie 的落点。",
+          "default": {},
+          "type": "object",
+          "additionalProperties": {
+            "type": "string"
+          }
+        },
+        "fetcher": {
+          "description": "取页模式(auto|reqwest|browser);默认 auto。",
+          "default": "auto",
+          "allOf": [
+            {
+              "$ref": "#/definitions/FetchMode"
+            }
+          ]
+        },
+        "headers": {
+          "default": {},
+          "type": "object",
+          "additionalProperties": {
+            "type": "string"
+          }
+        },
+        "rateLimit": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/RateLimit"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "retry": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/Retry"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "timeout": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "uint64",
+          "minimum": 0.0
+        },
+        "warmup": {
+          "description": "先 GET 这些页以预热会话 cookie。",
+          "default": [],
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    "LeafRule": {
+      "description": "叶子规则:在当前上下文做一次抽取。",
+      "type": "object",
+      "properties": {
+        "clean": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/CleanStep"
+          }
+        },
+        "extract": {
+          "default": "text",
+          "allOf": [
+            {
+              "$ref": "#/definitions/Extract"
+            }
+          ]
+        },
+        "index": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "int64"
+        },
+        "select": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "via": {
+          "default": "css",
+          "allOf": [
+            {
+              "$ref": "#/definitions/Via"
+            }
+          ]
+        }
+      }
+    },
+    "Method": {
+      "description": "HTTP 方法。",
+      "type": "string",
+      "enum": [
+        "GET",
+        "POST"
+      ]
+    },
+    "RateLimit": {
+      "description": "速率限制。",
+      "type": "object",
+      "required": [
+        "maxCount",
+        "perMs"
+      ],
+      "properties": {
+        "maxCount": {
+          "type": "integer",
+          "format": "uint64",
+          "minimum": 0.0
+        },
+        "perMs": {
+          "type": "integer",
+          "format": "uint64",
+          "minimum": 0.0
+        }
+      },
+      "additionalProperties": false
+    },
+    "Request": {
+      "description": "单个请求。",
+      "type": "object",
+      "required": [
+        "url"
+      ],
+      "properties": {
+        "body": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/UrlOrRule"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "headers": {
+          "default": {},
+          "type": "object",
+          "additionalProperties": {
+            "type": "string"
+          }
+        },
+        "method": {
+          "default": "GET",
+          "allOf": [
+            {
+              "$ref": "#/definitions/Method"
+            }
+          ]
+        },
+        "url": {
+          "$ref": "#/definitions/UrlOrRule"
+        },
+        "vars": {
+          "description": "命名捕获,供 template 使用。",
+          "default": {},
+          "type": "object",
+          "additionalProperties": {
+            "$ref": "#/definitions/Rule"
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    "Retry": {
+      "description": "重试策略。",
+      "type": "object",
+      "properties": {
+        "backoffMs": {
+          "default": 0,
+          "type": "integer",
+          "format": "uint64",
+          "minimum": 0.0
+        },
+        "max": {
+          "default": 0,
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0.0
+        }
+      },
+      "additionalProperties": false
+    },
+    "Rule": {
+      "description": "一条规则:叶子,或组合子。组合子按其唯一键判别(见 design D1)。\n\n反序列化时按变体顺序尝试:组合子(各有唯一必填键)在前,叶子兜底。",
+      "anyOf": [
+        {
+          "description": "取首个非空子规则结果(回退/自愈)。",
+          "type": "object",
+          "required": [
+            "firstOf"
+          ],
+          "properties": {
+            "firstOf": {
+              "type": "array",
+              "items": {
+                "$ref": "#/definitions/Rule"
+              }
+            }
+          }
+        },
+        {
+          "description": "拼接非空子规则结果。",
+          "type": "object",
+          "required": [
+            "concat"
+          ],
+          "properties": {
+            "concat": {
+              "type": "array",
+              "items": {
+                "$ref": "#/definitions/Rule"
+              }
+            },
+            "join": {
+              "default": "",
+              "type": "string"
+            }
+          }
+        },
+        {
+          "description": "字面量。",
+          "type": "object",
+          "required": [
+            "literal"
+          ],
+          "properties": {
+            "literal": {
+              "type": "string"
+            }
+          }
+        },
+        {
+          "description": "模板插值(`{{key}}`/`{{page}}`/命名变量)。",
+          "type": "object",
+          "required": [
+            "template"
+          ],
+          "properties": {
+            "template": {
+              "type": "string"
+            }
+          }
+        },
+        {
+          "description": "叶子(兜底)。",
+          "allOf": [
+            {
+              "$ref": "#/definitions/LeafRule"
+            }
+          ]
+        }
+      ]
+    },
+    "Sample": {
+      "description": "黄金样例。",
+      "type": "object",
+      "required": [
+        "bookUrl"
+      ],
+      "properties": {
+        "bookUrl": {
+          "type": "string"
+        },
+        "expect": {
+          "default": {},
+          "allOf": [
+            {
+              "$ref": "#/definitions/Expect"
+            }
+          ]
+        }
+      },
+      "additionalProperties": false
+    },
+    "SearchOp": {
+      "description": "搜索操作。",
+      "type": "object",
+      "required": [
+        "item",
+        "list",
+        "request"
+      ],
+      "properties": {
+        "item": {
+          "$ref": "#/definitions/BookRules"
+        },
+        "list": {
+          "$ref": "#/definitions/Rule"
+        },
+        "request": {
+          "$ref": "#/definitions/Request"
+        }
+      },
+      "additionalProperties": false
+    },
+    "TocRules": {
+      "description": "目录规则(章节 + 分卷 + 可选分页)。",
+      "type": "object",
+      "required": [
+        "list",
+        "name",
+        "url"
+      ],
+      "properties": {
+        "isVolume": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/Rule"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "list": {
+          "$ref": "#/definitions/Rule"
+        },
+        "maxPages": {
+          "default": 100,
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0.0
+        },
+        "name": {
+          "$ref": "#/definitions/Rule"
+        },
+        "nextPage": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/Rule"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "url": {
+          "$ref": "#/definitions/Rule"
+        }
+      },
+      "additionalProperties": false
+    },
+    "UrlOrRule": {
+      "description": "URL 字段:可为字符串模板,或一条规则。",
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "$ref": "#/definitions/Rule"
+        }
+      ]
+    },
+    "Via": {
+      "description": "抽取后端(决定 `select` 的语义)。",
+      "oneOf": [
+        {
+          "type": "string",
+          "enum": [
+            "css",
+            "xpath",
+            "json",
+            "regex"
+          ]
+        },
+        {
+          "description": "直接使用当前上下文值(只跑 clean)。",
+          "type": "string",
+          "enum": [
+            "raw"
+          ]
+        }
+      ]
+    }
+  }
+}

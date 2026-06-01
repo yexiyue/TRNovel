@@ -1,0 +1,303 @@
+{
+  "schema": "trnovel-booksource/v2",
+  "name": "笔趣阁(bqgui)",
+  "group": "笔趣阁",
+  "url": "https://www.bqgui.cc",
+  "http": {
+    "headers": {
+      "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36",
+      "Referer": "https://www.bqgui.cc/"
+    },
+    "cookies": {
+      "getsite": "bqg661.cc"
+    },
+    "warmup": [
+      "https://www.bqgui.cc/",
+      "https://www.bqgui.cc/user/hm.html"
+    ],
+    "charset": "utf8",
+    "fetcher": "auto",
+    "timeout": 20000,
+    "retry": {
+      "max": 2,
+      "backoffMs": 500
+    }
+  },
+  "search": {
+    "request": {
+      "url": {
+        "template": "{{base}}/user/search.html?q={{key}}"
+      },
+      "method": "GET"
+    },
+    "list": {
+      "via": "json",
+      "select": "$[*]"
+    },
+    "item": {
+      "bookUrl": {
+        "via": "json",
+        "select": "$.url_list"
+      },
+      "name": {
+        "via": "json",
+        "select": "$.articlename"
+      },
+      "author": {
+        "via": "json",
+        "select": "$.author"
+      },
+      "cover": {
+        "via": "json",
+        "select": "$.url_img"
+      },
+      "intro": {
+        "via": "json",
+        "select": "$.intro"
+      }
+    }
+  },
+  "explore": {
+    "categories": [
+      {
+        "title": "玄幻",
+        "url": {
+          "template": "{{base}}/xuanhuan/"
+        }
+      },
+      {
+        "title": "武侠",
+        "url": {
+          "template": "{{base}}/wuxia/"
+        }
+      },
+      {
+        "title": "都市",
+        "url": {
+          "template": "{{base}}/dushi/"
+        }
+      },
+      {
+        "title": "历史",
+        "url": {
+          "template": "{{base}}/lishi/"
+        }
+      },
+      {
+        "title": "网游",
+        "url": {
+          "template": "{{base}}/wangyou/"
+        }
+      },
+      {
+        "title": "科幻",
+        "url": {
+          "template": "{{base}}/kehuan/"
+        }
+      },
+      {
+        "title": "女生",
+        "url": {
+          "template": "{{base}}/mm/"
+        }
+      },
+      {
+        "title": "完本",
+        "url": {
+          "template": "{{base}}/finish/"
+        }
+      }
+    ],
+    "list": {
+      "via": "css",
+      "select": ".item"
+    },
+    "item": {
+      "bookUrl": {
+        "via": "css",
+        "select": "dl dt a",
+        "extract": {
+          "attr": "href"
+        }
+      },
+      "tocUrl": {
+        "via": "css",
+        "select": "dl dt a",
+        "extract": {
+          "attr": "href"
+        }
+      },
+      "name": {
+        "via": "css",
+        "select": "dl dt a",
+        "extract": "text"
+      },
+      "author": {
+        "via": "css",
+        "select": "dl dt span",
+        "extract": "text"
+      },
+      "cover": {
+        "via": "css",
+        "select": ".image img",
+        "extract": {
+          "attr": "src"
+        }
+      },
+      "intro": {
+        "via": "css",
+        "select": "dl dd",
+        "extract": "text"
+      }
+    }
+  },
+  "bookInfo": {
+    "name": {
+      "firstOf": [
+        {
+          "via": "css",
+          "select": "[property=\"og:novel:book_name\"]",
+          "extract": {
+            "attr": "content"
+          }
+        },
+        {
+          "via": "css",
+          "select": "h1",
+          "extract": "text"
+        }
+      ]
+    },
+    "author": {
+      "via": "css",
+      "select": "[property=\"og:novel:author\"]",
+      "extract": {
+        "attr": "content"
+      }
+    },
+    "cover": {
+      "via": "css",
+      "select": "[property=\"og:image\"]",
+      "extract": {
+        "attr": "content"
+      }
+    },
+    "intro": {
+      "via": "css",
+      "select": "[property=\"og:description\"]",
+      "extract": {
+        "attr": "content"
+      }
+    },
+    "kind": {
+      "concat": [
+        {
+          "via": "css",
+          "select": "[property=\"og:novel:category\"]",
+          "extract": {
+            "attr": "content"
+          }
+        },
+        {
+          "via": "css",
+          "select": "[property=\"og:novel:status\"]",
+          "extract": {
+            "attr": "content"
+          }
+        }
+      ],
+      "join": " · "
+    },
+    "lastChapter": {
+      "via": "css",
+      "select": "[property=\"og:novel:latest_chapter_name\"]",
+      "extract": {
+        "attr": "content"
+      }
+    },
+    "tocUrl": {
+      "via": "css",
+      "select": "[property=\"og:novel:read_url\"]",
+      "extract": {
+        "attr": "content"
+      }
+    }
+  },
+  "toc": {
+    "list": {
+      "via": "css",
+      "select": ".listmain dl dd:not(.more) a"
+    },
+    "name": {
+      "via": "css",
+      "select": "a",
+      "extract": "text"
+    },
+    "url": {
+      "via": "css",
+      "select": "a",
+      "extract": {
+        "attr": "href"
+      },
+      "clean": [
+        {
+          "append": "?nocache=1"
+        }
+      ]
+    },
+    "maxPages": 1
+  },
+  "content": {
+    "value": {
+      "firstOf": [
+        {
+          "via": "css",
+          "select": "#chaptercontent",
+          "extract": "html"
+        },
+        {
+          "via": "css",
+          "select": "#content",
+          "extract": "html"
+        },
+        {
+          "via": "css",
+          "select": ".content",
+          "extract": "html"
+        }
+      ],
+      "clean": [
+        {
+          "regex": "（本章未完[^）]*）",
+          "replace": ""
+        },
+        {
+          "regex": "请收藏本站[^\\n]*",
+          "replace": ""
+        },
+        {
+          "regex": "笔趣阁手机版[^\\n]*",
+          "replace": ""
+        },
+        {
+          "regex": "『[^』]*』",
+          "replace": ""
+        },
+        {
+          "trim": true
+        }
+      ]
+    },
+    "maxPages": 1
+  },
+  "samples": [
+    {
+      "bookUrl": "/book/673/",
+      "expect": {
+        "name": "凡人修仙传",
+        "minChapters": 2000,
+        "minContentChars": 200
+      }
+    }
+  ]
+}

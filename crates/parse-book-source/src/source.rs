@@ -12,6 +12,7 @@ use std::collections::HashMap;
 /// 抽取后端(决定 `select` 的语义)。
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize, Hash)]
 #[serde(rename_all = "lowercase")]
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 pub enum Via {
     #[default]
     Css,
@@ -25,6 +26,7 @@ pub enum Via {
 /// 取值方式(枚举字符串 或 `{ "attr": "..." }`)。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Hash)]
 #[serde(untagged)]
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 pub enum Extract {
     Op(ExtractOp),
     Attr { attr: String },
@@ -39,6 +41,7 @@ impl Default for Extract {
 /// 文本/HTML 取值算子。
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize, Hash)]
 #[serde(rename_all = "camelCase")]
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 pub enum ExtractOp {
     #[default]
     Text,
@@ -51,6 +54,7 @@ pub enum ExtractOp {
 /// 单步后处理。
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize, Hash)]
 #[serde(deny_unknown_fields)]
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 pub struct CleanStep {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub regex: Option<String>,
@@ -67,6 +71,7 @@ pub struct CleanStep {
 /// 叶子规则:在当前上下文做一次抽取。
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize, Hash)]
 #[serde(rename_all = "camelCase")]
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 pub struct LeafRule {
     #[serde(default)]
     pub via: Via,
@@ -85,6 +90,7 @@ pub struct LeafRule {
 /// 反序列化时按变体顺序尝试:组合子(各有唯一必填键)在前,叶子兜底。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Hash)]
 #[serde(untagged)]
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 pub enum Rule {
     /// 取首个非空子规则结果(回退/自愈)。
     FirstOf {
@@ -108,6 +114,7 @@ pub enum Rule {
 /// URL 字段:可为字符串模板,或一条规则。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Hash)]
 #[serde(untagged)]
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 pub enum UrlOrRule {
     Str(String),
     Rule(Box<Rule>),
@@ -118,6 +125,7 @@ pub enum UrlOrRule {
 /// 字符集。
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 pub enum Charset {
     #[default]
     Auto,
@@ -130,6 +138,7 @@ pub enum Charset {
 /// 重试策略。
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 pub struct Retry {
     #[serde(default)]
     pub max: u32,
@@ -140,6 +149,7 @@ pub struct Retry {
 /// 速率限制。
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 pub struct RateLimit {
     pub max_count: u64,
     pub per_ms: u64,
@@ -149,6 +159,7 @@ pub struct RateLimit {
 /// 真正是否开浏览器还需 app/用户级授权(两级取交集,见 OpenSpec change `browser-fetcher` D12)。
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 pub enum FetchMode {
     /// 默认:平时 reqwest,撞挑战才升级浏览器。
     #[default]
@@ -162,6 +173,7 @@ pub enum FetchMode {
 /// HTTP 配置块。
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 pub struct Http {
     #[serde(default)]
     pub headers: HashMap<String, String>,
@@ -187,6 +199,7 @@ pub struct Http {
 /// HTTP 方法。
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "UPPERCASE")]
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 pub enum Method {
     #[default]
     Get,
@@ -196,6 +209,7 @@ pub enum Method {
 /// 单个请求。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 pub struct Request {
     pub url: UrlOrRule,
     #[serde(default)]
@@ -214,6 +228,7 @@ pub struct Request {
 /// 一本书的字段抽取规则(均可省略)。
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 pub struct BookRules {
     /// 列表项:指向书详情页的链接(搜索/浏览结果用;bookInfo 阶段忽略)。
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -239,6 +254,7 @@ pub struct BookRules {
 /// 搜索操作。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 pub struct SearchOp {
     pub request: Request,
     pub list: Rule,
@@ -248,6 +264,7 @@ pub struct SearchOp {
 /// 浏览分类。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Hash)]
 #[serde(deny_unknown_fields)]
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 pub struct Category {
     pub title: String,
     pub url: UrlOrRule,
@@ -256,6 +273,7 @@ pub struct Category {
 /// 浏览操作。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 pub struct ExploreOp {
     pub categories: Vec<Category>,
     pub list: Rule,
@@ -269,6 +287,7 @@ fn default_max_pages() -> u32 {
 /// 目录规则(章节 + 分卷 + 可选分页)。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 pub struct TocRules {
     pub list: Rule,
     pub name: Rule,
@@ -284,6 +303,7 @@ pub struct TocRules {
 /// 正文规则(可选分页)。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 pub struct ContentRules {
     pub value: Rule,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -297,6 +317,7 @@ pub struct ContentRules {
 /// 样例期望不变量。
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 pub struct Expect {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub name: Option<String>,
@@ -311,6 +332,7 @@ pub struct Expect {
 /// 黄金样例。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 pub struct Sample {
     pub book_url: String,
     #[serde(default)]
@@ -322,6 +344,7 @@ pub struct Sample {
 /// v2 书源。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 pub struct BookSource {
     /// 固定为 `"trnovel-booksource/v2"`。
     pub schema: String,
@@ -528,6 +551,25 @@ mod tests {
         assert!(
             BookSource::from_json(&bad).is_err(),
             "拼错字段应被 deny_unknown_fields 拒绝"
+        );
+    }
+}
+
+/// 防漂移:`book-source.schema.json` 必须等于从类型现生成的 schema(`--features schema`)。
+/// 失败说明改了配置类型却没重新生成 schema——按提示重跑 gen_schema 即可。
+#[cfg(all(test, feature = "schema"))]
+mod schema_sync {
+    #[test]
+    fn schema_is_in_sync() {
+        let generated =
+            serde_json::to_string_pretty(&schemars::schema_for!(crate::BookSource)).unwrap();
+        let committed = include_str!("../book-source.schema.json");
+        assert_eq!(
+            generated.trim(),
+            committed.trim(),
+            "book-source.schema.json 与配置类型不同步;请重新生成:\n  \
+             cargo run -p parse-book-source --features schema --example gen_schema \
+             > crates/parse-book-source/book-source.schema.json"
         );
     }
 }

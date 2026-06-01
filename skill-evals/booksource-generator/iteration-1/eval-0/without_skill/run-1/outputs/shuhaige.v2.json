@@ -1,0 +1,322 @@
+{
+  "schema": "trnovel-booksource/v2",
+  "name": "书海阁小说网",
+  "group": "网络",
+  "url": "https://www.shuhaige.net",
+  "http": {
+    "headers": {
+      "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36",
+      "Referer": "https://www.shuhaige.net/"
+    },
+    "warmup": [
+      "https://www.shuhaige.net/"
+    ],
+    "charset": "auto",
+    "timeout": 15000,
+    "retry": {
+      "max": 2,
+      "backoffMs": 500
+    }
+  },
+  "search": {
+    "request": {
+      "url": {
+        "template": "{{base}}/search.html"
+      },
+      "method": "POST",
+      "body": {
+        "template": "searchtype=all&searchkey={{key}}"
+      },
+      "headers": {
+        "Content-Type": "application/x-www-form-urlencoded",
+        "Referer": "https://www.shuhaige.net/"
+      }
+    },
+    "list": {
+      "via": "css",
+      "select": "#sitembox dl"
+    },
+    "item": {
+      "bookUrl": {
+        "via": "css",
+        "select": "dt a",
+        "extract": {
+          "attr": "href"
+        }
+      },
+      "name": {
+        "via": "css",
+        "select": "dd h3 a",
+        "extract": "text"
+      },
+      "cover": {
+        "via": "css",
+        "select": "dt a img",
+        "extract": {
+          "attr": "src"
+        }
+      },
+      "author": {
+        "via": "css",
+        "select": "dd.book_other span",
+        "extract": "text"
+      },
+      "intro": {
+        "via": "css",
+        "select": "dd.book_des",
+        "extract": "text"
+      }
+    }
+  },
+  "explore": {
+    "categories": [
+      {
+        "title": "玄幻",
+        "url": {
+          "template": "{{base}}/XuanHuan/"
+        }
+      },
+      {
+        "title": "奇幻",
+        "url": {
+          "template": "{{base}}/QiHuan/"
+        }
+      },
+      {
+        "title": "武侠",
+        "url": {
+          "template": "{{base}}/WuXia/"
+        }
+      },
+      {
+        "title": "仙侠",
+        "url": {
+          "template": "{{base}}/XianXia/"
+        }
+      },
+      {
+        "title": "都市",
+        "url": {
+          "template": "{{base}}/DuShi/"
+        }
+      },
+      {
+        "title": "历史",
+        "url": {
+          "template": "{{base}}/LiShi/"
+        }
+      },
+      {
+        "title": "军事",
+        "url": {
+          "template": "{{base}}/JunShi/"
+        }
+      },
+      {
+        "title": "游戏",
+        "url": {
+          "template": "{{base}}/YouXi/"
+        }
+      },
+      {
+        "title": "科幻",
+        "url": {
+          "template": "{{base}}/KeHuan/"
+        }
+      },
+      {
+        "title": "悬疑",
+        "url": {
+          "template": "{{base}}/XuanYi/"
+        }
+      },
+      {
+        "title": "最近更新",
+        "url": {
+          "template": "{{base}}/lastupdate/"
+        }
+      }
+    ],
+    "list": {
+      "via": "css",
+      "select": "#newscontent .l ul li"
+    },
+    "item": {
+      "name": {
+        "via": "css",
+        "select": ".s2 a",
+        "extract": "text"
+      },
+      "bookUrl": {
+        "via": "css",
+        "select": ".s2 a",
+        "extract": {
+          "attr": "href"
+        }
+      },
+      "author": {
+        "via": "css",
+        "select": ".s4",
+        "extract": "text"
+      },
+      "kind": {
+        "via": "css",
+        "select": ".s1",
+        "extract": "text"
+      },
+      "lastChapter": {
+        "via": "css",
+        "select": ".s3 a",
+        "extract": "text"
+      }
+    }
+  },
+  "bookInfo": {
+    "name": {
+      "firstOf": [
+        {
+          "via": "css",
+          "select": "[property=\"og:novel:book_name\"]",
+          "extract": {
+            "attr": "content"
+          }
+        },
+        {
+          "via": "css",
+          "select": "#info h1",
+          "extract": "text"
+        }
+      ]
+    },
+    "author": {
+      "via": "css",
+      "select": "[property=\"og:novel:author\"]",
+      "extract": {
+        "attr": "content"
+      }
+    },
+    "cover": {
+      "via": "css",
+      "select": "[property=\"og:image\"]",
+      "extract": {
+        "attr": "content"
+      }
+    },
+    "intro": {
+      "via": "css",
+      "select": "[property=\"og:description\"]",
+      "extract": {
+        "attr": "content"
+      }
+    },
+    "kind": {
+      "concat": [
+        {
+          "via": "css",
+          "select": "[property=\"og:novel:category\"]",
+          "extract": {
+            "attr": "content"
+          }
+        },
+        {
+          "via": "css",
+          "select": "[property=\"og:novel:status\"]",
+          "extract": {
+            "attr": "content"
+          }
+        }
+      ],
+      "join": " · "
+    },
+    "lastChapter": {
+      "via": "css",
+      "select": "[property=\"og:novel:latest_chapter_name\"]",
+      "extract": {
+        "attr": "content"
+      }
+    },
+    "tocUrl": {
+      "via": "css",
+      "select": "[property=\"og:novel:read_url\"]",
+      "extract": {
+        "attr": "content"
+      }
+    }
+  },
+  "toc": {
+    "list": {
+      "via": "css",
+      "select": "#list dl dt:has(a[href*=\"txt_\"]) ~ dd a"
+    },
+    "name": {
+      "via": "css",
+      "select": "a",
+      "extract": "text"
+    },
+    "url": {
+      "via": "css",
+      "select": "a",
+      "extract": {
+        "attr": "href"
+      }
+    },
+    "maxPages": 1
+  },
+  "content": {
+    "value": {
+      "via": "css",
+      "select": "#content",
+      "extract": "html",
+      "clean": [
+        {
+          "regex": "喜欢[^\\n]*请大家收藏[^\\n]*",
+          "replace": ""
+        },
+        {
+          "regex": "请记住本书首发域名[^\\n]*",
+          "replace": ""
+        },
+        {
+          "regex": "[^\\n]*手机版阅读网址[^\\n]*",
+          "replace": ""
+        },
+        {
+          "regex": "天才一秒记住本站地址[^\\n]*",
+          "replace": ""
+        },
+        {
+          "regex": "[^\\n]*书海阁小说网更新速度[^\\n]*",
+          "replace": ""
+        },
+        {
+          "trim": true
+        }
+      ]
+    },
+    "nextPage": {
+      "via": "css",
+      "select": "#pager_next",
+      "extract": {
+        "attr": "href"
+      },
+      "clean": [
+        {
+          "regex": "^(?:(?!_\\d+\\.html).)*$",
+          "replace": ""
+        }
+      ]
+    },
+    "maxPages": 20
+  },
+  "samples": [
+    {
+      "bookUrl": "/64596/",
+      "expect": {
+        "name": "全职法师",
+        "minChapters": 100,
+        "volumes": 0,
+        "minContentChars": 500
+      }
+    }
+  ]
+}

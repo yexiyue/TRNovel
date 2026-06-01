@@ -1,0 +1,11 @@
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 0.13s
+     Running `target/debug/trnovel doctor /Volumes/yexiyue/TRNovel/skills/booksource-generator-workspace/iteration-1/eval-0/with_skill/outputs/shuhaige.v2.json`
+书源诊断:书海阁小说网
+  ✓ 配置     书源「书海阁小说网」
+  ✓ 浏览     30 本(分类「玄幻」)
+  ✓ 书详情    全能主角导师
+  ✓ 目录     0 卷 / 2272 章
+  ✓ 正文     1829 字
+  ✓ 搜索     「全能主角导师」→ 20 本
+
+✓ 全部通过(○ 为未配置/跳过)
