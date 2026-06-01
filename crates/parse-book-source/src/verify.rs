@@ -2,8 +2,17 @@
 //! 同一套断言用于生成期校验与运行期监控(见 design D5)。
 
 use super::engine::Engine;
-use super::error::Result;
+use super::error::{BookSourceError, Result};
 use super::source::Sample;
+
+/// 把取页/求值错误转为简短诊断文案;**反爬挑战给精确提示**而非笼统失败。
+fn err_detail(e: &BookSourceError) -> String {
+    if e.is_challenge() {
+        "被反爬挑战拦截(如 Cloudflare),需浏览器辅助或改用浏览".into()
+    } else {
+        e.to_string()
+    }
+}
 
 #[cfg(test)]
 mod tests {
@@ -21,6 +30,15 @@ mod tests {
     impl Fetcher for MockFetcher {
         async fn fetch(&self, _req: FetchRequest) -> std::result::Result<String, FetchError> {
             Ok(self.0.clone())
+        }
+    }
+
+    /// 对任何 URL 都返回「被反爬挑战」错误,模拟整站被 Cloudflare 挑战。
+    struct ChallengeFetcher;
+    #[async_trait]
+    impl Fetcher for ChallengeFetcher {
+        async fn fetch(&self, _req: FetchRequest) -> std::result::Result<String, FetchError> {
+            Err(FetchError::Challenged("Cloudflare/反爬挑战 @ test".into()))
         }
     }
 
@@ -76,6 +94,19 @@ mod tests {
         assert_eq!(report.name, "测试书");
         assert_eq!(report.chapters, 1);
         assert_eq!(report.volumes, 1);
+    }
+
+    #[tokio::test]
+    async fn diagnose_reports_challenge_precisely() {
+        let src = BookSource::from_json(SOURCE).unwrap();
+        let engine = Engine::with_fetcher(src, Arc::new(ChallengeFetcher));
+        let report = diagnose(&engine).await;
+        assert!(!report.healthy(), "被挑战应不健康");
+        // 反爬挑战项给精确提示,而非笼统的错误字符串。
+        assert!(
+            report.checks.iter().any(|c| c.detail.contains("反爬挑战")),
+            "应有精确反爬提示,实际: {report}"
+        );
     }
 }
 
@@ -261,7 +292,7 @@ pub async fn diagnose(engine: &Engine) -> DiagnoseReport {
                     ));
                 }
                 Ok(_) => checks.push(Check::fail("浏览", "结果为空")),
-                Err(e) => checks.push(Check::fail("浏览", e.to_string())),
+                Err(e) => checks.push(Check::fail("浏览", err_detail(&e))),
             },
             None => checks.push(Check::skip("浏览", "未配置分类")),
         }
@@ -286,7 +317,7 @@ pub async fn diagnose(engine: &Engine) -> DiagnoseReport {
                     checks.push(Check::pass("搜索", format!("「{q}」→ {} 本", books.len())))
                 }
                 Ok(_) => checks.push(Check::fail("搜索", format!("「{q}」无结果"))),
-                Err(e) => checks.push(Check::fail("搜索", e.to_string())),
+                Err(e) => checks.push(Check::fail("搜索", err_detail(&e))),
             },
             None => checks.push(Check::skip("搜索", "无样例查询词 samples[].expect.name")),
         }
@@ -321,7 +352,7 @@ async fn read_path_checks(engine: &Engine, book_url: Option<String>, checks: &mu
             return;
         }
         Err(e) => {
-            checks.push(Check::fail("书详情", e.to_string()));
+            checks.push(Check::fail("书详情", err_detail(&e)));
             checks.push(Check::skip("目录", "书详情失败"));
             checks.push(Check::skip("正文", "书详情失败"));
             return;
@@ -346,7 +377,7 @@ async fn read_path_checks(engine: &Engine, book_url: Option<String>, checks: &mu
             None
         }
         Err(e) => {
-            checks.push(Check::fail("目录", e.to_string()));
+            checks.push(Check::fail("目录", err_detail(&e)));
             None
         }
     };
@@ -357,7 +388,7 @@ async fn read_path_checks(engine: &Engine, book_url: Option<String>, checks: &mu
                 checks.push(Check::pass("正文", format!("{} 字", c.chars().count())))
             }
             Ok(_) => checks.push(Check::fail("正文", "正文为空")),
-            Err(e) => checks.push(Check::fail("正文", e.to_string())),
+            Err(e) => checks.push(Check::fail("正文", err_detail(&e))),
         },
         None => checks.push(Check::skip("正文", "目录无可用章节")),
     }

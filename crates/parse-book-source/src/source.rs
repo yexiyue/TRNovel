@@ -145,6 +145,20 @@ pub struct RateLimit {
     pub per_ms: u64,
 }
 
+/// 取页模式:是否动用浏览器解反爬挑战。
+/// 真正是否开浏览器还需 app/用户级授权(两级取交集,见 OpenSpec change `browser-fetcher` D12)。
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum FetchMode {
+    /// 默认:平时 reqwest,撞挑战才升级浏览器。
+    #[default]
+    Auto,
+    /// 永不开浏览器,撞挑战即降级。
+    Reqwest,
+    /// 整站强制走浏览器(首请求即被挑战 / 整页 JS 渲染)。
+    Browser,
+}
+
 /// HTTP 配置块。
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
@@ -165,6 +179,9 @@ pub struct Http {
     pub retry: Option<Retry>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub rate_limit: Option<RateLimit>,
+    /// 取页模式(auto|reqwest|browser);默认 auto。
+    #[serde(default)]
+    pub fetcher: FetchMode,
 }
 
 /// HTTP 方法。

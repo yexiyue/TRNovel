@@ -40,7 +40,7 @@ pub fn SelectBooks(mut hooks: Hooks) -> impl Into<AnyElement<'static>> {
     let mut current_explore = hooks.use_state(|| None::<ExploreListItem>);
 
     let (book_source_engine, _, error) = hooks.use_init_state(async move {
-        let engine = Engine::new((*book_source).clone())?;
+        let engine = crate::browser_assist::build_engine((*book_source).clone())?;
         // 预热会话 cookie(若书源配置了 http.warmup)。
         engine.warmup().await;
         let book_source_explores = engine.explore_categories();

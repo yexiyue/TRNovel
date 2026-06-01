@@ -29,7 +29,7 @@ impl NetworkNovel {
 
         Ok(NetworkNovel {
             book_list_item: network_cache.book_list_item,
-            engine: Engine::new(source)?,
+            engine: crate::browser_assist::build_engine(source)?,
             book_info: None,
             novel_chapters: NovelChapters {
                 current_chapter: network_cache.current_chapter,

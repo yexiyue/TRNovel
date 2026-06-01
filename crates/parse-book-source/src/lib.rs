@@ -16,6 +16,8 @@
 //! - `error` — 分层错误。
 
 pub mod backend;
+#[cfg(feature = "browser")]
+pub mod browser;
 pub mod engine;
 pub mod error;
 pub mod eval;
@@ -28,7 +30,13 @@ pub mod verify;
 // 规则 AST(`Rule` 等)与求值/抽取细节在 `source` / `eval` / `backend` 下,按需取用。
 pub use engine::Engine;
 pub use error::{BookSourceError, ConfigError, EvalError, FetchError, Result};
-pub use fetch::{FetchRequest, Fetcher, ReqwestFetcher};
+pub use fetch::{FetchRequest, Fetcher, ReqwestFetcher, is_challenge};
 pub use model::{BookInfo, BookListItem, Chapter, Toc, Volume};
-pub use source::{BookSource, Category, UrlOrRule};
+pub use source::{BookSource, Category, FetchMode, UrlOrRule};
 pub use verify::{Check, CheckStatus, DiagnoseReport, VerifyReport, diagnose, verify_sample};
+
+// 反爬:系统浏览器解挑战(`browser` feature)。
+#[cfg(feature = "browser")]
+pub use browser::{
+    BrowserFetcher, BrowserOptions, Clearance, EscalatingFetcher, SolvePrompt, detect_browser,
+};

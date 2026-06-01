@@ -3,92 +3,222 @@
   "name": "哔哩小说",
   "group": "测试",
   "url": "https://www.bilixs.com",
-
   "http": {
     "headers": {
       "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36",
       "Referer": "https://www.bilixs.com/"
     },
     "cookies": {},
-    "warmup": ["https://www.bilixs.com/"],
+    "warmup": [
+      "https://www.bilixs.com/"
+    ],
     "charset": "auto",
     "timeout": 15000,
-    "retry": { "max": 2, "backoffMs": 500 }
+    "retry": {
+      "max": 2,
+      "backoffMs": 500
+    }
   },
-
   "search": {
     "request": {
-      "url": { "template": "{{base}}/search.html?searchkey={{key}}" },
+      "url": {
+        "template": "{{base}}/search.html?searchkey={{key}}"
+      },
       "method": "GET"
     },
-    "list": { "via": "css", "select": ".module-item" },
+    "list": {
+      "via": "css",
+      "select": ".module-search-item"
+    },
     "item": {
-      "name": { "via": "css", "select": ".module-item-title", "extract": "text" },
-      "author": { "via": "css", "select": ".module-item-text", "extract": "text" },
-      "cover": { "via": "css", "select": "img", "extract": { "attr": "data-src" } },
-      "tocUrl": { "via": "css", "select": ".module-item-title", "extract": { "attr": "href" } }
+      "bookUrl": {
+        "via": "css",
+        "select": "h3 a",
+        "extract": {
+          "attr": "href"
+        }
+      },
+      "name": {
+        "via": "css",
+        "select": "h3 a",
+        "extract": "text"
+      },
+      "cover": {
+        "via": "css",
+        "select": ".module-item-pic img",
+        "extract": {
+          "attr": "data-src"
+        }
+      },
+      "kind": {
+        "via": "css",
+        "select": ".novel-serial",
+        "extract": "text"
+      }
     }
   },
-
   "explore": {
     "categories": [
-      { "title": "最近更新", "url": { "template": "{{base}}/book/lastupdate_0_1_0_0_0_0_0_{{page}}_0.html" } }
+      {
+        "title": "最近更新",
+        "url": {
+          "template": "{{base}}/book/lastupdate_0_1_0_0_0_0_0_{{page}}_0.html"
+        }
+      }
     ],
-    "list": { "via": "css", "select": ".module-item" },
+    "list": {
+      "via": "css",
+      "select": ".module-item"
+    },
     "item": {
-      "name": { "via": "css", "select": ".module-item-title", "extract": "text" },
-      "author": { "via": "css", "select": ".module-item-text", "extract": "text" },
-      "cover": { "via": "css", "select": "img", "extract": { "attr": "data-src" } },
-      "tocUrl": { "via": "css", "select": ".module-item-title", "extract": { "attr": "href" } }
+      "name": {
+        "via": "css",
+        "select": ".module-item-title",
+        "extract": "text"
+      },
+      "author": {
+        "via": "css",
+        "select": ".module-item-text",
+        "extract": "text"
+      },
+      "cover": {
+        "via": "css",
+        "select": "img",
+        "extract": {
+          "attr": "data-src"
+        }
+      },
+      "tocUrl": {
+        "via": "css",
+        "select": ".module-item-title",
+        "extract": {
+          "attr": "href"
+        }
+      }
     }
   },
-
   "bookInfo": {
-    "name": { "via": "css", "select": "[property=\"og:novel:book_name\"]", "extract": { "attr": "content" } },
-    "author": { "via": "css", "select": "[property=\"og:novel:author\"]", "extract": { "attr": "content" } },
-    "cover": { "via": "css", "select": "[property=\"og:image\"]", "extract": { "attr": "content" } },
-    "intro": { "via": "css", "select": "[property=\"og:description\"]", "extract": { "attr": "content" } },
+    "name": {
+      "via": "css",
+      "select": "[property=\"og:novel:book_name\"]",
+      "extract": {
+        "attr": "content"
+      }
+    },
+    "author": {
+      "via": "css",
+      "select": "[property=\"og:novel:author\"]",
+      "extract": {
+        "attr": "content"
+      }
+    },
+    "cover": {
+      "via": "css",
+      "select": "[property=\"og:image\"]",
+      "extract": {
+        "attr": "content"
+      }
+    },
+    "intro": {
+      "via": "css",
+      "select": "[property=\"og:description\"]",
+      "extract": {
+        "attr": "content"
+      }
+    },
     "kind": {
       "concat": [
-        { "via": "css", "select": "[property=\"og:novel:tags\"]", "extract": { "attr": "content" } },
-        { "via": "css", "select": "[property=\"og:novel:status\"]", "extract": { "attr": "content" } }
+        {
+          "via": "css",
+          "select": "[property=\"og:novel:tags\"]",
+          "extract": {
+            "attr": "content"
+          }
+        },
+        {
+          "via": "css",
+          "select": "[property=\"og:novel:status\"]",
+          "extract": {
+            "attr": "content"
+          }
+        }
       ],
       "join": " · "
     },
-    "lastChapter": { "via": "css", "select": "[property=\"og:novel:latest_chapter_name\"]", "extract": { "attr": "content" } },
-    "tocUrl": { "via": "css", "select": "[property=\"og:novel:read_url\"]", "extract": { "attr": "content" } }
+    "lastChapter": {
+      "via": "css",
+      "select": "[property=\"og:novel:latest_chapter_name\"]",
+      "extract": {
+        "attr": "content"
+      }
+    },
+    "tocUrl": {
+      "via": "css",
+      "select": "[property=\"og:novel:read_url\"]",
+      "extract": {
+        "attr": "content"
+      }
+    }
   },
-
   "toc": {
-    "list": { "via": "css", "select": ".box > h2.module-title.type, .box a.module-row-text" },
+    "list": {
+      "via": "css",
+      "select": ".box > h2.module-title.type, .box a.module-row-text"
+    },
     "name": {
       "firstOf": [
-        { "via": "css", "select": ".module-row-title", "extract": "text" },
-        { "via": "css", "select": "h2", "extract": "text" }
+        {
+          "via": "css",
+          "select": ".module-row-title",
+          "extract": "text"
+        },
+        {
+          "via": "css",
+          "select": "h2",
+          "extract": "text"
+        }
       ]
     },
-    "url": { "via": "css", "select": "a", "extract": { "attr": "href" } },
-    "isVolume": { "via": "css", "select": "h2", "extract": "text" },
+    "url": {
+      "via": "css",
+      "select": "a",
+      "extract": {
+        "attr": "href"
+      }
+    },
+    "isVolume": {
+      "via": "css",
+      "select": "h2",
+      "extract": "text"
+    },
     "maxPages": 1
   },
-
   "content": {
     "value": {
       "via": "css",
       "select": ".article-content",
       "extract": "html",
       "clean": [
-        { "regex": "请收藏本站[^<\\n]*", "replace": "" },
-        { "trim": true }
+        {
+          "regex": "请收藏本站[^<\\n]*",
+          "replace": ""
+        },
+        {
+          "trim": true
+        }
       ]
     },
     "maxPages": 1
   },
-
   "samples": [
     {
       "bookUrl": "/novel/guzhenren.html",
-      "expect": { "name": "蛊真人", "volumes": 8, "minChapters": 2000, "minContentChars": 500 }
+      "expect": {
+        "name": "蛊真人",
+        "volumes": 8,
+        "minChapters": 2000,
+        "minContentChars": 500
+      }
     }
   ]
 }

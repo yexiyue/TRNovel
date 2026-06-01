@@ -19,6 +19,14 @@ pub enum BookSourceError {
     Missing(&'static str),
 }
 
+impl BookSourceError {
+    /// 是否为「被反爬挑战拦截」(如 Cloudflare 托管挑战)。
+    /// 用于诊断/降级:据此给出精确提示而非笼统失败,并决定是否升级浏览器取页。
+    pub fn is_challenge(&self) -> bool {
+        matches!(self, BookSourceError::Fetch(FetchError::Challenged(_)))
+    }
+}
+
 /// 取页层错误。
 #[derive(Debug, Error)]
 pub enum FetchError {
@@ -31,6 +39,13 @@ pub enum FetchError {
     /// 响应解码失败。
     #[error("decode error: {0}")]
     Decode(String),
+    /// 被反爬挑战拦截(如 Cloudflare 托管挑战):拿到的是挑战页而非真实内容。
+    #[error("blocked by anti-bot challenge: {0}")]
+    Challenged(String),
+    /// 浏览器解挑战失败(仅 `browser` feature)。
+    #[cfg(feature = "browser")]
+    #[error("browser solve error: {0}")]
+    Browser(String),
 }
 
 /// 配置层错误。

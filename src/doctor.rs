@@ -1,7 +1,7 @@
 //! `doctor` 子命令:全流程验证书源 JSON,逐项打印 ✓/✗(非 TUI)。
 //!
 //! 用于校验 AI 生成的书源:读文件 → 构建 [`parse_book_source::Engine`] → 跑
-//! [`parse_book_source::diagnose`](全流程体检)→ 打印逐项结果。所有错误都作为
+//! [`parse_book_source::diagnose`] 做全流程体检 → 打印逐项结果。所有错误都作为
 //! 「配置」失败项展示,不向外冒泡。
 
 use parse_book_source::{BookSource, Engine, diagnose};

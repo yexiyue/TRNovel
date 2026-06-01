@@ -41,6 +41,21 @@ impl Engine {
         }
     }
 
+    /// 用「升级式取页」构建(`browser` feature):平时 reqwest,撞挑战且 `browser` 为
+    /// `Some` 时升级解挑战。是否传入浏览器(书源 `http.fetcher` ∧ 用户授权 ∧ 探测到)
+    /// 的策略由调用方(app)决定;`None` 等同纯 reqwest(撞挑战即降级)。
+    #[cfg(feature = "browser")]
+    pub fn with_browser_assist(
+        source: BookSource,
+        browser: Option<crate::browser::BrowserFetcher>,
+    ) -> Result<Self> {
+        let fetcher = crate::browser::EscalatingFetcher::new(&source, browser)?;
+        Ok(Self {
+            source: Arc::new(source),
+            fetcher: Arc::new(fetcher),
+        })
+    }
+
     /// 暴露只读配置。
     pub fn source(&self) -> &BookSource {
         &self.source

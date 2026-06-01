@@ -49,6 +49,22 @@ impl RateLimiter {
     }
 }
 
+/// 判定一次响应是否为反爬挑战(纯函数,便于离线测试)。
+///
+/// 命中任一即视为挑战页(而非真实内容):
+/// ① 响应头 `cf-mitigated: challenge`(最干净、机器可读);
+/// ② HTTP 403/503 且 body 含 Cloudflare 挑战脚本特征
+///    (`_cf_chl_opt` / `/cdn-cgi/challenge-platform/` / `<title>Just a moment`)。
+pub fn is_challenge(status: u16, cf_mitigated: Option<&str>, body: &str) -> bool {
+    if cf_mitigated == Some("challenge") {
+        return true;
+    }
+    matches!(status, 403 | 503)
+        && (body.contains("_cf_chl_opt")
+            || body.contains("/cdn-cgi/challenge-platform/")
+            || body.contains("<title>Just a moment"))
+}
+
 /// 一次取页请求(URL 已是最终待请求地址或相对路径)。
 #[derive(Debug, Clone, Default)]
 pub struct FetchRequest {
@@ -137,13 +153,32 @@ impl ReqwestFetcher {
         if let Some(body) = &req.body {
             builder = builder.body(body.clone());
         }
-        let resp = builder.send().await?.error_for_status()?;
+        let resp = builder.send().await?;
+        let status = resp.status();
+        // 反爬信号:`cf-mitigated: challenge` 头(最干净、机器可读)。
+        let cf_mitigated = resp
+            .headers()
+            .get("cf-mitigated")
+            .and_then(|v| v.to_str().ok())
+            .map(str::to_owned);
+        // 先取出 HTTP 状态错误(error_for_status_ref 不消费 body),
+        // 再读 body 以便识别挑战页特征(挑战常以 403 返回)。
+        let status_err = resp.error_for_status_ref().err();
         let bytes = resp.bytes().await?;
-        Ok(self.decode(&bytes))
+        let text = self.decode(&bytes);
+        if is_challenge(status.as_u16(), cf_mitigated.as_deref(), &text) {
+            return Err(FetchError::Challenged(format!(
+                "Cloudflare/反爬挑战 @ {url}"
+            )));
+        }
+        if let Some(e) = status_err {
+            return Err(FetchError::Http(e));
+        }
+        Ok(text)
     }
 
     /// 把相对路径解析为绝对 URL(`http(s)` 开头则原样返回)。
-    fn resolve(&self, url: &str) -> String {
+    pub(crate) fn resolve(&self, url: &str) -> String {
         if url.starts_with("http://") || url.starts_with("https://") {
             url.to_string()
         } else if let Some(rest) = url.strip_prefix('/') {
@@ -190,7 +225,8 @@ impl Fetcher for ReqwestFetcher {
             match self.send_once(&url, &req).await {
                 Ok(text) => return Ok(text),
                 Err(e) => {
-                    if attempt >= max {
+                    // 反爬挑战重试无意义(仍会被挑战),直接返回交上层升级/降级。
+                    if matches!(e, FetchError::Challenged(_)) || attempt >= max {
                         return Err(e);
                     }
                     attempt += 1;
@@ -200,5 +236,43 @@ impl Fetcher for ReqwestFetcher {
                 }
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::is_challenge;
+
+    /// Cloudflare 托管挑战页的最小特征(取自实测 bilixs 响应)。
+    const CHALLENGE_HTML: &str = r#"<html><head><title>Just a moment...</title></head>
+        <body><script>window._cf_chl_opt={cType:'managed'};
+        a.src='/cdn-cgi/challenge-platform/h/g/orchestrate/chl_page/v1';</script></body></html>"#;
+
+    const NORMAL_HTML: &str =
+        r#"<html><head><title>蛊真人 搜索结果</title></head><body>正文</body></html>"#;
+
+    #[test]
+    fn cf_mitigated_header_is_challenge() {
+        // 即便状态 200,带 cf-mitigated: challenge 头也判为挑战。
+        assert!(is_challenge(200, Some("challenge"), NORMAL_HTML));
+    }
+
+    #[test]
+    fn challenge_body_with_403_is_challenge() {
+        assert!(is_challenge(403, None, CHALLENGE_HTML));
+        assert!(is_challenge(503, None, CHALLENGE_HTML));
+    }
+
+    #[test]
+    fn normal_200_page_is_not_challenge() {
+        assert!(!is_challenge(200, None, NORMAL_HTML));
+        // 仅有挑战特征但状态 200(无 cf-mitigated)不误判,避免正文含 cdn-cgi 字样被冤枉。
+        assert!(!is_challenge(200, None, CHALLENGE_HTML));
+    }
+
+    #[test]
+    fn challenge_markers_without_bad_status_not_challenge() {
+        // 403 但 body 无挑战特征 → 不是挑战(交由普通 HTTP 错误处理)。
+        assert!(!is_challenge(403, None, NORMAL_HTML));
     }
 }

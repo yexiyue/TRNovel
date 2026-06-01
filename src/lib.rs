@@ -7,6 +7,7 @@ use std::{env, ffi::OsString, fmt::Debug, fs, path::PathBuf};
 use utils::novel_catch_dir;
 
 pub mod app;
+pub mod browser_assist;
 pub mod cache;
 pub mod components;
 pub mod doctor;

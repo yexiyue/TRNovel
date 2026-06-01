@@ -29,6 +29,18 @@ reqwest = { version = "0.12.24", default-features = false, features = [
     "cookies",
 ] }
 
+# 反爬:复用系统浏览器解 Cloudflare 挑战(纯 Rust CDP 客户端,无 C 依赖)。
+# 以 `browser` feature 门控,默认构建不含。
+chromiumoxide = { version = "0.7", default-features = false, features = [
+    "tokio-runtime",
+], optional = true }
+futures-util = { version = "0.3", optional = true }
+
+[features]
+default = []
+# 启用基于系统浏览器的反爬取页(BrowserFetcher / EscalatingFetcher)。
+browser = ["dep:chromiumoxide", "dep:futures-util"]
+
 
 # scraper = "0.21.0"
 # chrono = { version = "0.4.38", features = ["serde"] }
