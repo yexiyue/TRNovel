@@ -1,0 +1,13 @@
+{
+  "eval_id": 0,
+  "eval_name": "shuhaige-书海阁",
+  "prompt": "帮我给书海阁 https://www.shuhaige.net/ 做一个 trnovel 书源(搜索/目录/正文)",
+  "assertions": [
+    {"text": "输出目录产出一个 trnovel-booksource/v2 书源 JSON(含 \"schema\":\"trnovel-booksource/v2\")"},
+    {"text": "trn doctor 该书源:配置 ✓(JSON 能被引擎解析)"},
+    {"text": "trn doctor:书详情 ✓"},
+    {"text": "trn doctor:目录 ✓(章节数 > 0)"},
+    {"text": "trn doctor:正文 ✓(取到非空正文)"},
+    {"text": "trn doctor:搜索 ✓(加分项,非必须)"}
+  ]
+}

@@ -1,0 +1,36 @@
+{
+  "skill_name": "booksource-generator",
+  "notes": "测试站点刻意选用 skill 示例(bilixs)之外的真实站,考察泛化:能否对陌生站逆向出通过 trn doctor 的 v2 书源。断言可用 `cargo run -- doctor <输出json>` 程序化复验。",
+  "evals": [
+    {
+      "id": 0,
+      "name": "shuhaige-书海阁",
+      "prompt": "帮我给书海阁这个小说网站 https://www.shuhaige.net/ 做一个 trnovel 的书源吧,我平时在这看小说,想接到终端阅读器里。最好能搜索、看目录和正文。",
+      "expected_output": "一份 trnovel-booksource/v2 的 JSON 书源文件,跑 trn doctor 时书详情/目录/正文等读取链路为 ✓(搜索/浏览尽量 ✓)。",
+      "files": [],
+      "assertions": [
+        {"text": "输出目录产出一个 trnovel-booksource/v2 书源 JSON(含 schema:trnovel-booksource/v2)"},
+        {"text": "trn doctor:配置 ✓(JSON 能被引擎解析)"},
+        {"text": "trn doctor:书详情 ✓"},
+        {"text": "trn doctor:目录 ✓(章节数 > 0)"},
+        {"text": "trn doctor:正文 ✓(取到非空正文)"},
+        {"text": "trn doctor:搜索 ✓(加分项,非必须)"}
+      ]
+    },
+    {
+      "id": 1,
+      "name": "bqgui-笔趣阁",
+      "prompt": "https://www.bqgui.cc/ 这个笔趣阁能不能接到 trnovel 里看?生成一个书源,要能搜书、能拿到章节目录和正文内容。",
+      "expected_output": "一份 trnovel-booksource/v2 的 JSON 书源文件,跑 trn doctor 时读取链路(书详情/目录/正文)为 ✓。",
+      "files": [],
+      "assertions": [
+        {"text": "输出目录产出一个 trnovel-booksource/v2 书源 JSON(含 schema:trnovel-booksource/v2)"},
+        {"text": "trn doctor:配置 ✓(JSON 能被引擎解析)"},
+        {"text": "trn doctor:书详情 ✓"},
+        {"text": "trn doctor:目录 ✓(章节数 > 0)"},
+        {"text": "trn doctor:正文 ✓(取到非空正文)"},
+        {"text": "trn doctor:搜索 ✓(加分项,非必须)"}
+      ]
+    }
+  ]
+}

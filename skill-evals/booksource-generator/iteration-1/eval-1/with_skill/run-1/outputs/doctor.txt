@@ -1,0 +1,12 @@
+$ cargo run -- doctor skills/booksource-generator-workspace/iteration-1/eval-1/with_skill/outputs/bqgui.v2.json
+(实际执行: ./target/debug/trn doctor <绝对路径>,等价命令)
+
+书源诊断:笔趣阁(bqgui)
+  ✓ 配置     书源「笔趣阁(bqgui)」
+  ✓ 浏览     15 本(分类「玄幻」)
+  ✓ 书详情    凡人修仙传
+  ✓ 目录     0 卷 / 2456 章
+  ✓ 正文     1124 字
+  ✓ 搜索     「凡人修仙传」→ 24 本
+
+✓ 全部通过(○ 为未配置/跳过)
