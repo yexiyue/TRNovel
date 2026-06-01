@@ -3,7 +3,6 @@ use crate::{
     book_source::BookSourceCache,
     components::{WarningModal, multi_list_select::MultiListSelect, search_input::SearchInput},
     hooks::{UseInitState, UseThemeConfig},
-    utils::time_to_string,
 };
 
 use parse_book_source::BookSource;
@@ -57,23 +56,20 @@ impl WidgetRef for ListItem {
             Layout::horizontal([Constraint::Percentage(50), Constraint::Percentage(50)])
                 .areas(bottom);
 
-        Line::from(self.book_source.book_source_name.clone())
+        Line::from(self.book_source.name.clone())
             .style(text_style)
             .centered()
             .render(top, buf);
 
-        Line::from(format!("网址: {}", self.book_source.book_source_url))
+        Line::from(format!("网址: {}", self.book_source.url))
             .style(self.theme.basic.text.patch(text_style))
             .left_aligned()
             .render(bottom_left, buf);
 
-        Line::from(format!(
-            "最后更新: {}",
-            time_to_string(self.book_source.last_update_time).unwrap_or_default()
-        ))
-        .style(self.theme.basic.border_info.patch(text_style))
-        .right_aligned()
-        .render(bottom_right, buf);
+        Line::from(format!("分组: {}", self.book_source.group))
+            .style(self.theme.basic.border_info.patch(text_style))
+            .right_aligned()
+            .render(bottom_right, buf);
 
         if self.selected {
             Span::from("✔").render(left, buf);

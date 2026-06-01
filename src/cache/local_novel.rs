@@ -1,5 +1,6 @@
 use crate::errors::{Errors, Result};
 use crate::novel::Novel;
+use crate::novel::VolumeMarker;
 use crate::novel::local_novel::LocalNovel;
 use crate::utils::{get_path_md5, novel_catch_dir};
 
@@ -16,6 +17,9 @@ pub struct LocalNovelCache {
     pub current_chapter: usize,
     pub line_percent: f64,
     pub path: PathBuf,
+    /// 分卷元数据。`#[serde(default)]` 保证旧缓存（无该字段）可正常读取。
+    #[serde(default)]
+    pub volumes: Vec<VolumeMarker>,
 }
 
 impl LocalNovelCache {
@@ -50,6 +54,7 @@ impl TryFrom<&LocalNovel> for LocalNovelCache {
             current_chapter: novel_chapters.current_chapter,
             path: value.path.clone(),
             line_percent: novel_chapters.line_percent,
+            volumes: novel_chapters.volumes.clone(),
         })
     }
 }
@@ -61,5 +66,26 @@ impl TryFrom<&Path> for LocalNovelCache {
         let cache_path = Self::cache_path(value)?;
         let file = File::open(cache_path)?;
         Ok(serde_json::from_reader(file)?)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn old_cache_without_volumes_deserializes() {
+        // 旧缓存没有 `volumes` 字段，应能正常反序列化并退化为无卷。
+        let json = r#"{
+            "chapters": [["第一章 甲", 0], ["第二章 乙", 100]],
+            "encoding": "UTF-8",
+            "current_chapter": 1,
+            "line_percent": 0.5,
+            "path": "/tmp/x.txt"
+        }"#;
+        let cache: LocalNovelCache = serde_json::from_str(json).expect("应能反序列化旧缓存");
+        assert!(cache.volumes.is_empty());
+        assert_eq!(cache.chapters.len(), 2);
+        assert_eq!(cache.current_chapter, 1);
     }
 }

@@ -1,4 +1,5 @@
-use super::{Novel, NovelChapters};
+use super::toc_rule::{TocRuleSet, detect};
+use super::{Novel, NovelChapters, VolumeMarker};
 use crate::cache::LocalNovelCache;
 use crate::errors::Result;
 use crate::history::HistoryItem;
@@ -43,6 +44,7 @@ impl LocalNovel {
                 chapters: Some(value.chapters),
                 current_chapter: value.current_chapter,
                 line_percent: value.line_percent,
+                volumes: value.volumes,
             },
             encoding: value.encoding,
             path: value.path,
@@ -103,32 +105,31 @@ impl Novel for LocalNovel {
         Self::from_path(args).await
     }
 
-    async fn request_chapters(&self) -> Result<Vec<Self::Chapter>> {
+    async fn request_toc(&self) -> Result<(Vec<Self::Chapter>, Vec<VolumeMarker>)> {
         let path = self.path.clone();
         let encoding = self.encoding;
+        // 加载规则集（内置默认 + ~/.novel/toc_rules.json）。
+        let rules = TocRuleSet::load();
 
         let file = File::open(path).await?;
-
         let mut buf_reader = BufReader::new(file);
-        let regexp = regex::Regex::new(r"第.+章").unwrap();
-        let mut chapter_offset = Vec::new();
-        let mut offset = 0;
 
+        // 逐行收集 (解码后整行, 行起始字节偏移)，偏移基于原始文件字节，供 get_content 按字节区间读取。
+        let mut lines: Vec<(String, usize)> = Vec::new();
+        let mut offset = 0usize;
         let mut line = vec![];
 
         while let Ok(chunk_size) = buf_reader.read_until(b'\n', &mut line).await {
             if chunk_size == 0 {
                 break;
             }
-            let (new_line, _, _) = encoding.decode(&line);
-
-            if regexp.is_match(&new_line) {
-                chapter_offset.push((new_line.trim().to_string(), offset));
-            }
+            let (decoded, _, _) = encoding.decode(&line);
+            lines.push((decoded.into_owned(), offset));
             line.clear();
             offset += chunk_size;
         }
-        Ok(chapter_offset)
+
+        Ok(detect(lines, &rules))
     }
 
     async fn get_content(&self) -> Result<String> {

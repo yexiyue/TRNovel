@@ -1,17 +1,17 @@
-use super::{Novel, NovelChapters};
-use crate::{Result, book_source::BookSourceCache, cache::NetworkNovelCache, history::HistoryItem};
-use anyhow::anyhow;
-use parse_book_source::{BookInfo, BookListItem, BookSourceParser, Chapter};
-use std::{
-    ops::{Deref, DerefMut},
-    sync::Arc,
+use super::{Novel, NovelChapters, VolumeMarker};
+use crate::{
+    Result, book_source::BookSourceCache, cache::NetworkNovelCache, errors::Errors,
+    history::HistoryItem,
 };
-use tokio::sync::Mutex;
+use anyhow::anyhow;
+use parse_book_source::{BookInfo, BookListItem, Chapter, Engine};
+use std::ops::{Deref, DerefMut};
 
+/// 网络小说:持有 v2 `Engine`(廉价 Clone、内部 Arc,无需外层 Mutex)。
 #[derive(Debug, Clone)]
 pub struct NetworkNovel {
     pub book_list_item: BookListItem,
-    pub book_source: Arc<Mutex<BookSourceParser>>,
+    pub engine: Engine,
     pub book_info: Option<BookInfo>,
     pub novel_chapters: NovelChapters<Chapter>,
 }
@@ -19,7 +19,7 @@ pub struct NetworkNovel {
 impl NetworkNovel {
     pub fn from_url(url: &str, book_sources: &BookSourceCache) -> Result<Self> {
         let network_cache = NetworkNovelCache::try_from(url)?;
-        let json_source = book_sources
+        let source = book_sources
             .find_book_source(
                 &network_cache.book_source_url,
                 &network_cache.book_source_name,
@@ -27,23 +27,23 @@ impl NetworkNovel {
             .cloned()
             .ok_or(anyhow!("book source not found"))?;
 
-        let novel = NetworkNovel {
+        Ok(NetworkNovel {
             book_list_item: network_cache.book_list_item,
-            book_source: Arc::new(Mutex::new(BookSourceParser::try_from(json_source)?)),
+            engine: Engine::new(source)?,
             book_info: None,
             novel_chapters: NovelChapters {
                 current_chapter: network_cache.current_chapter,
                 line_percent: network_cache.line_percent,
                 chapters: None,
+                volumes: Vec::new(),
             },
-        };
-        Ok(novel)
+        })
     }
 
-    pub fn new(book_list_item: BookListItem, book_source: BookSourceParser) -> Self {
+    pub fn new(book_list_item: BookListItem, engine: Engine) -> Self {
         Self {
             book_list_item,
-            book_source: Arc::new(Mutex::new(book_source)),
+            engine,
             book_info: None,
             novel_chapters: NovelChapters::new(),
         }
@@ -76,19 +76,22 @@ impl Novel for NetworkNovel {
     }
 
     fn get_current_chapter_name(&self) -> Result<String> {
-        self.get_current_chapter()
-            .map(|chapter| chapter.chapter_name)
+        self.get_current_chapter().map(|chapter| chapter.title)
     }
 
-    async fn request_chapters(&self) -> Result<Vec<Self::Chapter>> {
-        let book_source = self.book_source.clone();
-        let book_info = self.book_info.clone().ok_or("book_info is none")?;
-
-        Ok(book_source
-            .lock()
-            .await
-            .get_chapters(&book_info.toc_url)
-            .await?)
+    async fn request_toc(&self) -> Result<(Vec<Self::Chapter>, Vec<VolumeMarker>)> {
+        let book_info = self.book_info.as_ref().ok_or("book_info is none")?;
+        // 引擎已把卷条目拆出(目录 isVolume),直接得到扁平章节 + 卷元数据。
+        let toc = self.engine.toc(&book_info.toc_url).await?;
+        let volumes = toc
+            .volumes
+            .into_iter()
+            .map(|v| VolumeMarker {
+                title: v.title,
+                first_chapter_index: v.first_chapter_index,
+            })
+            .collect();
+        Ok((toc.chapters, volumes))
     }
 
     fn get_chapters_names(&self) -> Result<Vec<(String, usize)>> {
@@ -96,19 +99,16 @@ impl Novel for NetworkNovel {
             .get_chapters_result()?
             .iter()
             .enumerate()
-            .map(|(index, item)| (item.chapter_name.clone(), index))
+            .map(|(index, item)| (item.title.clone(), index))
             .collect())
     }
 
     async fn get_content(&self) -> Result<String> {
-        let book_source = self.book_source.clone();
         let chapter = self.get_current_chapter()?;
-
-        Ok(book_source
-            .lock()
+        self.engine
+            .content(&chapter.url)
             .await
-            .get_content(&chapter.chapter_url)
-            .await?)
+            .map_err(Errors::from)
     }
 
     fn to_history_item(&self) -> Result<HistoryItem> {

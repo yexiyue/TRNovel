@@ -67,10 +67,15 @@ lastUpdated: 2025-10-29
     "ruleToc": {
         "chapterList": "@css:.listmain dd a[href^=\"/\"]",
         "chapterName": "tag.a@text",
-        "chapterUrl": "tag.a@href"
+        "chapterUrl": "tag.a@href",
+        "isVolume": ""
     }
 }
 ```
+
+:::note[分卷（可选）]
+`ruleToc.isVolume` 为可选的卷判定规则：当它对某个目录项求值为非空（且不为 `false`/`0`）时，该项会被识别为**卷标题**并在目录中作为分组节点显示，而非可阅读章节。留空（默认）时所有条目均为普通章节，与旧书源行为一致。
+:::
 
 :::tip[提示]
 由于是网络爬虫配置文件，书源可能会因为网站结构变化而失效。建议定期更新书源以确保其有效性。

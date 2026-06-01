@@ -3,7 +3,7 @@ use crate::{
     components::{Loading, ShortcutInfoModal, WarningModal},
     errors::Errors,
     hooks::UseInitState,
-    novel::Novel,
+    novel::{Novel, VolumeMarker},
 };
 use crossterm::event::{Event, KeyCode, KeyEventKind};
 use futures::FutureExt;
@@ -27,6 +27,7 @@ where
     let route_state = hooks.use_route_state::<T::Args>();
     let history = *hooks.use_context::<State<Option<History>>>();
     let mut chapters = hooks.use_state(std::vec::Vec::new);
+    let mut volumes = hooks.use_state(Vec::<VolumeMarker>::new);
     let mut current_chapter = hooks.use_state(|| 0usize);
     let mut content = hooks.use_state(String::default);
     let mut is_read_mode = hooks.use_state(|| false);
@@ -45,8 +46,9 @@ where
             let mut res = T::init(args).await?;
 
             if res.get_chapters().is_none() {
-                let chapters = res.request_chapters().await?;
-                res.set_chapters(&chapters);
+                let (chapter_list, volume_list) = res.request_toc().await?;
+                res.set_chapters(&chapter_list);
+                res.set_volumes(volume_list);
             }
 
             chapters.set(
@@ -55,6 +57,7 @@ where
                     .map(ChapterName::from)
                     .collect(),
             );
+            volumes.set(res.get_volumes().to_vec());
 
             current_chapter.set(res.current_chapter);
             content_loading.set(true);
@@ -253,6 +256,7 @@ where
                 SelectChapter(
                     is_editing: !info_modal_open.get(),
                     chapters: chapters.read().clone(),
+                    volumes: volumes.read().clone(),
                     default_value: current_chapter.get(),
                     on_select: move |index| {
                         if let Some(novel) = novel.write().as_mut() {

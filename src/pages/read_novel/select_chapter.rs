@@ -1,11 +1,15 @@
-use ratatui::{text::Line, widgets::ListItem};
-use ratatui_kit::prelude::*;
-
-use crate::{
-    components::{search_input::SearchInput, select::Select},
-    hooks::UseThemeConfig,
+use crossterm::event::{Event, KeyCode, KeyEventKind};
+use ratatui::{
+    layout::{Alignment, Constraint},
+    text::Line,
+    widgets::{Block, Scrollbar},
 };
+use ratatui_kit::prelude::*;
+use tui_tree_widget::{TreeItem, TreeState};
 
+use crate::{components::search_input::SearchInput, hooks::UseThemeConfig, novel::VolumeMarker};
+
+/// 章节项：`(标题, 扁平章节索引)`。扁平索引同时是它在章节列表中的位置。
 #[derive(Default, Clone)]
 pub struct ChapterName(pub String, pub usize);
 
@@ -15,18 +19,31 @@ impl From<(String, usize)> for ChapterName {
     }
 }
 
-impl From<ChapterName> for ListItem<'_> {
-    fn from(value: ChapterName) -> Self {
-        ListItem::new(value.0)
-    }
+/// 折叠树节点标识：卷节点用卷索引，章节叶子用扁平章节索引。
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub enum TocId {
+    Volume(usize),
+    Chapter(usize),
 }
 
 #[derive(Default, Props)]
 pub struct SelectChapterProps {
     pub is_editing: bool,
     pub chapters: Vec<ChapterName>,
+    /// 分卷元数据，空表示无分卷（章节平铺在根层级）。
+    pub volumes: Vec<VolumeMarker>,
     pub on_select: Handler<'static, usize>,
     pub default_value: Option<usize>,
+}
+
+/// 定位某个扁平章节索引所属的卷（最后一个 `first_chapter_index <= idx` 的卷）。
+fn locate_volume(idx: usize, volumes: &[VolumeMarker]) -> Option<usize> {
+    volumes
+        .iter()
+        .enumerate()
+        .rev()
+        .find(|(_, v)| v.first_chapter_index <= idx)
+        .map(|(i, _)| i)
 }
 
 #[component]
@@ -37,38 +54,80 @@ pub fn SelectChapter(
     let mut filter_text = hooks.use_state(String::default);
     let theme = hooks.use_theme_config();
     let is_inputting = *hooks.use_context::<State<bool>>();
-    let state = hooks.use_state(ratatui::widgets::ListState::default);
+
+    // 树状态：首次渲染时定位到当前章节并展开其所属卷。
+    let state = {
+        let dv = props.default_value;
+        let volumes = props.volumes.clone();
+        hooks.use_state(move || {
+            let mut st = TreeState::<TocId>::default();
+            if let Some(idx) = dv {
+                if let Some(vi) = locate_volume(idx, &volumes) {
+                    st.open(vec![TocId::Volume(vi)]);
+                    st.select(vec![TocId::Volume(vi), TocId::Chapter(idx)]);
+                } else {
+                    st.select(vec![TocId::Chapter(idx)]);
+                }
+            }
+            st
+        })
+    };
 
     let is_editing = props.is_editing;
+    let is_empty = props.chapters.is_empty();
 
+    // 构建树节点：搜索态塌成扁平过滤列表；否则按卷分组（无卷则平铺）。
     let items = hooks.use_memo(
-        || {
-            if filter_text.read().is_empty() {
-                props.chapters.clone()
-            } else {
-                props
-                    .chapters
-                    .iter()
-                    .filter(|&chapter_name| {
-                        if filter_text.read().starts_with('$') {
-                            let index_str = &filter_text.read()[1..];
-                            if let Ok(index) = index_str.parse::<usize>() {
-                                index == chapter_name.1
-                            } else {
-                                false
-                            }
-                        } else {
-                            chapter_name.0.contains(filter_text.read().as_str())
-                        }
-                    })
-                    .cloned()
-                    .collect::<Vec<_>>()
-            }
-        },
-        (filter_text.read().clone(), props.chapters.len()),
+        || build_items(&props.chapters, &props.volumes, &filter_text.read(), &theme),
+        (
+            filter_text.read().clone(),
+            props.chapters.len(),
+            props.volumes.len(),
+        ),
     );
 
     let mut on_select = props.on_select.take();
+
+    hooks.use_events(move |event| {
+        if let Event::Key(key) = event
+            && key.kind == KeyEventKind::Press
+            && is_editing
+            && !is_inputting.get()
+        {
+            match key.code {
+                KeyCode::Char('h') | KeyCode::Left => {
+                    state.write().key_left();
+                }
+                KeyCode::Char('j') | KeyCode::Down => {
+                    state.write().key_down();
+                }
+                KeyCode::Char('k') | KeyCode::Up => {
+                    state.write().key_up();
+                }
+                KeyCode::Char('l') | KeyCode::Right | KeyCode::Enter => {
+                    let selected = state.read().selected().last().cloned();
+                    match selected {
+                        // 选中章节叶子 → 沿用既有「按扁平索引设置当前章节」逻辑
+                        Some(TocId::Chapter(idx)) => on_select(idx),
+                        // 卷节点 → 展开/收起
+                        Some(TocId::Volume(_)) => {
+                            state.write().toggle_selected();
+                        }
+                        None => {}
+                    }
+                }
+                _ => {}
+            }
+        }
+    });
+
+    let border = Block::bordered()
+        .border_style(theme.basic.border)
+        .title_top(
+            Line::from("目录")
+                .style(theme.basic.border_title)
+                .centered(),
+        );
 
     element!(View {
         SearchInput(
@@ -94,27 +153,80 @@ pub fn SelectChapter(
             },
             is_editing: is_editing,
         )
-        Select<ChapterName>(
-            top_title: Line::from("目录").style(theme.basic.border_title).centered(),
-            empty_message: if filter_text.read().is_empty() {
-                "暂无章节".to_owned()
-            } else {
-                "无匹配章节".to_owned()
-            },
-            on_select: move |item: ChapterName| {
-                on_select(item.1);
-            },
-            is_editing: !is_inputting.get() && is_editing,
-            state: state,
-            bottom_title: Line::from(
-                format!(
-                    "{}/{}",
-                    state.read().selected().unwrap_or(0) + 1,
-                    items.len()
-                )
-            ).style(theme.basic.border_info),
-            items: items,
-            default_value: props.default_value,
-        )
+        #(if is_empty {
+            element!(Border(
+                top_title: Some(Line::from("目录").style(theme.basic.border_title).centered()),
+                border_style: theme.basic.border,
+            ){
+                Center(height: Constraint::Length(5), width: Constraint::Percentage(50)){
+                    Text(
+                        text: if filter_text.read().is_empty() { "暂无章节".to_owned() } else { "无匹配章节".to_owned() },
+                        alignment: Alignment::Center,
+                        style: theme.colors.warning_color,
+                        wrap: true,
+                    )
+                }
+            }).into_any()
+        } else {
+            element!(TreeSelect<TocId>(
+                style: theme.basic.text,
+                highlight_style: theme.selected,
+                state: state,
+                items: items.clone(),
+                scrollbar: Scrollbar::default(),
+                block: border,
+            )).into_any()
+        })
     })
+}
+
+/// 根据章节、卷与过滤条件构建树节点列表。
+fn build_items(
+    chapters: &[ChapterName],
+    volumes: &[VolumeMarker],
+    filter: &str,
+    theme: &crate::ThemeConfig,
+) -> Vec<TreeItem<'static, TocId>> {
+    let leaf = |c: &ChapterName| TreeItem::new_leaf(TocId::Chapter(c.1), c.0.clone());
+
+    // 搜索态：塌成扁平过滤列表。
+    if !filter.is_empty() {
+        return chapters
+            .iter()
+            .filter(|c| {
+                if let Some(idx) = filter.strip_prefix('$') {
+                    idx.parse::<usize>().map(|n| n == c.1).unwrap_or(false)
+                } else {
+                    c.0.contains(filter)
+                }
+            })
+            .map(leaf)
+            .collect();
+    }
+
+    // 无分卷：平铺。
+    if volumes.is_empty() {
+        return chapters.iter().map(leaf).collect();
+    }
+
+    // 分卷：卷前的孤立章节置于根层级，其余按卷分组。
+    let len = chapters.len();
+    let mut items = Vec::new();
+    let first_start = volumes[0].first_chapter_index.min(len);
+    items.extend(chapters[..first_start].iter().map(leaf));
+
+    for (vi, v) in volumes.iter().enumerate() {
+        let start = v.first_chapter_index.min(len);
+        let end = volumes
+            .get(vi + 1)
+            .map(|nv| nv.first_chapter_index.min(len))
+            .unwrap_or(len);
+        let children: Vec<_> = chapters[start..end].iter().map(leaf).collect();
+        let title = Line::from(v.title.clone()).style(theme.basic.border_title);
+        if let Ok(node) = TreeItem::new(TocId::Volume(vi), title, children) {
+            items.push(node);
+        }
+    }
+
+    items
 }

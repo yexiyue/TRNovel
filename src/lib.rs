@@ -9,6 +9,7 @@ use utils::novel_catch_dir;
 pub mod app;
 pub mod cache;
 pub mod components;
+pub mod doctor;
 pub mod errors;
 pub mod file_list;
 pub mod hooks;
@@ -36,6 +37,13 @@ where
         fs::remove_dir_all(novel_catch_dir()?)?;
         return Ok(());
     }
+
+    // 书源体检:非 TUI,跑全流程后打印 ✓/✗ 列表并退出。
+    if let Some(Commands::Doctor { path }) = &trnovel.subcommand {
+        doctor::run(path).await;
+        return Ok(());
+    }
+
     let props = AppProps { trnovel };
 
     element!(App(..props)).fullscreen().await?;
@@ -98,4 +106,11 @@ pub enum Commands {
     /// 历史记录模式，查看阅读记录
     #[command(short_flag = 'H')]
     History,
+
+    /// 体检书源：全流程验证书源 JSON,逐项报告 ✓/✗(用于校验 AI 生成的书源)
+    #[command(short_flag = 'd')]
+    Doctor {
+        /// 书源 JSON 文件路径
+        path: PathBuf,
+    },
 }

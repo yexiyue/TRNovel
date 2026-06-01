@@ -1,6 +1,6 @@
 use anyhow::anyhow;
 use crossterm::event::{Event, KeyCode, KeyEventKind};
-use parse_book_source::{BookInfo, BookListItem, BookSourceParser};
+use parse_book_source::{BookInfo, BookListItem, Engine};
 use ratatui::{
     layout::{Constraint, Margin},
     text::{Line, Span},
@@ -19,7 +19,7 @@ use crate::{
 #[derive(Debug, Clone)]
 pub enum BookDetailState {
     New {
-        network_novel: Box<BookSourceParser>,
+        engine: Box<Engine>,
         book_list_item: BookListItem,
     },
     Cache {
@@ -28,9 +28,9 @@ pub enum BookDetailState {
 }
 
 impl BookDetailState {
-    pub fn new(book_list_item: BookListItem, network_novel: BookSourceParser) -> Self {
+    pub fn new(book_list_item: BookListItem, engine: Engine) -> Self {
         Self::New {
-            network_novel: Box::new(network_novel),
+            engine: Box::new(engine),
             book_list_item,
         }
     }
@@ -53,9 +53,9 @@ pub fn BookDetail(mut hooks: Hooks) -> impl Into<AnyElement<'static>> {
     let (book_source_parser, loading, error) = hooks.use_init_state(async move {
         let mut novel = match &(*book_detail_state) {
             BookDetailState::New {
-                network_novel,
+                engine,
                 book_list_item,
-            } => NetworkNovel::new(book_list_item.clone(), *network_novel.clone()),
+            } => NetworkNovel::new(book_list_item.clone(), (**engine).clone()),
             BookDetailState::Cache { url } => {
                 let book_source_cache = book_source_cache
                     .read()
@@ -66,10 +66,8 @@ pub fn BookDetail(mut hooks: Hooks) -> impl Into<AnyElement<'static>> {
         };
 
         let res = novel
-            .book_source
-            .lock()
-            .await
-            .get_book_info(&novel.book_list_item.book_url)
+            .engine
+            .book_info(&novel.book_list_item.book_url)
             .await?;
 
         novel.set_book_info(&res);

@@ -13,7 +13,6 @@ use crate::{
     book_source::BookSourceCache,
     components::{ConfirmModal, list_select::ListSelect},
     hooks::UseThemeConfig,
-    utils::time_to_string,
 };
 
 pub struct BookSourceListItem {
@@ -49,23 +48,20 @@ impl WidgetRef for BookSourceListItem {
             Layout::horizontal([Constraint::Percentage(50), Constraint::Percentage(50)])
                 .areas(bottom);
 
-        Line::from(item.book_source_name.clone())
+        Line::from(item.name.clone())
             .style(text_style)
             .centered()
             .render(top, buf);
 
-        Line::from(format!("网址: {}", item.book_source_url))
+        Line::from(format!("网址: {}", item.url))
             .style(self.theme.basic.text.patch(text_style))
             .left_aligned()
             .render(bottom_left, buf);
 
-        Line::from(format!(
-            "最后更新: {}",
-            time_to_string(item.last_update_time).unwrap_or_default()
-        ))
-        .style(self.theme.basic.border_info.patch(text_style))
-        .right_aligned()
-        .render(bottom_right, buf);
+        Line::from(format!("分组: {}", item.group))
+            .style(self.theme.basic.border_info.patch(text_style))
+            .right_aligned()
+            .render(bottom_right, buf);
     }
 }
 

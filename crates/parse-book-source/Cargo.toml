@@ -1,6 +1,6 @@
 [package]
 name = "parse-book-source"
-version = "0.2.3"
+version = "0.3.0"
 edition = "2024"
 description = "Terminal reader for novel"
 authors = ["yexiyue <yexiyue666@qq.com>"]
@@ -9,16 +9,20 @@ keywords = ["CLI", "Terminal", "Novel", "Reader"]
 repository = "https://github.com/yexiyue/parse-book-source"
 
 [dependencies]
-jsonpath-rust = "0.7.5"
-anyhow = { workspace = true }
-regex = { workspace = true }
+# JSONPath(对齐 RFC 9535)
+jsonpath-rust = "1.0"
+# v2 HTML 抽取后端(jQuery 式 API + :has()/:contains() 扩展伪类)
+dom_query = "0.28"
+# v2 规则正则统一用 fancy-regex(支持前后向断言/反向引用,兼容 Legado 风格规则)
+fancy-regex = "0.18"
+# v2 取页端口的异步 trait(dyn Fetcher 需要)
+async-trait = "0.1"
+# v2 按 charset 解码响应(GBK/gb18030/big5 等)
+encoding_rs = "0.8"
 serde = { workspace = true }
 serde_json = { workspace = true }
 thiserror = { workspace = true }
 tokio = { workspace = true }
-tokio-util = { workspace = true }
-futures = { workspace = true }
-scraper = "0.24.0"
 reqwest = { version = "0.12.24", default-features = false, features = [
     "json",
     "rustls-tls",

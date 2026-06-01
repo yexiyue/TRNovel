@@ -19,12 +19,13 @@ name = "trn"
 path = "src/bin/trn.rs"
 
 [dependencies]
-chrono = { version = "0.4.38", features = ["serde"] }
-clap = { version = "4.5.21", features = ["derive"] }
+chrono = { version = "0.4.44", features = ["serde"] }
+clap = { version = "4.6", features = ["derive"] }
 crossterm = { version = "0.28.1", features = ["event-stream"] }
 encoding_rs = { version = "0.8.35", features = ["serde"] }
+fancy-regex = "0.18"
 md5 = "0.8.0"
-parse-book-source = { path = "crates/parse-book-source", version = "0.2.3" }
+parse-book-source = { path = "crates/parse-book-source", version = "0.3.0" }
 ratatui = { version = "0.29.0", features = ["unstable", "serde"] }
 throbber-widgets-tui = "0.9.0"
 tui-scrollview = "0.5.1"
@@ -47,9 +48,11 @@ ratatui-kit = { version = "0.5.9", features = ["full"] }
 #     "full",
 # ], path = "../ratatui-kit/packages/ratatui-kit" }
 textwrap = { version = "0.16.2" }
+# 注:rodio 0.22 为音频 API 重构(OutputStreamBuilder / Sink::connect_new / SamplesBuffer·Zero 签名变更),
+# 需配合音频实测单独迁移,暂留 0.21.x。
 rodio = { version = "0.21.1", default-features = false, features = ["playback", "wav"] }
 novel-tts = { path = "crates/novel-tts", version = "0.1.6" }
-strum = { version = "0.27.2", features = ["derive"] }
+strum = { version = "0.28", features = ["derive"] }
 
 
 [workspace]
@@ -57,12 +60,12 @@ members = ["crates/novel-tts", "crates/parse-book-source"]
 exclude = ["crates/parse-book-source/examples/json"]
 
 [workspace.dependencies]
-serde = { version = "1.0.215", features = ["derive"] }
-serde_json = "1.0.133"
-regex = "1.11.1"
-anyhow = "1.0.93"
-thiserror = "2.0.3"
-tokio = { version = "1.41.1", features = [
+serde = { version = "1.0.228", features = ["derive"] }
+serde_json = "1.0.150"
+regex = "1.12"
+anyhow = "1.0.102"
+thiserror = "2.0.18"
+tokio = { version = "1.52", features = [
     "fs",
     "macros",
     "rt",
@@ -70,8 +73,8 @@ tokio = { version = "1.41.1", features = [
     "sync",
     "time",
 ] }
-tokio-util = "0.7.12"
-futures = "0.3.31"
+tokio-util = "0.7.18"
+futures = "0.3.32"
 dirs = "6.0.0"
 
 [profile.release]
