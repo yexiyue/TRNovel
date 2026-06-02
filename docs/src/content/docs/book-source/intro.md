@@ -2,82 +2,79 @@
 title: 介绍
 sidebar:
     order: 1
-lastUpdated: 2025-10-29
+lastUpdated: 2026-06-02
 ---
 
-## 什么是书源？
+书源是 TRNovel 接入网络小说的方式:一份**声明式 JSON**,告诉引擎如何在某个网站上**搜索、浏览分类、读取书籍信息、列出目录(含分卷)、抓取正文**。
 
-书源是 TRNovel 获取网络小说内容的重要方式。 它们定义了如何从不同的网站抓取小说章节和元数据。通过使用书源，TRNovel 能够支持多种小说网站，让用户可以方便地阅读和管理他们喜欢的小说。书源的本质是一个JSON 爬虫配置文件，描述了如何从特定网站提取小说内容。
+## 设计:结构化、对 AI 友好
 
-## 示例
+TRNovel 的书源是 `trnovel-booksource/v2` 格式。和传统的「紧凑字符串 DSL」(如 `[property=og:novel:book_name]@content##简介:`)不同,v2 里**每个字段都是一个结构化的「规则」对象**:
 
-```json title="笔趣阁书源示例.json"
+```json
+// 旧式紧凑 DSL(不再使用)
+"name": "[property=og:novel:book_name]@content"
+
+// v2 结构化规则
+"name": { "via": "css", "select": "[property=\"og:novel:book_name\"]", "extract": { "attr": "content" } }
+```
+
+这样做的好处:
+
+- **可读、可校验**:字段含义一目了然,JSON Schema 能静态约束。
+- **对 AI 友好**:结构清晰,AI 能可靠地生成与修改 —— 配套的 `booksource-generator` skill 可以**据网站 URL 自动生成书源**(见[制作书源](/TRNovel/book-source/make))。
+- **schema 永不漂移**:`book-source.schema.json` 由 Rust 类型**自动生成**,与引擎行为始终一致。
+
+## 顶层结构一览
+
+| 字段 | 必填 | 说明 |
+|------|:---:|------|
+| `schema` | ✅ | 固定为 `"trnovel-booksource/v2"` |
+| `name` | ✅ | 书源名称 |
+| `url` | ✅ | 站点根地址(模板里的 `{{base}}`) |
+| `group` | | 分组(便于管理) |
+| `http` | | 请求配置:headers / cookies / warmup / charset / 取页模式 / 超时 / 重试 / 限速 |
+| `search` | | 搜索能力 |
+| `explore` | | 分类浏览能力 |
+| `bookInfo` | ✅ | 书详情页的字段抽取 |
+| `toc` | ✅ | 目录(章节 + 分卷) |
+| `content` | ✅ | 正文抽取 |
+| `samples` | | 黄金样例,驱动 `doctor` 校验与运行期自愈 |
+
+字段详解见[书源结构](/TRNovel/book-source/structure),规则语法见[规则语法](/TRNovel/book-source/rules)。
+
+## 最小示例
+
+```json title="minimal.v2.json"
 {
-    "bookSourceGroup": "精品",
-    "bookSourceName": "笔趣阁",
-    "bookSourceUrl": "https://www.4c7f720b2.lol",
-    "lastUpdateTime": 1736150932184,
-    "searchUrl": "https://www.4c7f720b2.lol/user/hm.html?q={{key}},https://www.4c7f720b2.lol/user/search.html?q={{key}}&so=undefined",
-    "exploreUrl": "[{\"title\":\"玄幻\",\"url\":\"https://www.4c7f720b2.lol/json?sortid=1&page={{page}}\"},{\"title\":\"武侠\",\"url\":\"https://www.4c7f720b2.lol/json?sortid=2&page={{page}}\"},{\"title\":\"都市\",\"url\":\"https://www.4c7f720b2.lol/json?sortid=3&page={{page}}\"},{\"title\":\"历史\",\"url\":\"https://www.4c7f720b2.lol/json?sortid=4&page={{page}}\"},{\"title\":\"网游\",\"url\":\"https://www.4c7f720b2.lol/json?sortid=5&page={{page}}\"},{\"title\":\"科幻\",\"url\":\"https://www.4c7f720b2.lol/json?sortid=6&page={{page}}\"},{\"title\":\"女生\",\"url\":\"https://www.4c7f720b2.lol/json?sortid=7&page={{page}}\"},{\"title\":\"完本\",\"url\":\"https://www.4c7f720b2.lol/json?sortid=8&page={{page}}\"}]",
-    "ruleExploreItem": null,
-    "header": null,
-    "respondTime": null,
-    "httpConfig": {
-        "timeout": null,
-        "header": null,
-        "rateLimit": null
-    },
-    "ruleBookInfo": {
-        "name": "[property=og:novel:book_name]@content",
-        "author": "[property=og:novel:author]@content",
-        "coverUrl": "[property=og:image]@content",
-        "intro": "[property=og:description]@content##简介：",
-        "kind": "[property=og:novel:update_time]@content&&\n[property=og:novel:category]@content&&\n[property=og:novel:status]@content",
-        "lastChapter": "[property=og:novel:latest_chapter_name]@content",
-        "tocUrl": "",
-        "wordCount": ""
-    },
-    "ruleContent": {
-        "content": "id.chaptercontent@html##请收藏本站.*|<a.*</a>|第(.*?)页|\\[爱豆看书\\]|ｍ．２６ｋｓw.ｃｃ"
-    },
-    "ruleExplore": {
-        "bookList": "$.*",
-        "bookUrl": "$.url_list",
-        "name": "$.articlename",
-        "author": "$.author",
-        "coverUrl": "$.url_img",
-        "intro": "$.intro",
-        "kind": "",
-        "lastChapter": "",
-        "tocUrl": "",
-        "wordCount": ""
-    },
-    "ruleSearch": {
-        "bookList": "$.*",
-        "bookUrl": "$.url_list",
-        "name": "$.articlename",
-        "author": "$.author",
-        "coverUrl": "$.url_img",
-        "intro": "$.intro",
-        "kind": "",
-        "lastChapter": "",
-        "tocUrl": "",
-        "wordCount": ""
-    },
-    "ruleToc": {
-        "chapterList": "@css:.listmain dd a[href^=\"/\"]",
-        "chapterName": "tag.a@text",
-        "chapterUrl": "tag.a@href",
-        "isVolume": ""
-    }
+  "schema": "trnovel-booksource/v2",
+  "name": "示例书源",
+  "url": "https://example.com",
+  "bookInfo": {
+    "name": { "via": "css", "select": "h1.book-title", "extract": "text" },
+    "tocUrl": { "via": "css", "select": "a.catalog", "extract": { "attr": "href" } }
+  },
+  "toc": {
+    "list": { "via": "css", "select": ".chapter-list a" },
+    "name": { "via": "raw" },
+    "url": { "via": "css", "select": "a", "extract": { "attr": "href" } }
+  },
+  "content": {
+    "value": { "via": "css", "select": "#content", "extract": "html" }
+  }
 }
 ```
 
-:::note[分卷（可选）]
-`ruleToc.isVolume` 为可选的卷判定规则：当它对某个目录项求值为非空（且不为 `false`/`0`）时，该项会被识别为**卷标题**并在目录中作为分组节点显示，而非可阅读章节。留空（默认）时所有条目均为普通章节，与旧书源行为一致。
-:::
+## 从配置到可用
 
-:::tip[提示]
-由于是网络爬虫配置文件，书源可能会因为网站结构变化而失效。建议定期更新书源以确保其有效性。
-非常欢迎用户贡献和分享新的书源配置文件，以丰富 TRNovel 的书源库。
+```text
+据网站逆向/AI 生成 → trn doctor 校验 → trn import 导入 → trn -n 选用
+```
+
+- 生成与逆向技巧 → [制作书源](/TRNovel/book-source/make)
+- 反爬(Cloudflare 等)的处理 → [反爬与浏览器辅助](/TRNovel/reference/anti-scraping)
+- 命令 → [CLI 参考](/TRNovel/reference/cli)(`doctor` / `import`)
+
+:::tip
+书源是网络爬虫配置,可能因网站结构变化而失效。`samples` 里写上一两本书的期望,`trn doctor` 就能随时体检书源是否仍然有效。
 :::
