@@ -1,4 +1,23 @@
-## [0.10.0] - 2026-06-01
+## [0.10.1] - 2026-06-02
+
+### 🚀 Features
+
+- Trn import 命令 —— 把书源导入 ~/.novel,闭合「AI 生成→验证→可用」
+
+### 📚 Documentation
+
+- *(site)* 官网首页改造为产品落地页 + CLI 参考补 doctor/import
+- *(book-source)* 按 v2 全面重写书源参考并重新拆分目录
+## [trnovel-v0.10.0] - 2026-06-01
+
+### 🐛 Bug Fixes
+
+- *(release)* Pin TTS runtime dependencies
+
+### 📚 Documentation
+
+- Refine TRNovel AI Agent blog
+## [parse-book-source-v0.3.0] - 2026-06-01
 
 ### 🚀 Features
 
@@ -23,6 +42,7 @@
 ### ⚙️ Miscellaneous Tasks
 
 - Gitignore 忽略本地工具目录 .claude / .obsidian
+- Release 0.10.0
 ## [trnovel-v0.9.0] - 2026-05-28
 
 ### 🐛 Bug Fixes
