@@ -26,7 +26,7 @@ pub fn extract(
         Via::Json => json_extract(content, select, index, ex),
         Via::Regex => regex_extract(content, select, index),
         Via::Raw => Ok(content.to_string()),
-        Via::Xpath => Err(EvalError::Unsupported("xpath")),
+        Via::Xpath => crate::xpath::xpath_extract(content, select, index, ex),
     }
 }
 
@@ -58,7 +58,7 @@ pub fn select_all(via: Via, content: &str, select: &str) -> Result<Vec<String>, 
                 .collect())
         }
         Via::Raw => Ok(vec![content.to_string()]),
-        Via::Xpath => Err(EvalError::Unsupported("xpath")),
+        Via::Xpath => crate::xpath::xpath_select_all(content, select),
     }
 }
 
@@ -101,8 +101,8 @@ fn html_extract(
 }
 
 /// 把正文 HTML 转为可读文本:块级/换行标签 → 换行,去注释,解码常见实体。
-/// (对应旧引擎的 `get_html_string`,用于 `extract: "html"`。)
-fn clean_html(html: &str) -> String {
+/// (对应旧引擎的 `get_html_string`,用于 `extract: "html"`;xpath 后端复用。)
+pub(crate) fn clean_html(html: &str) -> String {
     // 以下均为编译期写死的合法正则,运行期不可能编译失败,故 unwrap 安全。
     static TAGS: LazyLock<Regex> = LazyLock::new(|| {
         Regex::new(r"</?(?:div|p|br|hr|h[1-6]|article|section|dd|dl|li)[^>]*>").unwrap()
@@ -184,7 +184,7 @@ fn regex_extract(
 // ───────────────────────── 公共 ─────────────────────────
 
 /// 解析索引:None→0;负数从末尾;越界回退到首/末。
-fn resolve_index(index: Option<i64>, len: usize) -> usize {
+pub(crate) fn resolve_index(index: Option<i64>, len: usize) -> usize {
     match index {
         None => 0,
         Some(i) if i >= 0 => (i as usize).min(len - 1),

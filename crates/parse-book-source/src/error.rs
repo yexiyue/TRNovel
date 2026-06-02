@@ -71,12 +71,24 @@ pub enum EvalError {
     /// JSONPath 查询失败。
     #[error("jsonpath error: {0}")]
     JsonPath(String),
+    /// XPath 表达式非法或求值失败。
+    #[error("xpath error: {0}")]
+    Xpath(String),
     /// 待解析内容不是合法 JSON。
     #[error("invalid json content: {0}")]
     Json(String),
     /// 该 via 后端暂未启用(如 xpath)。
     #[error("extraction backend not enabled: {0}")]
     Unsupported(&'static str),
+    /// clean 编解码算子失败(非法 base64/hex/url 等)。
+    #[error("codec error: {0}")]
+    Codec(String),
+    /// clean 加解密算子失败(密钥/IV 长度错、padding 错、密文损坏等)。
+    #[error("crypto error: {0}")]
+    Crypto(String),
+    /// JS 脚本求值失败(语法错/运行错;仅 `js` feature)。
+    #[error("js error: {0}")]
+    Js(String),
 }
 
 /// v2 结果别名。

@@ -39,6 +39,33 @@ futures-util = { version = "0.3", optional = true }
 # 从 Rust 类型自动生成 JSON Schema(尊重 serde 属性);以 `schema` feature 门控,
 # 默认构建不含。配套 `examples/gen_schema.rs` + 防漂移测试 `schema_is_in_sync`。
 schemars = { version = "0.8", optional = true }
+sxd-document = "0.3.2"
+sxd-xpath = "0.4.2"
+
+# 确定性加解密/编码/哈希 transform(clean 流水线算子),全部纯 Rust、零 C 依赖。
+# ⚠️ 代际锁定:必须钉在 RustCrypto 的 cipher 0.4 / digest 0.10 代——aes-gcm 0.10 依赖
+#    cipher ^0.4、hmac 0.12 依赖 digest ^0.10。升级任一项须整组同步,否则 trait 不互通。
+cipher = { version = "0.4", features = ["alloc", "block-padding"] }
+aes = "0.8"
+des = "0.8"
+cbc = { version = "0.1", features = ["alloc", "block-padding"] }
+ecb = { version = "0.1", features = ["alloc", "block-padding"] }
+cfb-mode = "0.8"
+aes-gcm = "0.10"
+base64 = "0.22"
+hex = "0.4"
+percent-encoding = "2"
+md-5 = "0.10"
+sha1 = "0.10"
+sha2 = "0.10"
+hmac = "0.12"
+# 繁简转换:纯 Rust 重实现 OpenCC + 内置词典(禁用 opencc-rust——其依赖系统 libopencc/
+# libstdc++、仅 Linux,会重演 onnxruntime 的 CRT/交叉编译之痛)。
+ferrous-opencc = "0.4"
+
+# JS 逻辑编排逃生舱(纯 Rust JS 引擎),以 `js` feature 门控,默认构建不含。
+# crypto 对象后端复用上面的 transform crypto fn(单一真相源)。
+boa_engine = { version = "0.21", optional = true }
 
 [features]
 default = []
@@ -46,16 +73,11 @@ default = []
 browser = ["dep:chromiumoxide", "dep:futures-util"]
 # 启用 JSON Schema 生成(schemars 派生 + gen 示例 + 防漂移测试)。
 schema = ["dep:schemars"]
+# 启用 JS 逻辑编排逃生舱(Rule::Js / clean.js 求值)。变体与 schema 恒存在,
+# 仅求值实现受此门控;未启用时求值到 JS 返回 Unsupported("js")。
+js = ["dep:boa_engine"]
 
 # gen_schema 示例:`cargo run -p parse-book-source --features schema --example gen_schema`
 [[example]]
 name = "gen_schema"
 required-features = ["schema"]
-
-
-# scraper = "0.21.0"
-# chrono = { version = "0.4.38", features = ["serde"] }
-# base64 = "0.22.1"
-# cbc = "0.1.2"
-# ring = { version = "0.17.8", features = ["std"] }
-# aes = { version = "0.8.4", features = ["hazmat"] }

@@ -22,9 +22,13 @@ pub mod engine;
 pub mod error;
 pub mod eval;
 pub mod fetch;
+#[cfg(feature = "js")]
+mod js;
 pub mod model;
 pub mod source;
+mod transform;
 pub mod verify;
+mod xpath;
 
 // 公开面:运行时入口(Engine)+ 取页端口 + 配置 + 领域类型 + 校验 + 错误。
 // 规则 AST(`Rule` 等)与求值/抽取细节在 `source` / `eval` / `backend` 下,按需取用。
