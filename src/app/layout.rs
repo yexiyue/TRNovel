@@ -1,10 +1,12 @@
 use crate::{
-    Commands, History, HistoryItem, TRNovel, pages::network_novel::book_detail::BookDetailState,
+    Commands, History, HistoryItem, TRNovel, components::BrowserPromptModal,
+    pages::network_novel::book_detail::BookDetailState,
 };
 use crossterm::event::{Event, KeyCode, KeyEventKind};
 use ratatui_kit::{
     AnyElement, Hooks, State, UseContext, UseEffect, UseEvents, UseExit, UseRouter, component,
-    element, prelude::Outlet,
+    element,
+    prelude::{Fragment, Outlet},
 };
 use std::path::PathBuf;
 
@@ -76,5 +78,8 @@ pub fn Layout(mut hooks: Hooks) -> impl Into<AnyElement<'static>> {
             }
         }
     });
-    element!(Outlet)
+    element!(Fragment {
+        Outlet
+        BrowserPromptModal
+    })
 }

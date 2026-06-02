@@ -38,5 +38,6 @@ pub use verify::{Check, CheckStatus, DiagnoseReport, VerifyReport, diagnose, ver
 // 反爬:系统浏览器解挑战(`browser` feature)。
 #[cfg(feature = "browser")]
 pub use browser::{
-    BrowserFetcher, BrowserOptions, Clearance, EscalatingFetcher, SolvePrompt, detect_browser,
+    AuthDecision, BrowserFetcher, BrowserOptions, BrowserUi, Clearance, EscalatingFetcher,
+    detect_browser,
 };

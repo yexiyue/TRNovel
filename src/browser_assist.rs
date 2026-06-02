@@ -1,43 +1,153 @@
 //! 浏览器辅助取页的 app 侧装配(反爬)。
 //!
-//! 依「书源取页模式 ∧ 用户授权 ∧ 系统浏览器探测」三者交集,决定是否给 `Engine`
-//! 接入升级式取页(撞 Cloudflare 挑战 → 系统浏览器解出 `cf_clearance` → 交回 reqwest)。
-//! 见 OpenSpec change `browser-fetcher` 的 design D8/D12。
+//! 撞 Cloudflare 挑战时,经用户授权后用系统浏览器解出 `cf_clearance` 再交回 reqwest
+//! (见 OpenSpec change `browser-fetcher` 的 design D8/D12)。
+//!
+//! 授权两级:
+//! - **设置开关**:`~/.novel/browser_assist.on` 标记(「总是允许」),由设置页或弹窗「总是」写入;
+//! - **首次弹窗**:未设标记时,撞挑战会经 `TuiBrowserUi` 弹模态问「本次 / 总是 / 拒绝」。
 
+use std::sync::atomic::AtomicBool;
+use std::sync::{Arc, Mutex, OnceLock};
 use std::time::Duration;
 
-use parse_book_source::{BookSource, BrowserFetcher, BrowserOptions, Engine, FetchMode};
+use async_trait::async_trait;
+use parse_book_source::{
+    AuthDecision, BookSource, BrowserFetcher, BrowserOptions, BrowserUi, Engine, FetchMode,
+};
+use ratatui_kit::prelude::State;
+use tokio::sync::oneshot;
 
-/// 用户是否已授权浏览器辅助验证。
-///
-/// 读 `~/.novel/browser_assist.on` 标记;**默认未授权**(spec-safe:不擅自打开用户浏览器)。
-/// TODO(首次询问 UX):后续接 TUI 首次弹窗「本次 / 总是 / 拒绝」并写入该标记。
-pub fn authorized() -> bool {
-    crate::utils::novel_catch_dir()
-        .map(|d| d.join("browser_assist.on").exists())
-        .unwrap_or(false)
+/// 授权结果回送通道。包成 `Arc<Mutex<Option<_>>>` 以便 [`BrowserPrompt`] 可 `Clone`
+/// (`State<T>` 取值会克隆;`oneshot::Sender` 本身不可 Clone)。
+type AuthResponder = Arc<Mutex<Option<oneshot::Sender<AuthDecision>>>>;
+
+/// 待用户处理的浏览器交互(由全局上下文 `State<Option<BrowserPrompt>>` 承载,模态组件消费)。
+#[derive(Clone)]
+pub enum BrowserPrompt {
+    /// 撞挑战、需授权:用户选「本次 / 总是 / 拒绝」,结果经 `responder` 回送。
+    Authorize {
+        source_name: String,
+        responder: AuthResponder,
+    },
+    /// 出现 Turnstile 勾选框:提示用户去浏览器点;`cancel` 置真表示取消。
+    Click {
+        #[allow(dead_code)]
+        url: String,
+        cancel: Arc<AtomicBool>,
+    },
 }
 
-/// 浏览器 profile 目录落在 `~/.novel/browser-profile`(养号 + 跨会话缓存 `cf_clearance`)。
-fn browser_options() -> BrowserOptions {
+impl BrowserPrompt {
+    /// 取出授权回送通道(供模态在用户选择后 `send`)。
+    pub fn take_responder(&self) -> Option<oneshot::Sender<AuthDecision>> {
+        match self {
+            BrowserPrompt::Authorize { responder, .. } => responder.lock().ok()?.take(),
+            BrowserPrompt::Click { .. } => None,
+        }
+    }
+}
+
+// ───────────────────────── 持久化:「总是允许」标记 ─────────────────────────
+
+fn flag_path() -> Option<std::path::PathBuf> {
+    crate::utils::novel_catch_dir()
+        .ok()
+        .map(|d| d.join("browser_assist.on"))
+}
+
+/// 是否已「总是允许」浏览器辅助验证。
+pub fn always_allowed() -> bool {
+    flag_path().map(|p| p.exists()).unwrap_or(false)
+}
+
+/// 设置 / 取消「总是允许」(供设置页开关与弹窗「总是」使用)。
+pub fn set_always_allowed(on: bool) -> std::io::Result<()> {
+    let Some(p) = flag_path() else {
+        return Ok(());
+    };
+    if on {
+        if let Some(dir) = p.parent() {
+            std::fs::create_dir_all(dir)?;
+        }
+        std::fs::write(&p, b"on")?;
+    } else if p.exists() {
+        std::fs::remove_file(&p)?;
+    }
+    Ok(())
+}
+
+// ───────────────────────── 全局 UI 句柄(避免到处穿参)─────────────────────────
+
+static BROWSER_UI: OnceLock<Arc<dyn BrowserUi>> = OnceLock::new();
+
+/// App 启动时调用一次:把全局提示状态登记为浏览器 UI 回调,供 [`build_engine`] 取用。
+pub fn init_browser_ui(state: State<Option<BrowserPrompt>>) {
+    let _ = BROWSER_UI.set(Arc::new(TuiBrowserUi { state }));
+}
+
+fn browser_ui() -> Option<Arc<dyn BrowserUi>> {
+    BROWSER_UI.get().cloned()
+}
+
+/// 基于全局提示状态的 [`BrowserUi`] 实现:把交互投递到 TUI 模态并等待结果。
+struct TuiBrowserUi {
+    state: State<Option<BrowserPrompt>>,
+}
+
+#[async_trait]
+impl BrowserUi for TuiBrowserUi {
+    async fn authorize(&self, source_name: &str) -> AuthDecision {
+        // 已「总是允许」→ 不打扰,直接放行。
+        if always_allowed() {
+            return AuthDecision::Always;
+        }
+        let (tx, rx) = oneshot::channel();
+        // 弹授权模态(写入全局状态,触发重渲染)。
+        *self.state.write() = Some(BrowserPrompt::Authorize {
+            source_name: source_name.to_string(),
+            responder: Arc::new(Mutex::new(Some(tx))),
+        });
+        // 等用户在模态里选择(模态会经 responder 回送);取消/关闭则视为拒绝。
+        let decision = rx.await.unwrap_or(AuthDecision::Deny);
+        *self.state.write() = None;
+        decision
+    }
+
+    fn prompt_click(&self, url: &str, cancel: Arc<AtomicBool>) {
+        *self.state.write() = Some(BrowserPrompt::Click {
+            url: url.to_string(),
+            cancel,
+        });
+    }
+
+    fn done(&self) {
+        *self.state.write() = None;
+    }
+}
+
+// ───────────────────────── Engine 装配 ─────────────────────────
+
+/// 依书源取页模式 + 浏览器探测,构建合适的 [`Engine`]。
+///
+/// - `http.fetcher == reqwest` → 纯 reqwest(撞挑战即降级);
+/// - 否则且探测到系统浏览器 → 升级式取页(撞挑战时经 UI 授权后解挑战);
+/// - 否则 → 纯 reqwest。
+///
+/// 是否真的开浏览器由 `TuiBrowserUi::authorize` 在撞挑战时把关(设置开关 ∨ 首次弹窗)。
+pub fn build_engine(source: BookSource) -> parse_book_source::Result<Engine> {
+    if matches!(source.http.fetcher, FetchMode::Reqwest) {
+        return Engine::new(source);
+    }
     let mut opts = BrowserOptions::default();
     if let Ok(dir) = crate::utils::novel_catch_dir() {
         opts.profile_dir = dir.join("browser-profile");
     }
     opts.total_timeout = Duration::from_secs(90);
-    opts
-}
+    opts.ui = browser_ui();
 
-/// 依书源取页模式 + 用户授权 + 浏览器探测,构建合适的 [`Engine`]。
-///
-/// - `http.fetcher == reqwest` → 纯 reqwest(撞挑战即降级);
-/// - 否则且已授权且探测到系统浏览器 → 升级式取页(cookie 烤箱);
-/// - 否则 → 纯 reqwest。
-pub fn build_engine(source: BookSource) -> parse_book_source::Result<Engine> {
-    let allow = !matches!(source.http.fetcher, FetchMode::Reqwest) && authorized();
-    if allow && let Some(browser) = BrowserFetcher::detect(browser_options()) {
-        Engine::with_browser_assist(source, Some(browser))
-    } else {
-        Engine::new(source)
+    match BrowserFetcher::detect(opts) {
+        Some(browser) => Engine::with_browser_assist(source, Some(browser)),
+        None => Engine::new(source),
     }
 }

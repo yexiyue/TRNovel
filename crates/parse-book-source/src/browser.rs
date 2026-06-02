@@ -16,6 +16,7 @@ use chromiumoxide::{Browser, BrowserConfig, Page};
 use futures_util::StreamExt;
 use std::path::PathBuf;
 use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::{Duration, Instant};
 use tokio::sync::Mutex;
 
@@ -28,12 +29,27 @@ pub struct Clearance {
     pub user_agent: String,
 }
 
-/// 解挑战过程中的用户提示回调:交互式 Turnstile 出现时由 app 实现(弹模态请用户点击)。
-pub trait SolvePrompt: Send + Sync {
-    /// 需要用户去弹出的浏览器里点击「确认您是真人」。
-    fn needs_user_click(&self, url: &str);
-    /// 挑战已解决,可撤下提示。
-    fn resolved(&self);
+/// 浏览器授权决定(由 [`BrowserUi::authorize`] 返回)。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum AuthDecision {
+    /// 本次允许。
+    Once,
+    /// 总是允许(实现方应持久化)。
+    Always,
+    /// 拒绝:不开浏览器,降级。
+    Deny,
+}
+
+/// 解挑战期间与用户交互的 UI 回调(由 app/TUI 实现;非交互场景可不提供)。
+#[async_trait]
+pub trait BrowserUi: Send + Sync {
+    /// 撞挑战、需要打开浏览器前征求用户授权(可 await 用户决定)。
+    async fn authorize(&self, source_name: &str) -> AuthDecision;
+    /// 出现 Turnstile 勾选框:提示用户去弹出的浏览器里点「确认您是真人」。
+    /// 用户主动取消时把 `cancel` 置真,解挑战会随即中止并降级。
+    fn prompt_click(&self, url: &str, cancel: Arc<AtomicBool>);
+    /// 解挑战结束(成功 / 失败 / 取消),撤下提示。
+    fn done(&self);
 }
 
 /// 浏览器解挑战的可调参数。
@@ -47,8 +63,8 @@ pub struct BrowserOptions {
     pub total_timeout: Duration,
     /// 轮询间隔。
     pub poll_interval: Duration,
-    /// 交互式提示回调(可选)。
-    pub prompt: Option<Arc<dyn SolvePrompt>>,
+    /// 交互式 UI 回调(可选;授权 + Turnstile 点击提示)。
+    pub ui: Option<Arc<dyn BrowserUi>>,
 }
 
 impl Default for BrowserOptions {
@@ -58,7 +74,7 @@ impl Default for BrowserOptions {
             grace: Duration::from_secs(5),
             total_timeout: Duration::from_secs(60),
             poll_interval: Duration::from_millis(800),
-            prompt: None,
+            ui: None,
         }
     }
 }
@@ -154,6 +170,11 @@ impl BrowserFetcher {
         Self { exe, opts }
     }
 
+    /// 交互 UI 回调(供上层在升级前征求授权)。
+    pub fn ui(&self) -> Option<&Arc<dyn BrowserUi>> {
+        self.opts.ui.as_ref()
+    }
+
     /// headful 打开 `url` 解挑战,轮询取得 `cf_clearance`,返回可注入 reqwest 的 [`Clearance`]。
     pub async fn solve(&self, url: &str) -> Result<Clearance, FetchError> {
         let config = BrowserConfig::builder()
@@ -178,9 +199,12 @@ impl BrowserFetcher {
 
         let result = self.solve_inner(&browser, url).await;
 
-        // 生命周期:无论成败都关闭浏览器、回收事件循环(D11)。
+        // 生命周期:无论成败都关闭浏览器、回收事件循环(D11),并撤下交互提示。
         let _ = browser.close().await;
         handler_task.abort();
+        if let Some(ui) = &self.opts.ui {
+            ui.done();
+        }
         result
     }
 
@@ -194,15 +218,17 @@ impl BrowserFetcher {
             .and_then(|v| v.into_value::<String>().ok())
             .unwrap_or_default();
 
+        let cancel = Arc::new(AtomicBool::new(false));
         let start = Instant::now();
         let mut prompted = false;
         loop {
+            // 用户从 TUI 取消 → 中止解挑战、降级。
+            if cancel.load(Ordering::Relaxed) {
+                return Err(FetchError::Challenged(format!("用户取消解挑战 @ {url}")));
+            }
             if let Ok(cookies) = page.get_cookies().await
                 && let Some(cookie_header) = clearance_header(&cookies)
             {
-                if prompted && let Some(p) = &self.opts.prompt {
-                    p.resolved();
-                }
                 return Ok(Clearance {
                     cookie_header,
                     user_agent,
@@ -216,8 +242,8 @@ impl BrowserFetcher {
             // 超宽限期仍未解开 → 可能需用户点击 Turnstile:前置窗口 + 提示(绝不模拟点击)。
             if !prompted && elapsed >= self.opts.grace && challenge_visible(&page).await {
                 let _ = page.execute(BringToFrontParams::default()).await;
-                if let Some(p) = &self.opts.prompt {
-                    p.needs_user_click(url);
+                if let Some(ui) = &self.opts.ui {
+                    ui.prompt_click(url, cancel.clone());
                 }
                 prompted = true;
             }
@@ -265,6 +291,8 @@ pub struct EscalatingFetcher {
     reqwest: ReqwestFetcher,
     browser: Option<BrowserFetcher>,
     clearance: Mutex<Option<Clearance>>,
+    /// 书源名,用于授权弹窗展示。
+    name: String,
 }
 
 impl EscalatingFetcher {
@@ -274,6 +302,7 @@ impl EscalatingFetcher {
             reqwest: ReqwestFetcher::new(source)?,
             browser,
             clearance: Mutex::new(None),
+            name: source.name.clone(),
         })
     }
 
@@ -299,6 +328,14 @@ impl Fetcher for EscalatingFetcher {
                 let Some(browser) = &self.browser else {
                     return Err(FetchError::Challenged(msg));
                 };
+                // 升级前征求用户授权(若提供了 UI);拒绝则降级。
+                if let Some(ui) = browser.ui()
+                    && ui.authorize(&self.name).await == AuthDecision::Deny
+                {
+                    return Err(FetchError::Challenged(format!(
+                        "{msg}(用户未授权浏览器辅助)"
+                    )));
+                }
                 let abs = self.reqwest.resolve(&req.url);
                 let c = browser.solve(&abs).await?;
                 *self.clearance.lock().await = Some(c);
