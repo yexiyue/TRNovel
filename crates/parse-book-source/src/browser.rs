@@ -20,6 +20,10 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::{Duration, Instant};
 use tokio::sync::Mutex;
 
+/// 本会话浏览器解挑战是否已判定不可用(启动失败等)。一旦置真,后续撞挑战直接降级,
+/// **不再反复启动浏览器**(避免页面反复重跑取页时浏览器频闪)。重启 app 复位。
+static SOLVE_FAILED: AtomicBool = AtomicBool::new(false);
+
 /// 解挑战产出:可注入 reqwest 的 Cookie 头 + 浏览器真实 UA。
 ///
 /// UA 必须随 cookie 一起带走:`cf_clearance` 绑签发它的 UA(见 design D6)。
@@ -177,6 +181,12 @@ impl BrowserFetcher {
 
     /// headful 打开 `url` 解挑战,轮询取得 `cf_clearance`,返回可注入 reqwest 的 [`Clearance`]。
     pub async fn solve(&self, url: &str) -> Result<Clearance, FetchError> {
+        // 清理上次异常退出残留的单例锁:此 profile 由本 app 独占,残留 SingletonLock
+        // 会让新启动的浏览器因「profile 被占用」瞬间退出(表现为频闪 + "Browser process exit")。
+        for name in ["SingletonLock", "SingletonSocket", "SingletonCookie"] {
+            let _ = std::fs::remove_file(self.opts.profile_dir.join(name));
+        }
+
         let config = BrowserConfig::builder()
             .chrome_executable(&self.exe)
             .user_data_dir(&self.opts.profile_dir)
@@ -188,14 +198,9 @@ impl BrowserFetcher {
             .map_err(FetchError::Browser)?;
 
         let (mut browser, mut handler) = Browser::launch(config).await.map_err(browser_err)?;
-        // 驱动 CDP 连接的事件循环。
-        let handler_task = tokio::spawn(async move {
-            while let Some(ev) = handler.next().await {
-                if ev.is_err() {
-                    break;
-                }
-            }
-        });
+        // 持续驱动 CDP 连接直到关闭(stream 返回 None)。
+        // 不能因单个错误事件就退出 —— 否则会把正在进行的命令的响应通道丢掉,报 "oneshot canceled"。
+        let handler_task = tokio::spawn(async move { while handler.next().await.is_some() {} });
 
         let result = self.solve_inner(&browser, url).await;
 
@@ -328,17 +333,35 @@ impl Fetcher for EscalatingFetcher {
                 let Some(browser) = &self.browser else {
                     return Err(FetchError::Challenged(msg));
                 };
-                // 升级前征求用户授权(若提供了 UI);拒绝则降级。
-                if let Some(ui) = browser.ui()
-                    && ui.authorize(&self.name).await == AuthDecision::Deny
-                {
+                // 本会话已判定浏览器不可用 → 直接降级,不再启动(避免频闪)。
+                if SOLVE_FAILED.load(Ordering::Relaxed) {
                     return Err(FetchError::Challenged(format!(
-                        "{msg}(用户未授权浏览器辅助)"
+                        "{msg}(浏览器辅助不可用,已降级;可重启 app 重试)"
                     )));
                 }
-                let abs = self.reqwest.resolve(&req.url);
-                let c = browser.solve(&abs).await?;
-                *self.clearance.lock().await = Some(c);
+                // 串行化解挑战:持锁期间若并发的其它取页已解出 clearance,直接复用,
+                // 避免重复开浏览器 / 重复弹授权窗。
+                let mut guard = self.clearance.lock().await;
+                if guard.is_none() {
+                    // 升级前征求用户授权(若提供了 UI);拒绝则降级。
+                    if let Some(ui) = browser.ui()
+                        && ui.authorize(&self.name).await == AuthDecision::Deny
+                    {
+                        return Err(FetchError::Challenged(format!(
+                            "{msg}(用户未授权浏览器辅助)"
+                        )));
+                    }
+                    let abs = self.reqwest.resolve(&req.url);
+                    match browser.solve(&abs).await {
+                        Ok(c) => *guard = Some(c),
+                        Err(e) => {
+                            // 启动/解挑战失败:本会话停用浏览器辅助,避免反复重试导致频闪。
+                            SOLVE_FAILED.store(true, Ordering::Relaxed);
+                            return Err(e);
+                        }
+                    }
+                }
+                drop(guard);
                 self.apply_clearance(&mut req).await;
                 self.reqwest.fetch(req).await
             }

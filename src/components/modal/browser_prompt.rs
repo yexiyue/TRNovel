@@ -89,15 +89,13 @@ pub fn BrowserPromptModal(mut hooks: Hooks) -> impl Into<AnyElement<'static>> {
     })
 }
 
-/// 回送授权决定;`persist_always` 时把「总是允许」落盘。
+/// 记录授权决定并撤下弹窗。`persist_always` 时把「总是允许」落盘(走文件,B 键可关);
+/// 否则把「本次 / 拒绝」记入本会话缓存。`authorize` 的轮询会随即取到。
 fn respond(state: State<Option<BrowserPrompt>>, decision: AuthDecision, persist_always: bool) {
     if persist_always {
         let _ = crate::browser_assist::set_always_allowed(true);
-    }
-    if let Some(prompt) = state.read().clone()
-        && let Some(tx) = prompt.take_responder()
-    {
-        let _ = tx.send(decision);
+    } else {
+        crate::browser_assist::record_decision(decision);
     }
     *state.write() = None;
 }
