@@ -44,4 +44,4 @@
 
 ## 8. 文档
 
-- [ ] 8.1 在 `docs/` 书源参考补充 `clean` 的 decode/encode/hash/cipher/cn 用法与一个 AES 解密正文示例
+- [x] 8.1 在 `docs/` 书源参考补充 `clean` 的 decode/encode/hash/cipher/cn 用法与一个 AES 解密正文示例

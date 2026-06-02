@@ -40,4 +40,4 @@
 
 ## 7. 文档
 
-- [ ] 7.1 `docs/` 书源参考补充:`Rule::Js` / `clean.js` 用法、`result`/`baseUrl`/`crypto` 可用项、"结构化优先、JS 仅逃生舱"的定位,以及 `js` feature 说明
+- [x] 7.1 `docs/` 书源参考补充:`Rule::Js` / `clean.js` 用法、`result`/`baseUrl`/`crypto` 可用项、"结构化优先、JS 仅逃生舱"的定位,以及 `js` feature 说明
