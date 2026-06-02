@@ -4,8 +4,12 @@
 //! (见 OpenSpec change `browser-fetcher` 的 design D8/D12)。
 //!
 //! 授权两级:
-//! - **设置开关**:`~/.novel/browser_assist.on` 标记(「总是允许」),由设置页或弹窗「总是」写入;
-//! - **首次弹窗**:未设标记时,撞挑战会经 `TuiBrowserUi` 弹模态问「本次 / 总是 / 拒绝」。
+//! - **设置开关**:`~/.novel/browser_assist.on` 标记(「总是允许」),由书源管理页 B 键或弹窗「总是」写入;
+//! - **首次弹窗**:未设标记时,撞挑战会弹模态问「本次 / 总是 / 拒绝」。
+//!
+//! 关键:授权决定存于**模块级会话缓存**(非随某次取页 future 存活),`authorize` 以轮询等待。
+//! 这样并发取页、或随 query 变化被取消重启的取页,都不会叠加/抖动弹窗——只在「当前无弹窗」时
+//! 弹一次,用户决定后所有等待者复用同一决定。
 
 use std::sync::atomic::AtomicBool;
 use std::sync::{Arc, Mutex, OnceLock};
@@ -16,20 +20,13 @@ use parse_book_source::{
     AuthDecision, BookSource, BrowserFetcher, BrowserOptions, BrowserUi, Engine, FetchMode,
 };
 use ratatui_kit::prelude::State;
-use tokio::sync::oneshot;
-
-/// 授权结果回送通道。包成 `Arc<Mutex<Option<_>>>` 以便 [`BrowserPrompt`] 可 `Clone`
-/// (`State<T>` 取值会克隆;`oneshot::Sender` 本身不可 Clone)。
-type AuthResponder = Arc<Mutex<Option<oneshot::Sender<AuthDecision>>>>;
+use tokio::time::sleep;
 
 /// 待用户处理的浏览器交互(由全局上下文 `State<Option<BrowserPrompt>>` 承载,模态组件消费)。
 #[derive(Clone)]
 pub enum BrowserPrompt {
-    /// 撞挑战、需授权:用户选「本次 / 总是 / 拒绝」,结果经 `responder` 回送。
-    Authorize {
-        source_name: String,
-        responder: AuthResponder,
-    },
+    /// 撞挑战、需授权:用户在模态里选「本次 / 总是 / 拒绝」(经 [`record_decision`] / [`set_always_allowed`] 落地)。
+    Authorize { source_name: String },
     /// 出现 Turnstile 勾选框:提示用户去浏览器点;`cancel` 置真表示取消。
     Click {
         #[allow(dead_code)]
@@ -38,14 +35,20 @@ pub enum BrowserPrompt {
     },
 }
 
-impl BrowserPrompt {
-    /// 取出授权回送通道(供模态在用户选择后 `send`)。
-    pub fn take_responder(&self) -> Option<oneshot::Sender<AuthDecision>> {
-        match self {
-            BrowserPrompt::Authorize { responder, .. } => responder.lock().ok()?.take(),
-            BrowserPrompt::Click { .. } => None,
-        }
+// ───────────────────────── 会话授权决定(本次 / 拒绝)─────────────────────────
+
+/// 本会话的「本次允许 / 拒绝」决定缓存(「总是允许」走 [`always_allowed`] 文件,见下)。
+static DECISION: Mutex<Option<AuthDecision>> = Mutex::new(None);
+
+/// 模态在用户选「本次允许 / 拒绝」后调用,记录本会话决定(「总是」不走这里,见 [`set_always_allowed`])。
+pub fn record_decision(decision: AuthDecision) {
+    if let Ok(mut d) = DECISION.lock() {
+        *d = Some(decision);
     }
+}
+
+fn cached_decision() -> Option<AuthDecision> {
+    DECISION.lock().ok().and_then(|d| *d)
 }
 
 // ───────────────────────── 持久化:「总是允许」标记 ─────────────────────────
@@ -61,7 +64,7 @@ pub fn always_allowed() -> bool {
     flag_path().map(|p| p.exists()).unwrap_or(false)
 }
 
-/// 设置 / 取消「总是允许」(供设置页开关与弹窗「总是」使用)。
+/// 设置 / 取消「总是允许」(供书源管理页 B 键开关与弹窗「总是」使用)。
 pub fn set_always_allowed(on: bool) -> std::io::Result<()> {
     let Some(p) = flag_path() else {
         return Ok(());
@@ -90,7 +93,7 @@ fn browser_ui() -> Option<Arc<dyn BrowserUi>> {
     BROWSER_UI.get().cloned()
 }
 
-/// 基于全局提示状态的 [`BrowserUi`] 实现:把交互投递到 TUI 模态并等待结果。
+/// 基于全局提示状态的 [`BrowserUi`] 实现:把交互投递到 TUI 模态,以轮询等待用户决定。
 struct TuiBrowserUi {
     state: State<Option<BrowserPrompt>>,
 }
@@ -98,20 +101,26 @@ struct TuiBrowserUi {
 #[async_trait]
 impl BrowserUi for TuiBrowserUi {
     async fn authorize(&self, source_name: &str) -> AuthDecision {
-        // 已「总是允许」→ 不打扰,直接放行。
-        if always_allowed() {
-            return AuthDecision::Always;
+        loop {
+            // 「总是允许」(设置开关 / 弹窗选总是)→ 直接放行。
+            if always_allowed() {
+                return AuthDecision::Always;
+            }
+            // 本会话已选过「本次 / 拒绝」→ 复用,不再弹窗。
+            if let Some(d) = cached_decision() {
+                return d;
+            }
+            // 仅当当前无弹窗时弹一次(并发/取消重启都不会叠加抖动)。
+            {
+                let mut st = self.state.write();
+                if st.is_none() {
+                    *st = Some(BrowserPrompt::Authorize {
+                        source_name: source_name.to_string(),
+                    });
+                }
+            }
+            sleep(Duration::from_millis(150)).await;
         }
-        let (tx, rx) = oneshot::channel();
-        // 弹授权模态(写入全局状态,触发重渲染)。
-        *self.state.write() = Some(BrowserPrompt::Authorize {
-            source_name: source_name.to_string(),
-            responder: Arc::new(Mutex::new(Some(tx))),
-        });
-        // 等用户在模态里选择(模态会经 responder 回送);取消/关闭则视为拒绝。
-        let decision = rx.await.unwrap_or(AuthDecision::Deny);
-        *self.state.write() = None;
-        decision
     }
 
     fn prompt_click(&self, url: &str, cancel: Arc<AtomicBool>) {
