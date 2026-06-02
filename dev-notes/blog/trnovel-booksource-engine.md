@@ -63,9 +63,32 @@ flowchart TD
 "name": { "via": "css", "select": "[property=\"og:novel:book_name\"]", "extract": { "attr": "content" } }
 ```
 
+这棵树在 Rust 里就是一个 `enum`(用 serde 的 `untagged`,所以 JSON 里不需要写「类型标签」,靠字段形状自动区分):
+
+```rust
+// 一条规则:要么是叶子,要么是组合子(简化版)
+#[serde(untagged)]
+pub enum Rule {
+    FirstOf { first_of: Vec<Rule> },              // 取首个非空
+    Concat  { concat: Vec<Rule>, join: String },  // 拼接
+    Literal { literal: String },                  // 字面量
+    Template { template: String },                // 模板插值
+    Leaf(LeafRule),                               // 一次抽取
+}
+
+// 叶子:在「当前上下文」上做一次抽取
+pub struct LeafRule {
+    pub via: Via,                 // css / json / regex / raw
+    pub select: Option<String>,   // 选择器
+    pub index: Option<i64>,       // 取第几个
+    pub extract: Extract,         // text / html / {attr} ...
+    pub clean: Vec<CleanStep>,    // 后处理流水线
+}
+```
+
 这一步看似只是「啰嗦了一点」,但它把书源从「一段需要专门解析器的迷你语言」变成了「一棵普通的数据结构树」。**树是能被遍历、被校验、被生成的**——后面所有能力都建立在这个选择之上。
 
-这在设计模式上叫 **Interpreter + Composite**:配置本身就是解释器要遍历的语法树,组合子(firstOf/concat)是 Composite 节点。
+这在设计模式上叫 **Interpreter + Composite**:配置本身就是解释器要遍历的语法树,组合子(firstOf/concat)是 Composite 节点——`enum` 的递归定义,天然就是一棵 Composite。
 
 ---
 
@@ -94,9 +117,45 @@ flowchart TD
     Clean --> Out["得到字符串结果"]
 ```
 
+翻译成代码,`eval_value` 就是对这棵树做模式匹配、递归下降:
+
+```rust
+fn eval_value(rule: &Rule, ctx: &str, vars: &Vars) -> Result<String> {
+    match rule {
+        // 组合子:递归求子规则
+        Rule::FirstOf { first_of } => first_of.iter()
+            .find_map(|r| eval_value(r, ctx, vars).ok().filter(|s| !s.is_empty()))
+            .unwrap_or_default(),
+        Rule::Concat { concat, join } => concat.iter()
+            .filter_map(|r| eval_value(r, ctx, vars).ok()).filter(|s| !s.is_empty())
+            .collect::<Vec<_>>().join(join),
+        Rule::Template { template } => interpolate(template, vars),  // {{key}} → 值
+        Rule::Literal { literal } => literal.clone(),
+        // 叶子:选后端抽取,再过 clean 流水线
+        Rule::Leaf(leaf) => {
+            let raw = backend::extract(leaf, ctx)?;   // ← 下面这个 match
+            apply_clean(&leaf.clean, raw)
+        }
+    }
+}
+```
+
 这里有两个值得讲的设计点:
 
-**1. 后端用 Strategy 模式按 `via` 静态分派。** css 走 [dom_query](https://crates.io/crates/dom_query),json 走 JSONPath,regex 走 fancy-regex,raw 直接用当前值。求值器不关心后端细节,只按 `via` 选一个策略。好处是**加一种抽取方式只是加一个分支**,且每种后端都能独立测试。
+**1. 后端用 Strategy 模式按 `via` 静态分派。** css 走 [dom_query](https://crates.io/crates/dom_query),json 走 JSONPath,regex 走 fancy-regex,raw 直接用当前值。求值器不关心后端细节,只按 `via` 选一个策略:
+
+```rust
+fn extract(leaf: &LeafRule, ctx: &str) -> Result<String> {
+    match leaf.via {
+        Via::Css   => css_select(ctx, leaf),       // dom_query
+        Via::Json  => json_query(ctx, leaf),       // jsonpath-rust
+        Via::Regex => regex_extract(ctx, leaf),    // fancy-regex
+        Via::Raw   => Ok(ctx.to_string()),         // 直接用当前值
+    }
+}
+```
+
+好处是**加一种抽取方式只是加一个分支**,且每种后端都能独立测试。
 
 **2. `select` 是 self-or-descendant 语义。** 在「某个章节条目」这个上下文上写 `a@href`,既能匹配条目本身是 `<a>` 的情况,也能匹配条目内部的 `<a>`。这让 `list`(选出所有条目)+ `item`(在每个条目上抽字段)这种两段式写法非常自然。
 
@@ -134,7 +193,16 @@ flowchart TB
     Fetcher --> Mock["MockFetcher(测试)"]
 ```
 
-为什么要把取页做成端口?两个红利:
+这个端口本身极小——它只负责「给一个 URL,把解码后的正文拿回来」:
+
+```rust
+#[async_trait]
+pub trait Fetcher: Send + Sync {
+    async fn fetch(&self, req: FetchRequest) -> Result<String, FetchError>;
+}
+```
+
+引擎所有用例都只调这一个方法,完全不知道背后是 reqwest、是浏览器、还是测试桩。为什么要把取页做成端口?两个红利:
 
 - **离线可测**:给引擎喂一个返回固定 HTML 的 `MockFetcher`,就能在没有网络的情况下测「规则求值 + 分卷切分」是否正确——规则的正确性不依赖真实网站;
 - **反爬可插拔**:解 Cloudflare 的浏览器后端,只是 `trait Fetcher` 的**又一个实现**,引擎完全不用改。
@@ -169,7 +237,25 @@ flowchart TD
     Chap --> Tree
 ```
 
-`isVolume` 通常是「选卷标题特有的元素(如 `h2`)」——对卷节点求值非空、对章节求值为空。引擎据此把扁平列表切成「卷 → 章」的树。这个设计的精髓是:**顺序信息只在一次遍历里产生,不需要二次对齐**。
+切分逻辑就是一次线性遍历:
+
+```rust
+for item in eval_list(&toc.list, page)? {          // 按文档顺序拿到「卷+章」混合列表
+    let title = eval_value(&toc.name, &item, &vars)?;
+    let is_volume = match &toc.is_volume {
+        Some(r) => !eval_value(r, &item, &vars)?.trim().is_empty(), // 判别式:非空=卷
+        None => false,                                              // 没配 isVolume = 全是章
+    };
+    if is_volume {
+        volumes.push(Volume { title, first_chapter_index: chapters.len() }); // 记下卷起点
+    } else {
+        let url = eval_value(&toc.url, &item, &vars)?;
+        chapters.push(Chapter { title, url, is_volume: false });
+    }
+}
+```
+
+`isVolume` 通常是「选卷标题特有的元素(如 `h2`)」——对卷节点求值非空、对章节求值为空。注意 `first_chapter_index: chapters.len()`:卷只记下「我后面的章从第几个开始」,顺序信息就这么一次遍历里固定下来了。这个设计的精髓是:**顺序信息只在一次遍历里产生,不需要二次对齐**。
 
 > 实战里还有个常见坑:目录开头往往有一块「最新章节」预览(倒序、且和正文区重复)。解法同样是「用结构区分」——用兄弟选择器只取「正文标记之后」的章节,而不是按文本去猜。
 
@@ -215,7 +301,32 @@ sequenceDiagram
     R-->>E: 内容
 ```
 
-这里有两个「实测踩出来」的硬约束:
+这套「撞墙→解挑战→拿通行证→复用」被收敛成一个**装饰器式的 `Fetcher`**:它包住普通 reqwest,只有撞到挑战才升级到浏览器,且通行证解一次、之后复用:
+
+```rust
+// EscalatingFetcher:撞挑战才升级浏览器,通行证缓存复用(简化版)
+async fn fetch(&self, mut req: FetchRequest) -> Result<String, FetchError> {
+    self.apply_clearance(&mut req).await;            // 有通行证就带上
+    match self.reqwest.fetch(req.clone()).await {
+        Err(FetchError::Challenged(msg)) => {
+            let Some(browser) = &self.browser else { return Err(Challenged(msg)); };
+            let mut guard = self.clearance.lock().await;   // 串行化:只解一次
+            if guard.is_none() {
+                if browser.ui().authorize(&self.name).await == Deny {   // 征求用户授权
+                    return Err(Challenged("未授权".into()));
+                }
+                *guard = Some(browser.solve(&abs).await?);  // 烤一张通行证
+            }
+            drop(guard);
+            self.apply_clearance(&mut req).await;           // 带通行证重试
+            self.reqwest.fetch(req).await
+        }
+        other => other,    // 没撞挑战,原样返回
+    }
+}
+```
+
+引擎对它无感——它也只是 `trait Fetcher` 的一个实现。这里有两个「实测踩出来」的硬约束:
 
 - **必须 headful**:无头浏览器会被 Cloudflare 识别而解不开,真实可见的浏览器才行;
 - **通行证绑 UA**:`cf_clearance` 和签发它的 User-Agent 绑定。所以浏览器解完后必须把**真实 UA** 一并交出,reqwest 后续请求要用同一个 UA,否则通行证会被拒。
@@ -224,7 +335,18 @@ sequenceDiagram
 
 Managed Challenge 是**自适应**的:风险低时它自己跑非交互 JS(用户无感);风险高时会升级成一个「确认您是真人」的勾选框(Turnstile),这个**只能让真人点**——程序模拟点击会被识别。
 
-所以解挑战是一个状态机:
+所以「解挑战」不能闷头跑,得能跟 UI 交互。引擎对 UI 的依赖同样抽象成一个 trait,TUI 去实现它:
+
+```rust
+#[async_trait]
+pub trait BrowserUi: Send + Sync {
+    async fn authorize(&self, source_name: &str) -> AuthDecision; // 撞挑战前问:本次/总是/拒绝
+    fn prompt_click(&self, url: &str, cancel: Arc<AtomicBool>);   // Turnstile 出现:提示去点
+    fn done(&self);                                              // 解完:撤下提示
+}
+```
+
+`authorize` 是 `async` 的——它能**挂起解挑战、等用户在弹窗里做决定**;`prompt_click` 给一个 `cancel` 标志,用户取消就置真、解挑战循环随即中止。这样解挑战就成了一个状态机:
 
 ```mermaid
 flowchart TD
@@ -287,6 +409,20 @@ flowchart TD
     Sea --> Report["逐项 ✓ / ✗ / ○"]
 ```
 
+每一项都不是「检查字段在不在」,而是「真跑一遍、断言结果合理」:
+
+```rust
+// 目录这一项的体检(简化版)
+match engine.toc(&toc_url).await {
+    Ok(toc) if !toc.chapters.is_empty() =>
+        Check::pass("目录", format!("{} 卷 / {} 章", toc.volumes.len(), toc.chapters.len())),
+    Ok(_)  => Check::fail("目录", "无章节"),
+    // 撞反爬不报裸错,给精确诊断
+    Err(e) if e.is_challenge() => Check::fail("目录", "被反爬挑战拦截,需浏览器辅助或改用浏览"),
+    Err(e) => Check::fail("目录", e.to_string()),
+}
+```
+
 精髓有两点:
 
 - **断言是「可执行不变量」**:不是「字段存在」,而是「换两个关键词搜索,结果会跟着变(而不是固定榜单)」「正文不是一张挑战页」这种真正反映「能用」的判断;
@@ -309,7 +445,24 @@ flowchart LR
     Test -->|不一致| Fail["CI 失败,提示重新生成"]
 ```
 
-`schemars` 派生会**尊重 serde 属性**——`rename_all`、`untagged`、`skip_serializing_if` 都自动反映到 schema 里。我们手抄会犯的那类错(`utf-8` vs `utf8`),从生成的角度根本不可能出现。再加一个 golden 测试:committed 的 schema 必须等于「现从类型生成的」,否则 CI 拦下。从此改类型,schema 自动跟上。
+落地就两步——给类型加一个派生,再写一个「现生成 == 已提交」的 golden 测试:
+
+```rust
+// 1) 给配置类型加派生(feature 门控,不增重默认构建)
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
+pub struct BookSource { /* ... */ }
+
+// 2) 防漂移测试:committed 的 schema 必须等于「现从类型生成的」
+#[test]
+fn schema_is_in_sync() {
+    let generated = serde_json::to_string_pretty(&schemars::schema_for!(BookSource)).unwrap();
+    let committed = include_str!("../book-source.schema.json");
+    assert_eq!(generated.trim(), committed.trim(),
+        "schema 与类型不同步,请重新生成");   // 改了类型忘生成 → CI 红
+}
+```
+
+`schemars` 派生会**尊重 serde 属性**——`rename_all`、`untagged`、`skip_serializing_if` 都自动反映到 schema 里。我们手抄会犯的那类错(`utf-8` vs `utf8`),从生成的角度根本不可能出现。有了那个 golden 测试,改了类型却忘了重新生成,CI 就会红。从此改类型,schema 自动跟上。
 
 ---
 
