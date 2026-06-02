@@ -14,6 +14,7 @@ pub mod doctor;
 pub mod errors;
 pub mod file_list;
 pub mod hooks;
+pub mod import;
 pub mod novel;
 pub mod pages;
 pub mod utils;
@@ -42,6 +43,12 @@ where
     // 书源体检:非 TUI,跑全流程后打印 ✓/✗ 列表并退出。
     if let Some(Commands::Doctor { path }) = &trnovel.subcommand {
         doctor::run(path).await;
+        return Ok(());
+    }
+
+    // 导入书源:非 TUI,把书源 JSON(文件/URL)写入 ~/.novel 后退出。
+    if let Some(Commands::Import { source }) = &trnovel.subcommand {
+        import::run(source).await;
         return Ok(());
     }
 
@@ -113,5 +120,12 @@ pub enum Commands {
     Doctor {
         /// 书源 JSON 文件路径
         path: PathBuf,
+    },
+
+    /// 导入书源：把书源 JSON(本地文件或 URL)写入 ~/.novel,使其在网络小说里可用
+    #[command(short_flag = 'i')]
+    Import {
+        /// 书源 JSON 文件路径或 URL
+        source: String,
     },
 }
