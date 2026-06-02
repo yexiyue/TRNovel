@@ -1,4 +1,21 @@
-## [0.10.2] - 2026-06-02
+## [0.10.3] - 2026-06-02
+
+### 🚀 Features
+
+- *(parse-book-source)* 实现 XPath 抽取后端(纯 Rust,零 C 依赖)
+- *(parse-book-source)* Clean 流水线加入确定性加解密/编码/哈希/繁简 transform
+- *(parse-book-source)* JS 逻辑编排逃生舱(boa,js feature)
+
+### 🚜 Refactor
+
+- *(parse-book-source)* 评审修整(Apollo Rust BP)
+
+### 📚 Documentation
+
+- *(blog)* 书源引擎设计原理深挖(原理向 + 全 mermaid 图)
+- *(blog)* 图文+代码均衡 + 新增 chromiumoxide/反爬入门篇
+- *(book-source)* 补充 XPath / clean 加解密算子 / JS 逃生舱 用法
+## [trnovel-v0.10.2] - 2026-06-02
 
 ### 🚀 Features
 
@@ -7,6 +24,10 @@
 ### 🐛 Bug Fixes
 
 - *(browser)* 修授权弹窗抖动 + 浏览器频闪;解挑战串行化、会话级停用
+
+### ⚙️ Miscellaneous Tasks
+
+- Release
 ## [trnovel-v0.10.1] - 2026-06-02
 
 ### 🚀 Features
