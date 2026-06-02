@@ -42,6 +42,27 @@ schemars = { version = "0.8", optional = true }
 sxd-document = "0.3.2"
 sxd-xpath = "0.4.2"
 
+# 确定性加解密/编码/哈希 transform(clean 流水线算子),全部纯 Rust、零 C 依赖。
+# ⚠️ 代际锁定:必须钉在 RustCrypto 的 cipher 0.4 / digest 0.10 代——aes-gcm 0.10 依赖
+#    cipher ^0.4、hmac 0.12 依赖 digest ^0.10。升级任一项须整组同步,否则 trait 不互通。
+cipher = { version = "0.4", features = ["alloc", "block-padding"] }
+aes = "0.8"
+des = "0.8"
+cbc = { version = "0.1", features = ["alloc", "block-padding"] }
+ecb = { version = "0.1", features = ["alloc", "block-padding"] }
+cfb-mode = "0.8"
+aes-gcm = "0.10"
+base64 = "0.22"
+hex = "0.4"
+percent-encoding = "2"
+md-5 = "0.10"
+sha1 = "0.10"
+sha2 = "0.10"
+hmac = "0.12"
+# 繁简转换:纯 Rust 重实现 OpenCC + 内置词典(禁用 opencc-rust——其依赖系统 libopencc/
+# libstdc++、仅 Linux,会重演 onnxruntime 的 CRT/交叉编译之痛)。
+ferrous-opencc = "0.4"
+
 [features]
 default = []
 # 启用基于系统浏览器的反爬取页(BrowserFetcher / EscalatingFetcher)。
@@ -53,11 +74,3 @@ schema = ["dep:schemars"]
 [[example]]
 name = "gen_schema"
 required-features = ["schema"]
-
-
-# scraper = "0.21.0"
-# chrono = { version = "0.4.38", features = ["serde"] }
-# base64 = "0.22.1"
-# cbc = "0.1.2"
-# ring = { version = "0.17.8", features = ["std"] }
-# aes = { version = "0.8.4", features = ["hazmat"] }

@@ -176,6 +176,26 @@
       },
       "additionalProperties": false
     },
+    "ByteEnc": {
+      "description": "crypto 的 key/iv/输入/输出字节编码。",
+      "oneOf": [
+        {
+          "type": "string",
+          "enum": [
+            "utf8",
+            "base64",
+            "hex"
+          ]
+        },
+        {
+          "description": "原样字节(等同 utf8 字节,主要用于输入密文已是裸字节串的场景)。",
+          "type": "string",
+          "enum": [
+            "raw"
+          ]
+        }
+      ]
+    },
     "Category": {
       "description": "浏览分类。",
       "type": "object",
@@ -204,14 +224,177 @@
         "big5"
       ]
     },
+    "CipherAlgo": {
+      "description": "对称加密算法。",
+      "type": "string",
+      "enum": [
+        "aes",
+        "des",
+        "tripleDes"
+      ]
+    },
+    "CipherMode": {
+      "description": "加密模式。",
+      "type": "string",
+      "enum": [
+        "cbc",
+        "ecb",
+        "cfb",
+        "gcm"
+      ]
+    },
+    "CipherOp": {
+      "description": "加解密方向。",
+      "type": "string",
+      "enum": [
+        "decrypt",
+        "encrypt"
+      ]
+    },
+    "CipherStep": {
+      "description": "加解密算子。默认值贴合「解密正文」主场景:`op=decrypt`、`inputEnc=base64`、`outputEnc=utf8`。",
+      "type": "object",
+      "required": [
+        "algo",
+        "key",
+        "mode"
+      ],
+      "properties": {
+        "algo": {
+          "$ref": "#/definitions/CipherAlgo"
+        },
+        "inputEnc": {
+          "description": "入参密文串→字节;省略时按 `op` 取默认(decrypt→base64,encrypt→utf8)。",
+          "anyOf": [
+            {
+              "$ref": "#/definitions/ByteEnc"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "iv": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "ivEnc": {
+          "default": "utf8",
+          "allOf": [
+            {
+              "$ref": "#/definitions/ByteEnc"
+            }
+          ]
+        },
+        "key": {
+          "type": "string"
+        },
+        "keyEnc": {
+          "default": "utf8",
+          "allOf": [
+            {
+              "$ref": "#/definitions/ByteEnc"
+            }
+          ]
+        },
+        "mode": {
+          "$ref": "#/definitions/CipherMode"
+        },
+        "op": {
+          "default": "decrypt",
+          "allOf": [
+            {
+              "$ref": "#/definitions/CipherOp"
+            }
+          ]
+        },
+        "outputEnc": {
+          "description": "结果字节→串;省略时按 `op` 取默认(decrypt→utf8,encrypt→base64)。",
+          "anyOf": [
+            {
+              "$ref": "#/definitions/ByteEnc"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "padding": {
+          "default": "pkcs7",
+          "allOf": [
+            {
+              "$ref": "#/definitions/Padding"
+            }
+          ]
+        }
+      },
+      "additionalProperties": false
+    },
     "CleanStep": {
-      "description": "单步后处理。",
+      "description": "单步后处理。步内多算子按固定顺序执行: `regex/replace → trim → prepend → append → decode → encode → hash → cipher → cn`。",
       "type": "object",
       "properties": {
         "append": {
           "type": [
             "string",
             "null"
+          ]
+        },
+        "cipher": {
+          "description": "对称加解密。",
+          "anyOf": [
+            {
+              "$ref": "#/definitions/CipherStep"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "cn": {
+          "description": "繁简转换。",
+          "anyOf": [
+            {
+              "$ref": "#/definitions/CnConvert"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "decode": {
+          "description": "解码(base64/base64url/hex/url)。",
+          "anyOf": [
+            {
+              "$ref": "#/definitions/Codec"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "encode": {
+          "description": "编码(base64/base64url/hex/url)。",
+          "anyOf": [
+            {
+              "$ref": "#/definitions/Codec"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "hash": {
+          "description": "哈希/HMAC。",
+          "anyOf": [
+            {
+              "$ref": "#/definitions/HashStep"
+            },
+            {
+              "type": "null"
+            }
           ]
         },
         "prepend": {
@@ -240,6 +423,45 @@
         }
       },
       "additionalProperties": false
+    },
+    "CnConvert": {
+      "description": "繁简转换方向。",
+      "oneOf": [
+        {
+          "description": "繁体 → 简体。",
+          "type": "string",
+          "enum": [
+            "t2s"
+          ]
+        },
+        {
+          "description": "简体 → 繁体。",
+          "type": "string",
+          "enum": [
+            "s2t"
+          ]
+        }
+      ]
+    },
+    "Codec": {
+      "description": "编解码方式(`decode`/`encode` 算子,以及 crypto 的字节↔串编码)。",
+      "oneOf": [
+        {
+          "type": "string",
+          "enum": [
+            "base64",
+            "base64url",
+            "hex"
+          ]
+        },
+        {
+          "description": "URL 百分号编解码。",
+          "type": "string",
+          "enum": [
+            "url"
+          ]
+        }
+      ]
     },
     "ContentRules": {
       "description": "正文规则(可选分页)。",
@@ -386,6 +608,60 @@
         }
       ]
     },
+    "HashAlgo": {
+      "description": "哈希算法。",
+      "type": "string",
+      "enum": [
+        "md5",
+        "sha1",
+        "sha256",
+        "sha512"
+      ]
+    },
+    "HashOut": {
+      "description": "哈希/HMAC 输出编码。",
+      "type": "string",
+      "enum": [
+        "hex",
+        "base64"
+      ]
+    },
+    "HashStep": {
+      "description": "哈希算子(可选 HMAC)。",
+      "type": "object",
+      "required": [
+        "algo"
+      ],
+      "properties": {
+        "algo": {
+          "$ref": "#/definitions/HashAlgo"
+        },
+        "hmacKey": {
+          "description": "提供则计算 HMAC(以此为密钥)。",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "hmacKeyEnc": {
+          "default": "utf8",
+          "allOf": [
+            {
+              "$ref": "#/definitions/ByteEnc"
+            }
+          ]
+        },
+        "output": {
+          "default": "hex",
+          "allOf": [
+            {
+              "$ref": "#/definitions/HashOut"
+            }
+          ]
+        }
+      },
+      "additionalProperties": false
+    },
     "Http": {
       "description": "HTTP 配置块。",
       "type": "object",
@@ -508,6 +784,15 @@
       "enum": [
         "GET",
         "POST"
+      ]
+    },
+    "Padding": {
+      "description": "填充方式(gcm 忽略)。",
+      "type": "string",
+      "enum": [
+        "pkcs7",
+        "zero",
+        "none"
       ]
     },
     "RateLimit": {

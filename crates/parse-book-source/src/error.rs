@@ -80,6 +80,12 @@ pub enum EvalError {
     /// 该 via 后端暂未启用(如 xpath)。
     #[error("extraction backend not enabled: {0}")]
     Unsupported(&'static str),
+    /// clean 编解码算子失败(非法 base64/hex/url 等)。
+    #[error("codec error: {0}")]
+    Codec(String),
+    /// clean 加解密算子失败(密钥/IV 长度错、padding 错、密文损坏等)。
+    #[error("crypto error: {0}")]
+    Crypto(String),
 }
 
 /// v2 结果别名。

@@ -24,6 +24,7 @@ pub mod eval;
 pub mod fetch;
 pub mod model;
 pub mod source;
+mod transform;
 pub mod verify;
 mod xpath;
 

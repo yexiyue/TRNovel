@@ -7,6 +7,7 @@
 use super::backend;
 use super::error::EvalError;
 use super::source::{CleanStep, Rule};
+use super::transform;
 use fancy_regex::Regex;
 use std::collections::HashMap;
 use std::sync::LazyLock;
@@ -40,7 +41,7 @@ pub fn eval_value(rule: &Rule, ctx: &str, vars: &Vars) -> Result<String, EvalErr
         }
         Rule::Leaf(l) => {
             let raw = backend::extract(l.via, ctx, l.select.as_deref(), l.index, &l.extract)?;
-            Ok(apply_clean(raw, &l.clean))
+            apply_clean(raw, &l.clean)
         }
     }
 }
@@ -70,8 +71,10 @@ pub fn eval_list(rule: &Rule, ctx: &str) -> Result<Vec<String>, EvalError> {
     }
 }
 
-/// 应用清洗流水线(regex→replace、trim、prepend、append,按步顺序)。
-fn apply_clean(mut s: String, steps: &[CleanStep]) -> String {
+/// 应用清洗流水线。步内固定顺序:
+/// `regex→replace → trim → prepend → append → decode → encode → hash → cipher → cn`。
+/// 编解码/加解密会失败(非法输入、错密钥),故返回 `Result`(显式报错,不静默空)。
+fn apply_clean(mut s: String, steps: &[CleanStep]) -> Result<String, EvalError> {
     for step in steps {
         if let Some(pat) = &step.regex
             && let Ok(re) = Regex::new(pat)
@@ -88,8 +91,23 @@ fn apply_clean(mut s: String, steps: &[CleanStep]) -> String {
         if let Some(a) = &step.append {
             s = format!("{s}{a}");
         }
+        if let Some(c) = step.decode {
+            s = transform::decode(&s, c)?;
+        }
+        if let Some(c) = step.encode {
+            s = transform::encode(&s, c)?;
+        }
+        if let Some(h) = &step.hash {
+            s = transform::hash(&s, h)?;
+        }
+        if let Some(c) = &step.cipher {
+            s = transform::cipher(&s, c)?;
+        }
+        if let Some(cn) = step.cn {
+            s = transform::cn_convert(&s, cn);
+        }
     }
-    s
+    Ok(s)
 }
 
 /// 把 `{{key}}` 替换为变量值,未知键替换为空串。
@@ -222,5 +240,49 @@ mod tests {
         );
         let out = eval_value(&r, "正文内容 请收藏本站xxx.com", &Vars::new()).unwrap();
         assert_eq!(out, "正文内容");
+    }
+
+    #[test]
+    fn clean_pipeline_decrypts_content() {
+        // 端到端:clean 链 cipher 步对「base64 密文」AES-CBC 解密出明文。
+        // 先用 transform 造出该书源会返回的 base64 密文(模拟服务端加密)。
+        use crate::source::{ByteEnc, CipherAlgo, CipherMode, CipherOp, CipherStep, Padding};
+        let plain = "蛊真人 第一章 正文……";
+        let ct = transform::cipher(
+            plain,
+            &CipherStep {
+                algo: CipherAlgo::Aes,
+                mode: CipherMode::Cbc,
+                padding: Padding::Pkcs7,
+                op: CipherOp::Encrypt,
+                key: "0123456789abcdef".into(),
+                key_enc: ByteEnc::Utf8,
+                iv: Some("abcdef9876543210".into()),
+                iv_enc: ByteEnc::Utf8,
+                input_enc: Some(ByteEnc::Utf8),
+                output_enc: Some(ByteEnc::Base64),
+            },
+        )
+        .unwrap();
+
+        // 书源侧:via:raw 取到密文,clean 用 cipher 步解密(默认 decrypt + inputEnc=base64)。
+        let r = rule(
+            r#"{"via":"raw","clean":[{"cipher":{"algo":"aes","mode":"cbc","key":"0123456789abcdef","iv":"abcdef9876543210"}}]}"#,
+        );
+        let out = eval_value(&r, &ct, &Vars::new()).unwrap();
+        assert_eq!(out, plain);
+    }
+
+    #[test]
+    fn clean_cipher_error_propagates() {
+        // 非法 base64 密文 → cipher 步报错(显式失败,不静默空)。
+        let r = rule(
+            r#"{"via":"raw","clean":[{"cipher":{"algo":"aes","mode":"cbc","key":"0123456789abcdef","iv":"abcdef9876543210"}}]}"#,
+        );
+        let err = eval_value(&r, "!!!not-base64!!!", &Vars::new());
+        assert!(matches!(
+            err,
+            Err(EvalError::Codec(_) | EvalError::Crypto(_))
+        ));
     }
 }
