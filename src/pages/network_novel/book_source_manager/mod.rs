@@ -37,6 +37,11 @@ pub fn BookSourceManager(mut hooks: Hooks) -> impl Into<AnyElement<'static>> {
                 KeyCode::Tab => {
                     only_select.set(!only_select.get());
                 }
+                // 反爬:开/关「浏览器辅助验证」总是允许(读 flag 翻转并持久化)。
+                KeyCode::Char('b') | KeyCode::Char('B') => {
+                    let on = crate::browser_assist::always_allowed();
+                    let _ = crate::browser_assist::set_always_allowed(!on);
+                }
                 _ => {}
             }
         }
@@ -55,6 +60,7 @@ pub fn BookSourceManager(mut hooks: Hooks) -> impl Into<AnyElement<'static>> {
                     ("删除书源", "D"),
                     ("上下移动", "J / K / ↑ / ↓"),
                     ("选择书源", "Enter"),
+                    ("浏览器辅助验证 开/关", "B"),
                 ],
                 open: info_modal_open.get(),
             )
@@ -76,6 +82,7 @@ pub fn BookSourceManager(mut hooks: Hooks) -> impl Into<AnyElement<'static>> {
                     ("选择/取消条目", "空格"),
                     ("确认导入/选择", "Enter"),
                     ("上下移动", "J / K / ↑ / ↓"),
+                    ("浏览器辅助验证 开/关", "B"),
                 ],
                 open: info_modal_open.get(),
             )

@@ -45,6 +45,10 @@ pub fn App(props: &AppProps, mut hooks: Hooks) -> impl Into<AnyElement<'static>>
     let book_sources_catch_state = hooks.use_state(|| None::<BookSourceCache>);
     let novel_tts_state = hooks.use_state(|| None::<NovelTTS>);
     let is_inputting = hooks.use_state(|| false);
+    // 反爬:浏览器辅助验证的交互提示(授权 / 点击),由全局上下文承载。
+    let browser_prompt = hooks.use_state(|| None::<crate::browser_assist::BrowserPrompt>);
+    // 把该状态登记为全局浏览器 UI(供 build_engine 在撞挑战时弹模态);OnceLock 仅首次生效。
+    crate::browser_assist::init_browser_ui(browser_prompt);
     let mut tts_config = hooks.use_state(TTSConfig::default);
     let error = hooks.use_state(|| None::<String>);
 
@@ -124,11 +128,13 @@ pub fn App(props: &AppProps, mut hooks: Hooks) -> impl Into<AnyElement<'static>>
                                 ContextProvider(value:Context::owned(tts_config)){
                                     ContextProvider(value:Context::owned(novel_tts_state)){
                                         ContextProvider(value:Context::owned(is_inputting)){
-                                            RouterProvider(
-                                                routes: routes,
-                                                index_path: "/home",
-                                                state: RouteState::new(props.trnovel.clone())
-                                            )
+                                            ContextProvider(value:Context::owned(browser_prompt)){
+                                                RouterProvider(
+                                                    routes: routes,
+                                                    index_path: "/home",
+                                                    state: RouteState::new(props.trnovel.clone())
+                                                )
+                                            }
                                         }
                                     }
                                 }

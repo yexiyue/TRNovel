@@ -19,6 +19,7 @@ name = "trn"
 path = "src/bin/trn.rs"
 
 [dependencies]
+async-trait = "0.1"
 chrono = { version = "0.4.44", features = ["serde"] }
 clap = { version = "4.6", features = ["derive"] }
 crossterm = { version = "0.28.1", features = ["event-stream"] }

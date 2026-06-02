@@ -5,3 +5,5 @@ pub use confirm::*;
 pub use warning::*;
 pub mod shortcut_info_modal;
 pub use shortcut_info_modal::*;
+pub mod browser_prompt;
+pub use browser_prompt::*;
