@@ -91,9 +91,9 @@ pub fn eval_list(rule: &Rule, ctx: &str) -> Result<Vec<String>, EvalError> {
 /// 编解码/加解密会失败(非法输入、错密钥),故返回 `Result`(显式报错,不静默空)。
 fn apply_clean(mut s: String, steps: &[CleanStep], vars: &Vars) -> Result<String, EvalError> {
     for step in steps {
-        if let Some(pat) = &step.regex
-            && let Ok(re) = Regex::new(pat)
-        {
+        if let Some(pat) = &step.regex {
+            // 非法正则是配置错误,显式报错(与抽取层 regex_extract 及下方 crypto 步一致),不静默跳过。
+            let re = Regex::new(pat).map_err(|e| EvalError::Regex(e.to_string()))?;
             let rep = step.replace.as_deref().unwrap_or("");
             s = re.replace_all(&s, rep).into_owned();
         }

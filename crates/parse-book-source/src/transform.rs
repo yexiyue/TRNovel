@@ -38,6 +38,8 @@ pub fn decode(s: &str, codec: Codec) -> Result<String, EvalError> {
 }
 
 /// 编码当前串的 UTF-8 字节(base64/base64url/hex/url)。
+///
+/// 实际不会失败;返回 `Result` 仅为与 [`decode`] 在 clean 流水线 / JS `crypto` 绑定中保持统一签名。
 pub fn encode(s: &str, codec: Codec) -> Result<String, EvalError> {
     Ok(match codec {
         Codec::Base64 => B64_STD.encode(s.as_bytes()),
@@ -202,7 +204,12 @@ macro_rules! run_block {
                     Padding::None => c.encrypt_padded_vec_mut::<NoPadding>($data),
                 })
             }
-            _ => unreachable!("block() 仅处理 cbc/ecb"),
+            // cipher() 只把 cbc/ecb 路由到 block();此分支防御未来重构误接其它模式,
+            // 显式报错而非 panic(库不应 panic,与本模块「显式错误」哲学一致)。
+            _ => Err(EvalError::Crypto(format!(
+                "block() 不支持的加密模式: {:?}",
+                $st.mode
+            ))),
         }
     }};
 }
