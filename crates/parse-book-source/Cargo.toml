@@ -63,12 +63,19 @@ hmac = "0.12"
 # libstdc++、仅 Linux,会重演 onnxruntime 的 CRT/交叉编译之痛)。
 ferrous-opencc = "0.4"
 
+# JS 逻辑编排逃生舱(纯 Rust JS 引擎),以 `js` feature 门控,默认构建不含。
+# crypto 对象后端复用上面的 transform crypto fn(单一真相源)。
+boa_engine = { version = "0.21", optional = true }
+
 [features]
 default = []
 # 启用基于系统浏览器的反爬取页(BrowserFetcher / EscalatingFetcher)。
 browser = ["dep:chromiumoxide", "dep:futures-util"]
 # 启用 JSON Schema 生成(schemars 派生 + gen 示例 + 防漂移测试)。
 schema = ["dep:schemars"]
+# 启用 JS 逻辑编排逃生舱(Rule::Js / clean.js 求值)。变体与 schema 恒存在,
+# 仅求值实现受此门控;未启用时求值到 JS 返回 Unsupported("js")。
+js = ["dep:boa_engine"]
 
 # gen_schema 示例:`cargo run -p parse-book-source --features schema --example gen_schema`
 [[example]]

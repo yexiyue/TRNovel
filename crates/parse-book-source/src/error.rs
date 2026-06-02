@@ -86,6 +86,9 @@ pub enum EvalError {
     /// clean 加解密算子失败(密钥/IV 长度错、padding 错、密文损坏等)。
     #[error("crypto error: {0}")]
     Crypto(String),
+    /// JS 脚本求值失败(语法错/运行错;仅 `js` feature)。
+    #[error("js error: {0}")]
+    Js(String),
 }
 
 /// v2 结果别名。

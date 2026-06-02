@@ -22,6 +22,8 @@ pub mod engine;
 pub mod error;
 pub mod eval;
 pub mod fetch;
+#[cfg(feature = "js")]
+mod js;
 pub mod model;
 pub mod source;
 mod transform;

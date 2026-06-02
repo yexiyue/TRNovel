@@ -39,10 +39,25 @@ pub fn eval_value(rule: &Rule, ctx: &str, vars: &Vars) -> Result<String, EvalErr
             }
             Ok(parts.join(join))
         }
+        Rule::Js { js } => run_js(js, ctx, vars),
         Rule::Leaf(l) => {
             let raw = backend::extract(l.via, ctx, l.select.as_deref(), l.index, &l.extract)?;
-            apply_clean(raw, &l.clean)
+            apply_clean(raw, &l.clean, vars)
         }
+    }
+}
+
+/// 执行一段 JS(逃生舱):以 `result` 为当前上下文、注入变量 + `crypto` 助手。
+/// 未启用 `js` feature 时返回 `Unsupported("js")`(但书源仍可解析)。
+fn run_js(script: &str, result: &str, vars: &Vars) -> Result<String, EvalError> {
+    #[cfg(feature = "js")]
+    {
+        crate::js::eval_js(script, result, vars)
+    }
+    #[cfg(not(feature = "js"))]
+    {
+        let _ = (script, result, vars);
+        Err(EvalError::Unsupported("js"))
     }
 }
 
@@ -74,7 +89,7 @@ pub fn eval_list(rule: &Rule, ctx: &str) -> Result<Vec<String>, EvalError> {
 /// 应用清洗流水线。步内固定顺序:
 /// `regex→replace → trim → prepend → append → decode → encode → hash → cipher → cn`。
 /// 编解码/加解密会失败(非法输入、错密钥),故返回 `Result`(显式报错,不静默空)。
-fn apply_clean(mut s: String, steps: &[CleanStep]) -> Result<String, EvalError> {
+fn apply_clean(mut s: String, steps: &[CleanStep], vars: &Vars) -> Result<String, EvalError> {
     for step in steps {
         if let Some(pat) = &step.regex
             && let Ok(re) = Regex::new(pat)
@@ -105,6 +120,9 @@ fn apply_clean(mut s: String, steps: &[CleanStep]) -> Result<String, EvalError> 
         }
         if let Some(cn) = step.cn {
             s = transform::cn_convert(&s, cn);
+        }
+        if let Some(js) = &step.js {
+            s = run_js(js, &s, vars)?;
         }
     }
     Ok(s)
@@ -284,5 +302,33 @@ mod tests {
             err,
             Err(EvalError::Codec(_) | EvalError::Crypto(_))
         ));
+    }
+
+    #[test]
+    fn js_rule_parses_regardless_of_feature() {
+        // Rule::Js 与 clean.js 变体恒可解析(配置可移植,不受 feature 影响)。
+        assert!(matches!(rule(r#"{"js":"result + '!'"}"#), Rule::Js { .. }));
+        let r = rule(r#"{"via":"raw","clean":[{"js":"result"}]}"#);
+        assert!(matches!(r, Rule::Leaf(_)));
+    }
+
+    #[cfg(not(feature = "js"))]
+    #[test]
+    fn js_rule_unsupported_without_feature() {
+        let r = rule(r#"{"js":"result + '!'"}"#);
+        assert!(matches!(
+            eval_value(&r, "x", &Vars::new()),
+            Err(EvalError::Unsupported("js"))
+        ));
+    }
+
+    #[cfg(feature = "js")]
+    #[test]
+    fn js_rule_evaluates_with_feature() {
+        let r = rule(r#"{"js":"result + '!'"}"#);
+        assert_eq!(eval_value(&r, "x", &Vars::new()).unwrap(), "x!");
+        // clean.js 也生效:取值后 JS 后处理。
+        let r2 = rule(r#"{"via":"raw","clean":[{"js":"result.toUpperCase()"}]}"#);
+        assert_eq!(eval_value(&r2, "abc", &Vars::new()).unwrap(), "ABC");
     }
 }

@@ -222,6 +222,9 @@ pub struct CleanStep {
     /// 繁简转换。
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub cn: Option<CnConvert>,
+    /// JS 后处理(逃生舱;脚本里以当前串为 `result`)。需启用 `js` feature。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub js: Option<String>,
 }
 
 /// 叶子规则:在当前上下文做一次抽取。
@@ -263,6 +266,10 @@ pub enum Rule {
     Literal { literal: String },
     /// 模板插值(`{{key}}`/`{{page}}`/命名变量)。
     Template { template: String },
+    /// JS 逻辑编排逃生舱(值规则):以当前上下文为 `result`、注入 `baseUrl`/变量 + `crypto`
+    /// 助手求值,返回字符串。求值需启用 `js` feature(否则返回 `Unsupported("js")`)。
+    /// 必须置于 `Leaf` 之前——`js` 是其唯一判别键,否则会被全可选的 `Leaf` 吞掉。
+    Js { js: String },
     /// 叶子(兜底)。
     Leaf(LeafRule),
 }
