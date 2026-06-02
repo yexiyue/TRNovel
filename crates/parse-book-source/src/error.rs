@@ -71,6 +71,9 @@ pub enum EvalError {
     /// JSONPath 查询失败。
     #[error("jsonpath error: {0}")]
     JsonPath(String),
+    /// XPath 表达式非法或求值失败。
+    #[error("xpath error: {0}")]
+    Xpath(String),
     /// 待解析内容不是合法 JSON。
     #[error("invalid json content: {0}")]
     Json(String),

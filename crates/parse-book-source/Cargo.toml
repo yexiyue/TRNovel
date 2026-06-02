@@ -39,6 +39,8 @@ futures-util = { version = "0.3", optional = true }
 # 从 Rust 类型自动生成 JSON Schema(尊重 serde 属性);以 `schema` feature 门控,
 # 默认构建不含。配套 `examples/gen_schema.rs` + 防漂移测试 `schema_is_in_sync`。
 schemars = { version = "0.8", optional = true }
+sxd-document = "0.3.2"
+sxd-xpath = "0.4.2"
 
 [features]
 default = []
