@@ -2303,7 +2303,7 @@ dependencies = [
 
 [[package]]
 name = "parse-book-source"
-version = "0.3.0"
+version = "0.3.1"
 dependencies = [
  "async-trait",
  "chromiumoxide",
@@ -3783,7 +3783,7 @@ dependencies = [
 
 [[package]]
 name = "trnovel"
-version = "0.10.1"
+version = "0.10.2"
 dependencies = [
  "anyhow",
  "async-trait",

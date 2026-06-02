@@ -1,4 +1,13 @@
-## [0.10.1] - 2026-06-02
+## [0.10.2] - 2026-06-02
+
+### 🚀 Features
+
+- *(browser)* 浏览器辅助验证的 TUI 交互(授权弹窗 + 点击提示 + 取消 + 开关)
+
+### 🐛 Bug Fixes
+
+- *(browser)* 修授权弹窗抖动 + 浏览器频闪;解挑战串行化、会话级停用
+## [trnovel-v0.10.1] - 2026-06-02
 
 ### 🚀 Features
 
@@ -8,6 +17,10 @@
 
 - *(site)* 官网首页改造为产品落地页 + CLI 参考补 doctor/import
 - *(book-source)* 按 v2 全面重写书源参考并重新拆分目录
+
+### ⚙️ Miscellaneous Tasks
+
+- Release
 ## [trnovel-v0.10.0] - 2026-06-01
 
 ### 🐛 Bug Fixes
