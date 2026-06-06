@@ -1,4 +1,13 @@
-## [0.10.3] - 2026-06-02
+## [0.10.4] - 2026-06-06
+
+### 🐛 Bug Fixes
+
+- *(file-list)* 修复扫描本地小说目录时排序比较器违反全序导致 panic
+
+### 📚 Documentation
+
+- 官网首页/README/书源介绍 补充 XPath + 加解密 + JS 能力
+## [trnovel-v0.10.3] - 2026-06-02
 
 ### 🚀 Features
 
@@ -15,6 +24,10 @@
 - *(blog)* 书源引擎设计原理深挖(原理向 + 全 mermaid 图)
 - *(blog)* 图文+代码均衡 + 新增 chromiumoxide/反爬入门篇
 - *(book-source)* 补充 XPath / clean 加解密算子 / JS 逃生舱 用法
+
+### ⚙️ Miscellaneous Tasks
+
+- Release
 ## [trnovel-v0.10.2] - 2026-06-02
 
 ### 🚀 Features
