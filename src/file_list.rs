@@ -47,13 +47,17 @@ fn find_novels<'a>(path: PathBuf, file_exts: &[&str]) -> Result<Vec<TreeItem<'a,
 
     let walkdir = WalkDir::new(&path)
         .sort_by(|a, b| {
-            if a.path().is_dir() && b.path().is_file() {
-                std::cmp::Ordering::Less
-            } else if a.path().is_file() && b.path().is_dir() {
-                std::cmp::Ordering::Greater
-            } else {
-                a.path().cmp(b.path())
-            }
+            // 目录排在文件前面，同类按路径名排序。
+            // 用 walkdir 缓存的 file_type()（不额外 syscall），并以单一全序 key
+            // (!is_dir, path) 的元组比较，保证满足全序——否则遇到既非目录也非
+            // 普通文件的条目（Windows 的 reparse point / junction / 符号链接 /
+            // 无权限项，is_dir()、is_file() 可能都为 false）时，与“目录优先”规则
+            // 混合会破坏传递性，触发 std 排序的 total order panic。
+            let a_is_dir = a.file_type().is_dir();
+            let b_is_dir = b.file_type().is_dir();
+            b_is_dir
+                .cmp(&a_is_dir)
+                .then_with(|| a.path().cmp(b.path()))
         })
         .max_depth(1);
 
