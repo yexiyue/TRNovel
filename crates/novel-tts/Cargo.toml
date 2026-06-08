@@ -12,9 +12,11 @@ repository = "https://github.com/yexiyue/parse-book-source"
 anyhow.workspace = true
 dirs.workspace = true
 futures.workspace = true
-kokoro-tts = "=0.3.3"
-# kokoro-tts 对 ort 声明宽松的预发布范围;钉死已知可用的 ORT 包装版本(对齐 onnxruntime 1.24)。
-ort = "=2.0.0-rc.12"
+kokoro-tts = "=0.3.1"
+# kokoro-tts 0.3.1 对 ort 声明宽松的预发布范围;钉死已知多平台可用的 ORT。
+# 不升 rc.12:onnxruntime 1.24 改用 xcframework 砍了 Intel Mac、且 linux 预编译要 glibc 2.38+,
+# 会导致 x86_64-apple-darwin / x86_64-linux 发布失败。rc.10 全平台(含 Intel Mac)可用。
+ort = "=2.0.0-rc.10"
 regex.workspace = true
 # kokoro-tts = { path = "/Users/yexiyue/rust-project/kokoro" }
 reqwest = { version = "0.13", default-features = false, features = [
