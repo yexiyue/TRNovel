@@ -35,7 +35,7 @@
 - `via` 默认 `css`;HTML 的 `select` 是 **self-or-descendant**(省略 `select` = 元素自身)。
 - `extract`:`"text"` | `"ownText"` | `"html"` | `"innerHtml"` | `"outerHtml"` | `{"attr":"href"}`(默认 `text`)。文本类会 trim。
 - `index`:取第 N 个匹配(值规则),负数从末尾。
-- `clean`:有序后处理流水线,每步用其一:`{"regex":"…","replace":"…"}`、`{"trim":true}`、`{"prepend":"…"}`、`{"append":"…"}`。
+- `clean`:有序后处理流水线,每步可含多个算子(按固定序执行):`{"regex":"…","replace":"…"}`、`{"trim":true}`、`{"prepend"/"append":"…"}`、`{"decode":"base64"}`/`{"encode":…}`、`{"hash":{…}}`、`{"cipher":{…}}`(AES/DES 解密)、`{"fontMap":{"E4DE":"一",…}}`(字体反爬还原,见下)、`{"cn":"t2s"}`(繁简转换)。
 - `urlOrRule`:字符串模板(支持 `{{base}}/{{key}}/{{page}}/{{pageSize}}` 与请求级 `vars`)或一条规则。
 - 列表类操作(search/explore):`list` 选中**所有结果条目**,`item`(bookRules)在**每个条目**上抽字段。
 
@@ -95,6 +95,33 @@ sed -e 's/<[^>]*>/ /g' /tmp/page.html | tr -s ' \n' ' \n' | grep -v '^ *$' | hea
 "content": { "value": { "via": "css", "select": ".article-content", "extract": "html" } }
 ```
 `extract:"html"` 把 `<p>`/`<br>` 转成换行再清理标签。正文分页:`"nextPage": {…}, "maxPages": 20`。注意排除「上一章/下一章/广告」节点(用更精确的 select 或 `clean` 正则删页脚)。
+
+### 字体反爬(自定义字体 + PUA)
+
+**现象**:正文/书名夹大量私有区字符(`U+E000–U+F8FF`,常显示为豆腐 □),页面靠 `@font-face` 自定义字体渲染回真字。你抓到的是 PUA 码点,换环境就是乱码。
+
+**为什么不能直接读字体翻译**:加密字体的 cmap 只把 PUA 映到 `gidNNNNN`(母字库内部编号),不告诉你是哪个字。只能靠**字形长相**——渲染 PUA 字形,和标准中文字体逐个常用字比像素,最像的即真字。
+
+**还原流程**:
+
+1. 从页面 CSS 取加密字体 URL(`@font-face` 的 `src:url(….woff2)`)。
+2. 跑生成命令:
+   ```bash
+   trn gen-fontmap <字体URL或本地woff2> -o fontmap.json [-b 基准字体]
+   ```
+   纯 Rust:`woff2-patched` 解压 + `swash`(skrifa+zeno)渲染字形 + GB2312 一级 3755 候选 + 余弦相似度匹配。基准字体缺省自动下载 Noto;输出 `{码点:真字}` JSON,并把低置信(可能形近认错)的字单独列出。
+3. 把表内联进正文 clean(先用 `extract` 取到含 PUA 的文本,再还原):
+   ```json
+   "content": { "value": { "via":"css", "select":".content", "extract":"html",
+     "clean": [ { "fontMap": { "E4DE":"一", "E4F3":"的", "E41E":"是" } } ] } }
+   ```
+
+**要点**:
+- 同一站通常**全站一套字体** → 映射固定,生成一次即可复用;站方换字体(woff2 URL 变)才需重跑。
+- 引擎只做 O(1) 查表替换,**不内置任何站点的表**——表是数据,内联进书源。
+- 命令列出的低置信字(形近,如「已/己」「土/士」)值得人工瞄一眼校正。
+- 若正文藏在 `<script>` 的 JSON(如 `window.__INITIAL_STATE__`)而非可见 DOM,先用 `via:"regex"` 抽出 JSON 串、再 `via:"json"` 取正文字段,然后 fontMap 还原。
+- 完整原理(从零)与命令实现见博客 `dev-notes/blog/font-anti-scraping-and-fontmap.md`。
 
 ### search(搜索)
 从首页表单拿 action 与参数名;`item` **必须含 `bookUrl`**:
