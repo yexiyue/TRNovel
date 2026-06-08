@@ -1,4 +1,13 @@
-## [0.10.4] - 2026-06-06
+## [0.11.0] - 2026-06-08
+
+### 🚀 Features
+
+- 字体反爬还原(通用 fontMap clean step + trn gen-fontmap 命令)
+
+### 📚 Documentation
+
+- 字体反爬原理博客 + booksource-generator skill 更新
+## [trnovel-v0.10.4] - 2026-06-06
 
 ### 🐛 Bug Fixes
 
@@ -7,6 +16,10 @@
 ### 📚 Documentation
 
 - 官网首页/README/书源介绍 补充 XPath + 加解密 + JS 能力
+
+### ⚙️ Miscellaneous Tasks
+
+- Release
 ## [trnovel-v0.10.3] - 2026-06-02
 
 ### 🚀 Features
