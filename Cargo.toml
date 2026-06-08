@@ -57,6 +57,10 @@ textwrap = { version = "0.16.2" }
 rodio = { version = "0.21.1", default-features = false, features = ["playback", "wav"] }
 novel-tts = { path = "crates/novel-tts", version = "0.1.8" }
 strum = { version = "0.28", features = ["derive"] }
+swash = "0.2.7"
+zeno = "0.3.3"
+woff2 = { version = "0.4.0", package = "woff2-patched" }
+reqwest = { version = "0.13", default-features = false, features = ["rustls"] }
 
 
 [workspace]

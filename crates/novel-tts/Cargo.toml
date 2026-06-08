@@ -12,17 +12,14 @@ repository = "https://github.com/yexiyue/parse-book-source"
 anyhow.workspace = true
 dirs.workspace = true
 futures.workspace = true
-kokoro-tts = "=0.3.1"
-# kokoro-tts 0.3.1 declares a loose prerelease range for ort.
-# Pin the known-good ORT wrapper used by TRNovel 0.9.0 release builds.
-ort = "=2.0.0-rc.10"
+kokoro-tts = "=0.3.3"
+# kokoro-tts 对 ort 声明宽松的预发布范围;钉死已知可用的 ORT 包装版本(对齐 onnxruntime 1.24)。
+ort = "=2.0.0-rc.12"
 regex.workspace = true
 # kokoro-tts = { path = "/Users/yexiyue/rust-project/kokoro" }
-# 注:reqwest 0.13 的 `rustls` 特性默认改用 aws-lc-rs(引入 C 构建依赖 cmake/nasm),
-# 与本项目用 ring/rustls 发纯净静态二进制的取向相悖,故暂留 0.12.x(ring)。
-reqwest = { version = "0.12", default-features = false, features = [
+reqwest = { version = "0.13", default-features = false, features = [
     "json",
-    "rustls-tls",
+    "rustls",
     "cookies",
 ] }
 rodio = { version = "0.21.1", default-features = false, features = [
