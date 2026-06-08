@@ -103,7 +103,9 @@ ci = "github"
 # The installers to generate for each app
 installers = ["shell", "powershell", "npm", "homebrew"]
 # Target platforms to build apps for (Rust target-triple syntax)
-targets = ["aarch64-apple-darwin", "x86_64-apple-darwin", "x86_64-unknown-linux-gnu", "x86_64-pc-windows-msvc"]
+# 注:x86_64-apple-darwin(Intel Mac)已移除——onnxruntime 1.24 / ort rc.12 改用 xcframework,
+# 不再为 Intel Mac 提供预编译,且 kokoro-tts 0.3.3 硬锁 ort rc.12 无法回退。
+targets = ["aarch64-apple-darwin", "x86_64-unknown-linux-gnu", "x86_64-pc-windows-msvc"]
 # A namespace to use when publishing this package to the npm registry
 npm-scope = "@trnovel"
 # Only treat tags prefixed with this namespace as dist releases (keeps the
