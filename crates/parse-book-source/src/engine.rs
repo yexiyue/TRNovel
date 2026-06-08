@@ -1,13 +1,14 @@
 //! 用例引擎(Template Method + Paginator)。五个操作共享「取页 → 选列表/值 → 映射 →
 //! 可选有界分页」骨架;`Engine` 廉价 `Clone`(内部 `Arc`),操作不跨 await 持锁(D10)。
 
+use super::cookie::{CookieJar, merge_cookie_str, registrable_domain};
 use super::error::{BookSourceError, Result};
 use super::eval::{Vars, eval_list, eval_value};
 use super::fetch::{FetchRequest, Fetcher, ReqwestFetcher};
 use super::model::{BookInfo, BookListItem, Chapter, Toc, Volume};
 use super::source::{BookRules, BookSource, Category, Rule, UrlOrRule};
 use std::collections::{BTreeMap, HashMap};
-use std::sync::Arc;
+use std::sync::{Arc, RwLock};
 
 /// 书源运行时引擎。
 #[derive(Clone)]
@@ -17,6 +18,9 @@ pub struct Engine {
     /// 登录态请求头(JWT/自定义头/Cookie 同路径),并入引擎构造的每个请求。
     /// 由调用方在登录后经 [`Engine::with_login_header`] 注入(来自 per-source 状态)。
     login_header: BTreeMap<String, String>,
+    /// cookie 库(按注册域,session/persistent 分离):请求前合并进 `Cookie` 头,
+    /// `enabledCookieJar` 时响应 `Set-Cookie` 回灌。`Arc<RwLock>` 使 `Clone` 的引擎共享同一库。
+    cookies: Arc<RwLock<CookieJar>>,
 }
 
 impl std::fmt::Debug for Engine {
@@ -35,6 +39,7 @@ impl Engine {
             source: Arc::new(source),
             fetcher,
             login_header: BTreeMap::new(),
+            cookies: Arc::new(RwLock::new(CookieJar::default())),
         })
     }
 
@@ -44,6 +49,7 @@ impl Engine {
             source: Arc::new(source),
             fetcher,
             login_header: BTreeMap::new(),
+            cookies: Arc::new(RwLock::new(CookieJar::default())),
         }
     }
 
@@ -53,6 +59,24 @@ impl Engine {
     pub fn with_login_header(mut self, login_header: BTreeMap<String, String>) -> Self {
         self.login_header = login_header;
         self
+    }
+
+    /// 用持久化 cookie(`注册域 -> "k=v"`,来自 per-source 状态)初始化 cookie 库。链式构造。
+    #[must_use]
+    pub fn with_cookies(self, persistent: &BTreeMap<String, String>) -> Self {
+        if let Ok(mut jar) = self.cookies.write() {
+            *jar = CookieJar::from_persistent(persistent);
+        }
+        self
+    }
+
+    /// 导出当前 cookie 库中的 **persistent** cookie(`注册域 -> "k=v"`),供调用方落盘。
+    /// session cookie 不导出(重启失效)。
+    pub fn persistent_cookies(&self) -> BTreeMap<String, String> {
+        self.cookies
+            .read()
+            .map(|j| j.persistent())
+            .unwrap_or_default()
     }
 
     /// 用「升级式取页」构建(`browser` feature):平时 reqwest,撞挑战且 `browser` 为
@@ -68,6 +92,7 @@ impl Engine {
             source: Arc::new(source),
             fetcher: Arc::new(fetcher),
             login_header: BTreeMap::new(),
+            cookies: Arc::new(RwLock::new(CookieJar::default())),
         })
     }
 
@@ -85,25 +110,76 @@ impl Engine {
         v
     }
 
-    /// 构造一个带 loginHeader 的 GET 请求——引擎所有取页统一经此并入登录态。
+    /// 构造一个带登录态的 GET 请求——引擎所有取页统一经此并入 loginHeader + cookie 库。
     fn get_req(&self, url: impl Into<String>) -> FetchRequest {
         let mut req = FetchRequest::get(url);
-        self.merge_login_header(&mut req.headers);
+        let url = req.url.clone();
+        self.apply_auth(&url, &mut req.headers);
         req
     }
 
-    /// 把 loginHeader 并入请求头(合并的最后一层:登录态覆盖书源同名头)。
-    fn merge_login_header(&self, headers: &mut HashMap<String, String>) {
-        for (k, v) in &self.login_header {
-            headers.insert(k.clone(), v.clone());
+    /// 注册域(请求 URL 绝对则取其注册域,相对则取书源注册域)。
+    fn request_domain(&self, url: &str) -> String {
+        if url.starts_with("http://") || url.starts_with("https://") {
+            registrable_domain(url)
+        } else {
+            registrable_domain(&self.source.url)
         }
     }
 
-    /// 取页(带 loginHeader)后跑 `loginCheckJs` 校验登录态:失效则返回 [`BookSourceError::LoginExpired`]。
+    /// 把登录态并入请求头(合并的最后一层):非 Cookie 头由 loginHeader 覆盖;
+    /// Cookie = 已有头 Cookie ← loginHeader Cookie ← cookie 库(注册域)按 key 去重合并。
+    fn apply_auth(&self, url: &str, headers: &mut HashMap<String, String>) {
+        let mut cookie = headers
+            .remove("Cookie")
+            .or_else(|| headers.remove("cookie"));
+        for (k, v) in &self.login_header {
+            if k.eq_ignore_ascii_case("cookie") {
+                cookie = Some(match cookie {
+                    Some(c) => merge_cookie_str(&c, v),
+                    None => v.clone(),
+                });
+            } else {
+                headers.insert(k.clone(), v.clone());
+            }
+        }
+        let domain = self.request_domain(url);
+        if let Some(jar_cookie) = self
+            .cookies
+            .read()
+            .ok()
+            .and_then(|j| j.cookie_header(&domain))
+        {
+            cookie = Some(match cookie {
+                Some(c) => merge_cookie_str(&c, &jar_cookie),
+                None => jar_cookie,
+            });
+        }
+        if let Some(c) = cookie
+            && !c.is_empty()
+        {
+            headers.insert("Cookie".into(), c);
+        }
+    }
+
+    /// 发请求(带登录态)→ `enabledCookieJar` 时回灌 `Set-Cookie` → `loginCheckJs` 校验登录态。
+    /// 失效返回 [`BookSourceError::LoginExpired`]。引擎所有取页统一经此。
+    async fn run_request(&self, req: FetchRequest) -> Result<String> {
+        let domain = self.request_domain(&req.url);
+        let resp = self.fetcher.fetch_full(req).await?;
+        if self.source.enabled_cookie_jar
+            && let Some(set_cookie) = resp.headers.get("set-cookie")
+            && let Ok(mut jar) = self.cookies.write()
+        {
+            jar.absorb_set_cookie(&domain, set_cookie);
+        }
+        self.check_login(&resp.body)?;
+        Ok(resp.body)
+    }
+
+    /// 取页(带登录态 + 回灌 + 登录校验)。
     async fn fetch_checked(&self, url: impl Into<String>) -> Result<String> {
-        let html = self.fetcher.fetch(self.get_req(url)).await?;
-        self.check_login(&html)?;
-        Ok(html)
+        self.run_request(self.get_req(url)).await
     }
 
     /// `loginCheckJs`(响应期登录态校验,D10 第一版):脚本以 `result`=响应求值;
@@ -207,17 +283,15 @@ impl Engine {
             None => None,
         };
         let mut headers = op.request.headers.clone();
-        self.merge_login_header(&mut headers);
+        self.apply_auth(&url, &mut headers);
         let html = self
-            .fetcher
-            .fetch(FetchRequest {
+            .run_request(FetchRequest {
                 url,
                 method: op.request.method,
                 body,
                 headers,
             })
             .await?;
-        self.check_login(&html)?;
         self.eval_list_items(&op.list, &op.item, &html)
     }
 
@@ -333,7 +407,7 @@ fn opt_eval(rule: Option<&Rule>, ctx: &str, vars: &Vars) -> Result<String> {
 mod tests {
     use super::*;
     use crate::error::FetchError;
-    use crate::fetch::Fetcher;
+    use crate::fetch::{FetchResponse, Fetcher};
     use async_trait::async_trait;
 
     use std::sync::Mutex;
@@ -359,6 +433,32 @@ mod tests {
         async fn fetch(&self, req: FetchRequest) -> std::result::Result<String, FetchError> {
             *self.last_headers.lock().unwrap() = req.headers;
             Ok(self.body.clone())
+        }
+    }
+
+    /// 记录请求 Cookie 头并固定返回一个 `Set-Cookie` 的替身(验证 enabledCookieJar 回灌/再发)。
+    struct CookieEchoFetcher {
+        set_cookie: String,
+        last_cookie: Arc<Mutex<Option<String>>>,
+    }
+
+    #[async_trait]
+    impl Fetcher for CookieEchoFetcher {
+        async fn fetch(&self, req: FetchRequest) -> std::result::Result<String, FetchError> {
+            self.fetch_full(req).await.map(|r| r.body)
+        }
+        async fn fetch_full(
+            &self,
+            req: FetchRequest,
+        ) -> std::result::Result<FetchResponse, FetchError> {
+            *self.last_cookie.lock().unwrap() = req.headers.get("Cookie").cloned();
+            let mut headers = HashMap::new();
+            headers.insert("set-cookie".to_string(), self.set_cookie.clone());
+            Ok(FetchResponse {
+                body: CATALOG.to_string(),
+                status: 200,
+                headers,
+            })
         }
     }
 
@@ -459,5 +559,58 @@ mod tests {
         // 正常响应(无「未登录」)→ 放行。
         let ok = Engine::with_fetcher(src, Arc::new(MockFetcher(CATALOG.to_string())));
         assert!(ok.toc("/any").await.is_ok(), "正常响应不应判失效");
+    }
+
+    // ── 10.2/10.3/10.6:enabledCookieJar 回灌 Set-Cookie → 后续请求携带 → persistent 导出 ──
+    #[tokio::test]
+    async fn enabled_cookie_jar_absorbs_resends_and_persists() {
+        let json = SOURCE.replacen(
+            "\"bookInfo\":{}",
+            "\"enabledCookieJar\":true,\"bookInfo\":{}",
+            1,
+        );
+        let src = BookSource::from_json(&json).unwrap();
+        let last = Arc::new(Mutex::new(None));
+        let fetcher = Arc::new(CookieEchoFetcher {
+            set_cookie: "token=xyz; Max-Age=3600; Path=/".to_string(),
+            last_cookie: last.clone(),
+        });
+        let engine = Engine::with_fetcher(src, fetcher);
+
+        // 首请求:无 cookie 发出,响应 Set-Cookie 被回灌。
+        engine.toc("/p1").await.unwrap();
+        assert!(last.lock().unwrap().is_none(), "首请求不应带 cookie");
+        // 后续请求:回灌的 token 随请求发出。
+        engine.book_info("/p2").await.unwrap();
+        assert_eq!(
+            last.lock().unwrap().clone(),
+            Some("token=xyz".to_string()),
+            "回灌 cookie 应随后续请求发出"
+        );
+        // persistent 导出含 token(Max-Age → persistent),供 app 落盘。
+        // 书源 url "https://x" 的注册域为 "x"。
+        assert_eq!(
+            engine.persistent_cookies().get("x").map(String::as_str),
+            Some("token=xyz")
+        );
+    }
+
+    // 未开 enabledCookieJar 时不回灌(向后兼容)。
+    #[tokio::test]
+    async fn cookie_jar_disabled_does_not_absorb() {
+        let src = BookSource::from_json(SOURCE).unwrap();
+        let last = Arc::new(Mutex::new(None));
+        let fetcher = Arc::new(CookieEchoFetcher {
+            set_cookie: "token=xyz; Max-Age=3600".to_string(),
+            last_cookie: last.clone(),
+        });
+        let engine = Engine::with_fetcher(src, fetcher);
+        engine.toc("/p1").await.unwrap();
+        engine.book_info("/p2").await.unwrap();
+        assert!(
+            last.lock().unwrap().is_none(),
+            "未开 cookieJar 不应回灌/再发"
+        );
+        assert!(engine.persistent_cookies().is_empty());
     }
 }

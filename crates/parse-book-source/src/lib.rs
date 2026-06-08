@@ -18,6 +18,7 @@
 pub mod backend;
 #[cfg(feature = "browser")]
 pub mod browser;
+pub mod cookie;
 pub mod engine;
 pub mod error;
 pub mod eval;

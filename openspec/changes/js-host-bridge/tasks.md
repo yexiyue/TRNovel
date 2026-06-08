@@ -66,12 +66,12 @@
 
 ## 10. cookie 持久化升级(P2)
 
-- [x] 10.1 cookie 按**注册域(eTLD+1)**归并:引入 `psl`(纯 Rust,编译期内嵌公共后缀表),`registrable_domain()` 正确处理 `example.com`/`example.co.uk`/`site.com.cn`(IP/单标签回退);替换简化版 `second_level_domain`,merge_cookie_jar/getCookie/host domain 统一用之
-- [ ] 10.2 session(内存、重启失效)与 persistent 分离
-- [ ] 10.3 `enabledCookieJar` 开关:响应后回灌 `Set-Cookie`
-- [x] 10.4(host 侧)`net.ajax/connect/post` 出站请求按 URL 注册域并入库 cookie,与 loginHeader 的 `Cookie` 按 key 去重合并(库为最终值);使持久化/登录 cookie 真正随请求送出。引擎自身请求暂经 `with_login_header` 的 Cookie 注入;临时 urlOption cookie 优先待 4.3
-- [ ] 10.5 `cf_clearance`(browser-fetcher 产物)并入统一 cookie 库
-- [ ] 10.6 单测:二级域名归并、session/persistent 分离、回灌
+- [x] 10.1 cookie 按**注册域(eTLD+1)**归并:`psl`(纯 Rust,编译期内嵌,**转非可选依赖**)+ `cookie.rs::registrable_domain()` 正确处理 `example.com`/`example.co.uk`/`site.com.cn`(IP/单标签回退);全 crate 统一用之
+- [x] 10.2 `CookieJar`(`cookie.rs`)按注册域归并 + **session/persistent 分离**:无 `Expires`/`Max-Age` 为 session(仅内存,`persistent()` 不导出),`Max-Age<=0` 删除
+- [x] 10.3 `enabledCookieJar`:引擎 `run_request` 响应后回灌 `Set-Cookie`(多条 `\n` 分);`with_cookies`/`persistent_cookies` 供 app 跨会话载入/落盘
+- [x] 10.4 出站请求按 URL 注册域并入库 cookie + loginHeader 的 `Cookie` 去重合并(host `net.*` 与引擎 `apply_auth` 双侧);临时 urlOption cookie 优先待 4.3
+- [ ] 10.5 `cf_clearance` 并入统一库 —— **刻意暂缓**:cf_clearance 必须与签发 UA 配对(design D6),放进不带 UA 的通用库再发会被 CF 拒;现留在 `EscalatingFetcher` 内(会话内有效),跨会话持久需 UA 协同设计
+- [x] 10.6 单测:注册域 publicsuffix 边界、session/persistent 分离、`Max-Age=0` 删除、from_persistent 往返、引擎 enabledCookieJar 回灌→再发→persistent 导出 + 关闭不回灌
 
 ## 11. 结构化多步编排(P2,无字符串 DSL)
 

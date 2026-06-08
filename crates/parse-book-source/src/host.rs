@@ -20,6 +20,7 @@
 //! host 持**专属 fetcher**(自己的 reqwest Client),只在独立 runtime 上使用,避免与引擎
 //! 主 runtime 共享同一连接池带来的跨 runtime 隐患。
 
+use crate::cookie::{merge_cookie_str, registrable_domain};
 use crate::error::EvalError;
 use crate::eval::Vars;
 use crate::fetch::{FetchRequest, FetchResponse, Fetcher};
@@ -265,53 +266,6 @@ impl Drop for HostGuard {
 /// 取当前线程安装的 host(克隆出 `Rc`,不跨 native fn 持有 thread-local 借用)。
 fn active_host() -> Option<Rc<RefCell<SourceHost>>> {
     ACTIVE_HOST.with(|slot| slot.borrow().clone())
-}
-
-/// 由 URL 或裸 host 取**注册域(eTLD+1)**作为 cookie 归并键。
-/// 用 `psl` 公共后缀表正确处理 `example.com` / `example.co.uk` / `site.com.cn`;
-/// IP / 单标签 / 未知后缀回退到「末两段」启发式。大小写归一(host 不区分大小写)。
-fn registrable_domain(url: &str) -> String {
-    let host = url
-        .trim_start_matches("https://")
-        .trim_start_matches("http://")
-        .split(['/', '?', '#'])
-        .next()
-        .unwrap_or("")
-        .split(':') // 去端口
-        .next()
-        .unwrap_or("")
-        .to_ascii_lowercase();
-    // IPv4 优先判定:psl 会把纯数字 host 误套默认规则(192.168.1.1 → 1.1),故先短路。
-    let labels: Vec<&str> = host.split('.').filter(|s| !s.is_empty()).collect();
-    let is_ip = !labels.is_empty() && labels.iter().all(|l| l.chars().all(|c| c.is_ascii_digit()));
-    if is_ip {
-        return host;
-    }
-    if let Some(d) = psl::domain_str(&host) {
-        return d.to_string();
-    }
-    // psl 无解(单标签 / 未知后缀):回退末两段或原样。
-    if labels.len() >= 2 {
-        labels[labels.len() - 2..].join(".")
-    } else {
-        host
-    }
-}
-
-/// 合并两段 cookie 串(`k=v; k2=v2`)按 key 去重(`second` 同名覆盖 `first`),按字典序输出。
-fn merge_cookie_str(first: &str, second: &str) -> String {
-    let mut map: BTreeMap<String, String> = BTreeMap::new();
-    for s in [first, second] {
-        for kv in s.split(';').map(str::trim).filter(|s| !s.is_empty()) {
-            if let Some((k, v)) = kv.split_once('=') {
-                map.insert(k.trim().to_string(), v.trim().to_string());
-            }
-        }
-    }
-    map.iter()
-        .map(|(k, v)| format!("{k}={v}"))
-        .collect::<Vec<_>>()
-        .join("; ")
 }
 
 /// 把新 cookie 串按 key 合并进某域名的现有 cookie(同名覆盖),回写 jar。
@@ -1091,28 +1045,7 @@ mod tests {
         );
     }
 
-    // ── 10.1:registrable_domain(eTLD+1)边界,含 publicsuffix 多级后缀 ──
-    #[test]
-    fn registrable_domain_boundaries() {
-        assert_eq!(
-            registrable_domain("https://www.fanqienovel.com/x"),
-            "fanqienovel.com"
-        );
-        assert_eq!(registrable_domain("http://api.site.com:8080/p"), "site.com");
-        assert_eq!(registrable_domain("WWW.Site.COM"), "site.com"); // 大小写归一
-        // publicsuffix 多级后缀(简化版「末两段」会错判为 com.cn / co.uk)。
-        assert_eq!(
-            registrable_domain("https://www.example.com.cn/p"),
-            "example.com.cn"
-        );
-        assert_eq!(
-            registrable_domain("http://a.b.example.co.uk"),
-            "example.co.uk"
-        );
-        assert_eq!(registrable_domain("http://192.168.1.1:80"), "192.168.1.1"); // IP 原样
-        assert_eq!(registrable_domain("localhost"), "localhost"); // 单标签
-        assert_eq!(registrable_domain("http:///path"), ""); // 空 host 不 panic
-    }
+    // registrable_domain 边界用例见 crate::cookie 模块单测(此处不重复)。
 
     #[test]
     fn sanitize_header_value_strips_crlf() {
