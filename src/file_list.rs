@@ -55,9 +55,7 @@ fn find_novels<'a>(path: PathBuf, file_exts: &[&str]) -> Result<Vec<TreeItem<'a,
             // 混合会破坏传递性，触发 std 排序的 total order panic。
             let a_is_dir = a.file_type().is_dir();
             let b_is_dir = b.file_type().is_dir();
-            b_is_dir
-                .cmp(&a_is_dir)
-                .then_with(|| a.path().cmp(b.path()))
+            b_is_dir.cmp(&a_is_dir).then_with(|| a.path().cmp(b.path()))
         })
         .max_depth(1);
 

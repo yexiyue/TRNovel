@@ -14,6 +14,7 @@ use crate::source::{
 use base64::Engine;
 use base64::alphabet;
 use base64::engine::{DecodePaddingMode, GeneralPurpose, GeneralPurposeConfig};
+use std::collections::{BTreeMap, HashMap};
 use std::sync::LazyLock;
 
 // 解码对填充宽容(真实书源 base64 常缺 `=`);编码按规范带填充。
@@ -325,6 +326,45 @@ fn gcm(st: &CipherStep, key: &[u8], iv: &[u8], data: &[u8]) -> Result<Vec<u8>, E
     }
 }
 
+// ───────────────────────── 字体反爬还原 ─────────────────────────
+
+/// 字体反爬还原:把文本中的私有区(PUA)字符按映射表换回真字(表外字符原样保留)。
+/// `table` 键为码点十六进制(容忍 `U+` 前缀),值取首字符;键非法时报错。
+/// 表是数据,由书源内联提供(引擎不内置任何站点的表),可用 `trn gen-fontmap` 生成。
+pub fn font_map(s: &str, table: &BTreeMap<String, String>) -> Result<String, EvalError> {
+    let map = build_font_map(table)?;
+    Ok(remap(s, &map))
+}
+
+/// 把「码点十六进制 → 目标字符串」表转为 `char → char` 表(值取首字符;空值跳过)。
+fn build_font_map(raw: &BTreeMap<String, String>) -> Result<HashMap<char, char>, EvalError> {
+    let mut map = HashMap::with_capacity(raw.len());
+    for (k, v) in raw {
+        if let Some(to) = v.chars().next() {
+            map.insert(parse_code_point(k)?, to);
+        }
+    }
+    Ok(map)
+}
+
+/// 解析码点十六进制串(容忍 `U+`/`u+` 前缀)为字符。
+fn parse_code_point(k: &str) -> Result<char, EvalError> {
+    let hex = k
+        .strip_prefix("U+")
+        .or_else(|| k.strip_prefix("u+"))
+        .unwrap_or(k);
+    let cp = u32::from_str_radix(hex, 16)
+        .map_err(|_| EvalError::Font(format!("invalid code point: {k}")))?;
+    char::from_u32(cp).ok_or_else(|| EvalError::Font(format!("invalid code point: {k}")))
+}
+
+/// 按映射表逐字符替换(表外字符保留)。
+fn remap(s: &str, map: &HashMap<char, char>) -> String {
+    s.chars()
+        .map(|c| map.get(&c).copied().unwrap_or(c))
+        .collect()
+}
+
 // ───────────────────────── 繁简转换 ─────────────────────────
 
 /// 繁简转换(t2s/s2t)。词典加载失败(理论不会,内置词典)时退化为原样返回。
@@ -478,5 +518,25 @@ mod tests {
     fn cn_t2s_s2t() {
         assert_eq!(cn_convert("漢字測試", CnConvert::T2s), "汉字测试");
         assert_eq!(cn_convert("汉字测试", CnConvert::S2t), "漢字測試");
+    }
+
+    #[test]
+    fn font_map_restores_pua_via_table() {
+        let mut t = BTreeMap::new();
+        t.insert("E4DE".into(), "一".into());
+        t.insert("E4F3".into(), "的".into());
+        t.insert("U+E001".into(), "甲".into()); // 容忍 U+ 前缀
+        // 表内字符替换,表外字符(普通中文/标点)原样保留。
+        assert_eq!(
+            font_map("\u{E4DE}\u{E4F3}\u{E001}x，y", &t).unwrap(),
+            "一的甲x，y"
+        );
+    }
+
+    #[test]
+    fn font_map_invalid_code_point_errors() {
+        let mut t = BTreeMap::new();
+        t.insert("ZZZZ".into(), "甲".into()); // 非法十六进制 → 报错
+        assert!(matches!(font_map("x", &t), Err(EvalError::Font(_))));
     }
 }

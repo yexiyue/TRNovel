@@ -87,7 +87,7 @@ pub fn eval_list(rule: &Rule, ctx: &str) -> Result<Vec<String>, EvalError> {
 }
 
 /// 应用清洗流水线。步内固定顺序:
-/// `regex→replace → trim → prepend → append → decode → encode → hash → cipher → cn`。
+/// `regex→replace → trim → prepend → append → decode → encode → hash → cipher → fontMap → cn`。
 /// 编解码/加解密会失败(非法输入、错密钥),故返回 `Result`(显式报错,不静默空)。
 fn apply_clean(mut s: String, steps: &[CleanStep], vars: &Vars) -> Result<String, EvalError> {
     for step in steps {
@@ -117,6 +117,9 @@ fn apply_clean(mut s: String, steps: &[CleanStep], vars: &Vars) -> Result<String
         }
         if let Some(c) = &step.cipher {
             s = transform::cipher(&s, c)?;
+        }
+        if let Some(table) = &step.font_map {
+            s = transform::font_map(&s, table)?;
         }
         if let Some(cn) = step.cn {
             s = transform::cn_convert(&s, cn);
@@ -227,6 +230,16 @@ mod tests {
         assert!(out.contains("第一段。"));
         assert!(out.contains("第二段。"));
         assert!(out.contains('\n'), "段落间应有换行");
+    }
+
+    #[test]
+    fn clean_font_map_restores_via_inline_table() {
+        // camelCase "fontMap" 反序列化 + clean 流水线接线;fontMap 直接是「码点→字」表。
+        let r = rule(r#"{"via":"raw","clean":[{"fontMap":{"E001":"甲","E002":"乙"}}]}"#);
+        assert_eq!(
+            eval_value(&r, "\u{E001}\u{E002}!", &Vars::new()).unwrap(),
+            "甲乙!"
+        );
     }
 
     #[test]

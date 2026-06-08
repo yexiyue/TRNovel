@@ -64,7 +64,7 @@ cargo run -- import /path/to/<站点>.v2.json
 
 - **bookInfo(书详情)**:**先找 `og:` meta**——`<meta property="og:novel:book_name">`、`og:novel:author`、`og:novel:read_url`(常是 tocUrl)、`og:image`(封面)、`og:description`。用 `{"via":"css","select":"[property=\"og:novel:book_name\"]","extract":{"attr":"content"}}`。比靠页面可见元素稳得多。
 - **toc(目录 + 分卷)**:目录页里**卷标题**(如 `第一卷`)和**章节链接**通常是兄弟节点。用一个 `list` 选择器**同时选中两者并保持文档顺序**(如 `.box > h2.module-title, .box a.module-row-text`);再用 `isVolume` 规则判定是否卷(对卷节点非空、对章节为空,例如选 `h2`);`name`/`url` 用 `firstOf` 兼容两种节点。引擎据 `isVolume` 切分「卷→章」。**常见坑**:目录开头常有 N 条「最新章节」预览(倒序、与正文区重复),用兄弟选择器(如 `#list dl dt:has(a[href*="txt_"]) ~ dd a`)只取「正文」标记之后的章节,避免重复/倒序。
-- **content(正文)**:找正文容器(`.article-content`/`#content`/`.read-content` 等),`extract: "html"` 会把标签转成换行后清理;分页正文用 `nextPage` + `maxPages`。
+- **content(正文)**:找正文容器(`.article-content`/`#content`/`.read-content` 等),`extract: "html"` 会把标签转成换行后清理;分页正文用 `nextPage` + `maxPages`。**若正文夹大量私有区/豆腐字符(`U+E000`–`U+F8FF`,显示为豆腐 □)→ 是字体反爬,见下「字体反爬」。**
 - **search(搜索)**:从首页 `<form>` 找 action 与 input name(如 `searchkey`/`wd`)。`request.url` 用模板 `{{base}}/search.html?searchkey={{key}}`;`list` 选结果条目容器(**注意区分真正的结果区与推荐位**——它们可能用不同 class);`item` 里**必须含 `bookUrl`**(指向书详情)。POST 搜索用 `method:"POST"` + `body` 模板。
 - **explore(浏览)**:`categories` 列分类(title + url 模板,常含 `{{page}}`);`list`/`item` 同 search。浏览是搜索被反爬挡住时的**降级入口**,尽量做好。
 
@@ -88,6 +88,27 @@ cargo run -- import /path/to/<站点>.v2.json
 **架构边界**:若**整页正文由站点自身 JS 异步渲染 / 加密接口动态拉取**(没有任何静态路径返回正文文本),当前 reqwest + cookie 烤箱**拿不到**,`fetcher:browser` 也只解 CF 挑战、不跑站点内容 JS。此时如实告知用户「该站正文需能执行页面 JS 的渲染型取页(暂不支持)」,把能做的(浏览/书详情/目录)做好并保留正文选择器兜底。
 
 详见 `references/reverse-engineering.md` 的「反爬」一节。
+
+## 字体反爬(自定义字体 + PUA 占位)
+
+有些站(典型:番茄小说网页版)正文里夹大量**私有区字符**(`U+E000–U+F8FF`,多显示为豆腐方块 □),靠页面一套自定义 `@font-face` 字体在浏览器里渲染回真字——你抓到的文本是 PUA 码点,直接读是乱码。**这不是选择器问题,是要「还原」。**
+
+**识别**:抓到的正文/书名含大量私有区字符;页面 CSS 里有 `@font-face { … src:url(….woff2) }`。
+
+**还原(两步)**:
+
+1. 找到加密字体 URL(页面 CSS 的 `@font-face`),生成「码点 → 真字」映射表:
+   ```bash
+   trn gen-fontmap <字体URL或本地woff2> -o fontmap.json   # 基准字体缺省自动下载 Noto
+   ```
+   纯 Rust 字形匹配(woff2 解压 + 渲染字形 + 和常用字比长相),输出 `{码点:真字}`,并列出**低置信字**供人工核对。
+2. 把表**内联进正文规则的 clean**:
+   ```json
+   "content": { "value": { "via": "css", "select": ".content", "extract": "html",
+     "clean": [ { "fontMap": { "E4DE": "一", "E4F3": "的" } } ] } }
+   ```
+
+要点:同一站通常**全站一套字体**(映射固定,生成一次复用;站方换字体才重跑)。引擎只按表查、**不内置任何站点的表**(表是数据、跟着书源走)。详解见 `references/reverse-engineering.md` 的「字体反爬」与博客 `dev-notes/blog/font-anti-scraping-and-fontmap.md`。
 
 ## 拿不准就问(用 AskUserQuestion)
 

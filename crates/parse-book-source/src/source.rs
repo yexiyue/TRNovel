@@ -192,7 +192,7 @@ pub enum CnConvert {
 }
 
 /// 单步后处理。步内多算子按固定顺序执行:
-/// `regex/replace → trim → prepend → append → decode → encode → hash → cipher → cn`。
+/// `regex/replace → trim → prepend → append → decode → encode → hash → cipher → fontMap → cn`。
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize, Hash)]
 #[serde(deny_unknown_fields)]
 #[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
@@ -219,6 +219,11 @@ pub struct CleanStep {
     /// 对称加解密。
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub cipher: Option<CipherStep>,
+    /// 字体反爬还原:私有区(PUA)字符按映射表换回真字。键为码点十六进制(如 `"E4DE"` 或 `"U+E4DE"`),
+    /// 值为目标字符;表外字符原样保留。用于番茄等「自定义字体 + PUA」反爬站点——表是数据,由书源内联
+    /// 提供(引擎不内置任何站点的表),可用 `trn gen-fontmap` 生成。
+    #[serde(default, rename = "fontMap", skip_serializing_if = "Option::is_none")]
+    pub font_map: Option<std::collections::BTreeMap<String, String>>,
     /// 繁简转换。
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub cn: Option<CnConvert>,

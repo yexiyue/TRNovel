@@ -23,17 +23,6 @@ serde = { workspace = true }
 serde_json = { workspace = true }
 thiserror = { workspace = true }
 tokio = { workspace = true }
-reqwest = { version = "0.12.24", default-features = false, features = [
-    "json",
-    "rustls-tls",
-    "cookies",
-] }
-
-# 反爬:复用系统浏览器解 Cloudflare 挑战(纯 Rust CDP 客户端,无 C 依赖)。
-# 以 `browser` feature 门控,默认构建不含。
-chromiumoxide = { version = "0.7", default-features = false, features = [
-    "tokio-runtime",
-], optional = true }
 futures-util = { version = "0.3", optional = true }
 
 # 从 Rust 类型自动生成 JSON Schema(尊重 serde 属性);以 `schema` feature 门控,
@@ -66,6 +55,8 @@ ferrous-opencc = "0.4"
 # JS 逻辑编排逃生舱(纯 Rust JS 引擎),以 `js` feature 门控,默认构建不含。
 # crypto 对象后端复用上面的 transform crypto fn(单一真相源)。
 boa_engine = { version = "0.21", optional = true }
+reqwest = { version = "0.13", default-features = false, features = ["json", "rustls", "cookies"] }
+chromiumoxide = { version = "0.9", optional = true }
 
 [features]
 default = []
