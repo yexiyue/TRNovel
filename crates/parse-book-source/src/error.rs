@@ -89,6 +89,9 @@ pub enum EvalError {
     /// JS 脚本求值失败(语法错/运行错;仅 `js` feature)。
     #[error("js error: {0}")]
     Js(String),
+    /// clean 字体反爬还原算子失败(未知内置表 / 非法码点 / 缺映射表)。
+    #[error("font map error: {0}")]
+    Font(String),
 }
 
 /// v2 结果别名。

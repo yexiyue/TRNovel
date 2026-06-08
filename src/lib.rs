@@ -13,6 +13,7 @@ pub mod components;
 pub mod doctor;
 pub mod errors;
 pub mod file_list;
+pub mod gen_fontmap;
 pub mod hooks;
 pub mod import;
 pub mod novel;
@@ -49,6 +50,17 @@ where
     // 导入书源:非 TUI,把书源 JSON(文件/URL)写入 ~/.novel 后退出。
     if let Some(Commands::Import { source }) = &trnovel.subcommand {
         import::run(source).await;
+        return Ok(());
+    }
+
+    // 生成字体反爬映射表:非 TUI,字形匹配后写出 {码点:真字} JSON 退出。
+    if let Some(Commands::GenFontmap {
+        font,
+        out,
+        base_font,
+    }) = &trnovel.subcommand
+    {
+        gen_fontmap::run(font, out, base_font.as_deref()).await;
         return Ok(());
     }
 
@@ -127,5 +139,17 @@ pub enum Commands {
     Import {
         /// 书源 JSON 文件路径或 URL
         source: String,
+    },
+
+    /// 生成字体反爬映射表：对加密字体做字形匹配,输出 {码点:真字} JSON(可内联进书源 fontMap)
+    GenFontmap {
+        /// 加密字体的 URL 或本地路径(woff2/ttf/otf)
+        font: String,
+        /// 输出映射表 JSON 文件路径
+        #[arg(short, long)]
+        out: PathBuf,
+        /// 基准中文字体路径(缺省自动下载思源黑体 Noto Sans CJK SC)
+        #[arg(short, long)]
+        base_font: Option<PathBuf>,
     },
 }
