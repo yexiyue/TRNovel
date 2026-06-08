@@ -6,6 +6,7 @@ use super::eval::{Vars, eval_list, eval_value};
 use super::fetch::{FetchRequest, Fetcher, ReqwestFetcher};
 use super::model::{BookInfo, BookListItem, Chapter, Toc, Volume};
 use super::source::{BookRules, BookSource, Category, Rule, UrlOrRule};
+use std::collections::{BTreeMap, HashMap};
 use std::sync::Arc;
 
 /// 书源运行时引擎。
@@ -13,6 +14,9 @@ use std::sync::Arc;
 pub struct Engine {
     source: Arc<BookSource>,
     fetcher: Arc<dyn Fetcher>,
+    /// 登录态请求头(JWT/自定义头/Cookie 同路径),并入引擎构造的每个请求。
+    /// 由调用方在登录后经 [`Engine::with_login_header`] 注入(来自 per-source 状态)。
+    login_header: BTreeMap<String, String>,
 }
 
 impl std::fmt::Debug for Engine {
@@ -30,6 +34,7 @@ impl Engine {
         Ok(Self {
             source: Arc::new(source),
             fetcher,
+            login_header: BTreeMap::new(),
         })
     }
 
@@ -38,7 +43,16 @@ impl Engine {
         Self {
             source: Arc::new(source),
             fetcher,
+            login_header: BTreeMap::new(),
         }
+    }
+
+    /// 注入登录态请求头(登录后由调用方从 per-source 状态取出)。链式构造:
+    /// `Engine::new(src)?.with_login_header(state.login_header)`。空 map 等同未登录。
+    #[must_use]
+    pub fn with_login_header(mut self, login_header: BTreeMap<String, String>) -> Self {
+        self.login_header = login_header;
+        self
     }
 
     /// 用「升级式取页」构建(`browser` feature):平时 reqwest,撞挑战且 `browser` 为
@@ -53,6 +67,7 @@ impl Engine {
         Ok(Self {
             source: Arc::new(source),
             fetcher: Arc::new(fetcher),
+            login_header: BTreeMap::new(),
         })
     }
 
@@ -70,16 +85,57 @@ impl Engine {
         v
     }
 
+    /// 构造一个带 loginHeader 的 GET 请求——引擎所有取页统一经此并入登录态。
+    fn get_req(&self, url: impl Into<String>) -> FetchRequest {
+        let mut req = FetchRequest::get(url);
+        self.merge_login_header(&mut req.headers);
+        req
+    }
+
+    /// 把 loginHeader 并入请求头(合并的最后一层:登录态覆盖书源同名头)。
+    fn merge_login_header(&self, headers: &mut HashMap<String, String>) {
+        for (k, v) in &self.login_header {
+            headers.insert(k.clone(), v.clone());
+        }
+    }
+
+    /// 取页(带 loginHeader)后跑 `loginCheckJs` 校验登录态:失效则返回 [`BookSourceError::LoginExpired`]。
+    async fn fetch_checked(&self, url: impl Into<String>) -> Result<String> {
+        let html = self.fetcher.fetch(self.get_req(url)).await?;
+        self.check_login(&html)?;
+        Ok(html)
+    }
+
+    /// `loginCheckJs`(响应期登录态校验,D10 第一版):脚本以 `result`=响应求值;
+    /// 返回空 / `false` / `0` 视为登录失效 → 抛 [`BookSourceError::LoginExpired`] 提示用户重登。
+    /// 空脚本或未启用 `js` feature 时为 no-op。
+    fn check_login(&self, response: &str) -> Result<()> {
+        let js = self.source.login_check_js.trim();
+        if js.is_empty() {
+            return Ok(());
+        }
+        #[cfg(feature = "js")]
+        {
+            let vars = self.base_vars();
+            let verdict = eval_value(&Rule::Js { js: js.to_string() }, response, &vars)?;
+            if matches!(verdict.trim(), "" | "false" | "0") {
+                return Err(BookSourceError::LoginExpired);
+            }
+        }
+        let _ = response;
+        Ok(())
+    }
+
     /// 预热:按 `http.warmup` 先访问若干页以累积会话 cookie(失败忽略)。
     pub async fn warmup(&self) {
         for u in &self.source.http.warmup {
-            let _ = self.fetcher.fetch(FetchRequest::get(u.clone())).await;
+            let _ = self.fetcher.fetch(self.get_req(u.clone())).await;
         }
     }
 
     /// 书籍详情。
     pub async fn book_info(&self, book_url: &str) -> Result<BookInfo> {
-        let html = self.fetcher.fetch(FetchRequest::get(book_url)).await?;
+        let html = self.fetch_checked(book_url).await?;
         let vars = self.base_vars();
         self.eval_book_info(&self.source.book_info, &html, &vars)
     }
@@ -150,15 +206,18 @@ impl Engine {
             Some(b) => Some(self.resolve_url(b, &vars)?),
             None => None,
         };
+        let mut headers = op.request.headers.clone();
+        self.merge_login_header(&mut headers);
         let html = self
             .fetcher
             .fetch(FetchRequest {
                 url,
                 method: op.request.method,
                 body,
-                headers: op.request.headers.clone(),
+                headers,
             })
             .await?;
+        self.check_login(&html)?;
         self.eval_list_items(&op.list, &op.item, &html)
     }
 
@@ -178,7 +237,7 @@ impl Engine {
         vars.insert("page".into(), page.to_string());
         vars.insert("pageSize".into(), page_size.to_string());
         let url = self.resolve_url(category_url, &vars)?;
-        let html = self.fetcher.fetch(FetchRequest::get(url)).await?;
+        let html = self.fetch_checked(url).await?;
         self.eval_list_items(&op.list, &op.item, &html)
     }
 
@@ -204,7 +263,7 @@ impl Engine {
         let mut pages = Vec::new();
         let mut url = start.to_string();
         for _ in 0..max_pages.max(1) {
-            let html = self.fetcher.fetch(FetchRequest::get(url.clone())).await?;
+            let html = self.fetch_checked(url.clone()).await?;
             let next = match next_page {
                 Some(r) => eval_value(r, &html, vars)?,
                 None => String::new(),
@@ -277,6 +336,8 @@ mod tests {
     use crate::fetch::Fetcher;
     use async_trait::async_trait;
 
+    use std::sync::Mutex;
+
     /// 注入固定 HTML 的取页替身,使引擎可离线单测(D9)。
     struct MockFetcher(String);
 
@@ -284,6 +345,20 @@ mod tests {
     impl Fetcher for MockFetcher {
         async fn fetch(&self, _req: FetchRequest) -> std::result::Result<String, FetchError> {
             Ok(self.0.clone())
+        }
+    }
+
+    /// 记录最近一次请求头的取页替身(验证引擎是否并入 loginHeader)。
+    struct RecordingFetcher {
+        body: String,
+        last_headers: Arc<Mutex<HashMap<String, String>>>,
+    }
+
+    #[async_trait]
+    impl Fetcher for RecordingFetcher {
+        async fn fetch(&self, req: FetchRequest) -> std::result::Result<String, FetchError> {
+            *self.last_headers.lock().unwrap() = req.headers;
+            Ok(self.body.clone())
         }
     }
 
@@ -319,5 +394,70 @@ mod tests {
         assert_eq!(toc.chapters[0].title, "第一章");
         assert_eq!(toc.chapters[0].url, "/n/1.html");
         assert_eq!(toc.volumes[1].first_chapter_index, 2);
+    }
+
+    // ── 6.3/6.4:引擎构造的请求并入 loginHeader(JWT/Cookie 同路径)──
+    #[tokio::test]
+    async fn engine_merges_login_header_into_requests() {
+        let src = BookSource::from_json(SOURCE).unwrap();
+        let captured = Arc::new(Mutex::new(HashMap::new()));
+        let fetcher = Arc::new(RecordingFetcher {
+            body: CATALOG.to_string(),
+            last_headers: captured.clone(),
+        });
+        let mut lh = BTreeMap::new();
+        lh.insert("Authorization".into(), "Bearer T".into());
+        lh.insert("Cookie".into(), "sid=1".into());
+        let engine = Engine::with_fetcher(src, fetcher).with_login_header(lh);
+
+        // 任一取页路径都应带上 loginHeader(此处走 toc → fetch_pages → get_req)。
+        engine.toc("/any").await.unwrap();
+        let h = captured.lock().unwrap();
+        assert_eq!(
+            h.get("Authorization").map(String::as_str),
+            Some("Bearer T"),
+            "JWT 应每请求携带"
+        );
+        assert_eq!(
+            h.get("Cookie").map(String::as_str),
+            Some("sid=1"),
+            "Cookie 走同一注入路径"
+        );
+    }
+
+    // 未登录(空 loginHeader)时不注入任何额外头(向后兼容)。
+    #[tokio::test]
+    async fn engine_without_login_header_adds_nothing() {
+        let src = BookSource::from_json(SOURCE).unwrap();
+        let captured = Arc::new(Mutex::new(HashMap::new()));
+        let fetcher = Arc::new(RecordingFetcher {
+            body: CATALOG.to_string(),
+            last_headers: captured.clone(),
+        });
+        let engine = Engine::with_fetcher(src, fetcher);
+        engine.toc("/any").await.unwrap();
+        assert!(captured.lock().unwrap().is_empty(), "未登录不应注入额外头");
+    }
+
+    // ── 12.2:loginCheckJs 在响应期判定登录失效 → LoginExpired ──
+    #[cfg(feature = "js")]
+    #[tokio::test]
+    async fn login_check_js_detects_expired() {
+        let json = SOURCE.replacen(
+            "\"bookInfo\":{}",
+            "\"loginCheckJs\":\"result.indexOf('未登录')<0\",\"bookInfo\":{}",
+            1,
+        );
+        let src = BookSource::from_json(&json).unwrap();
+        // 响应含「未登录」→ 判失效。
+        let bad = Engine::with_fetcher(
+            src.clone(),
+            Arc::new(MockFetcher("<html>未登录</html>".into())),
+        );
+        let err = bad.toc("/any").await.unwrap_err();
+        assert!(err.is_login_expired(), "应判登录失效: {err}");
+        // 正常响应(无「未登录」)→ 放行。
+        let ok = Engine::with_fetcher(src, Arc::new(MockFetcher(CATALOG.to_string())));
+        assert!(ok.toc("/any").await.is_ok(), "正常响应不应判失效");
     }
 }

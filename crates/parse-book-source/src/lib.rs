@@ -22,10 +22,14 @@ pub mod engine;
 pub mod error;
 pub mod eval;
 pub mod fetch;
+#[cfg(feature = "js-host")]
+pub mod host;
 #[cfg(feature = "js")]
 mod js;
 pub mod model;
 pub mod source;
+#[cfg(feature = "js-host")]
+pub mod state;
 mod transform;
 pub mod verify;
 mod xpath;
@@ -34,7 +38,7 @@ mod xpath;
 // 规则 AST(`Rule` 等)与求值/抽取细节在 `source` / `eval` / `backend` 下,按需取用。
 pub use engine::Engine;
 pub use error::{BookSourceError, ConfigError, EvalError, FetchError, Result};
-pub use fetch::{FetchRequest, Fetcher, ReqwestFetcher, is_challenge};
+pub use fetch::{FetchRequest, FetchResponse, Fetcher, ReqwestFetcher, is_challenge};
 pub use model::{BookInfo, BookListItem, Chapter, Toc, Volume};
 pub use source::{BookSource, Category, FetchMode, UrlOrRule};
 pub use verify::{Check, CheckStatus, DiagnoseReport, VerifyReport, diagnose, verify_sample};

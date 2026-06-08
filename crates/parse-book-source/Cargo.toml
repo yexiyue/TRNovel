@@ -57,6 +57,10 @@ ferrous-opencc = "0.4"
 boa_engine = { version = "0.21", optional = true }
 reqwest = { version = "0.13", default-features = false, features = ["json", "rustls", "cookies"] }
 chromiumoxide = { version = "0.9", optional = true }
+# 机器绑定的凭据加密密钥来源,仅 `js-host` feature 用(见 change js-host-bridge / source-auth)。
+machine-uid = { version = "0.6.0", optional = true }
+# 公共后缀表(纯 Rust,编译期内嵌):cookie 库按注册域(eTLD+1)归并;仅 `js-host` 用。
+psl = { version = "2", optional = true }
 
 [features]
 default = []
@@ -67,6 +71,9 @@ schema = ["dep:schemars"]
 # 启用 JS 逻辑编排逃生舱(Rule::Js / clean.js 求值)。变体与 schema 恒存在,
 # 仅求值实现受此门控;未启用时求值到 JS 返回 Unsupported("js")。
 js = ["dep:boa_engine"]
+# 启用 JS host 桥:给沙箱注入有状态 `source`(状态/登录)+ `net`(网络/cookie/浏览器)对象,
+# 解锁登录与多步请求编排。打破纯沙箱(攻击面变大),默认构建不含;见 change js-host-bridge。
+js-host = ["js", "dep:machine-uid", "dep:psl"]
 
 # gen_schema 示例:`cargo run -p parse-book-source --features schema --example gen_schema`
 [[example]]

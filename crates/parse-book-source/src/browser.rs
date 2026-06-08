@@ -7,7 +7,7 @@
 //! 注:本模块的浏览器交互**仅编译验证**,真机联调留待运行环境(CI/沙箱跑不了浏览器)。
 
 use super::error::FetchError;
-use super::fetch::{FetchRequest, Fetcher, ReqwestFetcher};
+use super::fetch::{FetchRequest, FetchResponse, Fetcher, ReqwestFetcher};
 use super::source::BookSource;
 use async_trait::async_trait;
 use chromiumoxide::cdp::browser_protocol::network::Cookie;
@@ -326,9 +326,15 @@ impl EscalatingFetcher {
 
 #[async_trait]
 impl Fetcher for EscalatingFetcher {
-    async fn fetch(&self, mut req: FetchRequest) -> Result<String, FetchError> {
+    async fn fetch(&self, req: FetchRequest) -> Result<String, FetchError> {
+        self.fetch_full(req).await.map(|r| r.body)
+    }
+
+    /// 升级式取完整响应:透传真实状态码与响应头(`net.connect` 依赖之),并保留解挑战逻辑。
+    /// `fetch` 委托本方法 —— 升级语义实现一次,避免漂移。
+    async fn fetch_full(&self, mut req: FetchRequest) -> Result<FetchResponse, FetchError> {
         self.apply_clearance(&mut req).await;
-        match self.reqwest.fetch(req.clone()).await {
+        match self.reqwest.fetch_full(req.clone()).await {
             Err(FetchError::Challenged(msg)) => {
                 let Some(browser) = &self.browser else {
                     return Err(FetchError::Challenged(msg));
@@ -363,7 +369,7 @@ impl Fetcher for EscalatingFetcher {
                 }
                 drop(guard);
                 self.apply_clearance(&mut req).await;
-                self.reqwest.fetch(req).await
+                self.reqwest.fetch_full(req).await
             }
             other => other,
         }
@@ -372,11 +378,54 @@ impl Fetcher for EscalatingFetcher {
 
 #[cfg(test)]
 mod tests {
-    use super::detect_browser;
+    use super::{EscalatingFetcher, detect_browser};
+    use crate::fetch::{FetchRequest, Fetcher};
+    use crate::source::BookSource;
+    use std::io::{Read, Write};
+    use std::net::TcpListener;
 
     #[test]
     fn detect_browser_does_not_panic() {
         // 探测不应 panic;有无浏览器取决于运行机器,这里只验证可调用。
         let _ = detect_browser();
+    }
+
+    fn book_source(base: &str) -> BookSource {
+        serde_json::from_value(serde_json::json!({
+            "schema": "trnovel-booksource/v2",
+            "name": "t",
+            "url": base,
+            "bookInfo": {},
+            "toc": {"list": {"via": "raw"}, "name": {"via": "raw"}, "url": {"via": "raw"}},
+            "content": {"value": {"via": "raw"}}
+        }))
+        .unwrap()
+    }
+
+    // ── 审查/correctness:EscalatingFetcher 必须覆盖 fetch_full,透传真实状态码与响应头 ──
+    // 否则落到默认实现 → net.connect 静默退化为 {code:200, headers:{}},打掉登录脚本读 Set-Cookie 的能力。
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn escalating_fetcher_fetch_full_passes_status_and_headers() {
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let base = format!("http://{}", listener.local_addr().unwrap());
+        let server = std::thread::spawn(move || {
+            if let Ok((mut stream, _)) = listener.accept() {
+                let mut buf = [0u8; 2048];
+                let _ = stream.read(&mut buf);
+                let resp = "HTTP/1.1 201 Created\r\nSet-Cookie: sid=zzz; Path=/\r\nContent-Length: 2\r\nConnection: close\r\n\r\nok";
+                let _ = stream.write_all(resp.as_bytes());
+                let _ = stream.flush();
+            }
+        });
+        // browser=None:不解挑战,但 fetch_full 仍须透传 reqwest 的真实 status/headers。
+        let fetcher = EscalatingFetcher::new(&book_source(&base), None).unwrap();
+        let resp = fetcher.fetch_full(FetchRequest::get("/x")).await.unwrap();
+        server.join().unwrap();
+        assert_eq!(resp.status, 201, "应透传真实状态码,而非默认 200");
+        assert_eq!(
+            resp.headers.get("set-cookie").map(String::as_str),
+            Some("sid=zzz; Path=/"),
+            "应透传响应头(Set-Cookie),而非默认空 headers"
+        );
     }
 }

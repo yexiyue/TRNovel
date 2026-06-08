@@ -110,6 +110,36 @@ cargo run -- import /path/to/<站点>.v2.json
 
 要点:同一站通常**全站一套字体**(映射固定,生成一次复用;站方换字体才重跑)。引擎只按表查、**不内置任何站点的表**(表是数据、跟着书源走)。详解见 `references/reverse-engineering.md` 的「字体反爬」与博客 `dev-notes/blog/font-anti-scraping-and-fontmap.md`。
 
+## 登录与多步编排(host 桥,需 `js-host` 构建)
+
+需要**登录/会员**才能读全本的站(典型:番茄网页版会员、JWT 鉴权书站),靠书源 JS 里的有状态 **host 对象**完成登录与跨请求传值。注入三个语义对象(**不是** Legado 的 `java`):
+
+- `source` —— 书源状态/登录:`put/get`(跨请求 KV)、`getVariable/putVariable`、`putLoginHeader/getLoginHeader/getLoginHeaderMap/removeLoginHeader`、`getLoginInfo/getLoginInfoMap/putLoginInfo`(凭据 AES 加密存)。
+- `net` —— 网络/cookie:`ajax(url)`→响应体、`connect(url, extraHeadersJson?)`/`post(url, body, extraHeadersJson?)`→`{body, code, headers}`、`getCookie(domain, key?)`。
+- `crypto` —— 沿用(md5/sha/aes/base64/hex/t2s/s2t)。
+
+**登录态统一**:`source.putLoginHeader(json)` 存任意 header map,引擎每请求自动并入——`Authorization: Bearer <jwt>`、自定义 token 头、`Cookie` **三者同一条路径**(无需 JWT 专门逻辑)。含 `Cookie` 字段会同步进 cookie 库(按注册域)。
+
+**新增书源字段**:
+
+| 字段 | 作用 |
+|---|---|
+| `loginUrl` | 普通 URL(走浏览器登录),或 `@js:…`/`<js>…</js>` 登录脚本(内含 `login()` 函数) |
+| `loginUi` | 声明式登录表单 `[{name,type}]`,type ∈ text/password/select/toggle;收集值加密存 loginInfo |
+| `loginCheckJs` | 每个网络方法响应后执行(`result`=响应),返回空/`false`/`0` 判失效 → 提示重登 |
+| `enabledCookieJar` | 开启后响应 `Set-Cookie` 自动回灌 cookie 库 |
+| `concurrentRate` | 限速 `"N/ms"` 或纯毫秒间隔 |
+
+**脚本登录范式**(`loginUrl` 为脚本):约定导出全局 `login()`,内部取凭据→发请求→写回登录态:
+
+```js
+// loginUrl: "@js:function login(){ var r = net.post('/api/login', JSON.stringify(JSON.parse(source.getLoginInfo()))); var tok = JSON.parse(r.body).token; source.putLoginHeader(JSON.stringify({Authorization:'Bearer '+tok})); }"
+```
+
+**多步取值**:JS 内 `net.ajax/connect` 复用取页管线(自动带 loginHeader + 按注册域的库 cookie);结构化跨请求传值用 `source.put/get`。**不引入** Legado 的 `@put:/@get:` 字符串 DSL。
+
+要点:这些能力仅 `js-host` 构建可用;纯净构建(默认)无网络/状态,行为不变。站点是否需登录用 AskUserQuestion 问用户,再决定 `loginUrl`/`loginUi` 形态。
+
 ## 拿不准就问(用 AskUserQuestion)
 
 探站时遇到**你无法从页面自行判定**的事,别瞎猜——用 AskUserQuestion 问用户。典型:

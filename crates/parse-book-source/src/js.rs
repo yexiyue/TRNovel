@@ -28,12 +28,12 @@ pub fn eval_js(script: &str, result: &str, vars: &Vars) -> Result<String, EvalEr
         .to_std_string_escaped())
 }
 
-fn to_eval(e: JsError) -> EvalError {
+pub(crate) fn to_eval(e: JsError) -> EvalError {
     EvalError::Js(e.to_string())
 }
 
-/// 注入全局绑定与 `crypto` 对象。
-fn register(ctx: &mut Context, result: &str, vars: &Vars) -> JsResult<()> {
+/// 注入全局绑定与 `crypto` 对象。`js-host` 桥在此基础上追加 `source`/`net`。
+pub(crate) fn register(ctx: &mut Context, result: &str, vars: &Vars) -> JsResult<()> {
     ctx.register_global_property(js_string!("result"), js_string!(result), Attribute::all())?;
     if let Some(base) = vars.get("base") {
         ctx.register_global_property(
@@ -102,15 +102,15 @@ fn register(ctx: &mut Context, result: &str, vars: &Vars) -> JsResult<()> {
 // ───────────────────────── 原生函数(后端复用 transform)─────────────────────────
 
 /// 取第 `i` 个参数为字符串(缺省空串)。
-fn arg(args: &[JsValue], i: usize, ctx: &mut Context) -> JsResult<String> {
+pub(crate) fn arg(args: &[JsValue], i: usize, ctx: &mut Context) -> JsResult<String> {
     match args.get(i) {
         Some(v) => Ok(v.to_string(ctx)?.to_std_string_escaped()),
         None => Ok(String::new()),
     }
 }
 
-/// `Result<String, EvalError>` → JS 返回值 / 抛错。
-fn yield_js(r: Result<String, EvalError>) -> JsResult<JsValue> {
+/// `Result<String, EvalError>` → JS 返回值 / 抛错(host 桥失败由此变为可 `try/catch` 的 JS 异常)。
+pub(crate) fn yield_js(r: Result<String, EvalError>) -> JsResult<JsValue> {
     match r {
         Ok(s) => Ok(js_string!(s.as_str()).into()),
         Err(e) => Err(JsNativeError::typ().with_message(e.to_string()).into()),

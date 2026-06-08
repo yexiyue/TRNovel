@@ -2499,6 +2499,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "machine-uid"
+version = "0.6.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "cfe0d6336d341b10ae80e099b8f3c59f34bf8aef66ef25e83aa98bf2955c0ae7"
+dependencies = [
+ "libc",
+ "windows-registry",
+ "windows-sys 0.61.2",
+]
+
+[[package]]
 name = "markup5ever"
 version = "0.39.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3004,8 +3015,10 @@ dependencies = [
  "hex",
  "hmac",
  "jsonpath-rust",
+ "machine-uid",
  "md-5",
  "percent-encoding",
+ "psl",
  "reqwest",
  "schemars",
  "serde",
@@ -3284,6 +3297,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "8fd00f0bb2e90d81d1044c2b32617f68fcb9fa3bb7640c23e9c748e53fb30934"
 dependencies = [
  "unicode-ident",
+]
+
+[[package]]
+name = "psl"
+version = "2.1.212"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e9f6415ab1b08394487005d41ae7ee69e69903efa1ace538f3b274db605bf8ec"
+dependencies = [
+ "psl-types",
 ]
 
 [[package]]

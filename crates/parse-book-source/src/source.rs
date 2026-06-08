@@ -364,6 +364,36 @@ pub struct Http {
     pub fetcher: FetchMode,
 }
 
+/// 声明式登录表单项类型。
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
+pub enum RowUiType {
+    /// 单行文本。
+    #[default]
+    Text,
+    /// 密码(TUI 掩码显示)。
+    Password,
+    /// 下拉选择(配合 `options`)。
+    Select,
+    /// 布尔开关。
+    Toggle,
+}
+
+/// 声明式登录表单的一行(TUI 渲染对应控件,收集值加密存为 loginInfo)。
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
+pub struct RowUi {
+    /// 字段名(也是 loginInfo 中的 key)。
+    pub name: String,
+    #[serde(rename = "type", default)]
+    pub ui_type: RowUiType,
+    /// `select` 类型的候选项。
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub options: Vec<String>,
+}
+
 /// HTTP 方法。
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "UPPERCASE")]
@@ -523,6 +553,22 @@ pub struct BookSource {
     pub url: String,
     #[serde(default)]
     pub http: Http,
+    /// 登录:普通 URL,或登录脚本(`@js:…` / `<js>…</js>` 包裹,内含 `login()` 函数)。
+    /// 非空即视为「需要登录」(见 [`BookSource::has_login`]);仅 `js-host` 构建可真正执行脚本登录。
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub login_url: String,
+    /// 声明式登录表单(TUI 渲染);收集值加密存为 loginInfo,供 `login()` 脚本读取。
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub login_ui: Vec<RowUi>,
+    /// 登录态过期校验脚本:每个网络方法响应后执行(注入 `result`=响应),判失效可提示重登。
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub login_check_js: String,
+    /// 开启后:响应的 `Set-Cookie` 自动回灌进 cookie 库(按注册域归并持久化)。
+    #[serde(default)]
+    pub enabled_cookie_jar: bool,
+    /// 限速:`"N/ms"`(N 次/ms)或纯毫秒间隔字符串;为空则用 `http.rateLimit`。
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub concurrent_rate: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub search: Option<SearchOp>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -541,6 +587,25 @@ impl BookSource {
     /// 从 JSON 字符串解析一个书源。
     pub fn from_json(s: &str) -> Result<Self, ConfigError> {
         Ok(serde_json::from_str(s)?)
+    }
+
+    /// 是否需要登录(目前依据 `loginUrl` 非空;后续 `loginUi` 也将计入)。
+    /// 据此在 TUI 暴露「书源登录」入口。
+    pub fn has_login(&self) -> bool {
+        !self.login_url.trim().is_empty()
+    }
+
+    /// 若 `loginUrl` 是登录脚本(`@js:` 或 `<js>…</js>` 包裹),剥壳返回脚本体;
+    /// 否则(普通 URL 或空)返回 `None`——此时走 headful 浏览器登录。
+    pub fn get_login_js(&self) -> Option<&str> {
+        let s = self.login_url.trim();
+        if let Some(js) = s.strip_prefix("@js:") {
+            Some(js.trim())
+        } else if let Some(rest) = s.strip_prefix("<js>") {
+            Some(rest.strip_suffix("</js>").unwrap_or(rest).trim())
+        } else {
+            None
+        }
     }
 
     /// 从 JSON 值解析一个或多个书源(支持单对象或数组)。
@@ -720,6 +785,37 @@ mod tests {
             BookSource::from_json(&bad).is_err(),
             "拼错字段应被 deny_unknown_fields 拒绝"
         );
+    }
+
+    // ── 审查/test-coverage:has_login 判定(决定 TUI 是否显示登录入口)──
+    #[test]
+    fn has_login_only_when_login_url_non_blank() {
+        let mut bs = BookSource::from_json(BILIXS_V2).unwrap();
+        assert!(!bs.has_login(), "默认无 loginUrl 不需登录");
+        bs.login_url = "https://site/login".into();
+        assert!(bs.has_login());
+        bs.login_url = "@js:function login(){}".into();
+        assert!(bs.has_login());
+        bs.login_url = "   ".into();
+        assert!(!bs.has_login(), "纯空白视为不需登录");
+    }
+
+    // ── 审查/test-coverage:get_login_js 剥壳各分支(@js: / <js>…</js> / 半包裹 / 普通 URL / 空)──
+    #[test]
+    fn get_login_js_strips_prefixes() {
+        let mut bs = BookSource::from_json(BILIXS_V2).unwrap();
+        bs.login_url = "@js: function login(){} ".into();
+        assert_eq!(bs.get_login_js(), Some("function login(){}"));
+        bs.login_url = "<js>BODY</js>".into();
+        assert_eq!(bs.get_login_js(), Some("BODY"));
+        bs.login_url = "<js> A </js>".into();
+        assert_eq!(bs.get_login_js(), Some("A"));
+        bs.login_url = "<js>BODY".into(); // 缺尾标签:容错保留整段
+        assert_eq!(bs.get_login_js(), Some("BODY"));
+        bs.login_url = "https://site/login".into(); // 普通 URL → None(走浏览器登录)
+        assert_eq!(bs.get_login_js(), None);
+        bs.login_url = "".into();
+        assert_eq!(bs.get_login_js(), None);
     }
 }
 

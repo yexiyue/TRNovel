@@ -17,6 +17,9 @@ pub enum BookSourceError {
     /// 操作所需的配置缺失(如未配置 search/explore)。
     #[error("book source missing config: {0}")]
     Missing(&'static str),
+    /// 登录态失效(`loginCheckJs` 在响应期判定),需用户重新登录。
+    #[error("登录态已失效,请重新登录")]
+    LoginExpired,
 }
 
 impl BookSourceError {
@@ -24,6 +27,11 @@ impl BookSourceError {
     /// 用于诊断/降级:据此给出精确提示而非笼统失败,并决定是否升级浏览器取页。
     pub fn is_challenge(&self) -> bool {
         matches!(self, BookSourceError::Fetch(FetchError::Challenged(_)))
+    }
+
+    /// 是否为「登录态失效」(`loginCheckJs` 判定):据此提示用户重新登录。
+    pub fn is_login_expired(&self) -> bool {
+        matches!(self, BookSourceError::LoginExpired)
     }
 }
 
@@ -92,6 +100,11 @@ pub enum EvalError {
     /// clean 字体反爬还原算子失败(未知内置表 / 非法码点 / 缺映射表)。
     #[error("font map error: {0}")]
     Font(String),
+    /// JS host 桥失败(网络/cookie/登录态等;仅 `js-host` feature)。
+    /// 以可被 JS `try/catch` 捕获的方式抛出,不使整段求值崩溃。
+    #[cfg(feature = "js-host")]
+    #[error("host bridge error: {0}")]
+    Host(String),
 }
 
 /// v2 结果别名。

@@ -15,8 +15,17 @@
     "bookInfo": {
       "$ref": "#/definitions/BookRules"
     },
+    "concurrentRate": {
+      "description": "限速:`\"N/ms\"`(N 次/ms)或纯毫秒间隔字符串;为空则用 `http.rateLimit`。",
+      "type": "string"
+    },
     "content": {
       "$ref": "#/definitions/ContentRules"
+    },
+    "enabledCookieJar": {
+      "description": "开启后:响应的 `Set-Cookie` 自动回灌进 cookie 库(按注册域归并持久化)。",
+      "default": false,
+      "type": "boolean"
     },
     "explore": {
       "anyOf": [
@@ -44,6 +53,21 @@
           "$ref": "#/definitions/Http"
         }
       ]
+    },
+    "loginCheckJs": {
+      "description": "登录态过期校验脚本:每个网络方法响应后执行(注入 `result`=响应),判失效可提示重登。",
+      "type": "string"
+    },
+    "loginUi": {
+      "description": "声明式登录表单(TUI 渲染);收集值加密存为 loginInfo,供 `login()` 脚本读取。",
+      "type": "array",
+      "items": {
+        "$ref": "#/definitions/RowUi"
+      }
+    },
+    "loginUrl": {
+      "description": "登录:普通 URL,或登录脚本(`@js:…` / `<js>…</js>` 包裹,内含 `login()` 函数)。 非空即视为「需要登录」(见 [`BookSource::has_login`]);仅 `js-host` 构建可真正执行脚本登录。",
+      "type": "string"
     },
     "name": {
       "type": "string"
@@ -897,6 +921,68 @@
         }
       },
       "additionalProperties": false
+    },
+    "RowUi": {
+      "description": "声明式登录表单的一行(TUI 渲染对应控件,收集值加密存为 loginInfo)。",
+      "type": "object",
+      "required": [
+        "name"
+      ],
+      "properties": {
+        "name": {
+          "description": "字段名(也是 loginInfo 中的 key)。",
+          "type": "string"
+        },
+        "options": {
+          "description": "`select` 类型的候选项。",
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "type": {
+          "default": "text",
+          "allOf": [
+            {
+              "$ref": "#/definitions/RowUiType"
+            }
+          ]
+        }
+      },
+      "additionalProperties": false
+    },
+    "RowUiType": {
+      "description": "声明式登录表单项类型。",
+      "oneOf": [
+        {
+          "description": "单行文本。",
+          "type": "string",
+          "enum": [
+            "text"
+          ]
+        },
+        {
+          "description": "密码(TUI 掩码显示)。",
+          "type": "string",
+          "enum": [
+            "password"
+          ]
+        },
+        {
+          "description": "下拉选择(配合 `options`)。",
+          "type": "string",
+          "enum": [
+            "select"
+          ]
+        },
+        {
+          "description": "布尔开关。",
+          "type": "string",
+          "enum": [
+            "toggle"
+          ]
+        }
+      ]
     },
     "Rule": {
       "description": "一条规则:叶子,或组合子。组合子按其唯一键判别(见 design D1)。\n\n反序列化时按变体顺序尝试:组合子(各有唯一必填键)在前,叶子兜底。",
