@@ -1,4 +1,18 @@
-## [0.11.0] - 2026-06-08
+## [0.12.0] - 2026-06-10
+
+### 🚀 Features
+
+- *(parse-book-source)* Js-host 桥 + 引擎登录态注入 + cookie/TTL(里程碑)
+- *(parse-book-source)* Cookie 库回灌(session/persistent + psl 注册域 + 引擎集成)
+- *(login)* 书源登录页与浏览器/脚本登录流 + 多维审查修复落地
+- *(docs)* 品牌视觉三件套 + 官网首页重写(双主题/移动端) + README 重构
+## [trnovel-v0.11.0] - 2026-06-08
+
+### 🐛 Bug Fixes
+
+- *(dist)* 移除 x86_64-apple-darwin target(onnxruntime rc.12 砍 Intel Mac)
+- *(tts)* 回退 kokoro 0.3.1 + ort rc.10,恢复全平台发布
+## [parse-book-source-v0.5.0] - 2026-06-08
 
 ### 🚀 Features
 
@@ -7,6 +21,10 @@
 ### 📚 Documentation
 
 - 字体反爬原理博客 + booksource-generator skill 更新
+
+### ⚙️ Miscellaneous Tasks
+
+- Release
 ## [trnovel-v0.10.4] - 2026-06-06
 
 ### 🐛 Bug Fixes
