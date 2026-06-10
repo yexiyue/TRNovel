@@ -1,4 +1,9 @@
-## [0.12.0] - 2026-06-10
+## [0.13.0] - 2026-06-10
+
+### 🚀 Features
+
+- 依赖整栈升级(ratatui 0.30)+ render-fetcher 接通番茄网页搜索
+## [trnovel-v0.12.0] - 2026-06-10
 
 ### 🚀 Features
 
@@ -6,6 +11,10 @@
 - *(parse-book-source)* Cookie 库回灌(session/persistent + psl 注册域 + 引擎集成)
 - *(login)* 书源登录页与浏览器/脚本登录流 + 多维审查修复落地
 - *(docs)* 品牌视觉三件套 + 官网首页重写(双主题/移动端) + README 重构
+
+### ⚙️ Miscellaneous Tasks
+
+- Release
 ## [trnovel-v0.11.0] - 2026-06-08
 
 ### 🐛 Bug Fixes
