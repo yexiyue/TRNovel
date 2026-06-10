@@ -1,0 +1,82 @@
+---
+// 截图画廊:横向 scroll-snap,真实界面截图 + 一行功能性说明
+import { Image } from "astro:assets";
+import homeImg from "../../assets/guides/home.png";
+import readImg from "../../assets/guides/read.png";
+import tocImg from "../../assets/guides/select-chapter.png";
+import shortcutsImg from "../../assets/guides/shortcuts.png";
+
+const shots = [
+	{ img: readImg, title: "沉浸式阅读", desc: "正文分页流畅，主题颜色可配置。" },
+	{ img: homeImg, title: "清爽主页", desc: "本地、网络、历史三个入口一目了然。" },
+	{ img: tocImg, title: "可折叠分卷目录", desc: "「卷、章」层级清晰，跳转不迷路。" },
+	{ img: shortcutsImg, title: "快捷键面板", desc: "随时呼出，所有操作有迹可循。" },
+];
+---
+
+<div class="tn-gallery">
+	{
+		shots.map((s) => (
+			<figure>
+				<div class="crop">
+					<Image src={s.img} alt={s.title} />
+				</div>
+				<figcaption>
+					<strong>{s.title}</strong>
+					<span>{s.desc}</span>
+				</figcaption>
+			</figure>
+		))
+	}
+</div>
+
+<style>
+	.tn-gallery {
+		display: flex;
+		gap: 1.25rem;
+		margin-top: 2rem;
+		overflow-x: auto;
+		scroll-snap-type: x mandatory;
+		padding-bottom: 0.75rem;
+		scrollbar-width: thin;
+	}
+
+	figure {
+		flex: 0 0 min(560px, 86%);
+		margin: 0;
+		scroll-snap-align: start;
+	}
+
+	/* 截图带 VS Code 上下边条,按比例裁掉(margin 百分比相对宽度) */
+	.crop {
+		overflow: hidden;
+		border: 1px solid var(--tn-border);
+		border-radius: 12px;
+		background: #0d1117;
+	}
+
+	.crop img {
+		display: block;
+		width: 100%;
+		height: auto;
+		margin-top: -2.9%;
+		margin-bottom: -2.3%;
+	}
+
+	figcaption {
+		display: flex;
+		flex-direction: column;
+		gap: 0.15rem;
+		margin-top: 0.75rem;
+	}
+
+	figcaption strong {
+		font-size: 0.95rem;
+		color: var(--sl-color-white);
+	}
+
+	figcaption span {
+		font-size: 0.85rem;
+		color: var(--sl-color-gray-3);
+	}
+</style>

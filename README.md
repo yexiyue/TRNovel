@@ -1,135 +1,123 @@
-# TRNovel
+<div align="center">
+  <a href="https://yexiyue.github.io/TRNovel">
+    <img src="docs/public/trnovel-wordmark.svg" alt="TRNovel" width="420">
+  </a>
 
-> **TRNovel (Terminal Reader for Novel)** 是一个 Rust + Ratatui 构建的终端小说阅读器，支持本地 TXT、网络小说书源、阅读历史、主题与听书。它不只负责阅读，也提供面向 AI Agent 的书源生成 skill，可以从小说网站快速生成并校验可用书源。
+  <p><strong>在终端里，优雅地读小说</strong></p>
 
-[![NPM Version](https://img.shields.io/npm/v/@trnovel/trnovel)](https://www.npmjs.com/package/@trnovel/trnovel)
-![NPM Downloads](https://img.shields.io/npm/d18m/%40trnovel%2Ftrnovel?label=npm%20downloads)
-[![Crates.io Version](https://img.shields.io/crates/v/trnovel)](https://crates.io/crates/trnovel)
-![Crates.io Total Downloads](https://img.shields.io/crates/d/trnovel?label=crates.io%20downloads)
+  <p>
+    <a href="https://yexiyue.github.io/TRNovel"><img src="https://img.shields.io/badge/官网-yexiyue.github.io%2FTRNovel-3DDC97" alt="官网"></a>
+    <a href="https://www.npmjs.com/package/@trnovel/trnovel"><img src="https://img.shields.io/npm/v/@trnovel/trnovel" alt="NPM Version"></a>
+    <img src="https://img.shields.io/npm/d18m/%40trnovel%2Ftrnovel?label=npm%20downloads" alt="NPM Downloads">
+    <a href="https://crates.io/crates/trnovel"><img src="https://img.shields.io/crates/v/trnovel" alt="Crates.io Version"></a>
+    <img src="https://img.shields.io/crates/d/trnovel?label=crates.io%20downloads" alt="Crates.io Downloads">
+  </p>
 
-## 为什么是 TRNovel
+  <p>
+    <a href="https://yexiyue.github.io/TRNovel/guides/intro">使用指南</a>
+    ·
+    <a href="https://yexiyue.github.io/TRNovel/book-source/intro">书源参考</a>
+    ·
+    <a href="https://yexiyue.github.io/TRNovel/reference/cli">CLI 参考</a>
+    ·
+    <a href="https://yexiyue.github.io/TRNovel/reference/anti-scraping">反爬与浏览器辅助</a>
+  </p>
 
-TRNovel 适合希望在终端里安静阅读、管理本地小说和自定义网络书源的用户。它的重点不是内置资源，而是把阅读器、书源规则、诊断工具和 AI 书源生成工作流串起来，让新的站点接入更可控。
+  <img src="docs/public/preview-read.png" alt="TRNovel 阅读界面" width="860">
+</div>
 
-- **本地 TXT 阅读**：自动识别章、节、回、番外、楔子等章节结构，支持分卷目录与 `~/.novel/toc_rules.json` 自定义规则。
-- **网络小说书源**：通过自定义书源接入站点，支持搜索、分类浏览、书籍详情、目录和正文抽取。抽取后端支持 CSS / XPath / JSONPath / 正则；`clean` 流水线内置 Base64/Hex/URL 编解码、AES/DES/3DES 加解密、MD5/SHA/HMAC、繁简转换等确定性算子，可应对正文加密与 URL 签名；少数需运行时逻辑编排的站点还提供 JS 逃生舱（`Rule::Js` / `clean.js`）。
-- **通过 skill 创建书源**：安装 `booksource-generator` skill 后，给 AI Agent 一个小说站 URL，就能生成 `trnovel-booksource/v2` JSON，并用 `trn doctor` 校验可用性。
-- **书源体检**：`trn doctor <书源.json>` 会检查配置、浏览、书详情、目录、正文和搜索，让书源不是“写出来就算”，而是可验证。
-- **反爬辅助**：对 Cloudflare 等挑战页，支持系统浏览器解挑战后回填 cookie，普通阅读链路仍尽量走快速请求。
-- **阅读体验**：保存阅读历史，支持继续上次进度、主题颜色配置、Kokoro 文本转语音听书。
+## TRNovel 是什么
 
-## 快速安装
+TRNovel (Terminal Reader for Novel) 是一个 Rust 构建的终端小说阅读器。本地 TXT 与网络书源双修，一个二进制开箱即用。
 
-推荐使用自动安装脚本：
+它和其他阅读器最大的不同：接入新站点不靠手写规则，而是把「逆向、校验、导入」交给 AI 串成闭环。给 Agent 一个小说站 URL，它生成书源，`trn doctor` 体检到全绿，导入后立刻能读。
+
+## 核心能力
+
+| 能力 | 说明 |
+| --- | --- |
+| 本地阅读 | 自动识别 UTF-8 / GBK，智能切分「卷、章」目录，支持 `~/.novel/toc_rules.json` 自定义规则 |
+| 网络书源 | 搜索、分类浏览、详情、目录、正文全链路；取值后端 CSS / XPath / JSONPath / 正则任选 |
+| AI 生成书源 | `booksource-generator` skill 自动探站逆向，配合 `trn doctor` 校验到全绿 |
+| 加密与签名 | `clean` 流水线内置 AES/DES/3DES、Base64/Hex/URL、MD5/SHA/HMAC、繁简转换等确定性算子，少数动态站点另有 JS 逃生舱 |
+| 反爬辅助 | Cloudflare 等挑战页复用系统浏览器解挑战，cookie 回填后继续走快速请求 |
+| TTS 听书 | 内置 Kokoro 中文语音合成，播放进度与正文高亮同步 |
+| 阅读体验 | 历史记录、断点续读、主题配置；Windows / macOS / Linux 单二进制 |
+
+## 安装
+
+macOS / Linux：
 
 ```bash
 curl --proto '=https' --tlsv1.2 -LsSf https://github.com/yexiyue/TRNovel/releases/latest/download/trnovel-installer.sh | sh
 ```
 
-Windows PowerShell：
+Windows：
 
 ```powershell
 powershell -ExecutionPolicy Bypass -c "irm https://github.com/yexiyue/TRNovel/releases/latest/download/trnovel-installer.ps1 | iex"
 ```
 
-也可以通过包管理器安装：
+或者使用包管理器：
 
 ```bash
 cargo install trnovel
 npm i -g @trnovel/trnovel
-pnpm add -g @trnovel/trnovel
 brew install yexiyue/tap/trnovel
 ```
 
-安装后检查：
+## 使用
 
 ```bash
-trnovel --help
+trn              # 打开主界面
+trn -l ./novels  # 从本地小说目录进入
+trn -n           # 进入网络小说模式
+trn -q           # 继续上次阅读
+trn -H           # 查看历史记录
 ```
 
-## 基本使用
+书源相关：
 
 ```bash
-trnovel              # 打开主界面
-trnovel -l ./novels  # 从本地小说目录进入
-trnovel -n           # 进入网络小说模式
-trnovel -q           # 继续上次阅读
-trnovel -H           # 查看历史记录
-trnovel -c           # 清空历史记录和小说缓存
+trn doctor ./my-source.v2.json   # 全流程体检书源
+trn import ./my-source.v2.json   # 导入书源
 ```
 
-书源诊断命令：
+完整命令与快捷键见 [使用文档](https://yexiyue.github.io/TRNovel)。
 
-```bash
-trn doctor ./my-source.v2.json
-```
+## 让 AI 帮你做书源
 
-完整文档见 [TRNovel 使用文档](https://yexiyue.github.io/TRNovel)。
-
-## 用 skill 创建书源
-
-先把 [`booksource-generator`](./skills/booksource-generator/SKILL.md) 安装到你的 Agent，再让 Agent 根据目标小说站生成书源。
-
-### 安装 skill
+把 [`booksource-generator`](./skills/booksource-generator/SKILL.md) 装进你的 Agent：
 
 ```bash
 npx skills add https://github.com/yexiyue/TRNovel/tree/main/skills/booksource-generator
 ```
 
-skill 位置：[`skills/booksource-generator`](./skills/booksource-generator/SKILL.md)。安装后请重启 Agent 会话，或按你的 Agent 文档重新加载 skills。
-
-### 使用方式
-
-向 Agent 提这样的需求：
+然后向 Agent 提需求：
 
 ```text
-请使用 booksource-generator skill，
-为 https://example.com 生成一个 TRNovel v2 书源。
+请使用 booksource-generator skill，为 https://example.com 生成一个 TRNovel v2 书源。
 生成后运行 trn doctor 校验，修到通过后把 JSON 给我。
 ```
 
-常用检查命令：
+skill 会探测站点、逆向出搜索、目录、正文的选择器，处理字符集与反爬，并用 `trn doctor` 按 ✓/✗ 迭代到全部通过。深入资料：
 
-```bash
-trn doctor ./example.v2.json
-```
-
-参考文件：
-
-- [booksource-generator skill](./skills/booksource-generator/SKILL.md)
 - [v2 书源 JSON Schema](./skills/booksource-generator/references/book-source.schema.json)
 - [真实书源示例](./skills/booksource-generator/references/example-bilixs.v2.json)
 - [探站与逆向参考](./skills/booksource-generator/references/reverse-engineering.md)
-- [skill 评测记录](./skill-evals/booksource-generator/iteration-1/benchmark.md)
 
 ## 书源格式
 
-TRNovel 当前推荐 `trnovel-booksource/v2`。它是结构化 JSON，不依赖紧凑字符串 DSL，更适合人类维护和 AI 生成。v2 书源可以声明：
+TRNovel 使用自有的 `trnovel-booksource/v2` 格式：结构化 JSON，不依赖紧凑字符串 DSL，schema 由 Rust 类型自动生成，对人类维护和 AI 生成都友好。`search` / `explore` / `bookInfo` / `toc` / `content` / `http` / `samples` 各司其职，规则细节见 [规则语法](https://yexiyue.github.io/TRNovel/book-source/rules)。
 
-- `search`：搜索请求、结果列表和书籍字段抽取。
-- `explore`：分类浏览入口和分页列表。
-- `bookInfo`：书名、作者、封面、简介、状态、目录地址等信息。
-- `toc`：章节列表、分卷识别和章节 URL。
-- `content`：正文选择器、分页正文和清理规则。
-- `http`：字符集、请求头、超时、重试、浏览器辅助等网络策略。
-- `samples`：用于 `trn doctor` 校验的真实样例。
-
-规则的取值后端可选 CSS / XPath / JSONPath / 正则；`clean` 后处理流水线除正则替换、trim 外，还支持 `decode`/`encode`（base64/hex/url）、`hash`（md5/sha/hmac）、`cipher`（AES/DES/3DES，CBC/ECB/CFB/GCM）、`cn`（繁简）等确定性算子——反爬常见的「正文加密 + URL 签名」无需写代码即可表达。极少数需要运行时控制流的场景，可用 `Rule::Js` / `clean.js` 逃生舱（注入 `result`/`baseUrl`/变量与复用原生实现的 `crypto` 助手；由 `js` feature 门控，官方分发的二进制已启用）。规则细节见[规则语法](https://yexiyue.github.io/TRNovel/book-source/rules)。
-
-TRNovel v2 书源目前不兼容 [Legado](https://github.com/gedoor/legado) 书源格式。后续会提供一个转换 skill，用来把 Legado 书源迁移为 TRNovel 的 `trnovel-booksource/v2` 格式。
+v2 暂不兼容 [Legado](https://github.com/gedoor/legado) 书源，后续会提供迁移转换的 skill。
 
 ## 开发
 
 ```bash
-cargo run
-cargo run -- doctor ./my-source.v2.json
-cargo test
-```
-
-生成书源 schema：
-
-```bash
-cargo run -p parse-book-source --example gen_schema
+cargo run                                       # 运行
+cargo test                                      # 测试
+cargo run -p parse-book-source --example gen_schema   # 生成书源 schema
 ```
 
 ## 声明

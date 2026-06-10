@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="560" height="160" viewBox="0 0 560 160">
+  <!-- TRNovel 字标(亮色主题用,深色前景) -->
+  <g transform="translate(10 16) scale(0.95)">
+    <path fill="#0D1117" fill-rule="evenodd" clip-rule="evenodd" d="M61 36 C47 25 26 20 10 26 L10 92 C26 86 47 91 61 102 Z
+      M67 36 C81 25 102 20 118 26 L118 92 C102 86 81 91 67 102 Z
+      M22 44 h32 a4 4 0 0 1 0 8 h-32 a4 4 0 0 1 0 -8 Z
+      M22 58 h24 a4 4 0 0 1 0 8 h-24 a4 4 0 0 1 0 -8 Z
+      M22 72 h28 a4 4 0 0 1 0 8 h-28 a4 4 0 0 1 0 -8 Z
+      M74 44 h32 a4 4 0 0 1 0 8 h-32 a4 4 0 0 1 0 -8 Z
+      M77 58 a2 2 0 0 0 -2 2 v12 a2 2 0 0 0 2 2 h8 a2 2 0 0 0 2 -2 v-12 a2 2 0 0 0 -2 -2 Z"/>
+  </g>
+  <text x="150" y="104" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace"
+        font-size="74" font-weight="700">
+    <tspan fill="#3DDC97">TR</tspan><tspan fill="#0D1117">Novel</tspan>
+  </text>
+  <rect x="486" y="48" width="26" height="60" rx="4" fill="#3DDC97">
+    <animate attributeName="opacity" values="1;1;0;0;1" dur="1.2s" repeatCount="indefinite"/>
+  </rect>
+</svg>

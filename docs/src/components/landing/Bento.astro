@@ -1,0 +1,195 @@
+---
+// 特性 bento:7 项内容 = 7 格,混合尺寸;1 格渐变底 + 2 格真实截图保证视觉多样性
+import { Image } from "astro:assets";
+import homeImg from "../../assets/guides/home.png";
+import tocImg from "../../assets/guides/select-chapter.png";
+---
+
+<div class="tn-bento">
+	<div class="cell ai">
+		<h3>AI 一键生成书源</h3>
+		<p>
+			把小说站 URL 交给装了 booksource-generator skill 的
+			Agent，自动逆向出搜索、目录、正文的选择器，体检到全绿后导入即用。
+		</p>
+		<code class="chip">trn doctor my-source.v2.json</code>
+	</div>
+	<div class="cell">
+		<h3>TTS 听书</h3>
+		<p>内置 Kokoro 中文语音合成，边听边高亮当前句，解放双眼。</p>
+	</div>
+	<div class="cell shot">
+		<div class="crop">
+			<Image src={homeImg} alt="TRNovel 主页界面" />
+		</div>
+		<div class="meta">
+			<h3>本地 + 网络双源</h3>
+			<p>自动识别 UTF-8 / GBK，阅读进度自动记录，<code>trn -q</code> 一键续读。</p>
+		</div>
+	</div>
+	<div class="cell shot">
+		<div class="crop">
+			<Image src={tocImg} alt="TRNovel 分卷目录树" />
+		</div>
+		<div class="meta">
+			<h3>智能分卷目录</h3>
+			<p>规则引擎切分「卷、章」层级，生成可折叠目录树，长篇不迷路。</p>
+		</div>
+	</div>
+	<div class="cell">
+		<h3>声明式规则引擎</h3>
+		<p>
+			取值后端 CSS、XPath、JSONPath、正则任选；clean 流水线内置
+			AES/DES、Base64、MD5/SHA、繁简转换，正文加密纯声明式拿下。
+		</p>
+	</div>
+	<div class="cell">
+		<h3>反爬与浏览器辅助</h3>
+		<p>撞上 Cloudflare 时复用系统浏览器解挑战，拿到 cookie 后继续走快速请求，必要时点一下「我是真人」即可。</p>
+	</div>
+	<div class="cell">
+		<h3>跨平台单二进制</h3>
+		<p>Windows、macOS、Linux 通吃，主题可自定义，基于 ratatui-kit 构建。</p>
+	</div>
+</div>
+
+<style>
+	.tn-bento {
+		display: grid;
+		gap: 14px;
+		grid-template-columns: 1fr;
+		margin-top: 2rem;
+	}
+
+	@media (min-width: 700px) {
+		.tn-bento {
+			grid-template-columns: repeat(2, 1fr);
+		}
+
+		.cell.ai {
+			grid-column: span 2;
+		}
+	}
+
+	@media (min-width: 1000px) {
+		.tn-bento {
+			grid-template-columns: repeat(12, 1fr);
+		}
+
+		.cell {
+			grid-column: span 6;
+		}
+
+		.cell.ai {
+			grid-column: span 7;
+		}
+
+		.cell:nth-child(2) {
+			grid-column: span 5;
+		}
+
+		.cell.shot {
+			grid-column: span 4;
+		}
+
+		.cell:nth-child(5) {
+			grid-column: span 4;
+		}
+	}
+
+	.cell {
+		display: flex;
+		flex-direction: column;
+		gap: 0.5rem;
+		padding: 1.5rem;
+		border: 1px solid var(--tn-border);
+		border-radius: 12px;
+		background: var(--tn-surface);
+		transition:
+			transform 0.2s cubic-bezier(0.16, 1, 0.3, 1),
+			border-color 0.2s ease;
+	}
+
+	.cell:hover {
+		transform: translateY(-2px);
+		border-color: color-mix(in srgb, var(--tn-accent) 55%, var(--tn-border));
+	}
+
+	.cell.ai {
+		background: linear-gradient(
+			135deg,
+			color-mix(in srgb, var(--tn-accent) 14%, var(--tn-surface)),
+			var(--tn-surface) 72%
+		);
+	}
+
+	.cell.shot {
+		padding: 0;
+		overflow: hidden;
+	}
+
+	/* 截图带 VS Code 上下边条,按比例裁掉(margin 百分比相对宽度) */
+	.cell.shot .crop {
+		overflow: hidden;
+		border-bottom: 1px solid var(--tn-border);
+	}
+
+	.cell.shot img {
+		display: block;
+		width: 100%;
+		height: auto;
+		margin-top: -2.9%;
+		margin-bottom: -2.3%;
+	}
+
+	.cell.shot .meta {
+		display: flex;
+		flex-direction: column;
+		gap: 0.5rem;
+		padding: 1.25rem 1.5rem 1.5rem;
+	}
+
+	h3 {
+		margin: 0;
+		font-size: 1.05rem;
+		letter-spacing: -0.01em;
+		color: var(--sl-color-white);
+	}
+
+	p {
+		margin: 0;
+		font-size: 0.9rem;
+		line-height: 1.7;
+		color: var(--sl-color-gray-2);
+	}
+
+	.chip {
+		align-self: flex-start;
+		margin-top: auto;
+		padding: 0.3rem 0.7rem;
+		border: 1px solid var(--tn-border);
+		border-radius: 8px;
+		background: var(--sl-color-bg);
+		font-family: var(--tn-mono);
+		font-size: 0.78rem;
+		color: var(--tn-accent);
+	}
+
+	/* 进入视口时轻微上浮,仅在支持 scroll-driven animation 的浏览器生效 */
+	@supports (animation-timeline: view()) {
+		@media (prefers-reduced-motion: no-preference) {
+			.cell {
+				animation: tn-cell-rise both;
+				animation-timeline: view();
+				animation-range: entry 0% entry 50%;
+			}
+		}
+	}
+
+	@keyframes tn-cell-rise {
+		from {
+			opacity: 0.3;
+			transform: translateY(14px);
+		}
+	}
+</style>

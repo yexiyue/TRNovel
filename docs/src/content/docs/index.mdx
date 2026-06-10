@@ -1,65 +1,65 @@
 ---
 title: TRNovel
-description: 终端里的现代小说阅读器 —— 本地与网络小说双修,智能识别分卷目录,AI 一键生成书源,还能 TTS 听书,一个二进制开箱即用。
+description: 终端里的现代小说阅读器，本地与网络小说双修，智能识别分卷目录，AI 一键生成书源，支持 TTS 听书，一个二进制开箱即用。
 template: splash
 hero:
-  tagline: 在终端里优雅地读小说。本地 TXT 与网络小说双修,智能识别「卷 → 章」目录,AI 一键生成书源,还能 TTS 听书 —— 一个二进制,开箱即用。
-  image:
-    file: ../../assets/guides/read.png
-  actions:
-    - text: 快速开始
-      link: /TRNovel/guides/intro
-      icon: right-arrow
-      variant: primary
-    - text: 安装 TRNovel
-      link: /TRNovel/guides/install
-      variant: secondary
-    - text: GitHub
-      link: https://github.com/yexiyue/TRNovel
-      icon: external
-      variant: minimal
+  tagline: 在终端里优雅地读小说
 ---
 
-import { Card, CardGrid, LinkCard, Tabs, TabItem, Steps, Aside } from '@astrojs/starlight/components';
-import { Image } from 'astro:assets';
-import readImg from '../../assets/guides/read.png';
-import homeImg from '../../assets/guides/home.png';
-import selectChapterImg from '../../assets/guides/select-chapter.png';
-import ttsImg from '../../assets/guides/tts/novel-tts.png';
+import { Tabs, TabItem, LinkCard, CardGrid, Aside } from '@astrojs/starlight/components';
+import Bento from '../../components/landing/Bento.astro';
+import Gallery from '../../components/landing/Gallery.astro';
 
-## ✨ 核心亮点
+## 为读小说，准备好了一切
 
-<CardGrid>
-	<Card title="本地 + 网络双源" icon="open-book">
-		本地 TXT(自动识别 UTF-8 / GBK)与网络小说一站搞定;阅读进度自动记录,`trn -q` 一键回到上次。
-	</Card>
-	<Card title="智能章节识别 + 分卷" icon="bars">
-		规则引擎告别写死的 `第…章` 正则,准确切分「卷 → 章」,生成可折叠的目录树,长篇也不迷路。
-	</Card>
-	<Card title="AI 一键生成书源 🆕" icon="document">
-		配套 `booksource-generator` skill:把任意小说站 URL 交给 AI,自动逆向出书源 → `trn doctor` 全流程校验 → `trn import` 一键导入即用。做书源不再手写规则。
-	</Card>
-	<Card title="强大的书源规则引擎 🆕" icon="puzzle">
-		取值后端 CSS / XPath / JSONPath / 正则任选;`clean` 流水线内置 AES/DES 加解密、Base64/Hex/URL 编解码、MD5/SHA/HMAC、繁简转换 —— 正文加密、URL 签名这类反爬,纯声明式即可拿下;实在动态的还有 JS 逃生舱。
-	</Card>
-	<Card title="反爬 / 浏览器辅助 🆕" icon="setting">
-		撞上 Cloudflare?复用系统已装浏览器解挑战、领 `cf_clearance` 再交回快请求 —— 能自动就自动,必要时点一下「我是真人」即可。正文若被加密,结合规则引擎的加解密算子一并还原。
-	</Card>
-	<Card title="TTS 听书" icon="star">
-		内置 Kokoro 中文语音合成,边听边高亮当前句,解放双眼。
-	</Card>
-	<Card title="终端原生 · 跨平台" icon="laptop">
-		Rust + React 式 TUI 框架 [ratatui-kit](https://yexiyue.github.io/ratatui-kit-website/) 构建,单二进制,Windows / macOS / Linux 通吃,主题可自定义。
-	</Card>
-</CardGrid>
+<Bento />
 
-## 🚀 30 秒上手
+## 让 AI 帮你做书源
+
+<div class="tn-split">
+
+<div>
+
+别人做书源要手写一堆规则，TRNovel 把「逆向、校验、导入」交给 AI 串成闭环：给一个小说站
+URL，Agent 自动探站并逆向出选择器，`trn doctor` 逐项体检到全绿，导入后立刻能读。
+
+书源是结构化 JSON，对 AI 友好，schema 由 Rust 类型自动生成。详见
+[书源参考](/TRNovel/book-source/intro)与[反爬与浏览器辅助](/TRNovel/reference/anti-scraping)。
+
+</div>
+
+<div>
+
+```bash title="从 URL 到能读,三条命令"
+# 给 Agent 装上 skill,然后把站点 URL 交给它
+npx skills add https://github.com/yexiyue/TRNovel/tree/main/skills/booksource-generator
+
+# 全流程体检生成的书源,逐项检查到全绿
+trn doctor example.v2.json
+
+# 导入后即可在网络小说模式里阅读
+trn import example.v2.json && trn -n
+```
+
+</div>
+
+</div>
+
+## 看它跑起来
+
+<Gallery />
+
+## 30 秒上手
 
 <Tabs syncKey="install">
-	<TabItem label="一键脚本">
+	<TabItem label="macOS / Linux">
 		```bash
-		# macOS / Linux
 		curl --proto '=https' --tlsv1.2 -LsSf https://github.com/yexiyue/TRNovel/releases/latest/download/trnovel-installer.sh | sh
+		```
+	</TabItem>
+	<TabItem label="Windows">
+		```powershell
+		powershell -ExecutionPolicy Bypass -c "irm https://github.com/yexiyue/TRNovel/releases/latest/download/trnovel-installer.ps1 | iex"
 		```
 	</TabItem>
 	<TabItem label="Homebrew">
@@ -72,9 +72,14 @@ import ttsImg from '../../assets/guides/tts/novel-tts.png';
 		cargo install trnovel
 		```
 	</TabItem>
+	<TabItem label="npm">
+		```bash
+		npm i -g @trnovel/trnovel
+		```
+	</TabItem>
 </Tabs>
 
-装好后即可开读:
+装好后即可开读：
 
 ```bash
 trn            # 打开主页
@@ -85,40 +90,11 @@ trn -l ./书库   # 读某个目录下的本地小说
 
 <Aside type="tip">还有 `trn doctor <书源.json>` 体检书源、`trn import <书源.json>` 一键导入。完整命令见 [CLI 参考](/TRNovel/reference/cli)。</Aside>
 
-## 🤖 让 AI 帮你做书源(独一份)
-
-别人做书源要手写一堆规则,TRNovel 把这件事交给 AI —— 配套 `booksource-generator` skill 把「逆向 → 校验 → 导入」串成闭环:
-
-<Steps>
-1. 把小说站 URL 交给装了 skill 的 AI,它探站、逆向出 search / 目录 / 正文 的选择器;
-2. `trn doctor` 全流程体检,逐项 ✓/✗ 迭代到全绿(连分卷、反爬都帮你处理);
-3. `trn import` 导入 —— 立刻在 `trn -n` 里读到这个站。
-</Steps>
-
-书源是**结构化 JSON、对 AI 友好**,schema 由 Rust 类型自动生成、永不漂移。详见 [书源参考](/TRNovel/book-source/intro) 与 [反爬与浏览器辅助](/TRNovel/reference/anti-scraping)。
-
-## 📸 看它跑起来
+## 继续深入
 
 <CardGrid>
-	<Card title="沉浸式阅读">
-		<Image src={readImg} alt="TRNovel 阅读界面" />
-	</Card>
-	<Card title="清爽主页">
-		<Image src={homeImg} alt="TRNovel 主页" />
-	</Card>
-	<Card title="可折叠分卷目录">
-		<Image src={selectChapterImg} alt="分卷目录树" />
-	</Card>
-	<Card title="TTS 听书">
-		<Image src={ttsImg} alt="TTS 听书" />
-	</Card>
-</CardGrid>
-
-## 📚 了解更多
-
-<CardGrid>
-	<LinkCard title="使用指南" description="从安装到阅读、网络小说、听书、主题,逐步上手。" href="/TRNovel/guides/intro" />
-	<LinkCard title="书源参考" description="书源结构、规则语法,以及如何制作一个书源。" href="/TRNovel/book-source/intro" />
+	<LinkCard title="使用指南" description="从安装到阅读、网络小说、听书、主题，逐步上手。" href="/TRNovel/guides/intro" />
+	<LinkCard title="书源参考" description="书源结构、规则语法，以及如何制作一个书源。" href="/TRNovel/book-source/intro" />
 	<LinkCard title="反爬与浏览器辅助" description="Cloudflare 挑战的工作方式与降级策略。" href="/TRNovel/reference/anti-scraping" />
 	<LinkCard title="CLI 命令参考" description="trn 的全部子命令与参数。" href="/TRNovel/reference/cli" />
 </CardGrid>

@@ -1,0 +1,65 @@
+/* TRNovel 官网首页样式 token 与共享布局
+   圆角系统:容器/按钮/窗口统一 12px,小型代码 chip 8px */
+
+:root {
+	/* 亮色主题(Starlight 默认 data-theme="light") */
+	--tn-accent: #0c7a54;
+	--tn-accent-contrast: #ffffff;
+	--tn-surface: #f6f8fa;
+	--tn-surface-2: #eef1f5;
+	--tn-border: #d0d7de;
+	--tn-mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+
+[data-theme="dark"] {
+	--tn-accent: #3ddc97;
+	--tn-accent-contrast: #06281b;
+	--tn-surface: #161b22;
+	--tn-surface-2: #1c232e;
+	--tn-border: #2b3240;
+}
+
+/* 首页(带 hero 的 splash 页)加宽内容列 */
+[data-has-hero] {
+	--sl-content-width: 74rem;
+}
+
+[data-has-hero] .sl-markdown-content h2 {
+	font-size: clamp(1.6rem, 3vw, 2.1rem);
+	letter-spacing: -0.02em;
+	margin-top: 5.5rem;
+	text-wrap: balance;
+}
+
+/* 窄屏下 Tab 标签不在内部折行,整条 tablist 横向滚动 */
+[data-has-hero] [role="tablist"] [role="tab"] {
+	white-space: nowrap;
+}
+
+/* 首页 Aside 提示块改用品牌绿,避免默认紫色破坏单一强调色 */
+[data-has-hero] .starlight-aside--tip {
+	border-inline-start-color: var(--tn-accent);
+	background-color: color-mix(in srgb, var(--tn-accent) 10%, var(--sl-color-bg));
+	color: var(--sl-color-white);
+}
+
+[data-has-hero] .starlight-aside--tip .starlight-aside__title {
+	color: var(--tn-accent);
+}
+
+/* 左叙事 + 右代码 的双栏布局 */
+.tn-split {
+	display: grid;
+	gap: 1.5rem 2.5rem;
+	align-items: start;
+}
+
+@media (min-width: 900px) {
+	.tn-split {
+		grid-template-columns: 5fr 7fr;
+	}
+}
+
+.tn-split :first-child {
+	margin-top: 0;
+}

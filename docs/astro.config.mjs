@@ -54,6 +54,16 @@ export default defineConfig({
         ]),
       ],
       title: "TRNovel",
+      components: {
+        // 首页自定义 Hero(覆盖 Nova 主题的 Hero,仅 splash 页带 hero frontmatter 时渲染)
+        Hero: "./src/components/landing/Hero.astro",
+      },
+      customCss: ["./src/styles/landing.css"],
+      logo: {
+        light: "./src/assets/trnovel-mark-light.svg",
+        dark: "./src/assets/trnovel-mark-dark.svg",
+        alt: "TRNovel",
+      },
       social: [
         {
           icon: "github",

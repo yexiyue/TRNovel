@@ -1,0 +1,271 @@
+---
+// 首页自定义 Hero:左文案 + 安装命令,右真实截图装进终端窗口框
+import { Image } from "astro:assets";
+import readImg from "../../assets/guides/read.png";
+
+const base = "/TRNovel";
+---
+
+<section class="tn-hero">
+	<div class="copy">
+		<h1>在终端里，<span class="accent">优雅地</span><span class="nowrap">读小说</span></h1>
+		<p class="sub">
+			本地 TXT 与网络书源双修，AI 一键生成书源，还能 TTS 听书。单二进制，开箱即用。
+		</p>
+		<div class="actions">
+			<a class="btn primary" href={`${base}/guides/intro`}>快速开始</a>
+			<a class="btn ghost" href="https://github.com/yexiyue/TRNovel">GitHub</a>
+		</div>
+		<button class="install" type="button" data-cmd="cargo install trnovel" aria-label="复制安装命令">
+			<code><span class="prompt">$</span> cargo install trnovel</code>
+			<span class="hint" data-idle>复制</span>
+			<span class="hint" data-done>已复制</span>
+		</button>
+	</div>
+	<figure class="window">
+		<div class="bar">
+			<span class="dot red"></span>
+			<span class="dot yellow"></span>
+			<span class="dot green"></span>
+			<span class="title">trn</span>
+		</div>
+		<div class="crop">
+			<Image src={readImg} alt="TRNovel 阅读界面截图" loading="eager" />
+		</div>
+	</figure>
+</section>
+
+<script>
+	for (const btn of document.querySelectorAll<HTMLButtonElement>(".install")) {
+		btn.addEventListener("click", async () => {
+			const cmd = btn.dataset.cmd;
+			if (!cmd) return;
+			try {
+				await navigator.clipboard.writeText(cmd);
+				btn.classList.add("copied");
+				setTimeout(() => btn.classList.remove("copied"), 1600);
+			} catch {
+				/* 剪贴板不可用时静默,命令本身可见可手抄 */
+			}
+		});
+	}
+</script>
+
+<style>
+	.tn-hero {
+		display: grid;
+		gap: 2.5rem;
+		align-items: center;
+		padding-block: 2.5rem 1rem;
+	}
+
+	@media (min-width: 960px) {
+		.tn-hero {
+			grid-template-columns: 11fr 13fr;
+			gap: 3.5rem;
+			padding-block: 4rem 2rem;
+		}
+	}
+
+	h1 {
+		margin: 0;
+		font-size: clamp(2.2rem, 5vw, 3.4rem);
+		line-height: 1.12;
+		letter-spacing: -0.03em;
+		color: var(--sl-color-white);
+	}
+
+	.accent {
+		color: var(--tn-accent);
+	}
+
+	.nowrap {
+		white-space: nowrap;
+	}
+
+	.sub {
+		margin: 1.1rem 0 0;
+		font-size: 1.05rem;
+		line-height: 1.7;
+		color: var(--sl-color-gray-2);
+		max-width: 36ch;
+	}
+
+	.actions {
+		display: flex;
+		flex-wrap: wrap;
+		gap: 0.75rem;
+		margin-top: 1.75rem;
+	}
+
+	.btn {
+		display: inline-flex;
+		align-items: center;
+		padding: 0.6rem 1.5rem;
+		border-radius: 12px;
+		font-weight: 600;
+		font-size: 0.95rem;
+		text-decoration: none;
+		transition:
+			transform 0.15s ease,
+			border-color 0.15s ease,
+			background-color 0.15s ease;
+	}
+
+	.btn:active {
+		transform: scale(0.98);
+	}
+
+	.btn.primary {
+		background: var(--tn-accent);
+		color: var(--tn-accent-contrast);
+	}
+
+	.btn.primary:hover {
+		transform: translateY(-1px);
+	}
+
+	.btn.ghost {
+		border: 1px solid var(--tn-border);
+		color: var(--sl-color-white);
+	}
+
+	.btn.ghost:hover {
+		border-color: var(--tn-accent);
+	}
+
+	.install {
+		display: inline-flex;
+		align-items: center;
+		gap: 1rem;
+		margin-top: 1.25rem;
+		padding: 0.55rem 1rem;
+		border: 1px solid var(--tn-border);
+		border-radius: 12px;
+		background: var(--tn-surface);
+		cursor: pointer;
+		font-family: var(--tn-mono);
+		font-size: 0.85rem;
+		color: var(--sl-color-white);
+		transition: border-color 0.15s ease;
+	}
+
+	.install:hover {
+		border-color: var(--tn-accent);
+	}
+
+	.install code {
+		background: none;
+		padding: 0;
+	}
+
+	.prompt {
+		color: var(--tn-accent);
+		margin-inline-end: 0.4em;
+	}
+
+	.hint {
+		font-size: 0.75rem;
+		color: var(--sl-color-gray-3);
+	}
+
+	.hint[data-done] {
+		display: none;
+		color: var(--tn-accent);
+	}
+
+	.install.copied .hint[data-idle] {
+		display: none;
+	}
+
+	.install.copied .hint[data-done] {
+		display: inline;
+	}
+
+	/* 终端窗口框:始终深色,与品牌图标的三色按钮呼应 */
+	.window {
+		margin: 0;
+		border: 1px solid #30363d;
+		border-radius: 12px;
+		overflow: hidden;
+		background: #0d1117;
+		box-shadow: 0 24px 60px -28px rgb(13 17 23 / 0.45);
+	}
+
+	.bar {
+		display: flex;
+		align-items: center;
+		gap: 7px;
+		padding: 10px 14px;
+		background: #161b22;
+		border-bottom: 1px solid #30363d;
+	}
+
+	.dot {
+		width: 10px;
+		height: 10px;
+		border-radius: 50%;
+	}
+
+	.dot.red {
+		background: #ff5f57;
+	}
+
+	.dot.yellow {
+		background: #febc2e;
+	}
+
+	.dot.green {
+		background: #28c840;
+	}
+
+	.title {
+		margin-inline-start: 8px;
+		font-family: var(--tn-mono);
+		font-size: 12px;
+		color: #8b949e;
+	}
+
+	/* 截图带 VS Code 上下边条,按比例裁掉(margin 百分比相对宽度) */
+	.crop {
+		overflow: hidden;
+	}
+
+	.crop img {
+		display: block;
+		width: 100%;
+		height: auto;
+		margin-top: -2.9%;
+		margin-bottom: -2.3%;
+	}
+
+	@media (prefers-reduced-motion: no-preference) {
+		.copy > *,
+		.window {
+			animation: tn-rise 0.6s cubic-bezier(0.16, 1, 0.3, 1) both;
+		}
+
+		.copy > :nth-child(2) {
+			animation-delay: 0.06s;
+		}
+
+		.copy > :nth-child(3) {
+			animation-delay: 0.12s;
+		}
+
+		.copy > :nth-child(4) {
+			animation-delay: 0.18s;
+		}
+
+		.window {
+			animation-delay: 0.15s;
+		}
+	}
+
+	@keyframes tn-rise {
+		from {
+			opacity: 0;
+			transform: translateY(18px);
+		}
+	}
+</style>
