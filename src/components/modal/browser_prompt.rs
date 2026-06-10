@@ -11,7 +11,7 @@ use crossterm::event::{Event, KeyCode, KeyEventKind};
 use parse_book_source::AuthDecision;
 use ratatui::{
     layout::{Alignment, Constraint, Margin},
-    style::{Style, Stylize},
+    style::Style,
     text::Line,
 };
 use ratatui_kit::{

@@ -1,7 +1,7 @@
 use crossterm::event::{Event, KeyEventKind};
 use ratatui::{
     layout::{Alignment, Constraint},
-    style::{Style, Stylize},
+    style::Style,
     text::Line,
     widgets::Padding,
 };

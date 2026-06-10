@@ -1,10 +1,6 @@
 use crate::hooks::UseThemeConfig;
 use crossterm::event::{Event, KeyCode, KeyEventKind};
-use ratatui::{
-    layout::Constraint,
-    style::{Style, Stylize},
-    text::Line,
-};
+use ratatui::{layout::Constraint, style::Style, text::Line};
 use ratatui_kit::prelude::*;
 use std::ops::Deref;
 use tui_input::backend::crossterm::EventHandler;
@@ -30,6 +26,10 @@ pub fn SearchInput(
     let mut is_inputting = *hooks.use_context::<State<bool>>();
 
     let mut value = hooks.use_state(tui_input::Input::default);
+    // Enter 提交后「退出输入态」延迟到下一帧(经下方 effect),而非在 Enter 处理中同步翻 false。
+    // 否则同一个 Enter 被广播给所有 use_events 时,因 handler 执行顺序不定 + State::set 立即生效,
+    // 父级列表(门控 `!is_inputting`)可能在本次分发中途看到 is_inputting=false → 误触「选中→进入阅读/关列表」。
+    let mut pending_exit = hooks.use_state(|| false);
     let mut is_valid = hooks.use_state(|| None::<bool>);
     let mut validate_fn = props.validate.take();
     let mut status_message = hooks.use_state(String::new);
@@ -46,6 +46,18 @@ pub fn SearchInput(
             value.set(new_value);
         },
         props.value.clone(),
+    );
+
+    // 延迟退出输入态:Enter 提交置 `pending_exit`,本帧结束后才真正 is_inputting=false,
+    // 与广播到父级列表的同一个 Enter 解耦,杜绝「搜索 Enter 误触选中章节」。
+    hooks.use_effect(
+        move || {
+            if pending_exit.get() {
+                is_inputting.set(false);
+                pending_exit.set(false);
+            }
+        },
+        pending_exit.get(),
     );
 
     hooks.use_events(move |event| {
@@ -74,7 +86,8 @@ pub fn SearchInput(
                                 on_clear(());
                             }
                             if valid {
-                                is_inputting.set(false);
+                                // 延迟到下一帧退出输入态(见上方 effect),避免与同一 Enter 抢跑。
+                                pending_exit.set(true);
                             }
                         }
                     }

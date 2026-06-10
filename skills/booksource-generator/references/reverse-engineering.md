@@ -166,7 +166,13 @@ sed -e 's/<[^>]*>/ /g' /tmp/page.html | tr -s ' \n' ' \n' | grep -v '^ *$' | hea
    - 正文/搜索是 **token 门控的 JSON 接口**(需先有某 cookie):把下发该 cookie 的辅助端点(如 `https://站点/user/hm.html`)加进 `http.warmup`,引擎的 cookie_store 会跨请求保留,再用 `via:"json"` 解接口。
 4. **接受降级**。挑战自适应,有时需用户在弹出浏览器里点一下 Turnstile;阅读链路通常开放,搜索 ✗ 不影响读书,引导用浏览即可。
 
-**架构边界(诚实告知用户)**:若**整页正文由站点 JS 异步渲染 / 加密接口动态拉取**(如 SPA + CryptoJS 签名的 `/api/*`,无任何静态路径返回正文文本),当前 reqwest + cookie 烤箱**无法读取**;`fetcher:browser` 只是 CF 挑战求解器、**不会跑站点的内容加载 JS**。这类站只能做到浏览/书详情/目录,正文需要「能执行页面 JS 的渲染型 fetcher」(暂不支持)。把能做的做好、保留正文选择器兜底,并如实说明。
+**渲染型取页(render-fetcher,SPA / 签名接口站)**:若**结果由站点 JS 异步渲染 / 签名接口动态拉取**(如 SPA + ByteDance `sec_sdk`/CryptoJS 签名的 `/api/*`,无静态路径返回内容,典型:番茄网页搜索),给该 op 的 `request` 标 `render: true`,让受控浏览器**跑站点自身 JS**(签名由真浏览器+真 SPA 完成,我们从不复刻签名),再二选一取结果:
+- `interceptApi: "<URL 子串>"` —— CDP 拦截匹配的**签名 API 响应体**(交 `via:"json"` 规则)。用于「结果只在签名接口、DOM 无关键字段(如 book_id)」的站。
+- `readyFor: "<CSS 选择器>"` —— 等该选择器渲染出现后取**渲染后 DOM**(交 CSS 规则)。用于「DOM 里有完整数据」的 SPA。
+
+渲染默认 **headless**(快、无窗口);失败优雅降级(无浏览器 → 该 op 标 ✗、不影响其它)。`doctor` 带浏览器构建,能真正渲染验证 render op。注意:**渲染页字体可能与正文页不同**(同 family、不同 woff2、PUA 映射不同),结果的 PUA 字段需各自的 `gen-fontmap` 表。番茄搜索范例见 `fanqie-web.v2.json` 的 `search`(`render`+`interceptApi:"search_book/v1"`,`via:json` 解 `$.data.search_book_data_list[*]`,`book_id`→bookUrl,名/作者走搜索 fontMap)。
+
+**真正的边界**:若整站既无渲染入口也无可拦截的结构化接口(纯 canvas 绘制等),仍无解——如实告知用户。
 
 ## 常见 CMS 模式
 - **MXCMS / 苹果CMS(MacCMS)系**:静态目录 `/mxstatic/`、class 多为 `module-*`、底层路由 `/index.php/vod/...`、联想接口 `/index.php/ajax/suggest?mid=&wd=`;书详情常有 `og:novel:*` meta。`example-bilixs.v2.json` 即此类。

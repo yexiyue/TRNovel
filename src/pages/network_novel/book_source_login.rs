@@ -9,7 +9,6 @@ use crossterm::event::{Event, KeyCode, KeyEventKind};
 use parse_book_source::{BookSource, LoginSignal, source::RowUiType};
 use ratatui::{
     layout::{Constraint, Margin},
-    style::Stylize,
     text::{Line, Span},
     widgets::Paragraph,
 };
@@ -95,12 +94,16 @@ pub fn BookSourceLogin(mut hooks: Hooks) -> impl Into<AnyElement<'static>> {
         submit.get(),
     );
 
-    // 登录结束(已触发、加载完、无错)→ 复位输入态并返回书源管理页。
+    // 登录成功(已触发、加载完、无错)→ 复位输入态并**直接进入选书页**(而非弹回书源列表),
+    // 登录态已落盘、随 build_engine 注入,用户即可读全本;再回列表时该源显示「已登录」。
     hooks.use_effect(
-        move || {
-            if submit.get() > 0 && !loading.get() && error.read().is_none() {
-                is_inputting.set(false);
-                navigate.push("/book-source");
+        {
+            let source = source.clone();
+            move || {
+                if submit.get() > 0 && !loading.get() && error.read().is_none() {
+                    is_inputting.set(false);
+                    navigate.push_with_state("/select-books", source.clone());
+                }
             }
         },
         loading.get(),

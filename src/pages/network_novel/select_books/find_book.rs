@@ -9,7 +9,7 @@ use crossterm::event::{Event, KeyCode, KeyEventKind};
 use parse_book_source::{BookListItem, Engine};
 use ratatui::{
     text::{Line, Span},
-    widgets::{Block, Padding, Paragraph, WidgetRef, Wrap},
+    widgets::{Block, Padding, Paragraph, Widget, WidgetRef, Wrap},
 };
 use ratatui_kit::prelude::*;
 use tui_widget_list::{ListBuildContext, ListState};
@@ -154,7 +154,8 @@ pub fn FindBooks(props: &FindBooksProps, mut hooks: Hooks) -> impl Into<AnyEleme
             },
         )
         WarningModal(
-            tip: format!("{:?}", error.read().as_ref()),
+            // Display(非 Debug):让底层精心写的中文提示(渲染失败/未拦截到/浏览器不可用)直达用户。
+            tip: error.read().as_ref().map(|e| e.to_string()).unwrap_or_default(),
             is_error: error.read().is_some(),
             open: error.read().is_some(),
         )
@@ -180,7 +181,7 @@ impl WidgetRef for FindBookItem {
         };
         let inner_area = block.inner(area);
 
-        block.render_ref(area, buf);
+        block.render(area, buf);
 
         let text_style = if self.selected {
             self.theme.basic.text.patch(self.theme.selected)
@@ -250,6 +251,6 @@ impl WidgetRef for FindBookItem {
         }
 
         let paragraph = Paragraph::new(text).wrap(Wrap { trim: true });
-        paragraph.render_ref(inner_area, buf);
+        paragraph.render(inner_area, buf);
     }
 }

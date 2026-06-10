@@ -2,7 +2,8 @@ use crossterm::event::{Event, KeyCode, KeyEventKind};
 use parse_book_source::BookSource;
 use ratatui::{
     layout::{Constraint, Layout},
-    text::Line,
+    style::Style,
+    text::{Line, Span},
     widgets::{Block, Padding, Widget, WidgetRef},
 };
 use ratatui_kit::prelude::*;
@@ -18,6 +19,8 @@ use crate::{
 pub struct BookSourceListItem {
     pub book_source: BookSource,
     pub selected: bool,
+    /// 该书源是否已登录(per-source 状态存有有效 cookie/loginHeader)。
+    pub logged_in: bool,
     pub theme: ThemeConfig,
 }
 
@@ -48,10 +51,21 @@ impl WidgetRef for BookSourceListItem {
             Layout::horizontal([Constraint::Percentage(50), Constraint::Percentage(50)])
                 .areas(bottom);
 
-        Line::from(item.name.clone())
-            .style(text_style)
-            .centered()
-            .render(top, buf);
+        // 书名行徽标:已登录的源显示「已登录」(成功色),仅支持登录但未登录的显示
+        // 「可登录(L)」(信息色),让用户一眼看出登录状态、知道哪些可按 L 登录。
+        let mut name_spans = vec![Span::styled(item.name.clone(), text_style)];
+        if self.logged_in {
+            name_spans.push(Span::styled(
+                "  ● 已登录",
+                text_style.patch(Style::new().fg(self.theme.colors.success_color)),
+            ));
+        } else if item.has_login() {
+            name_spans.push(Span::styled(
+                "  可登录(L)",
+                self.theme.basic.border_info.patch(text_style),
+            ));
+        }
+        Line::from(name_spans).centered().render(top, buf);
 
         Line::from(format!("网址: {}", item.url))
             .style(self.theme.basic.text.patch(text_style))
@@ -78,7 +92,13 @@ pub fn SelectBookSource(
     let book_source_cache = *hooks.use_context::<State<Option<BookSourceCache>>>();
     let mut navigate = hooks.use_navigate();
     let theme = hooks.use_theme_config();
-    let state = hooks.use_state(ListState::default);
+    // 默认选中第 0 项:ListState::default() 的 selected 为 None,会导致刚进页面(未按 j/k 前)
+    // 没有任何选中项,Enter/L/D 全部静默无反应。给个初始选中,既有可见光标也让快捷键即时可用。
+    let state = hooks.use_state(|| {
+        let mut s = ListState::default();
+        s.selected = Some(0);
+        s
+    });
     let mut delete_modal_open = hooks.use_state(|| false);
 
     let book_sources = book_source_cache
@@ -86,6 +106,13 @@ pub fn SelectBookSource(
         .as_ref()
         .map(|c| c.book_sources.clone())
         .unwrap_or_default();
+
+    // 各书源的登录状态(读 per-source 状态;TTL 过期视为未登录)。返回列表页即重算,
+    // 故登录成功后再回来能看到「已登录」。
+    let logged_in: Vec<bool> = book_sources
+        .iter()
+        .map(|s| crate::login::is_logged_in(&s.url))
+        .collect();
 
     let book_sources_keys = book_sources.clone();
     hooks.use_events(move |event| {
@@ -100,13 +127,18 @@ pub fn SelectBookSource(
                         delete_modal_open.set(false);
                     }
                 }
-                // 书源登录(loginUrl/loginUi 非空才有意义)→ 进登录页。
+                // 书源登录(loginUrl/loginUi 非空才有意义):未登录 → 进登录页;
+                // 已登录 → 无需重复登录,直接进选书页(「已登录 → 直接进入下一路由」)。
                 KeyCode::Char('l') | KeyCode::Char('L') => {
                     if let Some(i) = state.read().selected
                         && let Some(src) = book_sources_keys.get(i).cloned()
                         && src.has_login()
                     {
-                        navigate.push_with_state("/book-source-login", src);
+                        if crate::login::is_logged_in(&src.url) {
+                            navigate.push_with_state("/select-books", src);
+                        } else {
+                            navigate.push_with_state("/book-source-login", src);
+                        }
                     }
                 }
                 _ => {}
@@ -129,11 +161,13 @@ pub fn SelectBookSource(
             top_title: Line::from("选择书源 (回车确认)").style(theme.basic.border_title).centered(),
             render_item:{
                 let theme=theme.clone();
+                let logged_in=logged_in.clone();
                 move |context: &ListBuildContext| {
                     let item = &book_sources[context.index];
                     (BookSourceListItem{
                         book_source: item.clone(),
                         selected: context.is_selected,
+                        logged_in: logged_in.get(context.index).copied().unwrap_or(false),
                         theme: theme.clone(),
                     }.into(), 5)
                 }

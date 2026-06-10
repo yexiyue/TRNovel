@@ -37,6 +37,16 @@
         }
       ]
     },
+    "fontMaps": {
+      "description": "命名共享 fontMap 表(`名字 -> {码点:真字}`):供多个 clean 步骤按名复用,避免同一张 大表在书源里重复内联。clean 的 `fontMap` 写字符串名(如 `{\"fontMap\":\"search\"}`)即引用本表, 在 [`BookSource::from_json`] 解析时就地展开为内联表(运行期与直接内联等价)。",
+      "type": "object",
+      "additionalProperties": {
+        "type": "object",
+        "additionalProperties": {
+          "type": "string"
+        }
+      }
+    },
     "group": {
       "type": "string"
     },
@@ -1084,6 +1094,13 @@
             "type": "string"
           }
         },
+        "interceptApi": {
+          "description": "CDP 拦截:渲染时拦截 URL 含此子串的响应体作为取页结果(交 `via:\"json\"` 规则)。 用于「结果只在签名 API、DOM 无关键字段」的站点(典型:番茄搜索 `search_book/v1`)。",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
         "method": {
           "default": "GET",
           "allOf": [
@@ -1091,6 +1108,17 @@
               "$ref": "#/definitions/Method"
             }
           ]
+        },
+        "readyFor": {
+          "description": "渲染就绪等待:渲染后轮询直到该 CSS 选择器出现,再取渲染后 DOM 交 CSS 规则。 与 `interceptApi` 二选一:无 `interceptApi` 时用本字段走「渲染后 DOM」取页。",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "render": {
+          "description": "渲染型取页(`render-fetcher`):为真则用受控浏览器渲染本请求 URL、跑站点自身 JS, 而非 reqwest 直取——用于 SPA 站点(结果由 JS 渲染 / 签名 API 返回)。默认 false = 现状。 仅 `browser` feature 且浏览器可用时生效;否则该 op 优雅降级。",
+          "type": "boolean"
         },
         "url": {
           "$ref": "#/definitions/UrlOrRule"

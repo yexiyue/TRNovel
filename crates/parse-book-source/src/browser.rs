@@ -25,6 +25,18 @@ use tokio::sync::Mutex;
 /// **不再反复启动浏览器**(避免页面反复重跑取页时浏览器频闪)。重启 app 复位。
 static SOLVE_FAILED: AtomicBool = AtomicBool::new(false);
 
+/// 渲染型取页(`render-fetcher`)本会话是否已判定不可用(启动反复失败/被拒签)。置真后
+/// render 请求直接降级,避免每次搜索都重开浏览器频闪(与 [`SOLVE_FAILED`] 对称)。重启 app 复位。
+static RENDER_FAILED: AtomicBool = AtomicBool::new(false);
+
+/// 浏览器会话进程内串行锁:render/solve/login **共享同一持久 profile**(`~/.novel/browser-profile`),
+/// 并发启动会抢 `SingletonLock` 互相挤崩/频闪。所有启动浏览器的路径经 [`BrowserFetcher::launch`]
+/// 取此锁、持到 `browser.close()`,保证同一时刻只有一个浏览器实例占用 profile。
+static BROWSER_LOCK: Mutex<()> = Mutex::const_new(());
+
+/// 渲染失败时的有界重试次数(瞬态/风控常重渲即恢复;总尝试 = 1 + 重试)。
+const RENDER_RETRY: u32 = 1;
+
 /// 解挑战产出:可注入 reqwest 的 Cookie 头 + 浏览器真实 UA。
 ///
 /// UA 必须随 cookie 一起带走:`cf_clearance` 绑签发它的 UA(见 design D6)。
@@ -251,26 +263,9 @@ impl BrowserFetcher {
 
     /// headful 打开 `url` 解挑战,轮询取得 `cf_clearance`,返回可注入 reqwest 的 [`Clearance`]。
     pub async fn solve(&self, url: &str) -> Result<Clearance, FetchError> {
-        // 清理上次异常退出残留的单例锁:此 profile 由本 app 独占,残留 SingletonLock
-        // 会让新启动的浏览器因「profile 被占用」瞬间退出(表现为频闪 + "Browser process exit")。
-        for name in ["SingletonLock", "SingletonSocket", "SingletonCookie"] {
-            let _ = std::fs::remove_file(self.opts.profile_dir.join(name));
-        }
-
-        let config = BrowserConfig::builder()
-            .chrome_executable(&self.exe)
-            .user_data_dir(&self.opts.profile_dir)
-            .with_head() // 必须 headful(headless 解不开,见 design D4)
-            .arg("--no-first-run")
-            .arg("--no-default-browser-check")
-            .arg("--disable-blink-features=AutomationControlled")
-            .build()
-            .map_err(FetchError::Browser)?;
-
-        let (mut browser, mut handler) = Browser::launch(config).await.map_err(browser_err)?;
-        // 持续驱动 CDP 连接直到关闭(stream 返回 None)。
-        // 不能因单个错误事件就退出 —— 否则会把正在进行的命令的响应通道丢掉,报 "oneshot canceled"。
-        let handler_task = tokio::spawn(async move { while handler.next().await.is_some() {} });
+        // 经 launch 统一启动:取 BROWSER_LOCK 串行化(与 render/login 互斥同一 profile)+ 清单例锁。
+        // 必须 headful(headless 解不开,见 design D4)。`_guard` 持到本函数末尾 close 之后。
+        let (mut browser, handler_task, _guard) = self.launch(false).await?;
 
         let result = self.solve_inner(&browser, url).await;
 
@@ -325,6 +320,222 @@ impl BrowserFetcher {
             tokio::time::sleep(self.opts.poll_interval).await;
         }
     }
+
+    /// 渲染后 DOM 取页(方式 A):打开 `url`,跑站点自身 JS,轮询直到 `ready_for`(CSS 选择器)
+    /// 在超时内出现,返回渲染后 `outerHTML`;超时未就绪返回 `Err`(供上层降级)。
+    /// `headless=true` 走无头(渲染默认无头;仅登录/解挑战需 headful)。复用登录 profile(会员态)。
+    pub async fn render_dom(
+        &self,
+        url: &str,
+        ready_for: &str,
+        timeout: Duration,
+        headless: bool,
+    ) -> Result<String, FetchError> {
+        let (mut browser, handler_task, _guard) = self.launch(headless).await?;
+        let result = self
+            .render_dom_inner(&browser, url, ready_for, timeout)
+            .await;
+        let _ = browser.close().await;
+        handler_task.abort();
+        result
+    }
+
+    async fn render_dom_inner(
+        &self,
+        browser: &Browser,
+        url: &str,
+        ready_for: &str,
+        timeout: Duration,
+    ) -> Result<String, FetchError> {
+        use chromiumoxide::cdp::js_protocol::runtime::EvaluateParams;
+        let page = browser.new_page(url).await.map_err(browser_err)?;
+        // 事件驱动等待:注入 MutationObserver,选择器一出现即 resolve(true);JS 侧 setTimeout 仅作
+        // 总超时兜底(非 Rust 侧定时器轮询)。`{:?}` 把选择器转义为安全的 JS 字符串字面量。
+        let timeout_ms = timeout.as_millis().min(u32::MAX as u128) as u64;
+        let wait_js = format!(
+            "new Promise((resolve)=>{{const s={ready_for:?};\
+             if(document.querySelector(s))return resolve(true);\
+             const o=new MutationObserver(()=>{{if(document.querySelector(s)){{o.disconnect();resolve(true);}}}});\
+             o.observe(document.documentElement,{{childList:true,subtree:true}});\
+             setTimeout(()=>{{o.disconnect();resolve(false);}},{timeout_ms});}})"
+        );
+        let params = EvaluateParams::builder()
+            .expression(wait_js)
+            .await_promise(true)
+            .return_by_value(true)
+            .build()
+            .map_err(|e| FetchError::Browser(format!("构建 evaluate 参数失败: {e}")))?;
+        let ready = page
+            .evaluate(params)
+            .await
+            .map_err(browser_err)?
+            .into_value::<bool>()
+            .unwrap_or(false);
+        if !ready {
+            return Err(FetchError::Challenged(format!(
+                "渲染就绪超时(等待「{ready_for}」)@ {url}"
+            )));
+        }
+        // outerHTML 取值失败也作为明确错误返回(供降级/诊断),而非静默空串。
+        page.evaluate("document.documentElement.outerHTML")
+            .await
+            .map_err(browser_err)?
+            .into_value::<String>()
+            .map_err(|e| FetchError::Browser(format!("渲染后取 DOM 失败: {e} @ {url}")))
+    }
+
+    /// 启动浏览器(render/solve/login 共用):取进程内 [`BROWSER_LOCK`] 串行化(避免并发抢
+    /// 同一 profile 的 `SingletonLock`)→ 清单例锁 → `headless=false` 才 `with_head()`。
+    /// 返回 `(browser, handler_task, lock_guard)`:**guard 必须持到 `browser.close()` 之后**
+    /// (drop 即释放串行锁);调用方用毕须 `browser.close()` + `handler_task.abort()`。
+    async fn launch(
+        &self,
+        headless: bool,
+    ) -> Result<
+        (
+            Browser,
+            tokio::task::JoinHandle<()>,
+            tokio::sync::MutexGuard<'static, ()>,
+        ),
+        FetchError,
+    > {
+        // 串行锁:持到调用方 close,保证同一时刻只有一个浏览器占用 profile。
+        let guard = BROWSER_LOCK.lock().await;
+        for name in ["SingletonLock", "SingletonSocket", "SingletonCookie"] {
+            let _ = std::fs::remove_file(self.opts.profile_dir.join(name));
+        }
+        let mut builder = BrowserConfig::builder()
+            .chrome_executable(&self.exe)
+            .user_data_dir(&self.opts.profile_dir)
+            .arg("--no-first-run")
+            .arg("--no-default-browser-check")
+            .arg("--disable-blink-features=AutomationControlled");
+        if !headless {
+            builder = builder.with_head();
+        }
+        let config = builder.build().map_err(FetchError::Browser)?;
+        let (browser, mut handler) = Browser::launch(config).await.map_err(browser_err)?;
+        let handler_task = tokio::spawn(async move { while handler.next().await.is_some() {} });
+        Ok((browser, handler_task, guard))
+    }
+
+    /// 渲染 + CDP 拦截(方式 B PoC):打开 `url`,跑站点自身 JS(SPA 用 sec_sdk 自签名发请求),
+    /// 通过 CDP Network 域拦截 **URL 含 `api_contains`** 的响应体并返回(签名只在浏览器内用,我们只取结果)。
+    /// `headless=true` 走无头(更快、无窗口;登录之外的渲染适用,但需实测 sec_sdk 是否拒签无头)。
+    /// 复用登录过的 profile,故拦截到的是会员态结果。
+    pub async fn render_intercept(
+        &self,
+        url: &str,
+        api_contains: &str,
+        timeout: Duration,
+        headless: bool,
+    ) -> Result<String, FetchError> {
+        let (mut browser, handler_task, _guard) = self.launch(headless).await?;
+        let result = self
+            .intercept_inner(&browser, url, api_contains, timeout)
+            .await;
+        let _ = browser.close().await;
+        handler_task.abort();
+        result
+    }
+
+    async fn intercept_inner(
+        &self,
+        browser: &Browser,
+        url: &str,
+        api_contains: &str,
+        timeout: Duration,
+    ) -> Result<String, FetchError> {
+        use chromiumoxide::cdp::browser_protocol::network::{
+            EnableParams, EventLoadingFinished, EventResponseReceived,
+        };
+        // 先建空白页 + 开 Network + 挂监听(responseReceived 拿 request_id;loadingFinished 是
+        // body 完成的**精确事件信号**),再导航,避免错过 SPA 启动即发的请求。
+        let page = browser.new_page("about:blank").await.map_err(browser_err)?;
+        page.execute(EnableParams::default())
+            .await
+            .map_err(browser_err)?;
+        let mut responses = page
+            .event_listener::<EventResponseReceived>()
+            .await
+            .map_err(browser_err)?;
+        let mut finished = page
+            .event_listener::<EventLoadingFinished>()
+            .await
+            .map_err(browser_err)?;
+        page.goto(url).await.map_err(browser_err)?;
+
+        let deadline = Instant::now() + timeout;
+        // ① 事件驱动:等到 URL 含 api_contains 的 responseReceived,拿其 request_id。
+        let mut rid = None;
+        while rid.is_none() {
+            let remaining = deadline.saturating_duration_since(Instant::now());
+            if remaining.is_zero() {
+                break;
+            }
+            match tokio::time::timeout(remaining, responses.next()).await {
+                Ok(Some(ev)) if ev.response.url.contains(api_contains) => {
+                    rid = Some(ev.request_id.clone());
+                }
+                Ok(Some(_)) => {}           // 其它响应,继续
+                Ok(None) | Err(_) => break, // 流结束 / 超时
+            }
+        }
+        let Some(rid) = rid else {
+            return Err(FetchError::Challenged(format!(
+                "未拦截到含「{api_contains}」的响应(疑似未发出/被风控)@ {url}"
+            )));
+        };
+
+        // ② 先试取一次(快响应 body 可能已就绪);否则**等该 request 的 loadingFinished**
+        //    (body 完成的事件信号,不靠定时器轮询)再取,避免取到半截/空 body。
+        if let Some(body) = response_body(&page, &rid).await {
+            return Ok(body);
+        }
+        loop {
+            let remaining = deadline.saturating_duration_since(Instant::now());
+            if remaining.is_zero() {
+                break;
+            }
+            match tokio::time::timeout(remaining, finished.next()).await {
+                Ok(Some(ev)) if ev.request_id == rid => {
+                    if let Some(body) = response_body(&page, &rid).await {
+                        return Ok(body);
+                    }
+                    break; // loadingFinished 已到但仍取不到 body → 报错
+                }
+                Ok(Some(_)) => {}           // 其它请求的 finished,继续
+                Ok(None) | Err(_) => break, // 流结束 / 超时
+            }
+        }
+        Err(FetchError::Challenged(format!(
+            "拦截到含「{api_contains}」的响应但读取 body 失败/为空 @ {url}"
+        )))
+    }
+}
+
+/// 取一个请求的响应体并按 CDP `base64_encoded` 标志解码;取不到/为空/解码失败返回 `None`。
+async fn response_body(
+    page: &Page,
+    rid: &chromiumoxide::cdp::browser_protocol::network::RequestId,
+) -> Option<String> {
+    use chromiumoxide::cdp::browser_protocol::network::GetResponseBodyParams;
+    let resp = page
+        .execute(GetResponseBodyParams::new(rid.clone()))
+        .await
+        .ok()?;
+    if resp.result.body.is_empty() {
+        return None;
+    }
+    if resp.result.base64_encoded {
+        use base64::Engine as _;
+        let bytes = base64::engine::general_purpose::STANDARD
+            .decode(&resp.result.body)
+            .ok()?;
+        Some(String::from_utf8_lossy(&bytes).into_owned())
+    } else {
+        Some(resp.result.body)
+    }
 }
 
 impl BrowserFetcher {
@@ -338,22 +549,8 @@ impl BrowserFetcher {
         criteria: &LoginCriteria,
         signal: &LoginSignal,
     ) -> Result<LoginOutcome, FetchError> {
-        // 同 solve():清残留单例锁(否则新浏览器因 profile 被占瞬退、频闪)。
-        for name in ["SingletonLock", "SingletonSocket", "SingletonCookie"] {
-            let _ = std::fs::remove_file(self.opts.profile_dir.join(name));
-        }
-        let config = BrowserConfig::builder()
-            .chrome_executable(&self.exe)
-            .user_data_dir(&self.opts.profile_dir)
-            .with_head() // 登录必须 headful,用户在真实页面操作。
-            .arg("--no-first-run")
-            .arg("--no-default-browser-check")
-            .arg("--disable-blink-features=AutomationControlled")
-            .build()
-            .map_err(FetchError::Browser)?;
-
-        let (mut browser, mut handler) = Browser::launch(config).await.map_err(browser_err)?;
-        let handler_task = tokio::spawn(async move { while handler.next().await.is_some() {} });
+        // 经 launch 统一启动:取 BROWSER_LOCK 串行化 + 清单例锁;登录必须 headful。
+        let (mut browser, handler_task, _guard) = self.launch(false).await?;
 
         let result = self.login_inner(&browser, url, criteria, signal).await;
 
@@ -555,6 +752,59 @@ impl Fetcher for EscalatingFetcher {
     /// 升级式取完整响应:透传真实状态码与响应头(`net.connect` 依赖之),并保留解挑战逻辑。
     /// `fetch` 委托本方法 —— 升级语义实现一次,避免漂移。
     async fn fetch_full(&self, mut req: FetchRequest) -> Result<FetchResponse, FetchError> {
+        // 渲染型取页(`render-fetcher`):用受控浏览器渲染本 URL、跑站点自身 JS(默认 headless),
+        // 取「拦截的 API 响应」(优先)或「渲染后 DOM」。失败优雅降级(该 op 不可用,不影响其它)。
+        if req.render {
+            let Some(browser) = &self.browser else {
+                return Err(FetchError::Challenged(format!(
+                    "渲染取页需浏览器辅助,当前不可用 @ {}",
+                    req.url
+                )));
+            };
+            // 本会话渲染已判定不可用 → 直接降级,不再反复开浏览器频闪(与 SOLVE_FAILED 对称)。
+            if RENDER_FAILED.load(Ordering::Relaxed) {
+                return Err(FetchError::Challenged(format!(
+                    "渲染取页:浏览器辅助本会话已停用、已降级(可重启 app 重试)@ {}",
+                    req.url
+                )));
+            }
+            let abs = self.reqwest.resolve(&req.url);
+            // 渲染超时调小(12s):失败更快、不再像卡死;渲染/拦截类瞬态失败有界重试一次。
+            let timeout = Duration::from_secs(12);
+            let mut attempt = 0u32;
+            let body = loop {
+                let r = if let Some(api) = &req.intercept_api {
+                    browser.render_intercept(&abs, api, timeout, true).await
+                } else if let Some(ready) = &req.ready_for {
+                    browser.render_dom(&abs, ready, timeout, true).await
+                } else {
+                    return Err(FetchError::Challenged(format!(
+                        "render=true 需指定 interceptApi 或 readyFor @ {abs}"
+                    )));
+                };
+                match r {
+                    Ok(b) => break b,
+                    // 启动类失败(浏览器不可用)→ 置会话熔断,直接降级、不重试。
+                    Err(e @ FetchError::Browser(_)) => {
+                        RENDER_FAILED.store(true, Ordering::Relaxed);
+                        return Err(e);
+                    }
+                    // 渲染/拦截失败(超时/未拦截到,常为瞬态/风控)→ 有界重试一次(整轮重开浏览器)。
+                    Err(e) => {
+                        if attempt >= RENDER_RETRY {
+                            return Err(e);
+                        }
+                        attempt += 1;
+                        tokio::time::sleep(Duration::from_millis(1000)).await;
+                    }
+                }
+            };
+            return Ok(FetchResponse {
+                body,
+                status: 200,
+                ..Default::default()
+            });
+        }
         self.apply_clearance(&mut req).await;
         match self.reqwest.fetch_full(req.clone()).await {
             Err(FetchError::Challenged(msg)) => {
@@ -657,6 +907,24 @@ mod tests {
             resp.headers.get("set-cookie").map(String::as_str),
             Some("sid=zzz; Path=/"),
             "应透传响应头(Set-Cookie),而非默认空 headers"
+        );
+    }
+
+    // ── render-fetcher:无浏览器时渲染请求优雅降级(不 panic、不卡死,给含「浏览器」的提示)──
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn render_request_degrades_without_browser() {
+        use crate::error::FetchError;
+        let fetcher = EscalatingFetcher::new(&book_source("https://e.com"), None).unwrap();
+        let req = FetchRequest {
+            url: "/search/x".into(),
+            render: true,
+            intercept_api: Some("search_book/v1".into()),
+            ..Default::default()
+        };
+        let err = fetcher.fetch_full(req).await.unwrap_err();
+        assert!(
+            matches!(err, FetchError::Challenged(_)) && err.to_string().contains("浏览器"),
+            "无浏览器的 render 请求应降级为含「浏览器」的 Challenged,实际: {err}"
         );
     }
 }

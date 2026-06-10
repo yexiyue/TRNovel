@@ -8,7 +8,7 @@ use crossterm::event::{Event, KeyCode, KeyEventKind};
 use parse_book_source::{BookSource, Category, Engine};
 use ratatui::{
     layout::{Constraint, Margin},
-    style::{Style, Stylize},
+    style::Style,
     text::Line,
     widgets::{ListItem, ListState},
 };
@@ -90,7 +90,8 @@ pub fn SelectBooks(mut hooks: Hooks) -> impl Into<AnyElement<'static>> {
             }
         )
         WarningModal(
-            tip: format!("{:?}", error.read().as_ref()),
+            // Display(非 Debug):让底层中文错误提示直达用户,而非 Some(Errors(..)) 调试串。
+            tip: error.read().as_ref().map(|e| e.to_string()).unwrap_or_default(),
             is_error: error.read().is_some(),
             open: error.read().is_some(),
         )

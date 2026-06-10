@@ -128,6 +128,7 @@ impl SourceHost {
             method,
             body,
             headers: self.outbound_headers(url, extra),
+            ..Default::default()
         };
         let fetcher = self.fetcher.clone();
         let resp = self

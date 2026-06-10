@@ -1,6 +1,6 @@
 use crate::Result;
 use crate::utils::novel_catch_dir;
-use ratatui::style::{Color, Style, Stylize};
+use ratatui::style::{Color, Style};
 use serde::{Deserialize, Serialize};
 use std::fs::File;
 

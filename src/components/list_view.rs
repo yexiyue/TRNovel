@@ -1,8 +1,5 @@
 use ratatui::widgets::{Widget, WidgetRef};
-use ratatui::{
-    style::Style,
-    widgets::{Block, Clear},
-};
+use ratatui::{style::Style, widgets::Clear};
 use ratatui_kit::prelude::*;
 use std::{ops::Deref, sync::Arc};
 use tui_widget_list::{
@@ -39,6 +36,17 @@ impl Deref for WidgetWrapper {
     }
 }
 
+/// 默认渲染占位:0.30 起 ratatui 的 owned `Clear` 不再实现 `WidgetRef`,
+/// 这里用自有类型实现 `WidgetRef`(渲染时消费式渲染 `Clear`)。
+#[derive(Clone, Copy)]
+struct ClearWidget;
+
+impl WidgetRef for ClearWidget {
+    fn render_ref(&self, area: ratatui::layout::Rect, buf: &mut ratatui::buffer::Buffer) {
+        Clear.render(area, buf);
+    }
+}
+
 #[allow(clippy::type_complexity)]
 pub struct RenderItem<'a>(
     bool,
@@ -61,7 +69,10 @@ impl<'a> RenderItem<'a> {
 
 impl<'a> Default for RenderItem<'a> {
     fn default() -> Self {
-        Self(true, Box::new(|_ctx: &ListBuildContext| (Clear.into(), 0)))
+        Self(
+            true,
+            Box::new(|_ctx: &ListBuildContext| (ClearWidget.into(), 0)),
+        )
     }
 }
 
@@ -79,7 +90,7 @@ pub struct ListView {
     pub state: Option<State<ListState>>,
     pub scroll_axis: ScrollAxis,
     pub style: Style,
-    pub block: Option<Block<'static>>,
+    pub block: SendBlock,
     pub scroll_padding: u16,
     pub infinite_scrolling: bool,
     pub render_item: RenderItem<'static>,
@@ -133,7 +144,7 @@ impl Component for ListView {
             .scroll_axis(self.scroll_axis)
             .scroll_padding(self.scroll_padding);
 
-        if let Some(block) = &self.block {
+        if let Some(block) = self.block.as_ref() {
             list = list.block(block.clone());
         }
 

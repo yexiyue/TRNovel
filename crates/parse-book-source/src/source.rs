@@ -479,6 +479,19 @@ pub struct Request {
     /// 需有序依赖请用 `prelude` 链)。用 `BTreeMap` 保证迭代/落点顺序确定(免哈希随机化幽灵 bug)。
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub vars: BTreeMap<String, Rule>,
+    /// 渲染型取页(`render-fetcher`):为真则用受控浏览器渲染本请求 URL、跑站点自身 JS,
+    /// 而非 reqwest 直取——用于 SPA 站点(结果由 JS 渲染 / 签名 API 返回)。默认 false = 现状。
+    /// 仅 `browser` feature 且浏览器可用时生效;否则该 op 优雅降级。
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub render: bool,
+    /// 渲染就绪等待:渲染后轮询直到该 CSS 选择器出现,再取渲染后 DOM 交 CSS 规则。
+    /// 与 `interceptApi` 二选一:无 `interceptApi` 时用本字段走「渲染后 DOM」取页。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub ready_for: Option<String>,
+    /// CDP 拦截:渲染时拦截 URL 含此子串的响应体作为取页结果(交 `via:"json"` 规则)。
+    /// 用于「结果只在签名 API、DOM 无关键字段」的站点(典型:番茄搜索 `search_book/v1`)。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub intercept_api: Option<String>,
 }
 
 // ───────────────────────── 操作规则 ─────────────────────────
@@ -688,6 +701,11 @@ pub struct BookSource {
     /// 限速:`"N/ms"`(N 次/ms)或纯毫秒间隔字符串;为空则用 `http.rateLimit`。
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub concurrent_rate: String,
+    /// 命名共享 fontMap 表(`名字 -> {码点:真字}`):供多个 clean 步骤按名复用,避免同一张
+    /// 大表在书源里重复内联。clean 的 `fontMap` 写字符串名(如 `{"fontMap":"search"}`)即引用本表,
+    /// 在 [`BookSource::from_json`] 解析时就地展开为内联表(运行期与直接内联等价)。
+    #[serde(default, skip_serializing_if = "std::collections::BTreeMap::is_empty")]
+    pub font_maps: std::collections::BTreeMap<String, std::collections::BTreeMap<String, String>>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub search: Option<SearchOp>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -702,10 +720,45 @@ pub struct BookSource {
 /// 期望的 schema 标识。
 pub const SCHEMA_ID: &str = "trnovel-booksource/v2";
 
+/// 递归展开命名共享 fontMap:遇到对象里 `"fontMap"` 的值为**字符串**(引用名)时,
+/// 用 `registry[名]` 的内联表替换;然后递归子节点(含刚内联的表,内层无 fontMap 故安全)。
+fn expand_named_font_maps(v: &mut serde_json::Value, registry: &serde_json::Value) {
+    match v {
+        serde_json::Value::Object(map) => {
+            let replacement = match map.get("fontMap") {
+                Some(serde_json::Value::String(name)) => registry.get(name).cloned(),
+                _ => None,
+            };
+            if let Some(table) = replacement {
+                map.insert("fontMap".to_string(), table);
+            }
+            for val in map.values_mut() {
+                expand_named_font_maps(val, registry);
+            }
+        }
+        serde_json::Value::Array(arr) => {
+            for val in arr.iter_mut() {
+                expand_named_font_maps(val, registry);
+            }
+        }
+        _ => {}
+    }
+}
+
 impl BookSource {
     /// 从 JSON 字符串解析一个书源。
+    ///
+    /// 解析前先展开**命名共享 fontMap**:把所有 clean 步骤里 `{"fontMap":"名字"}` 的字符串引用,
+    /// 就地替换为顶层 `fontMaps[名字]` 的内联表(通用 JSON 遍历,覆盖任意位置;未知名→留原字符串,
+    /// 后续按 BTreeMap 反序列化会失败并给出清晰错误)。展开后与「直接内联」逐字节等价。
     pub fn from_json(s: &str) -> Result<Self, ConfigError> {
-        Ok(serde_json::from_str(s)?)
+        let mut v: serde_json::Value = serde_json::from_str(s)?;
+        if let Some(registry) = v.get("fontMaps").cloned()
+            && registry.is_object()
+        {
+            expand_named_font_maps(&mut v, &registry);
+        }
+        Ok(serde_json::from_value(v)?)
     }
 
     /// 是否需要登录(`loginUrl` 或 `loginUi` 任一非空)。据此在 TUI 暴露「书源登录」入口。
@@ -728,11 +781,27 @@ impl BookSource {
     }
 
     /// 从 JSON 值解析一个或多个书源(支持单对象或数组)。
+    /// 与 [`BookSource::from_json`] 一致:逐源就地展开命名 fontMap 引用(数组里每个源各自的
+    /// `fontMaps` 注册表),否则 `{"fontMap":"名"}` 字符串引用会反序列化失败。
     pub fn from_value_many(value: serde_json::Value) -> Result<Vec<Self>, ConfigError> {
-        if value.is_array() {
-            Ok(serde_json::from_value(value)?)
-        } else {
-            Ok(vec![serde_json::from_value(value)?])
+        fn expand_one(v: &mut serde_json::Value) {
+            if let Some(reg) = v.get("fontMaps").cloned()
+                && reg.is_object()
+            {
+                expand_named_font_maps(v, &reg);
+            }
+        }
+        match value {
+            serde_json::Value::Array(mut arr) => {
+                for item in arr.iter_mut() {
+                    expand_one(item);
+                }
+                Ok(serde_json::from_value(serde_json::Value::Array(arr))?)
+            }
+            mut v => {
+                expand_one(&mut v);
+                Ok(vec![serde_json::from_value(v)?])
+            }
         }
     }
 
@@ -825,6 +894,57 @@ mod tests {
         let bs = BookSource::from_json(BILIXS_V2).expect("应解析 v2 书源");
         assert_eq!(bs.schema, SCHEMA_ID);
         assert_eq!(bs.name, "哔哩小说");
+    }
+
+    #[test]
+    fn named_font_map_is_expanded_from_registry() {
+        // clean 里 `{"fontMap":"fm"}` 字符串引用 → 顶层 fontMaps["fm"] 内联表;另留一份直接内联对照。
+        let json = r#"{
+            "schema":"trnovel-booksource/v2","name":"t","url":"https://e.com",
+            "fontMaps": { "fm": { "E001": "一", "E002": "二" } },
+            "bookInfo": { "name": {"via":"css","select":"h1"} },
+            "toc": { "list": {"via":"css","select":"a"}, "name": {"via":"css","select":"a"},
+                     "url": {"via":"css","select":"a","extract":{"attr":"href"}} },
+            "content": { "value": {"via":"css","select":".c","extract":"html",
+                         "clean":[{"fontMap":"fm"}]} }
+        }"#;
+        let bs = BookSource::from_json(json).expect("应解析并展开命名 fontMap");
+        let clean = match &bs.content.value {
+            Rule::Leaf(l) => &l.clean,
+            other => panic!("content.value 应为叶子: {other:?}"),
+        };
+        let fm = clean[0]
+            .font_map
+            .as_ref()
+            .expect("命名 fontMap 应展开为内联表");
+        assert_eq!(fm.get("E001").map(String::as_str), Some("一"));
+        assert_eq!(fm.get("E002").map(String::as_str), Some("二"));
+    }
+
+    #[test]
+    fn inline_font_map_still_works() {
+        // 直接内联的 fontMap(无命名引用)保持原样,向后兼容。
+        let json = r#"{
+            "schema":"trnovel-booksource/v2","name":"t","url":"https://e.com",
+            "bookInfo": { "name": {"via":"css","select":"h1"} },
+            "toc": { "list": {"via":"css","select":"a"}, "name": {"via":"css","select":"a"},
+                     "url": {"via":"css","select":"a","extract":{"attr":"href"}} },
+            "content": { "value": {"via":"css","select":".c","extract":"html",
+                         "clean":[{"fontMap":{"E0FF":"好"}}]} }
+        }"#;
+        let bs = BookSource::from_json(json).unwrap();
+        let Rule::Leaf(l) = &bs.content.value else {
+            panic!("应为叶子")
+        };
+        assert_eq!(
+            l.clean[0]
+                .font_map
+                .as_ref()
+                .unwrap()
+                .get("E0FF")
+                .map(String::as_str),
+            Some("好")
+        );
     }
 
     #[test]

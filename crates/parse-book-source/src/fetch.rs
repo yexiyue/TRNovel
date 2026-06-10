@@ -86,6 +86,14 @@ pub struct FetchRequest {
     pub method: Method,
     pub body: Option<String>,
     pub headers: HashMap<String, String>,
+    /// 渲染型取页(`render-fetcher`):为真则用受控浏览器渲染本 URL(默认 headless),
+    /// 跑站点自身 JS,而非 reqwest 直取。仅 [`crate::browser::EscalatingFetcher`] 在
+    /// `browser` feature 下识别;其它 fetcher 忽略本字段(退化为普通取页)。
+    pub render: bool,
+    /// 渲染就绪等待选择器:无 `intercept_api` 时,渲染后轮询该 CSS 选择器出现再取 DOM。
+    pub ready_for: Option<String>,
+    /// CDP 拦截:渲染时拦截 URL 含此子串的响应体作为取页结果(优先于 `ready_for`)。
+    pub intercept_api: Option<String>,
 }
 
 impl FetchRequest {
@@ -242,6 +250,15 @@ impl ReqwestFetcher {
 
     /// 限速 + resolve + 重试 的取页主循环,返回完整响应。
     async fn fetch_full_inner(&self, req: FetchRequest) -> Result<FetchResponse, FetchError> {
+        // 渲染型取页需浏览器(见 `render-fetcher`):reqwest 不支持,给精确信息供上层降级/诊断
+        // (否则会拿到 SPA 空壳、下游 via:json 解析失败报「invalid json」误导)。
+        // 用常驻的 `Challenged`(`Browser` 变体仅 `browser` feature):本 fetcher 无 feature 门控。
+        if req.render {
+            return Err(FetchError::Challenged(format!(
+                "此请求需渲染型取页(浏览器辅助),reqwest 不支持 @ {}",
+                req.url
+            )));
+        }
         // 限速(如配置):错开请求间隔。
         if let Some(limiter) = &self.limiter {
             limiter.acquire().await;

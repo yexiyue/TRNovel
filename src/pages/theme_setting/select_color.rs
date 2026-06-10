@@ -2,7 +2,7 @@ use std::str::FromStr;
 
 use ratatui::{
     layout::{Constraint, Margin},
-    style::{Color, Style, Stylize},
+    style::{Color, Style},
     text::Span,
     widgets::ListItem,
 };

@@ -148,7 +148,10 @@ pub fn ReadContent(
 
     let paragraph = hooks.use_memo(
         || {
-            if let Some(segment) = highlight_range.read().as_ref()
+            // 包成 TextParagraph(Send + Sync):0.30 起 owned Paragraph 内含 Block 而非 Send,
+            // 无法直接存入 use_memo 的状态体系。TextParagraph Deref 到 Paragraph,后续 line_count/
+            // 渲染照常。
+            let paragraph = if let Some(segment) = highlight_range.read().as_ref()
                 && is_listening.get()
             {
                 Paragraph::new(highlight(
@@ -162,7 +165,8 @@ pub fn ReadContent(
                     &props.content,
                     (props.width as usize).saturating_sub(2),
                 ))
-            }
+            };
+            TextParagraph::from(paragraph)
         },
         (
             is_listening.get(),

@@ -22,7 +22,7 @@ path = "src/bin/trn.rs"
 async-trait = "0.1"
 chrono = { version = "0.4.44", features = ["serde"] }
 clap = { version = "4.6", features = ["derive"] }
-crossterm = { version = "0.28.1", features = ["event-stream"] }
+crossterm = { version = "0.29.0", features = ["event-stream"] }
 encoding_rs = { version = "0.8.35", features = ["serde"] }
 fancy-regex = "0.18"
 md5 = "0.8.0"
@@ -31,13 +31,12 @@ parse-book-source = { path = "crates/parse-book-source", version = "0.6.0", feat
     "js",
     "js-host",
 ] }
-ratatui = { version = "0.29.0", features = ["unstable", "serde"] }
-throbber-widgets-tui = "0.9.0"
-tui-scrollview = "0.5.1"
-tui-textarea = "0.7.0"
-tui-tree-widget = "0.23.0"
-tui-widget-list = "0.13.0"
-tui-big-text = "0.7.0"
+ratatui = { version = "0.30.1", features = ["unstable", "serde"] }
+throbber-widgets-tui = "0.11.0"
+tui-scrollview = "0.6.4"
+tui-tree-widget = "0.24.0"
+tui-widget-list = "0.15.2"
+tui-big-text = "0.8.4"
 walkdir = "2.5.0"
 anyhow = { workspace = true }
 regex = { workspace = true }
@@ -48,10 +47,7 @@ tokio = { workspace = true }
 tokio-util = { workspace = true }
 futures = { workspace = true }
 dirs = { workspace = true }
-ratatui-kit = { version = "0.5.9", features = ["full"] }
-# ratatui-kit = { features = [
-#     "full",
-# ], path = "../ratatui-kit/packages/ratatui-kit" }
+ratatui-kit = { version = "0.6.0", features = ["full"] }
 textwrap = { version = "0.16.2" }
 # 注:rodio 0.22 为音频 API 重构(OutputStreamBuilder / Sink::connect_new / SamplesBuffer·Zero 签名变更),
 # 需配合音频实测单独迁移,暂留 0.21.x。

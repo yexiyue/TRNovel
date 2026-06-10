@@ -4,7 +4,7 @@ use download::*;
 use novel_tts::{CheckpointModel, NovelTTS, VoicesData};
 use ratatui::{
     layout::{Constraint, Margin},
-    style::{Style, Stylize},
+    style::Style,
     text::Line,
     widgets::Block,
 };

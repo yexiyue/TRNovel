@@ -191,6 +191,9 @@ impl Engine {
     /// 失效返回 [`BookSourceError::LoginExpired`]。引擎所有取页统一经此。
     async fn run_request(&self, req: FetchRequest) -> Result<String> {
         let domain = self.request_domain(&req.url);
+        // 渲染取页(render-fetcher):body 是拦截的 API 响应 / 渲染后 DOM(非整页),且无真实响应头
+        // (浏览器渲染响应不回传 Set-Cookie)。故不参与 loginCheckJs 整页校验,避免误判登录失效。
+        let is_render = req.render;
         let resp = self.fetcher.fetch_full(req).await?;
         if self.source.enabled_cookie_jar
             && let Some(set_cookie) = resp.headers.get("set-cookie")
@@ -198,7 +201,9 @@ impl Engine {
         {
             jar.absorb_set_cookie(&domain, set_cookie);
         }
-        self.check_login(&resp.body)?;
+        if !is_render {
+            self.check_login(&resp.body)?;
+        }
         Ok(resp.body)
     }
 
@@ -320,6 +325,9 @@ impl Engine {
                 op.request.body.as_ref(),
                 &op.request.headers,
                 &vars,
+                op.request.render,
+                op.request.ready_for.as_deref(),
+                op.request.intercept_api.as_deref(),
             )
             .await?;
         // 主请求 vars 捕获(chapter 级):对搜索响应求值,使 list/item 可见(captured-before-referenced)。
@@ -406,6 +414,9 @@ impl Engine {
                     step.body.as_ref(),
                     &step.headers,
                     &flat,
+                    false,
+                    None,
+                    None,
                 )
                 .await?;
             self.capture_into(&step.capture, &resp, chapter)?;
@@ -418,6 +429,7 @@ impl Engine {
     /// 并入登录态(apply_auth)→ [`Engine::run_request`]。
     /// `vars` 须为调用方已 flatten 的扁平表;请求后的差异化处理(`Request.vars` 捕获 /
     /// prelude 的 `capture_into`)留在调用点。
+    #[allow(clippy::too_many_arguments)]
     async fn send_templated(
         &self,
         url: &UrlOrRule,
@@ -425,6 +437,11 @@ impl Engine {
         body: Option<&UrlOrRule>,
         headers: &HashMap<String, String>,
         vars: &Vars,
+        // 渲染型取页配置(`render-fetcher`):prelude 等普通请求传 `false, None, None`;
+        // search 等可渲染的 op 传其 `request.render/ready_for/intercept_api`。
+        render: bool,
+        ready_for: Option<&str>,
+        intercept_api: Option<&str>,
     ) -> Result<String> {
         let url = self.resolve_url(url, vars)?;
         let body = match body {
@@ -441,6 +458,9 @@ impl Engine {
             method,
             body,
             headers: hdrs,
+            render,
+            ready_for: ready_for.map(str::to_string),
+            intercept_api: intercept_api.map(str::to_string),
         })
         .await
     }

@@ -2,7 +2,7 @@ use crate::hooks::UseThemeConfig;
 use crossterm::event::{Event, KeyCode, KeyEventKind};
 use ratatui::{
     layout::{Alignment, Constraint, Direction, Flex, Margin},
-    style::{Style, Stylize},
+    style::Style,
     text::Line,
 };
 use ratatui_kit::{

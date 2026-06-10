@@ -9,7 +9,6 @@ use crate::{
 use crossterm::event::{Event, KeyCode, KeyEventKind};
 use ratatui::{
     layout::{Constraint, Layout},
-    style::Stylize,
     text::{Line, Span, Text},
     widgets::{Block, Padding, Paragraph, Widget, WidgetRef},
 };

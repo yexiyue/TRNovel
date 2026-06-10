@@ -21,6 +21,13 @@ pub fn is_script_login(source: &BookSource) -> bool {
     source.get_login_js().is_some()
 }
 
+/// 该书源是否**已登录**:per-source 状态里存有有效 cookie 或 loginHeader。
+/// `load_source_state` 会在加载时清理 TTL 过期登录态,故过期即视为未登录。
+pub fn is_logged_in(source_url: &str) -> bool {
+    let state = load_source_state(source_url);
+    !state.cookies.is_empty() || !state.login_header.is_empty()
+}
+
 /// 把 loginUi 收集到的字段值拼成 loginInfo 的明文 JSON 对象串(供 `login()` 脚本 `getLoginInfo` 读取)。
 pub fn login_info_json(fields: &[(String, String)]) -> String {
     let map: BTreeMap<&str, &str> = fields
