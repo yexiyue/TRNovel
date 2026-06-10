@@ -6,7 +6,7 @@ use crate::{
 };
 use parse_book_source::BookListItem;
 use serde::{Deserialize, Serialize};
-use std::{fmt::Display, fs::File, path::PathBuf};
+use std::{collections::BTreeMap, fmt::Display, fs::File, path::PathBuf};
 
 /// 历史记录（一个用于展示，一个用于缓存，方便下次快速访问）
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -19,6 +19,10 @@ pub struct NetworkNovelCache {
     pub current_chapter_name: String,
     pub line_percent: f64,
     pub chapter_percent: f64,
+    /// 书籍级捕获变量(书源 `scope=book` 的多步 vars,见 js-host-bridge D7-bis):
+    /// 随本书快照跨会话复用(如详情/列表捕获的 token 带入目录/正文)。旧快照无此字段靠 default 兼容。
+    #[serde(default)]
+    pub book_vars: BTreeMap<String, String>,
 }
 
 impl NetworkNovelCache {
@@ -49,6 +53,25 @@ impl TryFrom<&NetworkNovel> for NetworkNovelCache {
         let novel_chapters = value.novel_chapters.clone();
         let source = value.engine.source();
 
+        // 回写引擎本会话累积的 persistent cookie(enabledCookieJar 回灌,如服务端轮换/续签的
+        // token)到 per-source 登录态——否则只活在进程内,重启即丢、用户被迫重登。
+        // 本路径随阅读退出/历史保存频繁触发,失败吞错(贴合 Drop 自动保存吞错约定),不阻断退出。
+        let persistent = value.engine.persistent_cookies();
+        if !persistent.is_empty() {
+            let source_url = value.engine.source_url();
+            let mut state = crate::cache::load_source_state(source_url);
+            for (dom, cookie) in persistent {
+                // 逐域 merge(引擎新值同名优先)而非整串覆盖:不清掉登录流程写入的同域其它
+                // cookie;代价是 Max-Age=0 已删除的同名旧键可能复活,靠 TTL 清理兜底。
+                let merged = parse_book_source::cookie::merge_cookie_str(
+                    state.cookies.get(&dom).map(String::as_str).unwrap_or(""),
+                    &cookie,
+                );
+                state.cookies.insert(dom, merged);
+            }
+            let _ = crate::cache::save_source_state(source_url, &state);
+        }
+
         Ok(Self {
             current_chapter: novel_chapters.current_chapter,
             current_chapter_name: value.get_current_chapter_name()?,
@@ -59,6 +82,8 @@ impl TryFrom<&NetworkNovel> for NetworkNovelCache {
             chapter_percent: (value.current_chapter as f64
                 / value.get_chapters_result()?.len() as f64)
                 * 100.0,
+            // 导出书籍级捕获变量,随快照落盘(scope=book 跨会话复用)。
+            book_vars: value.engine.book_vars(),
         })
     }
 }

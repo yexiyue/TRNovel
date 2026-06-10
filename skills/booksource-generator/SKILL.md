@@ -129,6 +129,7 @@ cargo run -- import /path/to/<站点>.v2.json
 | `loginCheckJs` | 每个网络方法响应后执行(`result`=响应),返回空/`false`/`0` 判失效 → 提示重登 |
 | `enabledCookieJar` | 开启后响应 `Set-Cookie` 自动回灌 cookie 库 |
 | `concurrentRate` | 限速 `"N/ms"` 或纯毫秒间隔 |
+| `prelude`(各 op) | 结构化前置请求链 `[{url,method?,body?,headers?,capture,skipIfPresent?}]`,主请求/分页前按序执行;**默认构建即可用,不需 js-host** |
 
 **脚本登录范式**(`loginUrl` 为脚本):约定导出全局 `login()`,内部取凭据→发请求→写回登录态:
 
@@ -136,9 +137,26 @@ cargo run -- import /path/to/<站点>.v2.json
 // loginUrl: "@js:function login(){ var r = net.post('/api/login', JSON.stringify(JSON.parse(source.getLoginInfo()))); var tok = JSON.parse(r.body).token; source.putLoginHeader(JSON.stringify({Authorization:'Bearer '+tok})); }"
 ```
 
-**多步取值**:JS 内 `net.ajax/connect` 复用取页管线(自动带 loginHeader + 按注册域的库 cookie);结构化跨请求传值用 `source.put/get`。**不引入** Legado 的 `@put:/@get:` 字符串 DSL。
+**结构化多步(声明式,首选;不需 js-host)**:每个 op(search/explore/bookInfo/toc/content)可挂 `prelude` 前置请求链,每步对其响应做命名 `capture`,后续步骤/抽取规则用 `{{name}}` 引用——**不写字符串 DSL**(优于 host JS 的 `source.put/get` 命令式)。
 
-要点:这些能力仅 `js-host` 构建可用;纯净构建(默认)无网络/状态,行为不变。站点是否需登录用 AskUserQuestion 问用户,再决定 `loginUrl`/`loginUi` 形态。
+```jsonc
+"toc": {
+  "prelude": [
+    { "url": {"template":"{{base}}/api/prepare"},
+      "capture": [{ "name":"csrf", "value": {"via":"json","select":"$.csrf"}, "scope":"chapter" }],
+      "skipIfPresent": ["csrf"] }       // 已有则跳过,避免每章重抓
+  ],
+  "list": { "...": "主请求/规则用 {{csrf}} 引用" }
+}
+```
+
+- `scope`:`chapter`(默认,本次调用消亡,一次性 csrf/sign/cursor 用它)/ `book`(随本书快照,详情→目录→正文复用)/ `source`(书源级,站级常量;同会话跨 op 共享)。
+- 捕获**先于引用**由数组顺序保证;捕获产物是字符串;搜索主请求的 `request.vars`(`{name:Rule}`)等价对搜索响应的 chapter 级捕获,供 `list`/`item` 引用。
+- 跨会话/历史续读是**全新引擎**:需 token 的 `toc`/`content` 应各自声明 `prelude` + `skipIfPresent` 幂等重取(search 阶段 token 用 `source`/`chapter`,**别用 `book`**——选书前无本书快照)。
+
+**host JS 多步(需 `js-host`)**:JS 内 `net.ajax/connect` 复用取页管线(自动带 loginHeader + 按注册域的库 cookie);命令式跨请求传值用 `source.put/get`。**不引入** Legado 的 `@put:/@get:` 字符串 DSL。
+
+要点:`prelude`/`capture` 结构化多步默认构建即可用;`loginUrl`/`net.*`/`source.*` 等登录与 host 网络能力仅 `js-host` 构建可用,纯净构建(默认)无网络/状态、行为不变。站点是否需登录用 AskUserQuestion 问用户,再决定 `loginUrl`/`loginUi` 形态。
 
 ## 拿不准就问(用 AskUserQuestion)
 

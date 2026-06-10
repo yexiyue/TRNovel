@@ -87,6 +87,7 @@ pub fn SelectBookSource(
         .map(|c| c.book_sources.clone())
         .unwrap_or_default();
 
+    let book_sources_keys = book_sources.clone();
     hooks.use_events(move |event| {
         if let Event::Key(key) = event
             && key.kind == KeyEventKind::Press
@@ -97,6 +98,15 @@ pub fn SelectBookSource(
                         delete_modal_open.set(true);
                     } else {
                         delete_modal_open.set(false);
+                    }
+                }
+                // 书源登录(loginUrl/loginUi 非空才有意义)→ 进登录页。
+                KeyCode::Char('l') | KeyCode::Char('L') => {
+                    if let Some(i) = state.read().selected
+                        && let Some(src) = book_sources_keys.get(i).cloned()
+                        && src.has_login()
+                    {
+                        navigate.push_with_state("/book-source-login", src);
                     }
                 }
                 _ => {}

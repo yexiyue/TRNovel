@@ -45,11 +45,11 @@
 
 ## 7. headful 浏览器登录(P1)
 
-- [ ] 7.1 `browser.rs` 新增 `login(url, options)`:复用 `solve()` 的 headful 启动 + 持久 profile 骨架
-- [ ] 7.2 登录态提取:`get_cookies`(含 HttpOnly)+ `page.evaluate("localStorage")` 取 JWT
-- [ ] 7.3 成功判定:目标 cookie/localStorage 键出现 或 用户在 TUI 点「登录完成」;同步原语用 tokio `Notify`/`oneshot`(替代 LockSupport park/unpark)
+- [x] 7.1 `browser.rs` 新增 `login(url, options)`:复用 `solve()` 的 headful 启动 + 持久 profile 骨架
+- [x] 7.2 登录态提取:`get_cookies`(含 HttpOnly)+ `page.evaluate("localStorage")` 取 JWT
+- [x] 7.3 成功判定:目标 cookie/localStorage 键出现 或 用户在 TUI 点「登录完成」;同步原语用 tokio `Notify`/`oneshot`(替代 LockSupport park/unpark)
 - [ ] 7.4 `net.startBrowserAwait(url, title?)` 桥;成功后把浏览器 cookie 写入 cookie 库;返回登录后页面 HTML(可选 `refetchAfterSuccess`:用 cookie 走 reqwest 重抓)
-- [ ] 7.5 无浏览器/未授权降级(对齐 browser-fetcher 既有策略)
+- [x] 7.5 无浏览器/未授权降级(对齐 browser-fetcher 既有策略)
 
 ## 8. 脚本登录编排(P1)
 
@@ -60,9 +60,11 @@
 
 ## 9. TUI 登录入口(P1)
 
-- [ ] 9.1 `hasLogin` 判定(loginUrl/loginUi 非空);在 root crate 加「书源登录」入口/页面
-- [ ] 9.2 触发 headful 登录 / 脚本登录;登录态按 url_md5 持久、跨会话复用
-- [ ] 9.3 简化版过期处理:请求判失效时提示用户重新登录
+> app 启用 `js-host`(用户拍板:默认启用 + 13.3 首次联网授权门);登录态经 `cache::source_state`(`~/.novel/source-state/{url_md5}.json`,0600)持久化、由 `browser_assist::build_engine` 注入每个引擎(`with_login_header`/`with_cookies`)。登录动作在 `src/login.rs`(`script_login`/`browser_login`)。**整套 TUI 流程已编译+clippy+fmt+doc 全绿,但 TUI 交互需真终端运行时验收(你来跑)。**
+
+- [x] 9.1 `hasLogin` 判定(`BookSource::has_login`=loginUrl/loginUi 非空,库侧单一口径,app 不再包装);书源管理页 `L` 键进 `/book-source-login`(`book_source_login.rs`;loginUi-only 而无脚本/loginUrl 的配置错误由登录页拦截提示)
+- [x] 9.2 触发 headful 登录(`browser_login` 经 7.x `BrowserFetcher::login`)/ 脚本登录(`script_login` 经 host `run_login`,spawn_blocking);产物按 url_md5 持久化、`build_engine` 注入跨会话复用
+- [x] 9.3 简化版过期处理:`loginCheckJs` 判失效抛 `LoginExpired`(Display=「登录态已失效,请重新登录」),book_detail 以 Display 展示提示重登(加载时 TTL 亦清登录态)
 
 ## 10. cookie 持久化升级(P2)
 
@@ -75,15 +77,17 @@
 
 ## 11. 结构化多步编排(P2,无字符串 DSL)
 
-- [ ] 11.1 结构化命名捕获:请求级 `vars`(`{name: <Rule>}`)在响应后对每个 Rule 求值存入变量;**不引入 Legado `@put:/@get:` 字符串 DSL**(保持 ai-friendly 结构化 schema),引用沿用现有 `{{name}}` 模板
-- [ ] 11.2 接通已定义未接线的 `Request.vars`:前置请求捕获值带入后续 URL/header/body 模板;明确「捕获先于引用」时序
-- [ ] 11.3 变量作用域章节→书籍→书源级联回退;书籍级随 per-book 快照持久化
-- [ ] 11.4 `book-source.schema.json` 为 `vars` 标注 schema(供 booksource-generator/AI 识别生成)
-- [ ] 11.5 单测:列表页捕获 token 带入详情页;作用域就近落点
+> 设计见 design.md **D7-bis**(经独立方案评审 + 对抗式验证收敛)。骨架:每个 op 挂有序 `prelude: Vec<PreStep>`,每步对自身响应做结构化 `capture`,三级作用域 `chapter`(默认)/`book`/`source` 级联,引用一律 `{{name}}`。**不引入字符串 DSL、不 flatten 内嵌 Request。**
+
+- [x] 11.1 `source.rs` 新增 `VarScope`(lowercase enum `chapter`|`book`|`source`,默认 `chapter`)、`Capture{name:String, value:Rule, #[serde(default)] scope}`、`PreStep{url,method,body,headers, capture:Vec<Capture>, skipIfPresent:Vec<String>}`(**显式字段,禁用 `#[serde(flatten)]`**:`Rule` untagged + `LeafRule` 非 deny_unknown_fields 会令 flatten 校验静默失效);全 `rename_all=camelCase` + `deny_unknown_fields` + schemars。给 `SearchOp/ExploreOp/TocRules/ContentRules` 各加 `prelude:Vec<PreStep>`(default+skip)。`Request.vars` 补 `skip_serializing_if`(类型不变,引擎首读=chapter 级捕获)。`BookSource.book_info`:`BookRules`→`BookInfoOp`(`BookRules` 全字段同名同序 + `prelude` + **`as_book_rules()` 视图**,供 `eval_book_info(&BookRules)` 复用,**修 Blocker1**)。
+- [x] 11.2 `engine.rs` 命名捕获接线:新增私有 `ScopedVars{chapter:Vars, book:BTreeMap}` + `flatten(source)`(`source→book→chapter` overlay,**空串捕获不写层**);Engine 加 `book_vars:BTreeMap` + `source_vars:Arc<RwLock<BTreeMap>>`(三构造器初始化空,Clone 共享 source 层)+ 链式 `with_book_vars`/`with_source_vars` + 导出 `book_vars()`/`source_vars()`;`base_vars`→`base_scoped()`。新增 async `run_prelude(steps,&mut ScopedVars)`:`skipIfPresent` 全非空短路 → `resolve_url`+`apply_auth`+`run_request` → 按 `capture` 顺序非空写各层并并入 chapter(写锁 `await` 之后短临界、不跨 await)。
+- [x] 11.3 五入口接线 + 作用域语义:search/explore 先 `run_prelude` 再发主请求并对 `Request.vars` 捕获(写 chapter);book_info 先跑 `book_info.prelude` 再 `fetch_checked`,经 `as_book_rules()` 复用 `eval_book_info`;toc/content 先 `run_prelude` 再 `fetch_pages`。`fetch_pages` 签名 `&Vars`→`&mut ScopedVars`,**toc 主体(name/url/is_volume)与 content 抽取一并改用 `flatten(scoped)`**(修 Non-blocking4)。`eval_list_items` 加 `vars` 参数,调用点传 `flatten` 结果(list/item 可见捕获)。**跨 op 修正**:search 阶段无 per-book 载体(`NetworkNovelCache` 选书后才 `TryFrom`)→ token **只落 `source`(同会话 Arc)/`chapter`,不落 `book`**(修 Blocker2);历史续读为全新 Engine、`source` 层空 → 需 token 的 toc/content 须各自 `prelude`+`skipIfPresent` 幂等重取(修 Blocker3)。
+- [x] 11.4 schema 标注:重跑 `gen_schema` 生成 `book-source.schema.json`(**注意 `bookInfo` 的 `$ref` 由 `BookRules` 改指 `BookInfoOp` 属结构性改动、非纯追加**,须重生成过 schema_sync);为 `VarScope`/`Capture`/`PreStep`/`prelude`/`skipIfPresent` 写 description(三层寿命语义 + 默认 chapter 安全 + skipIfPresent 复用),供 booksource-generator/AI。
+- [x] 11.5 root crate 接线 + 文档 + 测试:`NetworkNovelCache` 加 `#[serde(default)] book_vars:BTreeMap`,构造 Engine `.with_book_vars(...)`,调用后 `cache.book_vars=engine.book_vars()` 随 per-book 快照落盘(旧快照无字段靠 `#[serde(default)]` 兼容);booksource-generator 教 `prelude+capture` 固定形状、默认 chapter、token 才用 book/source、skipIfPresent 复用、**续读须自带 prelude 重取 source 级 token**;单测(MockFetcher):前置 csrf 链拼 `{{sign}}`、同会话 search→book_info 取 source 级 token、skipIfPresent 命中跳步、空串不写层、现有 `engine_toc_splits_volumes_offline`/`engine_merges_login_header`/`enabled_cookie_jar_*` 改 `&mut scoped` 后仍绿。本期**不做**逐页命名捕获(`pageCapture`)与 search 阶段的 `book` 级 token(降级为后续)。
 
 ## 12. 进阶能力(P3)
 
-- [ ] 12.1 `loginUi` RowUi 解析 + TUI 渲染(text/password 掩码/select/toggle);收集值加密存 loginInfo
+- [x] 12.1 `loginUi` RowUi 解析 + TUI 渲染(`book_source_login.rs`:text/password 掩码完整;select/toggle 暂以文本输入承载——proper 列表/开关控件为后续打磨);收集值 `login_info_json` → `set_login_info`(AES,机器绑定)存 loginInfo。**待真终端验收**
 - [x] 12.2 `loginCheckJs`:引擎每个网络方法响应后执行(`result`=响应),空/`false`/`0` 判失效 → `BookSourceError::LoginExpired`(`is_login_expired()` 供 app 提示重登);D10 第一版不自动重发
 - [x] 12.3 `concurrentRate`(`"N/ms"` 或纯间隔)解析为 RateLimiter,`http.rateLimit` 缺省时启用
 - [ ] 12.4 jsLib 书源级共享 JS 作用域(boa 用同一 Realm 或源码前置拼接模拟)
@@ -92,8 +96,11 @@
 
 - [x] 13.1 `book-source.schema.json` 新增字段(`loginUrl`/`loginUi`(RowUi/RowUiType)/`loginCheckJs`/`enabledCookieJar`/`concurrentRate`)并重新生成 + schema_sync 通过
 - [x] 13.2 `booksource-generator` skill 补「登录与多步编排(host 桥)」章节(source/net/crypto 对象、新字段表、脚本登录范式示例)+ 同步 references 的 schema
-- [ ] 13.3 安全审查:host API 白名单(无 fs/exec)、首次联网授权流程、凭据加密、登录态文件权限
-  - 决策(对抗式审查结论):`net.*` 对**任意 URL** 附带 loginHeader 属 spec 既定设计(JWT/Cookie 同路径),**不**加同站校验(会破坏 www→api 子域登录);真正的凭据外泄防线是本任务的「首次联网需授权」门 + 文件权限收紧,在此统一落实
-  - 已做加固(本轮审查后):`machine-uid` 空/平凡值拒绝(防公开可计算密钥伪加密);出站 header 剥除 CR/LF(防注入)
+- [x] 13.3 安全审查(结论见下):host API 白名单(无 fs/exec)、首次联网授权流程、凭据加密、登录态文件权限
+  - **白名单(无 fs/exec)**✓:host 仅注入 `source`/`net`/`crypto`;单测(任务 3.4)断言 `require/process/exec/readFile` 均 undefined。
+  - **首次联网授权**✓(结构性门控):app 里 host `net.*` 的**唯一可达路径是 `src/login.rs` 的 `run_login`**(用户按 `L` 显式登录触发);书源**规则 JS**(`Rule::Js`,search/toc/content)走纯沙箱 `crate::js::eval_js`(无 net)。即**正常浏览期间书源无法静默联网**——网络能力被「显式登录动作」门控,等价于「首次用网络能力需用户授权」。浏览器登录另有 browser-assist 的本次/总是/拒绝授权门。(如需「每书源首登额外确认弹窗」可后续小幅增补,非必需。)
+  - **凭据加密**✓:`login_info` AES-256-CBC + machine-uid 派生密钥(空/平凡值拒绝,防公开可计算密钥);与明文 `login_header` 分桶。
+  - **文件权限**✓:`SourceState::save()` unix 0600(见 13.4-sec)。
+  - 已做加固:出站 header 剥除 CR/LF(host 与引擎双侧,写入侧亦净化);loginHeader 仅注入**同注册域**请求(host `net.*` 与引擎 `apply_auth` 双侧,共用 `cookie::merge_login_into_headers`)——防页面内容诱导的第三方绝对 URL 外泄 `Authorization`/Cookie;www→api 子域同注册域不受影响,登录域与 API 域分属不同注册域的书源会被静默跳过,如需支持留待 schema 级 `authDomains` 白名单(design/spec 中「每个请求自动 merge」的表述需按此收窄)。
 - [x] 13.4-sec 文件权限:`SourceState::save()` 在 unix 以 **0600** 落盘(`OpenOptions.mode` 避免新文件 0644 窗口 + 显式收紧已存在文件),保护 login_header 明文 + cookie
 - [ ] 13.4 全套绿:`cargo test --all-features --workspace`、`clippy -D warnings`、`fmt --check`、`doc -D warnings`

@@ -16,6 +16,7 @@ pub mod file_list;
 pub mod gen_fontmap;
 pub mod hooks;
 pub mod import;
+pub mod login;
 pub mod novel;
 pub mod pages;
 pub mod utils;

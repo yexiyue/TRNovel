@@ -14,6 +14,7 @@ use chromiumoxide::cdp::browser_protocol::network::Cookie;
 use chromiumoxide::cdp::browser_protocol::page::BringToFrontParams;
 use chromiumoxide::{Browser, BrowserConfig, Page};
 use futures_util::StreamExt;
+use std::collections::BTreeMap;
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -31,6 +32,72 @@ static SOLVE_FAILED: AtomicBool = AtomicBool::new(false);
 pub struct Clearance {
     pub cookie_header: String,
     pub user_agent: String,
+}
+
+/// 浏览器登录提取的一条 cookie(含 HttpOnly;经 CDP `get_cookies` 取得,reqwest 拿不到 HttpOnly)。
+#[derive(Debug, Clone)]
+pub struct BrowserCookie {
+    pub domain: String,
+    pub name: String,
+    pub value: String,
+}
+
+/// headful 浏览器登录产出:cookie(含 HttpOnly)+ localStorage + 登录后页面(见 design D6)。
+#[derive(Debug, Clone, Default)]
+pub struct LoginOutcome {
+    /// 浏览器全部 cookie(含 HttpOnly)。
+    pub cookies: Vec<BrowserCookie>,
+    /// localStorage 键值(站点把 JWT 存这里时由此取出)。
+    pub local_storage: BTreeMap<String, String>,
+    /// 登录后页面 HTML(可选用作 refetch / 直接解析)。
+    pub html: String,
+    /// 登录后页面最终 URL。
+    pub url: String,
+}
+
+impl LoginOutcome {
+    /// 按**注册域(eTLD+1)**归并 cookie 为 `注册域 -> "k=v; k2=v2"`,供并入 cookie 库 / 落盘
+    /// (与 [`crate::cookie::CookieJar::from_persistent`] / [`crate::Engine::with_cookies`] 对接)。
+    pub fn cookies_by_registrable_domain(&self) -> BTreeMap<String, String> {
+        use crate::cookie::{pairs_to_str, registrable_domain};
+        let mut by: BTreeMap<String, BTreeMap<String, String>> = BTreeMap::new();
+        for c in &self.cookies {
+            let dom = registrable_domain(c.domain.trim_start_matches('.'));
+            by.entry(dom)
+                .or_default()
+                .insert(c.name.clone(), c.value.clone());
+        }
+        by.into_iter()
+            .map(|(d, kv)| (d, pairs_to_str(&kv)))
+            .collect()
+    }
+}
+
+/// 登录成功的判定条件:任一目标 cookie 名 / localStorage 键出现非空即视为成功。
+/// 二者皆空时仅靠用户在 TUI 确认([`LoginSignal::done`])。
+#[derive(Debug, Clone, Default)]
+pub struct LoginCriteria {
+    pub cookie_names: Vec<String>,
+    pub local_storage_keys: Vec<String>,
+}
+
+/// 登录交互信号:由 TUI/调用方持同一 `Arc` 翻转(用原子标志轮询,替代 Java LockSupport park/unpark)。
+#[derive(Debug, Clone, Default)]
+pub struct LoginSignal {
+    /// 用户「登录完成」。
+    pub done: Arc<AtomicBool>,
+    /// 用户取消登录。
+    pub cancel: Arc<AtomicBool>,
+}
+
+impl LoginSignal {
+    /// 复位 `done`/`cancel` 标志。每次发起新一轮登录前须调用:信号跨登录尝试共享同一 `Arc`,
+    /// 残留 `cancel` 会让重试在首轮轮询即被判「用户取消」而立即失败;残留 `done` 更危险——
+    /// 会把下一次尝试的未登录/空 cookie 当「成功」落盘。
+    pub fn reset(&self) {
+        self.done.store(false, Ordering::Relaxed);
+        self.cancel.store(false, Ordering::Relaxed);
+    }
 }
 
 /// 浏览器授权决定(由 [`BrowserUi::authorize`] 返回)。
@@ -65,6 +132,8 @@ pub struct BrowserOptions {
     pub grace: Duration,
     /// 总超时上限(到点放弃,交上层降级,见 design D5/D11)。
     pub total_timeout: Duration,
+    /// 登录总超时(用户手动登录/2FA 较慢,故远大于解挑战的 `total_timeout`)。
+    pub login_timeout: Duration,
     /// 轮询间隔。
     pub poll_interval: Duration,
     /// 交互式 UI 回调(可选;授权 + Turnstile 点击提示)。
@@ -77,6 +146,7 @@ impl Default for BrowserOptions {
             profile_dir: default_profile_dir(),
             grace: Duration::from_secs(5),
             total_timeout: Duration::from_secs(60),
+            login_timeout: Duration::from_secs(300),
             poll_interval: Duration::from_millis(800),
             ui: None,
         }
@@ -257,8 +327,160 @@ impl BrowserFetcher {
     }
 }
 
+impl BrowserFetcher {
+    /// headful 打开 `url` 让用户在真实页面**手动登录**,轮询直到成功判定满足
+    /// (`criteria` 的目标 cookie/localStorage 键出现,或用户在 TUI 确认 `signal.done`),
+    /// 提取 cookie(含 HttpOnly,经 CDP)+ localStorage + 登录后页面 HTML 返回。
+    /// 启动失败 / 用户取消(`signal.cancel`)/ 超时 → `Err`(上层降级到脚本登录或提示)。
+    pub async fn login(
+        &self,
+        url: &str,
+        criteria: &LoginCriteria,
+        signal: &LoginSignal,
+    ) -> Result<LoginOutcome, FetchError> {
+        // 同 solve():清残留单例锁(否则新浏览器因 profile 被占瞬退、频闪)。
+        for name in ["SingletonLock", "SingletonSocket", "SingletonCookie"] {
+            let _ = std::fs::remove_file(self.opts.profile_dir.join(name));
+        }
+        let config = BrowserConfig::builder()
+            .chrome_executable(&self.exe)
+            .user_data_dir(&self.opts.profile_dir)
+            .with_head() // 登录必须 headful,用户在真实页面操作。
+            .arg("--no-first-run")
+            .arg("--no-default-browser-check")
+            .arg("--disable-blink-features=AutomationControlled")
+            .build()
+            .map_err(FetchError::Browser)?;
+
+        let (mut browser, mut handler) = Browser::launch(config).await.map_err(browser_err)?;
+        let handler_task = tokio::spawn(async move { while handler.next().await.is_some() {} });
+
+        let result = self.login_inner(&browser, url, criteria, signal).await;
+
+        // 生命周期:无论成败都关闭浏览器、回收事件循环(同 solve)。
+        let _ = browser.close().await;
+        handler_task.abort();
+        result
+    }
+
+    async fn login_inner(
+        &self,
+        browser: &Browser,
+        url: &str,
+        criteria: &LoginCriteria,
+        signal: &LoginSignal,
+    ) -> Result<LoginOutcome, FetchError> {
+        let page = browser.new_page(url).await.map_err(browser_err)?;
+        // 立即前置窗口,让用户看到登录页(绝不模拟点击/填表,纯人工)。
+        let _ = page.execute(BringToFrontParams::default()).await;
+
+        let start = Instant::now();
+        // 区分「取数失败(浏览器被关 / CDP 断链)」与「尚无目标值」:
+        // - 连续失败计数:跨域跳转/导航瞬间 get_cookies 可能瞬时报错,单次失败不误杀;
+        // - 最近一次成功读取的 cookie 快照:兼容「登录完顺手关窗、再回终端按 Enter」的自然操作流
+        //   (快照最多滞后一个轮询间隔,属降级兜底)。
+        let mut consecutive_failures = 0u32;
+        let mut last_good: Vec<Cookie> = Vec::new();
+        loop {
+            if signal.cancel.load(Ordering::Relaxed) {
+                return Err(FetchError::Challenged(format!("用户取消登录 @ {url}")));
+            }
+            let cookies = match page.get_cookies().await {
+                Ok(c) => {
+                    consecutive_failures = 0;
+                    last_good = c.clone();
+                    c
+                }
+                Err(_) => {
+                    consecutive_failures += 1;
+                    if signal.done.load(Ordering::Relaxed) {
+                        // 用户已确认完成但页面取不到数(浏览器已关闭):优先用最近一次成功快照
+                        // 成交(localStorage/HTML 已不可得,降级为空);快照也空则明确报错——
+                        // 绝不把空登录态当「成功」落盘。
+                        if !last_good.is_empty() {
+                            return Ok(LoginOutcome {
+                                cookies: last_good.into_iter().map(to_browser_cookie).collect(),
+                                local_storage: BTreeMap::new(),
+                                html: String::new(),
+                                url: url.to_string(),
+                            });
+                        }
+                        return Err(FetchError::Challenged(format!(
+                            "浏览器已关闭、未能读取登录态 @ {url}(请重试,登录完成后先回终端按 Enter 再关浏览器)"
+                        )));
+                    }
+                    // 连续多次失败 → 浏览器已被关闭 / CDP 死链:数秒内报错,而非傻轮询到登录超时。
+                    if consecutive_failures >= 3 {
+                        return Err(FetchError::Challenged(format!(
+                            "浏览器已关闭或连接中断 @ {url}"
+                        )));
+                    }
+                    tokio::time::sleep(self.opts.poll_interval).await;
+                    continue;
+                }
+            };
+            let local_storage = read_local_storage(&page).await;
+            // 成功:用户确认,或目标 cookie/localStorage 键出现非空。
+            let by_criteria = criteria
+                .cookie_names
+                .iter()
+                .any(|n| cookies.iter().any(|c| &c.name == n && !c.value.is_empty()))
+                || criteria
+                    .local_storage_keys
+                    .iter()
+                    .any(|k| local_storage.get(k).is_some_and(|v| !v.is_empty()));
+            if signal.done.load(Ordering::Relaxed) || by_criteria {
+                // HTML/URL 经 evaluate 取(避免不同 chromiumoxide 版本的 page API 差异)。
+                let html = page
+                    .evaluate("document.documentElement.outerHTML")
+                    .await
+                    .ok()
+                    .and_then(|v| v.into_value::<String>().ok())
+                    .unwrap_or_default();
+                let final_url = page
+                    .evaluate("location.href")
+                    .await
+                    .ok()
+                    .and_then(|v| v.into_value::<String>().ok())
+                    .unwrap_or_else(|| url.to_string());
+                let cookies = cookies.into_iter().map(to_browser_cookie).collect();
+                return Ok(LoginOutcome {
+                    cookies,
+                    local_storage,
+                    html,
+                    url: final_url,
+                });
+            }
+            if start.elapsed() >= self.opts.login_timeout {
+                return Err(FetchError::Challenged(format!("浏览器登录超时 @ {url}")));
+            }
+            tokio::time::sleep(self.opts.poll_interval).await;
+        }
+    }
+}
+
+/// CDP cookie → 登录产物 cookie。
+fn to_browser_cookie(c: Cookie) -> BrowserCookie {
+    BrowserCookie {
+        domain: c.domain,
+        name: c.name,
+        value: c.value,
+    }
+}
+
 fn browser_err(e: chromiumoxide::error::CdpError) -> FetchError {
     FetchError::Browser(e.to_string())
+}
+
+/// 读页面 localStorage 为键值表(取 JWT 等登录态);读失败 / 无则返回空表。
+async fn read_local_storage(page: &Page) -> BTreeMap<String, String> {
+    const JS: &str = r#"(function(){var o={};try{for(var i=0;i<localStorage.length;i++){var k=localStorage.key(i);o[k]=localStorage.getItem(k);}}catch(e){}return JSON.stringify(o);})()"#;
+    page.evaluate(JS)
+        .await
+        .ok()
+        .and_then(|v| v.into_value::<String>().ok())
+        .and_then(|s| serde_json::from_str::<BTreeMap<String, String>>(&s).ok())
+        .unwrap_or_default()
 }
 
 /// 把浏览器 cookie 拼成可注入 reqwest 的 Cookie 头(仅 `cf_clearance` / `__cf*` 通行证)。
@@ -378,11 +600,9 @@ impl Fetcher for EscalatingFetcher {
 
 #[cfg(test)]
 mod tests {
-    use super::{EscalatingFetcher, detect_browser};
+    use super::{BrowserCookie, EscalatingFetcher, LoginOutcome, detect_browser};
     use crate::fetch::{FetchRequest, Fetcher};
-    use crate::source::BookSource;
-    use std::io::{Read, Write};
-    use std::net::TcpListener;
+    use crate::testutil::{book_source, spawn_fixed_server};
 
     #[test]
     fn detect_browser_does_not_panic() {
@@ -390,33 +610,44 @@ mod tests {
         let _ = detect_browser();
     }
 
-    fn book_source(base: &str) -> BookSource {
-        serde_json::from_value(serde_json::json!({
-            "schema": "trnovel-booksource/v2",
-            "name": "t",
-            "url": base,
-            "bookInfo": {},
-            "toc": {"list": {"via": "raw"}, "name": {"via": "raw"}, "url": {"via": "raw"}},
-            "content": {"value": {"via": "raw"}}
-        }))
-        .unwrap()
+    // ── 7.x:登录产出按注册域归并 cookie(纯逻辑,无需真浏览器)──
+    #[test]
+    fn login_outcome_groups_cookies_by_registrable_domain() {
+        let out = LoginOutcome {
+            cookies: vec![
+                BrowserCookie {
+                    domain: ".www.site.com".into(),
+                    name: "sid".into(),
+                    value: "1".into(),
+                },
+                BrowserCookie {
+                    domain: "api.site.com".into(),
+                    name: "t".into(),
+                    value: "2".into(),
+                },
+                BrowserCookie {
+                    domain: "a.example.co.uk".into(),
+                    name: "x".into(),
+                    value: "9".into(),
+                },
+            ],
+            ..Default::default()
+        };
+        let by = out.cookies_by_registrable_domain();
+        // 子域按二级域 site.com 归并、键有序拼接。
+        assert_eq!(by.get("site.com").map(String::as_str), Some("sid=1; t=2"));
+        // 公共后缀 co.uk → 注册域 example.co.uk。
+        assert_eq!(by.get("example.co.uk").map(String::as_str), Some("x=9"));
     }
 
     // ── 审查/correctness:EscalatingFetcher 必须覆盖 fetch_full,透传真实状态码与响应头 ──
     // 否则落到默认实现 → net.connect 静默退化为 {code:200, headers:{}},打掉登录脚本读 Set-Cookie 的能力。
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
     async fn escalating_fetcher_fetch_full_passes_status_and_headers() {
-        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
-        let base = format!("http://{}", listener.local_addr().unwrap());
-        let server = std::thread::spawn(move || {
-            if let Ok((mut stream, _)) = listener.accept() {
-                let mut buf = [0u8; 2048];
-                let _ = stream.read(&mut buf);
-                let resp = "HTTP/1.1 201 Created\r\nSet-Cookie: sid=zzz; Path=/\r\nContent-Length: 2\r\nConnection: close\r\n\r\nok";
-                let _ = stream.write_all(resp.as_bytes());
-                let _ = stream.flush();
-            }
-        });
+        let (base, server) = spawn_fixed_server(
+            "HTTP/1.1 201 Created\r\nSet-Cookie: sid=zzz; Path=/\r\nContent-Length: 2\r\nConnection: close\r\n\r\nok"
+                .to_string(),
+        );
         // browser=None:不解挑战,但 fetch_full 仍须透传 reqwest 的真实 status/headers。
         let fetcher = EscalatingFetcher::new(&book_source(&base), None).unwrap();
         let resp = fetcher.fetch_full(FetchRequest::get("/x")).await.unwrap();

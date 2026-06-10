@@ -132,7 +132,7 @@ fn apply_clean(mut s: String, steps: &[CleanStep], vars: &Vars) -> Result<String
 }
 
 /// 把 `{{key}}` 替换为变量值,未知键替换为空串。
-fn interpolate(template: &str, vars: &Vars) -> String {
+pub(crate) fn interpolate(template: &str, vars: &Vars) -> String {
     static RE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"\{\{\s*([\w.\-]+)\s*\}\}").unwrap());
     RE.replace_all(template, |c: &fancy_regex::Captures| {
         c.get(1)

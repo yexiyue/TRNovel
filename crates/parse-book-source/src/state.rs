@@ -23,7 +23,8 @@ pub struct SourceState {
     /// 书源级用户变量(UI 可编辑的单一配置槽)。
     pub variable: String,
     /// 登录态请求头(明文):JWT(`Authorization: Bearer`)/ 自定义 token 头 / Cookie 均可。
-    /// 每次请求自动 merge 进 header——JWT 与 Cookie 走同一条注入路径。
+    /// 每个**同注册域**请求自动 merge 进 header(JWT 与 Cookie 走同一条注入路径;
+    /// 跨注册域请求跳过,防凭据外泄,见 `cookie::merge_login_into_headers`)。
     pub login_header: BTreeMap<String, String>,
     /// 登录凭据(账号密码等)的 AES 密文;机器绑定密钥,拷到别的设备不可解。
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -75,19 +76,39 @@ impl SourceState {
     }
 
     /// 加密写入登录凭据(机器绑定密钥)。
+    ///
+    /// 每次生成**随机 16 字节 IV**(CBC 固定 IV 是确定性加密:相同凭据密文相同、公共前缀
+    /// 首块可比对),存储格式为 `base64(iv):base64(密文)`;旧格式(无 `:`、机器派生固定 IV)
+    /// 由 [`Self::get_login_info`] 兼容读取。
     pub fn set_login_info(&mut self, plain: &str) -> Result<(), EvalError> {
-        let (key, iv) = machine_key()?;
-        self.login_info = Some(cipher_with(plain, &key, &iv, CipherOp::Encrypt)?);
+        let key = machine_key()?;
+        let iv = random_iv();
+        let ct = cipher_with(plain, &key, &hex::encode(iv), CipherOp::Encrypt)?;
+        use base64::Engine as _;
+        let iv_b64 = base64::engine::general_purpose::STANDARD.encode(iv);
+        self.login_info = Some(format!("{iv_b64}:{ct}"));
         Ok(())
     }
 
     /// 解密读取登录凭据;未设置返回 `None`。
+    /// 新格式 `base64(iv):base64(密文)`;无 `:` 分隔符按旧格式(固定 IV)回退解密
+    /// (解密失败如 padding 错误,经 transform 层映射为 [`EvalError::Crypto`],不 panic)。
     pub fn get_login_info(&self) -> Result<Option<String>, EvalError> {
-        let Some(ct) = &self.login_info else {
+        let Some(stored) = &self.login_info else {
             return Ok(None);
         };
-        let (key, iv) = machine_key()?;
-        Ok(Some(cipher_with(ct, &key, &iv, CipherOp::Decrypt)?))
+        let key = machine_key()?;
+        let (iv_hex, ct) = match stored.split_once(':') {
+            Some((iv_b64, ct)) => {
+                use base64::Engine as _;
+                let iv = base64::engine::general_purpose::STANDARD
+                    .decode(iv_b64)
+                    .map_err(|e| EvalError::Crypto(format!("login_info IV 解码失败: {e}")))?;
+                (hex::encode(iv), ct)
+            }
+            None => (legacy_machine_iv()?, stored.as_str()),
+        };
+        Ok(Some(cipher_with(ct, &key, &iv_hex, CipherOp::Decrypt)?))
     }
 
     /// 登录态是否已过期(`expire_at` 早于当前时刻)。无 `expire_at` 视为永不过期。
@@ -123,14 +144,29 @@ fn now_secs() -> u64 {
         .unwrap_or(0)
 }
 
-/// 由机器唯一标识派生 `(AES-256 key_hex, IV_hex)`。
+/// 由机器唯一标识派生 AES-256 key(hex)。
 ///
 /// 防御:受限/容器/裁剪环境下 `machine-uid` 可能读到空串或平凡值(如 `/etc/machine-id`
-/// 未初始化、macOS 早期启动返回全零),那样会派生出 `SHA256("")`/`MD5("")` 这类**公开可计算**
+/// 未初始化、macOS 早期启动返回全零),那样会派生出 `SHA256("")` 这类**公开可计算**
 /// 的固定密钥,凭据「加密」形同明文。故此处校验 id 非空且长度足够,否则拒绝(报错优于伪加密)。
-fn machine_key() -> Result<(String, String), EvalError> {
+fn machine_key() -> Result<String, EvalError> {
     let id = machine_uid::get().map_err(|e| EvalError::Crypto(format!("machine-uid: {e}")))?;
     derive_key(checked_machine_id(&id)?)
+}
+
+/// 旧落盘格式的固定 IV(`MD5(machine_id)` hex)——仅供 [`SourceState::get_login_info`]
+/// 解密历史数据,新写入一律随机 IV。
+fn legacy_machine_iv() -> Result<String, EvalError> {
+    let id = machine_uid::get().map_err(|e| EvalError::Crypto(format!("machine-uid: {e}")))?;
+    derive_legacy_iv(checked_machine_id(&id)?)
+}
+
+/// 随机 16 字节 CBC IV(OsRng;经 aes-gcm 的 aead re-export 取得,免新增依赖)。
+fn random_iv() -> [u8; 16] {
+    use aes_gcm::aead::rand_core::RngCore;
+    let mut iv = [0u8; 16];
+    aes_gcm::aead::OsRng.fill_bytes(&mut iv);
+    iv
 }
 
 /// 校验机器标识非空且非平凡(去掉 0/-/: 后仍有足够熵),否则拒绝——避免派生公开可计算的固定密钥。
@@ -144,11 +180,14 @@ fn checked_machine_id(id: &str) -> Result<&str, EvalError> {
     Ok(trimmed)
 }
 
-/// 从任意标识派生 `(key_hex, iv_hex)`;抽出以便单测用固定标识验证加解密。
-fn derive_key(id: &str) -> Result<(String, String), EvalError> {
-    let key = transform::hash(id, &hashstep(HashAlgo::Sha256))?; // 64 hex = 32 bytes(AES-256)
-    let iv = transform::hash(id, &hashstep(HashAlgo::Md5))?; // 32 hex = 16 bytes(CBC IV)
-    Ok((key, iv))
+/// 从任意标识派生 key(hex);抽出以便单测用固定标识验证加解密。
+fn derive_key(id: &str) -> Result<String, EvalError> {
+    transform::hash(id, &hashstep(HashAlgo::Sha256)) // 64 hex = 32 bytes(AES-256)
+}
+
+/// 从任意标识派生旧格式固定 IV(hex);仅用于解密历史落盘数据。
+fn derive_legacy_iv(id: &str) -> Result<String, EvalError> {
+    transform::hash(id, &hashstep(HashAlgo::Md5)) // 32 hex = 16 bytes(CBC IV)
 }
 
 fn hashstep(algo: HashAlgo) -> HashStep {
@@ -199,12 +238,45 @@ mod tests {
     #[test]
     fn login_info_encrypt_round_trip() {
         // 用固定标识派生密钥,验证加解密往返(不依赖真实 machine-uid,CI 稳定)。
-        let (key, iv) = derive_key("fixed-machine-id").unwrap();
+        let key = derive_key("fixed-machine-id").unwrap();
+        let iv = derive_legacy_iv("fixed-machine-id").unwrap();
         let plain = r#"{"user":"alice","pass":"secret密码"}"#;
         let ct = cipher_with(plain, &key, &iv, CipherOp::Encrypt).unwrap();
         assert_ne!(ct, plain, "应已加密");
         let back = cipher_with(&ct, &key, &iv, CipherOp::Decrypt).unwrap();
         assert_eq!(back, plain);
+    }
+
+    // ── 审查/security:随机 IV——同明文两次加密密文不同(非确定性),且新格式往返可解 ──
+    #[test]
+    fn login_info_random_iv_nondeterministic() {
+        let mut s1 = SourceState::default();
+        let mut s2 = SourceState::default();
+        s1.set_login_info("same-plain").unwrap();
+        s2.set_login_info("same-plain").unwrap();
+        assert_ne!(
+            s1.login_info, s2.login_info,
+            "随机 IV 下同明文两次加密的密文应不同"
+        );
+        assert!(
+            s1.login_info.as_deref().unwrap().contains(':'),
+            "新格式应为 base64(iv):base64(密文)"
+        );
+        assert_eq!(s1.get_login_info().unwrap().as_deref(), Some("same-plain"));
+    }
+
+    // ── 审查/compat:旧落盘格式(固定 IV、无分隔符)仍可解密 ──
+    #[test]
+    fn login_info_legacy_format_still_decrypts() {
+        let key = machine_key().unwrap();
+        let iv = legacy_machine_iv().unwrap();
+        let ct = cipher_with("old-secret", &key, &iv, CipherOp::Encrypt).unwrap();
+        assert!(!ct.contains(':'), "旧格式(base64 密文)不含分隔符");
+        let s = SourceState {
+            login_info: Some(ct),
+            ..Default::default()
+        };
+        assert_eq!(s.get_login_info().unwrap().as_deref(), Some("old-secret"));
     }
 
     #[test]

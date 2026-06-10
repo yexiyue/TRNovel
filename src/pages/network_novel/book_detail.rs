@@ -165,7 +165,8 @@ pub fn BookDetail(mut hooks: Hooks) -> impl Into<AnyElement<'static>> {
             }).into_any()
         })
         WarningModal(
-            tip: format!("{:?}", error.read().as_ref()),
+            // 用 Display(非 Debug)展示:登录态失效会清晰提示「登录态已失效,请重新登录」(9.3)。
+            tip: error.read().as_ref().map(|e| e.to_string()).unwrap_or_default(),
             is_error: error.read().is_some(),
             open: error.read().is_some(),
         )

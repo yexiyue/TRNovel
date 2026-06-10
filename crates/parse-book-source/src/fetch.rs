@@ -2,6 +2,7 @@
 //! 默认实现 [`ReqwestFetcher`];反爬后端(wreq / FlareSolverr)可作为另一个 `Fetcher`
 //! 适配器接入而不动引擎(见 design D8/D10)。
 
+use super::cookie::{merge_cookie_str, sanitize_header_value};
 use super::error::FetchError;
 use super::source::{BookSource, Charset, Method, RateLimit, Retry};
 use async_trait::async_trait;
@@ -133,6 +134,10 @@ pub struct ReqwestFetcher {
     charset: Charset,
     retry: Option<Retry>,
     limiter: Option<RateLimiter>,
+    /// 书源静态 `http.cookies` 合成串:除进 `default_headers` 外留存一份,
+    /// 供请求级 `Cookie` 出现时在 [`final_header_value`] 合并(reqwest 的 `default_headers`
+    /// 对同名请求级头是「整体替换」而非合并语义)。
+    static_cookie: Option<String>,
 }
 
 impl ReqwestFetcher {
@@ -146,8 +151,11 @@ impl ReqwestFetcher {
             let val = HeaderValue::from_str(v).map_err(|e| FetchError::Header(e.to_string()))?;
             headers.insert(name, val);
         }
-        // 静态 cookie 合成为 Cookie 头(会话 cookie 仍由 cookie_store 自动累积)。
-        if !http.cookies.is_empty() {
+        // 静态 cookie 合成为 Cookie 头(会话 cookie 仍由 cookie_store 自动累积);
+        // 原串同时留存于 self.static_cookie,供请求级 Cookie 出现时合并(见 final_header_value)。
+        let static_cookie = if http.cookies.is_empty() {
+            None
+        } else {
             let cookie = http
                 .cookies
                 .iter()
@@ -157,7 +165,8 @@ impl ReqwestFetcher {
             let val =
                 HeaderValue::from_str(&cookie).map_err(|e| FetchError::Header(e.to_string()))?;
             headers.insert(reqwest::header::COOKIE, val);
-        }
+            Some(cookie)
+        };
 
         let mut builder = reqwest::Client::builder()
             .cookie_store(true)
@@ -178,6 +187,7 @@ impl ReqwestFetcher {
                 .as_ref()
                 .and_then(RateLimiter::from_config)
                 .or_else(|| RateLimiter::from_rate_str(&source.concurrent_rate)),
+            static_cookie,
         })
     }
 
@@ -188,7 +198,7 @@ impl ReqwestFetcher {
             Method::Post => self.client.post(url),
         };
         for (k, v) in &req.headers {
-            builder = builder.header(k, v);
+            builder = builder.header(k, final_header_value(self.static_cookie.as_deref(), k, v));
         }
         if let Some(body) = &req.body {
             builder = builder.body(body.clone());
@@ -209,11 +219,10 @@ impl ReqwestFetcher {
             }
         }
         // 反爬信号:`cf-mitigated: challenge` 头(最干净、机器可读)。
-        let cf_mitigated = headers.get("cf-mitigated").map(String::as_str);
+        let cf_mitigated = headers.get("cf-mitigated").cloned();
         // 先取出 HTTP 状态错误(error_for_status_ref 不消费 body),
         // 再读 body 以便识别挑战页特征(挑战常以 403 返回)。
         let status_err = resp.error_for_status_ref().err();
-        let cf_mitigated = cf_mitigated.map(str::to_owned);
         let bytes = resp.bytes().await?;
         let text = self.decode(&bytes);
         if is_challenge(status.as_u16(), cf_mitigated.as_deref(), &text) {
@@ -291,6 +300,23 @@ impl ReqwestFetcher {
     }
 }
 
+/// 计算一个请求级 header 的最终出站值(纯函数,便于离线单测):
+///
+/// - 值一律剥 CR/LF——纵深防御:已落盘的脏 loginHeader/cookie(多 `Set-Cookie` 以 `\n` 连接)
+///   不致让 reqwest builder 构建失败、拖垮该书源全部请求;
+/// - `Cookie` 头(大小写不敏感)与书源静态 `http.cookies` 串合并:reqwest 对 `default_headers`
+///   是「请求级同名头存在时整体替换」语义,不合并的话登录/jar Cookie 一注入,静态的设备/风控
+///   cookie 就被整串顶掉。静态串为最低优先级基底(请求级同名 key 胜出)。
+///   注:服务端 `Max-Age=0` 删除与静态配置同名的 cookie 时,静态值会被「复活」——
+///   这是书源静态 cookie 的固有语义(Legado 亦始终发送书源配置 cookie),可接受。
+fn final_header_value(static_cookie: Option<&str>, key: &str, value: &str) -> String {
+    let value = sanitize_header_value(value);
+    match static_cookie {
+        Some(s) if key.eq_ignore_ascii_case("cookie") => merge_cookie_str(s, &value),
+        _ => value,
+    }
+}
+
 #[async_trait]
 impl Fetcher for ReqwestFetcher {
     async fn fetch(&self, req: FetchRequest) -> Result<String, FetchError> {
@@ -304,7 +330,7 @@ impl Fetcher for ReqwestFetcher {
 
 #[cfg(test)]
 mod tests {
-    use super::is_challenge;
+    use super::{final_header_value, is_challenge};
 
     /// Cloudflare 托管挑战页的最小特征(取自实测 bilixs 响应)。
     const CHALLENGE_HTML: &str = r#"<html><head><title>Just a moment...</title></head>
@@ -337,5 +363,27 @@ mod tests {
     fn challenge_markers_without_bad_status_not_challenge() {
         // 403 但 body 无挑战特征 → 不是挑战(交由普通 HTTP 错误处理)。
         assert!(!is_challenge(403, None, NORMAL_HTML));
+    }
+
+    // ── 审查/correctness:请求级 Cookie 与静态 http.cookies 合并(default_headers 是替换语义)──
+    #[test]
+    fn final_header_value_merges_static_cookie_and_strips_crlf() {
+        // 请求级 Cookie 与静态基底合并(请求级同名 key 胜出),key 大小写不敏感。
+        assert_eq!(
+            final_header_value(Some("device=d1; sid=old"), "Cookie", "sid=new"),
+            "device=d1; sid=new"
+        );
+        assert_eq!(
+            final_header_value(Some("device=d1"), "cookie", "sid=1"),
+            "device=d1; sid=1"
+        );
+        // 非 Cookie 头不掺静态基底,但仍剥 CR/LF(纵深防御,脏落盘数据不致构建失败)。
+        assert_eq!(
+            final_header_value(Some("device=d1"), "Authorization", "Bearer\r\nT"),
+            "BearerT"
+        );
+        // 无静态 cookie:原样透传(剥 CR/LF)。
+        assert_eq!(final_header_value(None, "Cookie", "a=1\nb=2"), "a=1b=2");
+        assert_eq!(final_header_value(None, "X-Test", "42"), "42");
     }
 }

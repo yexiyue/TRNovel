@@ -20,7 +20,10 @@
 //! host 持**专属 fetcher**(自己的 reqwest Client),只在独立 runtime 上使用,避免与引擎
 //! 主 runtime 共享同一连接池带来的跨 runtime 隐患。
 
-use crate::cookie::{merge_cookie_str, registrable_domain};
+use crate::cookie::{
+    CookieJar, merge_cookie_str, merge_login_into_headers, parse_cookie_str, registrable_domain,
+    request_registrable_domain, sanitize_header_value,
+};
 use crate::error::EvalError;
 use crate::eval::Vars;
 use crate::fetch::{FetchRequest, FetchResponse, Fetcher};
@@ -76,43 +79,26 @@ impl SourceHost {
         })
     }
 
-    /// 组装出站请求头:loginHeader(JWT/自定义头/Cookie 同路径)、按 URL 注册域的**持久化 cookie**、
-    /// 以及可选额外头。对每个值**剥除 CR/LF**——既防 header 注入,也避免「多个 Set-Cookie 以 `\n`
-    /// 连接的值」被回写为请求头时让 reqwest 构建失败(审查确认的真问题)。
-    ///
-    /// cookie 合并:loginHeader 的 `Cookie` 与 cookie 库(注册域)按 key 去重(库为同名最终值)。
+    /// 组装出站请求头(与引擎 `apply_auth` 共用 [`merge_login_into_headers`],单一真相源):
+    /// loginHeader 仅注入**同注册域**请求(JWT/自定义头/Cookie 同路径,防第三方 URL 外泄凭据)、
+    /// 按 URL 注册域取**持久化 cookie**、全部值剥 CR/LF;可选额外头在合并之后**整体覆盖**
+    /// (含 `Cookie`:直接替换而非合并,脚本显式传入即以脚本为准)。
     fn outbound_headers(
         &self,
         url: &str,
         extra: Option<BTreeMap<String, String>>,
     ) -> HashMap<String, String> {
         let mut headers = HashMap::new();
-        let mut login_cookie: Option<String> = None;
-        for (k, v) in &self.state.login_header {
-            if k.eq_ignore_ascii_case("cookie") {
-                login_cookie = Some(sanitize_header_value(v));
-            } else {
-                headers.insert(k.clone(), sanitize_header_value(v));
-            }
-        }
-        // 持久化 cookie:按请求 URL 的注册域取(相对 URL → 书源自身注册域)。
-        let domain = if url.starts_with("http://") || url.starts_with("https://") {
-            registrable_domain(url)
-        } else {
-            self.domain.clone()
-        };
-        let jar_cookie = self.state.cookies.get(&domain).map(String::as_str);
-        let cookie = match (login_cookie.as_deref(), jar_cookie) {
-            (Some(a), Some(b)) => Some(merge_cookie_str(a, b)),
-            (Some(a), None) => Some(a.to_string()),
-            (None, Some(b)) => Some(sanitize_header_value(b)),
-            (None, None) => None,
-        };
-        if let Some(c) = cookie
-            && !c.is_empty()
-        {
-            headers.insert("Cookie".into(), c);
-        }
+        // 请求 URL 的注册域(相对 URL → 书源自身注册域)。
+        let domain = request_registrable_domain(url, &self.domain);
+        let jar_cookie = self.state.cookies.get(&domain);
+        merge_login_into_headers(
+            &self.state.login_header,
+            &self.domain,
+            &domain,
+            jar_cookie.map(String::as_str),
+            &mut headers,
+        );
         if let Some(extra) = extra {
             for (k, v) in extra {
                 headers.insert(k, sanitize_header_value(&v));
@@ -121,45 +107,16 @@ impl SourceHost {
         headers
     }
 
-    /// `net.ajax`:复用取页管线发一个 GET,自动附带当前书源的 loginHeader(JWT/Cookie 同路径)。
-    /// 在独立 runtime 上 `block_on`,失败转 [`EvalError::Host`](可被 JS `try/catch` 捕获)。
-    fn ajax(&self, url: &str) -> Result<String, EvalError> {
-        let req = FetchRequest {
-            url: url.to_string(),
-            method: Method::Get,
-            body: None,
-            headers: self.outbound_headers(url, None),
-        };
-        self.rt
-            .block_on(self.fetcher.fetch(req))
-            .map_err(|e| EvalError::Host(format!("ajax {url}: {e}")))
-    }
-
-    /// `net.connect`:复用取页管线发 GET,返回**完整响应**(body + 状态码 + 响应头),
-    /// 供登录脚本读 `Set-Cookie` / `Location` / 状态码。`extra_headers`(可选 JSON 对象串)叠加在
-    /// loginHeader 之上;非法 JSON 抛错(不再静默吞)。在独立 runtime 上 `block_on`。
-    fn connect(&self, url: &str, extra_headers: Option<&str>) -> Result<FetchResponse, EvalError> {
-        let extra = match extra_headers {
-            Some(j) => Some(json_to_string_map(j)?),
-            None => None,
-        };
-        let req = FetchRequest {
-            url: url.to_string(),
-            method: Method::Get,
-            body: None,
-            headers: self.outbound_headers(url, extra),
-        };
-        self.rt
-            .block_on(self.fetcher.fetch_full(req))
-            .map_err(|e| EvalError::Host(format!("connect {url}: {e}")))
-    }
-
-    /// `net.post`:发 POST(带 body)返回完整响应,供脚本做表单/JSON 登录(spec source-auth 要求)。
-    /// `extra_headers`(可选 JSON 对象串)叠加在 loginHeader 之上;非法 JSON 抛错。
-    fn post(
-        &self,
+    /// `net.*` 的共享请求核心(ajax/connect/post 复用):组请求 → 独立 runtime 上 `block_on`
+    /// 完整取页 → 响应 `Set-Cookie` 回灌 `state.cookies`(见 [`SourceHost::absorb_set_cookie`])。
+    /// `label` 保持 JS 可见错误前缀不变(`"ajax {url}: …"` 等);`extra_headers` 为可选 JSON 对象串。
+    /// 假定 `fetch_full` 与 `fetch` 取页语义一致(现有全部实现满足),`ajax` 经此取 body。
+    fn request(
+        &mut self,
+        label: &str,
+        method: Method,
         url: &str,
-        body: &str,
+        body: Option<String>,
         extra_headers: Option<&str>,
     ) -> Result<FetchResponse, EvalError> {
         let extra = match extra_headers {
@@ -168,17 +125,89 @@ impl SourceHost {
         };
         let req = FetchRequest {
             url: url.to_string(),
-            method: Method::Post,
-            body: Some(body.to_string()),
+            method,
+            body,
             headers: self.outbound_headers(url, extra),
         };
-        self.rt
-            .block_on(self.fetcher.fetch_full(req))
-            .map_err(|e| EvalError::Host(format!("post {url}: {e}")))
+        let fetcher = self.fetcher.clone();
+        let resp = self
+            .rt
+            .block_on(fetcher.fetch_full(req))
+            .map_err(|e| EvalError::Host(format!("{label} {url}: {e}")))?;
+        self.absorb_set_cookie(url, &resp);
+        Ok(resp)
     }
 
-    /// 整体设置登录态请求头;若含 `Cookie`/`cookie` 字段,同步并入 cookie 库(按二级域名)。置 `dirty`。
-    fn set_login_header(&mut self, map: BTreeMap<String, String>) {
+    /// 把响应的 `Set-Cookie`(多条以 `\n` 连接)按请求注册域并入 `state.cookies` 并置 `dirty`——
+    /// 否则 cookie 会话型脚本登录(表单登录最常见形态)的登录态只活在 fetcher 内部,落盘为空。
+    ///
+    /// 注:`state.cookies` 是平面 map,**刻意不分 session/persistent**(与引擎 `CookieJar` 的
+    /// 分离语义有意分叉):登录脚本场景以「登录产物持久化」为意图,行为与 browser_login 一致,
+    /// 请勿"统一"回 CookieJar 语义。也不受 `enabledCookieJar` 开关门控(登录路径默认回灌)。
+    fn absorb_set_cookie(&mut self, url: &str, resp: &FetchResponse) {
+        let Some(set_cookie) = resp.headers.get("set-cookie") else {
+            return;
+        };
+        let domain = request_registrable_domain(url, &self.domain);
+        // 复用 CookieJar 的 Set-Cookie 解析(含 `Max-Age<=0` 删除、`\n` 多条拆分),再展平回平面 map。
+        let mut saved = BTreeMap::new();
+        if let Some(existing) = self.state.cookies.get(&domain) {
+            saved.insert(domain.clone(), existing.clone());
+        }
+        let mut jar = CookieJar::from_persistent(&saved);
+        jar.absorb_set_cookie(&domain, set_cookie);
+        match jar.cookie_header(&domain) {
+            Some(c) => {
+                self.state.cookies.insert(domain, c);
+            }
+            None => {
+                self.state.cookies.remove(&domain);
+            }
+        }
+        self.dirty = true;
+    }
+
+    /// `net.ajax`:复用取页管线发一个 GET,自动附带当前书源的 loginHeader(JWT/Cookie 同路径)。
+    /// 在独立 runtime 上 `block_on`,失败转 [`EvalError::Host`](可被 JS `try/catch` 捕获)。
+    fn ajax(&mut self, url: &str) -> Result<String, EvalError> {
+        self.request("ajax", Method::Get, url, None, None)
+            .map(|r| r.body)
+    }
+
+    /// `net.connect`:复用取页管线发 GET,返回**完整响应**(body + 状态码 + 响应头),
+    /// 供登录脚本读 `Set-Cookie` / `Location` / 状态码。`extra_headers`(可选 JSON 对象串)叠加在
+    /// loginHeader 之上;非法 JSON 抛错(不再静默吞)。在独立 runtime 上 `block_on`。
+    fn connect(
+        &mut self,
+        url: &str,
+        extra_headers: Option<&str>,
+    ) -> Result<FetchResponse, EvalError> {
+        self.request("connect", Method::Get, url, None, extra_headers)
+    }
+
+    /// `net.post`:发 POST(带 body)返回完整响应,供脚本做表单/JSON 登录(spec source-auth 要求)。
+    /// `extra_headers`(可选 JSON 对象串)叠加在 loginHeader 之上;非法 JSON 抛错。
+    fn post(
+        &mut self,
+        url: &str,
+        body: &str,
+        extra_headers: Option<&str>,
+    ) -> Result<FetchResponse, EvalError> {
+        self.request(
+            "post",
+            Method::Post,
+            url,
+            Some(body.to_string()),
+            extra_headers,
+        )
+    }
+
+    /// 整体设置登录态请求头(写入侧即剥 CR/LF,保证落盘数据干净——脚本常把 `\n` 连接的多
+    /// `Set-Cookie` 直接写回);若含 `Cookie`/`cookie` 字段,同步并入 cookie 库(按二级域名)。置 `dirty`。
+    fn set_login_header(&mut self, mut map: BTreeMap<String, String>) {
+        for v in map.values_mut() {
+            *v = sanitize_header_value(v);
+        }
         self.state.login_header = map;
         if let Some(cookie) = self
             .state
@@ -216,23 +245,10 @@ impl SourceHost {
         };
         match key {
             None | Some("") => jar.clone(),
-            Some(k) => jar
-                .split(';')
-                .map(str::trim)
-                .find_map(|kv| {
-                    kv.split_once('=')
-                        .filter(|(name, _)| *name == k)
-                        .map(|(_, v)| v.to_string())
-                })
-                .unwrap_or_default(),
+            // 统一走 parse_cookie_str(trim、同名 last-wins),与 merge/序列化的归一化对齐。
+            Some(k) => parse_cookie_str(jar).get(k).cloned().unwrap_or_default(),
         }
     }
-}
-
-/// 剥除 header 值中的 CR/LF——防 header 注入,并避免「多个 Set-Cookie 以 `\n` 连接的值」
-/// 被回写为出站请求头时让 reqwest 构建失败。
-fn sanitize_header_value(v: &str) -> String {
-    v.replace(['\r', '\n'], "")
 }
 
 // ───────────────────────── 线程局部 host(单线程同步求值)─────────────────────────
@@ -269,8 +285,10 @@ fn active_host() -> Option<Rc<RefCell<SourceHost>>> {
 }
 
 /// 把新 cookie 串按 key 合并进某域名的现有 cookie(同名覆盖),回写 jar。
+/// `add` 先剥 CR/LF(写入侧净化,保证落盘数据干净)。
 fn merge_cookie_jar(jar: &mut BTreeMap<String, String>, domain: &str, add: &str) {
-    let merged = merge_cookie_str(jar.get(domain).map(String::as_str).unwrap_or(""), add);
+    let add = sanitize_header_value(add);
+    let merged = merge_cookie_str(jar.get(domain).map(String::as_str).unwrap_or(""), &add);
     jar.insert(domain.to_string(), merged);
 }
 
@@ -304,10 +322,11 @@ pub fn eval_js_with_host(
 /// 返回 `(JS 求值结果, 求值后 state, state 是否被修改)`;`dirty` 为 `true` 时调用方应落盘。
 ///
 /// # Panics
-/// 若在 **tokio runtime worker 线程(async 执行上下文)** 内直接调用,且脚本使用 `net.*`
-/// (触发 host 独立 runtime 的 `block_on`),会 panic「Cannot start a runtime from within a
-/// runtime」。**必须**经 [`tokio::task::spawn_blocking`] 调度(spawn_blocking 线程非 async
-/// 上下文,`block_on` 合法)。纯状态脚本(不触网)不受影响。
+/// 若在 **tokio runtime worker 线程(async 执行上下文)** 内直接调用必 panic:脚本用 `net.*`
+/// 时是 `block_on` 的「Cannot start a runtime from within a runtime」;即便**纯状态脚本不触网**,
+/// host 自带的 `Runtime` 在 async 上下文中 **drop 同样 panic**(tokio 禁止在异步上下文析构
+/// runtime)。故无论脚本是否触网,**必须**经 [`tokio::task::spawn_blocking`] 调度
+/// (spawn_blocking 线程非 async 上下文)。
 pub fn eval_blocking(
     script: &str,
     result: &str,
@@ -595,11 +614,30 @@ fn js_get_login_info_map(_t: &JsValue, _args: &[JsValue], ctx: &mut Context) -> 
 
 // ───────────────────────── net.* native 函数 ─────────────────────────
 
+/// 取第 `i` 个参数作为可选「额外请求头 JSON 串」:JS 对象会被 to_string 成
+/// `"[object Object]"`,该值与空串都视为无额外头(headers 须经 JSON 串传入)。
+fn opt_extra_arg(args: &[JsValue], i: usize, ctx: &mut Context) -> JsResult<Option<String>> {
+    let extra = arg(args, i, ctx)?;
+    Ok((!extra.is_empty() && extra != "[object Object]").then_some(extra))
+}
+
+/// 把请求结果转为 JS 值:成功构造 `{body, code, headers}` 对象,失败抛可被 `try/catch`
+/// 捕获的 JS 异常(connect/post 共用收尾)。
+fn yield_response(r: Result<FetchResponse, EvalError>, ctx: &mut Context) -> JsResult<JsValue> {
+    match r {
+        Ok(resp) => Ok(response_to_js(&resp, ctx).into()),
+        Err(e) => Err(JsNativeError::typ().with_message(e.to_string()).into()),
+    }
+}
+
+// 注:net.* 一律 `borrow_mut`(请求核心要把响应 Set-Cookie 写回 state.cookies);
+// 网络调用是同线程同步 block_on,期间不会重入 JS,无 RefCell 双借风险。
+
 /// `net.ajax(url)`:复用取页管线发 GET,返回响应体;失败抛 JS 异常(可 `try/catch`)。
 fn js_ajax(_t: &JsValue, args: &[JsValue], ctx: &mut Context) -> JsResult<JsValue> {
     let url = arg(args, 0, ctx)?;
     let r = match active_host() {
-        Some(host) => host.borrow().ajax(&url),
+        Some(host) => host.borrow_mut().ajax(&url),
         None => Err(EvalError::Host("no active host".into())),
     };
     yield_js(r)
@@ -609,17 +647,12 @@ fn js_ajax(_t: &JsValue, args: &[JsValue], ctx: &mut Context) -> JsResult<JsValu
 /// (供读 `Set-Cookie`/`Location`/状态码);失败抛 JS 异常。第二参为可选的额外请求头 JSON 串。
 fn js_connect(_t: &JsValue, args: &[JsValue], ctx: &mut Context) -> JsResult<JsValue> {
     let url = arg(args, 0, ctx)?;
-    let extra = arg(args, 1, ctx)?;
-    // JS 对象会被 to_string 成 "[object Object]",此时视为无额外头(headers 经 JSON 串传入)。
-    let extra = (!extra.is_empty() && extra != "[object Object]").then_some(extra);
+    let extra = opt_extra_arg(args, 1, ctx)?;
     let r = match active_host() {
-        Some(host) => host.borrow().connect(&url, extra.as_deref()),
+        Some(host) => host.borrow_mut().connect(&url, extra.as_deref()),
         None => Err(EvalError::Host("no active host".into())),
     };
-    match r {
-        Ok(resp) => Ok(response_to_js(&resp, ctx).into()),
-        Err(e) => Err(JsNativeError::typ().with_message(e.to_string()).into()),
-    }
+    yield_response(r, ctx)
 }
 
 /// `net.post(url, body, extraHeadersJson?)`:发 POST 返回完整响应对象 `{body, code, headers}`
@@ -627,16 +660,12 @@ fn js_connect(_t: &JsValue, args: &[JsValue], ctx: &mut Context) -> JsResult<JsV
 fn js_post(_t: &JsValue, args: &[JsValue], ctx: &mut Context) -> JsResult<JsValue> {
     let url = arg(args, 0, ctx)?;
     let body = arg(args, 1, ctx)?;
-    let extra = arg(args, 2, ctx)?;
-    let extra = (!extra.is_empty() && extra != "[object Object]").then_some(extra);
+    let extra = opt_extra_arg(args, 2, ctx)?;
     let r = match active_host() {
-        Some(host) => host.borrow().post(&url, &body, extra.as_deref()),
+        Some(host) => host.borrow_mut().post(&url, &body, extra.as_deref()),
         None => Err(EvalError::Host("no active host".into())),
     };
-    match r {
-        Ok(resp) => Ok(response_to_js(&resp, ctx).into()),
-        Err(e) => Err(JsNativeError::typ().with_message(e.to_string()).into()),
-    }
+    yield_response(r, ctx)
 }
 
 /// 把 [`FetchResponse`] 构造成 JS 对象 `{body: string, code: number, headers: {k:v}}`。
@@ -679,47 +708,11 @@ fn js_get_cookie(_t: &JsValue, args: &[JsValue], ctx: &mut Context) -> JsResult<
 mod tests {
     use super::*;
     use crate::fetch::ReqwestFetcher;
-    use crate::source::BookSource;
-    use std::io::{Read, Write};
-    use std::net::TcpListener;
-
-    /// 最小书源(仅为构造 `ReqwestFetcher`:base 指向本地测试服务)。
-    fn book_source(base: &str) -> BookSource {
-        serde_json::from_value(serde_json::json!({
-            "schema": "trnovel-booksource/v2",
-            "name": "test",
-            "url": base,
-            "bookInfo": {},
-            "toc": {"list": {"via": "raw"}, "name": {"via": "raw"}, "url": {"via": "raw"}},
-            "content": {"value": {"via": "raw"}}
-        }))
-        .expect("minimal book source")
-    }
+    use crate::testutil::{book_source, spawn_echo_server, spawn_fixed_server};
 
     fn host_with(state: SourceState, base: &str) -> Rc<RefCell<SourceHost>> {
         let fetcher: Arc<dyn Fetcher> = Arc::new(ReqwestFetcher::new(&book_source(base)).unwrap());
         Rc::new(RefCell::new(SourceHost::new(base, state, fetcher).unwrap()))
-    }
-
-    /// 处理一次连接的回显 HTTP 服务:响应体 = 收到的原始请求(便于断言请求头)。
-    fn spawn_echo_server() -> (String, std::thread::JoinHandle<()>) {
-        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
-        let base = format!("http://{}", listener.local_addr().unwrap());
-        let handle = std::thread::spawn(move || {
-            if let Ok((mut stream, _)) = listener.accept() {
-                let mut buf = [0u8; 8192];
-                let n = stream.read(&mut buf).unwrap_or(0);
-                let body = buf[..n].to_vec();
-                let head = format!(
-                    "HTTP/1.1 200 OK\r\nContent-Type: text/plain; charset=utf-8\r\nContent-Length: {}\r\nConnection: close\r\n\r\n",
-                    body.len()
-                );
-                let _ = stream.write_all(head.as_bytes());
-                let _ = stream.write_all(&body);
-                let _ = stream.flush();
-            }
-        });
-        (base, handle)
     }
 
     // ── 3.5:source 与 net 是同一个 host 实例(一处写,另一处读得到)──
@@ -931,23 +924,13 @@ mod tests {
     // ── 4.2:net.connect 返回 {body, code, headers}(可读响应头,如 Set-Cookie)──
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
     async fn net_connect_returns_body_code_and_headers() {
-        // 起一个返回固定 Set-Cookie 头的服务。
-        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
-        let base = format!("http://{}", listener.local_addr().unwrap());
-        let server = std::thread::spawn(move || {
-            if let Ok((mut stream, _)) = listener.accept() {
-                let mut buf = [0u8; 4096];
-                let _ = stream.read(&mut buf);
-                let body = "正文OK";
-                let resp = format!(
-                    "HTTP/1.1 200 OK\r\nContent-Type: text/plain; charset=utf-8\r\nSet-Cookie: sid=xyz; Path=/\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
-                    body.len(),
-                    body
-                );
-                let _ = stream.write_all(resp.as_bytes());
-                let _ = stream.flush();
-            }
-        });
+        // 起一个返回固定 Set-Cookie 头的服务(Content-Length 按字节算:"正文OK" 为 8 字节)。
+        let body = "正文OK";
+        let (base, server) = spawn_fixed_server(format!(
+            "HTTP/1.1 200 OK\r\nContent-Type: text/plain; charset=utf-8\r\nSet-Cookie: sid=xyz; Path=/\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
+            body.len(),
+            body
+        ));
 
         let fetcher: Arc<dyn Fetcher> = Arc::new(ReqwestFetcher::new(&book_source(&base)).unwrap());
         let url = base.clone();
@@ -973,22 +956,12 @@ mod tests {
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
     async fn run_login_script_writes_back_login_header() {
         // 服务返回固定 token 文本。
-        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
-        let base = format!("http://{}", listener.local_addr().unwrap());
-        let server = std::thread::spawn(move || {
-            if let Ok((mut stream, _)) = listener.accept() {
-                let mut buf = [0u8; 4096];
-                let _ = stream.read(&mut buf);
-                let body = "TOKEN123";
-                let resp = format!(
-                    "HTTP/1.1 200 OK\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
-                    body.len(),
-                    body
-                );
-                let _ = stream.write_all(resp.as_bytes());
-                let _ = stream.flush();
-            }
-        });
+        let body = "TOKEN123";
+        let (base, server) = spawn_fixed_server(format!(
+            "HTTP/1.1 200 OK\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
+            body.len(),
+            body
+        ));
 
         let login_js = "function login(){ \
              var tok = net.ajax('/api/token'); \
@@ -1011,21 +984,6 @@ mod tests {
         );
     }
 
-    /// 处理一次连接、返回固定原始 HTTP 响应的服务(用于断言响应头/状态码透传)。
-    fn spawn_fixed_server(raw_response: String) -> (String, std::thread::JoinHandle<()>) {
-        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
-        let base = format!("http://{}", listener.local_addr().unwrap());
-        let handle = std::thread::spawn(move || {
-            if let Ok((mut stream, _)) = listener.accept() {
-                let mut buf = [0u8; 4096];
-                let _ = stream.read(&mut buf);
-                let _ = stream.write_all(raw_response.as_bytes());
-                let _ = stream.flush();
-            }
-        });
-        (base, handle)
-    }
-
     // ── 审查/correctness:merge_cookie_jar 与已存在 cookie 合并 + 同名覆盖 ──
     #[test]
     fn merge_cookie_jar_overwrites_same_key_keeps_others() {
@@ -1045,16 +1003,7 @@ mod tests {
         );
     }
 
-    // registrable_domain 边界用例见 crate::cookie 模块单测(此处不重复)。
-
-    #[test]
-    fn sanitize_header_value_strips_crlf() {
-        assert_eq!(
-            sanitize_header_value("a=1; Path=/\nb=2; HttpOnly"),
-            "a=1; Path=/b=2; HttpOnly"
-        );
-        assert_eq!(sanitize_header_value("Bearer\r\n token"), "Bearer token");
-    }
+    // registrable_domain / sanitize_header_value 边界用例见 crate::cookie 模块单测(此处不重复)。
 
     // ── 审查/correctness:getCookie 用页面子域读取应回退到注册域命中(写读对齐)──
     #[test]
@@ -1207,6 +1156,43 @@ mod tests {
         assert!(
             lower.contains("cookie: lang=zh; sid=persisted"),
             "应合并发送持久化与登录 cookie: {body}"
+        );
+    }
+
+    // ── 审查/correctness:net.* 响应的 Set-Cookie 回灌 state.cookies(cookie 会话型脚本登录)──
+    // 此前只进 reqwest 内部 cookie_store(fetcher 销毁即丢),落盘登录态为空 → 下次必判失效。
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn net_response_set_cookie_absorbed_into_state() {
+        let (base, server) = spawn_fixed_server(
+            "HTTP/1.1 200 OK\r\nSet-Cookie: session=S1; Path=/; HttpOnly\r\nContent-Length: 2\r\nConnection: close\r\n\r\nok"
+                .to_string(),
+        );
+        let fetcher: Arc<dyn Fetcher> = Arc::new(ReqwestFetcher::new(&book_source(&base)).unwrap());
+        let url = base.clone();
+        let (out, state, dirty) = tokio::task::spawn_blocking(move || {
+            eval_blocking(
+                // 登录脚本 POST 后,session cookie 应立即可经 net.getCookie 读到。
+                "net.connect('/login'); net.getCookie('127.0.0.1','session')",
+                "",
+                &Vars::new(),
+                &url,
+                SourceState::default(),
+                fetcher,
+            )
+        })
+        .await
+        .unwrap()
+        .unwrap();
+        server.join().unwrap();
+        assert_eq!(out, "S1", "Set-Cookie 应回灌进 state.cookies 供脚本读取");
+        assert!(dirty, "回灌应置 dirty(供调用方落盘)");
+        assert!(
+            state
+                .cookies
+                .get("127.0.0.1")
+                .is_some_and(|c| c.contains("session=S1")),
+            "登录态应随 state 返回供落盘: {:?}",
+            state.cookies
         );
     }
 

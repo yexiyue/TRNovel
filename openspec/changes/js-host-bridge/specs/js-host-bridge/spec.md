@@ -60,17 +60,25 @@ host 对象 SHALL 提供 `net.startBrowserAwait(url, title?)`,以 headful 方式
 - **WHEN** JS 执行 `net.startBrowserAwait('https://site/login')`,用户在弹出的浏览器里登录后关闭/确认
 - **THEN** 浏览器产生的 cookie 被写入 cookie 库,调用返回登录后页面
 
-### Requirement: 结构化多步编排(命名捕获与引用)
+### Requirement: 结构化多步编排(前置请求链 + 命名捕获与引用)
 
-多步传值 SHALL 使用**结构化字段**而非字符串 DSL,以保持 ai-friendly、可被 booksource-generator 生成。请求级 `vars`(`{ name: <Rule> }`)在该请求响应后对每个 `Rule` 求值并存入作用域变量;后续请求的 URL/header/body 用现有 `{{name}}` 模板引用。捕获 MUST 先于引用它的步骤求值;变量按章节→书籍→书源作用域级联。引擎 MUST NOT 要求书源作者书写 Legado 式 `@put:/@get:` 嵌套字符串 DSL。
+多步传值 SHALL 使用**结构化字段**而非字符串 DSL,以保持 ai-friendly、可被 booksource-generator 生成。每个 op(search/explore/bookInfo/toc/content)MAY 声明一条**有序前置请求链** `prelude`(`PreStep` 数组),在主请求/分页之前按数组顺序串行执行;每个 `PreStep` MAY 声明 `capture`(`{ name, value: <Rule>, scope }` 数组),在该步响应后对每个 `value` 规则求值,得 `String` 写入 `scope`(`chapter`|`book`|`source`,默认 `chapter`)作用域变量。`Request.vars`(`{ name: <Rule> }`)等价对 search 主请求响应的 `chapter` 级捕获。后续步骤与抽取规则一律用现有 `{{name}}` 模板引用。捕获 MUST 先于引用它的步骤求值(由「数组顺序 + 响应后捕获」两条物理保证,无需依赖图);变量按 章节→书籍→书源 作用域级联回退;空串捕获 MUST NOT 写入作用域层。引擎 MUST NOT 要求书源作者书写 Legado 式 `@put:/@get:` 嵌套字符串 DSL,也 MUST NOT 用 `#[serde(flatten)]` 内嵌 `Request`(会令 `deny_unknown_fields` 校验失效)。
 
-#### Scenario: 列表页捕获 token 带入详情页(结构化)
-- **WHEN** 列表请求声明 `vars: { token: <从响应抽取 token 的 Rule> }`,详情请求 URL 模板含 `{{token}}`
-- **THEN** 引擎先对列表响应求值 token 存入变量,详情请求 URL 携带正确的 token 值
+#### Scenario: 前置请求链捕获 csrf 带入主请求(结构化)
+- **WHEN** toc 声明 `prelude: [{ url: '/api/prepare', capture: [{ name: 'csrf', value: <Rule> }] }]`,主目录请求的 URL/规则含 `{{csrf}}`
+- **THEN** 引擎先跑 prepare、捕获 csrf 写 chapter 层,主目录请求带正确 csrf;`prelude` 为空时引擎走与现状逐字节等价的旧路径
+
+#### Scenario: 列表 token 带入详情(跨 op)
+- **WHEN** `search.prelude` 捕获 token 标 `scope: 'source'`,同一会话用户选书后引擎调 `book_info`
+- **THEN** 因 source 层经 Engine `Arc` 共享,`book_info` 主请求自动取到 `{{token}}`;跨会话/历史续读(全新 Engine、source 层空)时,`book_info`/`toc`/`content` 各自声明 `prelude` + `skipIfPresent` 幂等重取(search 阶段无 per-book 载体,token MUST NOT 落 `book` 层)
+
+#### Scenario: token 复用避免每章重抓
+- **WHEN** `content.prelude` 的某步声明 `skipIfPresent: ['token']` 且 token 已在作用域内非空
+- **THEN** 引擎跳过该步、不重复发请求(`source`/`book` 层 token 复用,缓解 N×RTT)
 
 #### Scenario: 不使用字符串 DSL
 - **WHEN** 书源作者表达跨请求传值
-- **THEN** 用结构化 `vars` + `{{}}` 模板即可,无需写 `@put:{...}`/`@get:{...}`
+- **THEN** 用结构化 `prelude`/`capture` + `{{}}` 模板即可,无需写 `@put:{...}`/`@get:{...}`
 
 ### Requirement: per-source 持久状态文件
 

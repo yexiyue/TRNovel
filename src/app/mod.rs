@@ -20,8 +20,8 @@ use crate::{
         home::Home,
         local_novel::SelectFile,
         network_novel::{
-            book_detail::BookDetail, book_source_manager::BookSourceManager,
-            select_books::SelectBooks,
+            book_detail::BookDetail, book_source_login::BookSourceLogin,
+            book_source_manager::BookSourceManager, select_books::SelectBooks,
         },
         select_history::SelectHistory,
         theme_setting::ThemeSetting,
@@ -101,6 +101,7 @@ pub fn App(props: &AppProps, mut hooks: Hooks) -> impl Into<AnyElement<'static>>
             "/local-novel"=> ReadNovel<LocalNovel>,
             // 网络小说
             "/book-source"=> BookSourceManager,
+            "/book-source-login"=> BookSourceLogin,
             "/select-books"=> SelectBooks,
             "/book-detail"=> BookDetail,
             "/network-novel"=> ReadNovel<NetworkNovel>,

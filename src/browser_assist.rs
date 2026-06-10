@@ -145,18 +145,24 @@ impl BrowserUi for TuiBrowserUi {
 ///
 /// 是否真的开浏览器由 `TuiBrowserUi::authorize` 在撞挑战时把关(设置开关 ∨ 首次弹窗)。
 pub fn build_engine(source: BookSource) -> parse_book_source::Result<Engine> {
-    if matches!(source.http.fetcher, FetchMode::Reqwest) {
-        return Engine::new(source);
-    }
-    let mut opts = BrowserOptions::default();
-    if let Ok(dir) = crate::utils::novel_catch_dir() {
-        opts.profile_dir = dir.join("browser-profile");
-    }
-    opts.total_timeout = Duration::from_secs(90);
-    opts.ui = browser_ui();
-
-    match BrowserFetcher::detect(opts) {
-        Some(browser) => Engine::with_browser_assist(source, Some(browser)),
-        None => Engine::new(source),
-    }
+    // 登录态(loginHeader/cookies)注入每个请求;加载时做 TTL 清理(过期清登录态)。
+    // 空态(未登录 / 无需登录的书源)→ 注入为空,行为与现状一致(向后兼容)。
+    let state = crate::cache::load_source_state(&source.url);
+    let engine = if matches!(source.http.fetcher, FetchMode::Reqwest) {
+        Engine::new(source)?
+    } else {
+        let mut opts = BrowserOptions::default();
+        if let Ok(dir) = crate::utils::novel_catch_dir() {
+            opts.profile_dir = dir.join("browser-profile");
+        }
+        opts.total_timeout = Duration::from_secs(90);
+        opts.ui = browser_ui();
+        match BrowserFetcher::detect(opts) {
+            Some(browser) => Engine::with_browser_assist(source, Some(browser))?,
+            None => Engine::new(source)?,
+        }
+    };
+    Ok(engine
+        .with_login_header(state.login_header)
+        .with_cookies(&state.cookies))
 }

@@ -3,6 +3,8 @@ pub mod network_novel;
 pub use local_novel::LocalNovelCache;
 pub use network_novel::NetworkNovelCache;
 pub mod book_source;
+pub mod source_state;
+pub use source_state::{load_source_state, save_source_state, source_state_path};
 pub mod history;
 pub use history::*;
 pub mod setting;

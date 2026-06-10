@@ -29,7 +29,9 @@ impl NetworkNovel {
 
         Ok(NetworkNovel {
             book_list_item: network_cache.book_list_item,
-            engine: crate::browser_assist::build_engine(source)?,
+            // 注回书籍级捕获变量(scope=book 多步 vars),使续读时目录/正文沿用上次捕获的 token。
+            engine: crate::browser_assist::build_engine(source)?
+                .with_book_vars(network_cache.book_vars),
             book_info: None,
             novel_chapters: NovelChapters {
                 current_chapter: network_cache.current_chapter,

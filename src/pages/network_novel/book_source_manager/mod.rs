@@ -58,6 +58,7 @@ pub fn BookSourceManager(mut hooks: Hooks) -> impl Into<AnyElement<'static>> {
                 key_shortcut_info: vec![
                     ("切换导入书源模式", "Tab"),
                     ("删除书源", "D"),
+                    ("书源登录(需登录的源)", "L"),
                     ("上下移动", "J / K / ↑ / ↓"),
                     ("选择书源", "Enter"),
                     ("浏览器辅助验证 开/关", "B"),

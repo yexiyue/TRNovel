@@ -5,7 +5,7 @@
 
 use super::error::ConfigError;
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 
 // ───────────────────────── 规则 AST ─────────────────────────
 
@@ -404,6 +404,63 @@ pub enum Method {
     Post,
 }
 
+/// 多步编排:捕获变量的作用域(三级级联 章节→书籍→书源,见 design D7-bis)。
+/// 默认 `Chapter`——最短寿命、零持久、零跨书外溢;`get` 时按 章节→书籍→书源 取第一个非空。
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize, Hash)]
+#[serde(rename_all = "lowercase")]
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
+pub enum VarScope {
+    /// 仅本次 op 调用(search/explore/bookInfo/toc/content)内存活,调用结束消亡(默认)。
+    /// 一次性 csrf/sign/cursor 用它。
+    #[default]
+    Chapter,
+    /// 随 per-book 快照持久化(由 app 注入·导出);如详情/列表 token 复用到 toc/content。
+    /// 注意:**search/explore 的 `prelude` 阶段尚无 per-book 载体**(用户选书后才建 per-book 引擎),
+    /// 在那里用 `book` 会写进会被丢弃的实例 → 静默无效;search 阶段的 token 请用 `source`/`chapter`。
+    Book,
+    /// 书源级长存(引擎内跨 op 共享);如全站 API host/版本/全站 csrf。
+    /// 跨会话持久仅在 app 接线落盘时保证(默认构建为进程内)。
+    Source,
+}
+
+/// 一条结构化命名捕获:对**所属请求的响应**用 `value` 规则求一个字符串,
+/// 写入 `scope` 指定的作用域层,后续步骤/抽取规则以 `{{name}}` 引用。
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
+pub struct Capture {
+    /// 变量名(后续以 `{{name}}` 引用,走现有模板插值)。
+    pub name: String,
+    /// 对响应求值的规则(复用 `Rule` AST,产物是字符串)。
+    pub value: Rule,
+    /// 写入哪一层作用域;默认 `chapter`(本次调用临时)。
+    #[serde(default)]
+    pub scope: VarScope,
+}
+
+/// 前置请求链中的一步:一个请求 + 其响应上的有序命名捕获(见 design D7-bis)。
+/// 本步 url/headers/body 可引用更早步骤捕获的 `{{name}}`。显式列字段(**不**用 `#[serde(flatten)]`
+/// 内嵌 [`Request`]:`Rule` 为 untagged 兜底,flatten 会令 `deny_unknown_fields` 校验失效)。
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
+pub struct PreStep {
+    pub url: UrlOrRule,
+    #[serde(default)]
+    pub method: Method,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub body: Option<UrlOrRule>,
+    /// 请求头(值支持 `{{name}}` 模板,便于带 `Authorization: Bearer {{token}}`)。
+    #[serde(default)]
+    pub headers: HashMap<String, String>,
+    /// 本步响应上的有序命名捕获(按数组顺序求值;`capture[i]` 可引用 `capture[0..i]`)。
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub capture: Vec<Capture>,
+    /// 惰性短路:列出的 key 在作用域内**全部非空**则跳过本步(token 复用,避免每章重抓)。
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub skip_if_present: Vec<String>,
+}
+
 /// 单个请求。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
@@ -416,9 +473,12 @@ pub struct Request {
     pub body: Option<UrlOrRule>,
     #[serde(default)]
     pub headers: HashMap<String, String>,
-    /// 命名捕获,供 template 使用。
-    #[serde(default)]
-    pub vars: HashMap<String, Rule>,
+    /// 命名捕获:对**本请求响应**每个 `(name, Rule)` 求值,写入 `chapter` 层(等价 `scope=chapter`
+    /// 的 [`Capture`]),使本 op 的 list/item 与后续步骤以 `{{name}}` 引用。见 design D7-bis。
+    /// 各条**独立**对响应求值(可引用 `base`/`key`/`page` 与前置 `prelude` 捕获,但**勿互相引用**:
+    /// 需有序依赖请用 `prelude` 链)。用 `BTreeMap` 保证迭代/落点顺序确定(免哈希随机化幽灵 bug)。
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub vars: BTreeMap<String, Rule>,
 }
 
 // ───────────────────────── 操作规则 ─────────────────────────
@@ -449,11 +509,61 @@ pub struct BookRules {
     pub word_count: Option<Rule>,
 }
 
+/// 书详情操作:详情字段抽取(同 [`BookRules`])+ 可选前置请求链(见 design D7-bis)。
+/// 字段与 `BookRules` 同名同序,故现有 `bookInfo:{...}` JSON 逐字节解析等价;引擎经
+/// [`BookInfoOp::as_book_rules`] 复用既有 `eval_book_info`(不用 `flatten` 以保 `deny_unknown_fields`)。
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
+pub struct BookInfoOp {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub book_url: Option<Rule>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub name: Option<Rule>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub author: Option<Rule>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cover: Option<Rule>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub intro: Option<Rule>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub kind: Option<Rule>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub last_chapter: Option<Rule>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub toc_url: Option<Rule>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub word_count: Option<Rule>,
+    /// 详情主请求前的前置请求链;空 = 现状(直接 fetch book_url)。
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub prelude: Vec<PreStep>,
+}
+
+impl BookInfoOp {
+    /// 取详情字段抽取规则视图(供引擎复用 `eval_book_info(&BookRules)`,不暴露 `prelude`)。
+    pub fn as_book_rules(&self) -> BookRules {
+        BookRules {
+            book_url: self.book_url.clone(),
+            name: self.name.clone(),
+            author: self.author.clone(),
+            cover: self.cover.clone(),
+            intro: self.intro.clone(),
+            kind: self.kind.clone(),
+            last_chapter: self.last_chapter.clone(),
+            toc_url: self.toc_url.clone(),
+            word_count: self.word_count.clone(),
+        }
+    }
+}
+
 /// 搜索操作。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 #[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 pub struct SearchOp {
+    /// 主请求之前按序执行的前置请求链(见 design D7-bis);空 = 单发(现状)。
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub prelude: Vec<PreStep>,
     pub request: Request,
     pub list: Rule,
     pub item: BookRules,
@@ -473,6 +583,9 @@ pub struct Category {
 #[serde(deny_unknown_fields)]
 #[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 pub struct ExploreOp {
+    /// 分类请求之前按序执行的前置请求链(见 design D7-bis);空 = 现状。
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub prelude: Vec<PreStep>,
     pub categories: Vec<Category>,
     pub list: Rule,
     pub item: BookRules,
@@ -487,6 +600,9 @@ fn default_max_pages() -> u32 {
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 #[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 pub struct TocRules {
+    /// 目录主请求之前按序执行的前置请求链(见 design D7-bis);空 = 现状。
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub prelude: Vec<PreStep>,
     pub list: Rule,
     pub name: Rule,
     pub url: Rule,
@@ -503,6 +619,9 @@ pub struct TocRules {
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 #[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 pub struct ContentRules {
+    /// 正文主请求之前按序执行的前置请求链(见 design D7-bis);空 = 现状。
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub prelude: Vec<PreStep>,
     pub value: Rule,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub next_page: Option<Rule>,
@@ -573,7 +692,7 @@ pub struct BookSource {
     pub search: Option<SearchOp>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub explore: Option<ExploreOp>,
-    pub book_info: BookRules,
+    pub book_info: BookInfoOp,
     pub toc: TocRules,
     pub content: ContentRules,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
@@ -589,10 +708,10 @@ impl BookSource {
         Ok(serde_json::from_str(s)?)
     }
 
-    /// 是否需要登录(目前依据 `loginUrl` 非空;后续 `loginUi` 也将计入)。
-    /// 据此在 TUI 暴露「书源登录」入口。
+    /// 是否需要登录(`loginUrl` 或 `loginUi` 任一非空)。据此在 TUI 暴露「书源登录」入口。
+    /// 注:仅配置 `loginUi` 而无登录脚本/`loginUrl` 属配置不完整,由登录页拦截并提示。
     pub fn has_login(&self) -> bool {
-        !self.login_url.trim().is_empty()
+        !self.login_url.trim().is_empty() || !self.login_ui.is_empty()
     }
 
     /// 若 `loginUrl` 是登录脚本(`@js:` 或 `<js>…</js>` 包裹),剥壳返回脚本体;
@@ -789,15 +908,21 @@ mod tests {
 
     // ── 审查/test-coverage:has_login 判定(决定 TUI 是否显示登录入口)──
     #[test]
-    fn has_login_only_when_login_url_non_blank() {
+    fn has_login_when_login_url_or_login_ui_present() {
         let mut bs = BookSource::from_json(BILIXS_V2).unwrap();
-        assert!(!bs.has_login(), "默认无 loginUrl 不需登录");
+        assert!(!bs.has_login(), "默认无 loginUrl/loginUi 不需登录");
         bs.login_url = "https://site/login".into();
         assert!(bs.has_login());
         bs.login_url = "@js:function login(){}".into();
         assert!(bs.has_login());
         bs.login_url = "   ".into();
-        assert!(!bs.has_login(), "纯空白视为不需登录");
+        assert!(!bs.has_login(), "纯空白 loginUrl 视为不需登录");
+        // 仅配置 loginUi 也计入(TUI 须给登录入口;配置完整性由登录页校验)。
+        bs.login_ui = vec![RowUi {
+            name: "用户名".into(),
+            ..Default::default()
+        }];
+        assert!(bs.has_login(), "loginUi 非空应计入登录入口判定");
     }
 
     // ── 审查/test-coverage:get_login_js 剥壳各分支(@js: / <js>…</js> / 半包裹 / 普通 URL / 空)──
@@ -816,6 +941,64 @@ mod tests {
         assert_eq!(bs.get_login_js(), None);
         bs.login_url = "".into();
         assert_eq!(bs.get_login_js(), None);
+    }
+
+    // ── 11.1:前置请求链 + 结构化捕获 解析 / round-trip / deny_unknown_fields ──
+    #[test]
+    fn parses_prelude_capture_and_round_trips() {
+        let json = r#"{
+          "schema":"trnovel-booksource/v2","name":"t","url":"https://x",
+          "search":{
+            "prelude":[{
+              "url":{"template":"{{base}}/prepare"},
+              "capture":[{"name":"token","value":{"via":"json","select":"$.token"},"scope":"source"}],
+              "skipIfPresent":["token"]
+            }],
+            "request":{"url":{"template":"{{base}}/s?token={{token}}"}},
+            "list":{"via":"css","select":".i"},
+            "item":{"name":{"via":"css","select":".t","extract":"text"}}
+          },
+          "bookInfo":{"prelude":[{"url":{"template":"{{base}}/p"},"capture":[{"name":"csrf","value":{"via":"raw"}}]}]},
+          "toc":{"list":{"via":"css","select":"a"},"name":{"via":"css","select":"a"},"url":{"via":"css","select":"a","extract":{"attr":"href"}}},
+          "content":{"value":{"via":"css","select":".c"}}
+        }"#;
+        let bs = BookSource::from_json(json).expect("应解析含 prelude 的书源");
+        let sp = &bs.search.as_ref().unwrap().prelude;
+        assert_eq!(sp.len(), 1);
+        assert_eq!(sp[0].capture[0].name, "token");
+        assert_eq!(sp[0].capture[0].scope, VarScope::Source);
+        assert_eq!(sp[0].skip_if_present, vec!["token".to_string()]);
+        // bookInfo 前置步骤默认 scope = chapter。
+        assert_eq!(bs.book_info.prelude[0].capture[0].scope, VarScope::Chapter);
+        // round-trip 相等。
+        let s = serde_json::to_string(&bs).unwrap();
+        assert_eq!(BookSource::from_json(&s).unwrap(), bs);
+    }
+
+    #[test]
+    fn prestep_rejects_unknown_field() {
+        let bad = r#"{
+          "schema":"trnovel-booksource/v2","name":"t","url":"https://x",
+          "toc":{"prelude":[{"url":{"template":"{{base}}/p"},"captuer":[]}],
+                 "list":{"via":"css","select":"a"},"name":{"via":"css","select":"a"},"url":{"via":"css","select":"a"}},
+          "bookInfo":{},
+          "content":{"value":{"via":"css","select":".c"}}
+        }"#;
+        assert!(
+            BookSource::from_json(bad).is_err(),
+            "PreStep 拼错字段(captuer)应被 deny_unknown_fields 拒"
+        );
+    }
+
+    #[test]
+    fn existing_source_serializes_without_new_fields() {
+        // 向后兼容:无 prelude/vars 的书源序列化输出不含任何新字段(逐字节)。
+        let bs = BookSource::from_json(BILIXS_V2).unwrap();
+        let json = serde_json::to_string(&bs).unwrap();
+        assert!(!json.contains("prelude"), "无前置链不应序列化 prelude");
+        assert!(!json.contains("\"vars\""), "空 vars 不应序列化");
+        assert!(!json.contains("skipIfPresent"));
+        assert!(!json.contains("\"capture\""));
     }
 }
 

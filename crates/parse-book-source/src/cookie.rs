@@ -5,7 +5,7 @@
 //!   session cookie(无 `Expires`/`Max-Age`)仅内存、重启失效,persistent 可落盘([`CookieJar::persistent`])。
 //!   `cf_clearance`、headful 登录 cookie、`Set-Cookie` 三路可汇入同一库。
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, HashMap};
 
 /// 由 URL 或裸 host 取**注册域(eTLD+1)**作为 cookie 归并键。
 /// `psl` 正确处理 `example.com` / `example.co.uk` / `site.com.cn`;IP / 单标签 / 未知后缀回退「末两段」。
@@ -37,24 +37,93 @@ pub fn registrable_domain(url: &str) -> String {
     }
 }
 
-/// 合并两段 cookie 串(`k=v; k2=v2`)按 key 去重(`second` 同名覆盖 `first`),按字典序输出。
-pub fn merge_cookie_str(first: &str, second: &str) -> String {
-    let mut map: BTreeMap<String, String> = BTreeMap::new();
-    for s in [first, second] {
-        for kv in s.split(';').map(str::trim).filter(|s| !s.is_empty()) {
-            if let Some((k, v)) = kv.split_once('=') {
-                map.insert(k.trim().to_string(), v.trim().to_string());
-            }
+/// 解析一段 cookie 串(`k=v; k2=v2`)为有序 map:key/value 各自 trim、同名 last-wins、
+/// 无 `=` 的段忽略。merge / 反序列化 / 按 key 查值统一走此函数,避免多处手写解析漂移。
+pub(crate) fn parse_cookie_str(s: &str) -> BTreeMap<String, String> {
+    let mut map = BTreeMap::new();
+    for kv in s.split(';').map(str::trim).filter(|s| !s.is_empty()) {
+        if let Some((k, v)) = kv.split_once('=') {
+            map.insert(k.trim().to_string(), v.trim().to_string());
         }
     }
+    map
+}
+
+/// 合并两段 cookie 串(`k=v; k2=v2`)按 key 去重(`second` 同名覆盖 `first`),按字典序输出。
+pub fn merge_cookie_str(first: &str, second: &str) -> String {
+    let mut map = parse_cookie_str(first);
+    map.extend(parse_cookie_str(second));
     pairs_to_str(&map)
 }
 
-fn pairs_to_str(map: &BTreeMap<String, String>) -> String {
+/// `name -> value` map 序列化回 `k=v; k2=v2` 串(字典序)。
+pub(crate) fn pairs_to_str(map: &BTreeMap<String, String>) -> String {
     map.iter()
         .map(|(k, v)| format!("{k}={v}"))
         .collect::<Vec<_>>()
         .join("; ")
+}
+
+/// 剥除 header 值中的 CR/LF——防 header 注入,并避免「多个 Set-Cookie 以 `\n` 连接的值」
+/// 被回写为出站请求头时让 reqwest 构建失败(审查确认的真问题)。
+pub(crate) fn sanitize_header_value(v: &str) -> String {
+    v.replace(['\r', '\n'], "")
+}
+
+/// 请求的注册域:绝对 URL 取其注册域,相对 URL 归一到书源注册域(`source_domain` 应已是注册域)。
+pub(crate) fn request_registrable_domain(url: &str, source_domain: &str) -> String {
+    if url.starts_with("http://") || url.starts_with("https://") {
+        registrable_domain(url)
+    } else {
+        source_domain.to_string()
+    }
+}
+
+/// 把登录态并入出站请求头——host(`net.*`)与引擎(`apply_auth`)共用的单一真相源:
+///
+/// - **同注册域门控**:仅当请求注册域与书源注册域一致时注入 loginHeader(含其 `Cookie` 字段),
+///   防止「页面内容(toc/next_page/bookUrl 等)诱导的第三方绝对 URL」把 `Authorization`/Cookie
+///   外泄(此防护针对可信书源 + 被挂马页面内容的威胁模型;恶意书源本可经脚本自行外泄,不在此列)。
+///   相对 URL 已归一到书源域,天然放行;登录域与 API 域分属不同注册域的书源会被静默跳过,
+///   如需支持留待书源 schema 显式声明授权域名集合。
+/// - Cookie 合并优先级:已有头 Cookie ← loginHeader Cookie ← `jar_cookie`(调用方按请求注册域取,
+///   本就按域隔离,不受门控),按 key 去重。
+/// - 全部值剥 CR/LF(防 header 注入;亦兜底已落盘的脏数据)。
+pub(crate) fn merge_login_into_headers(
+    login_header: &BTreeMap<String, String>,
+    source_domain: &str,
+    request_domain: &str,
+    jar_cookie: Option<&str>,
+    headers: &mut HashMap<String, String>,
+) {
+    let mut cookie = headers
+        .remove("Cookie")
+        .or_else(|| headers.remove("cookie"));
+    if request_domain == source_domain {
+        for (k, v) in login_header {
+            if k.eq_ignore_ascii_case("cookie") {
+                let v = sanitize_header_value(v);
+                cookie = Some(match cookie {
+                    Some(c) => merge_cookie_str(&c, &v),
+                    None => v,
+                });
+            } else {
+                headers.insert(k.clone(), sanitize_header_value(v));
+            }
+        }
+    }
+    if let Some(jar) = jar_cookie {
+        cookie = Some(match cookie {
+            Some(c) => merge_cookie_str(&c, jar),
+            None => jar.to_string(),
+        });
+    }
+    // 最终再 sanitize 一次:cookie 值本身可能含 `\n`(如脏落盘数据),merge 不会剥除。
+    if let Some(c) = cookie.map(|c| sanitize_header_value(&c))
+        && !c.is_empty()
+    {
+        headers.insert("Cookie".into(), c);
+    }
 }
 
 /// 一条 cookie 值 + 是否持久(有 `Expires`/`Max-Age`)。
@@ -75,18 +144,18 @@ impl CookieJar {
     pub fn from_persistent(saved: &BTreeMap<String, String>) -> Self {
         let mut jar = BTreeMap::new();
         for (domain, cookie) in saved {
-            let mut m = BTreeMap::new();
-            for kv in cookie.split(';').map(str::trim).filter(|s| !s.is_empty()) {
-                if let Some((k, v)) = kv.split_once('=') {
-                    m.insert(
-                        k.trim().to_string(),
+            let m: BTreeMap<String, CookieVal> = parse_cookie_str(cookie)
+                .into_iter()
+                .map(|(k, v)| {
+                    (
+                        k,
                         CookieVal {
-                            value: v.trim().to_string(),
+                            value: v,
                             persistent: true,
                         },
-                    );
-                }
-            }
+                    )
+                })
+                .collect();
             if !m.is_empty() {
                 jar.insert(registrable_domain(domain), m);
             }
@@ -205,6 +274,37 @@ mod tests {
             merge_cookie_str("sid=old; theme=dark", "sid=new; lang=zh"),
             "lang=zh; sid=new; theme=dark"
         );
+    }
+
+    #[test]
+    fn sanitize_header_value_strips_crlf() {
+        assert_eq!(
+            sanitize_header_value("a=1; Path=/\nb=2; HttpOnly"),
+            "a=1; Path=/b=2; HttpOnly"
+        );
+        assert_eq!(sanitize_header_value("Bearer\r\n token"), "Bearer token");
+    }
+
+    // ── 审查/security:loginHeader 仅注入同注册域请求;Cookie 三方合并;jar cookie 不受门控 ──
+    #[test]
+    fn merge_login_gates_cross_domain_and_merges_cookie() {
+        let mut lh = BTreeMap::new();
+        lh.insert("Authorization".into(), "Bearer T".into());
+        lh.insert("Cookie".into(), "lang=zh".into());
+        // 同注册域:loginHeader 注入,Cookie = 已有头 ← loginHeader ← jar 三方按 key 合并。
+        let mut h = HashMap::new();
+        h.insert("Cookie".into(), "a=1".into());
+        merge_login_into_headers(&lh, "site.com", "site.com", Some("sid=9"), &mut h);
+        assert_eq!(h.get("Authorization").map(String::as_str), Some("Bearer T"));
+        assert_eq!(
+            h.get("Cookie").map(String::as_str),
+            Some("a=1; lang=zh; sid=9")
+        );
+        // 跨注册域:loginHeader(含其 Cookie)整体跳过,jar cookie(按请求域取)照常注入。
+        let mut h2 = HashMap::new();
+        merge_login_into_headers(&lh, "site.com", "evil.com", Some("sid=9"), &mut h2);
+        assert!(!h2.contains_key("Authorization"), "跨域不应注入登录头");
+        assert_eq!(h2.get("Cookie").map(String::as_str), Some("sid=9"));
     }
 
     #[test]

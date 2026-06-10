@@ -13,7 +13,7 @@
   ],
   "properties": {
     "bookInfo": {
-      "$ref": "#/definitions/BookRules"
+      "$ref": "#/definitions/BookInfoOp"
     },
     "concurrentRate": {
       "description": "限速:`\"N/ms\"`(N 次/ms)或纯毫秒间隔字符串;为空则用 `http.rateLimit`。",
@@ -102,6 +102,110 @@
   },
   "additionalProperties": false,
   "definitions": {
+    "BookInfoOp": {
+      "description": "书详情操作:详情字段抽取(同 [`BookRules`])+ 可选前置请求链(见 design D7-bis)。 字段与 `BookRules` 同名同序,故现有 `bookInfo:{...}` JSON 逐字节解析等价;引擎经 [`BookInfoOp::as_book_rules`] 复用既有 `eval_book_info`(不用 `flatten` 以保 `deny_unknown_fields`)。",
+      "type": "object",
+      "properties": {
+        "author": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/Rule"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "bookUrl": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/Rule"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "cover": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/Rule"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "intro": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/Rule"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "kind": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/Rule"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "lastChapter": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/Rule"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "name": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/Rule"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "prelude": {
+          "description": "详情主请求前的前置请求链;空 = 现状(直接 fetch book_url)。",
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/PreStep"
+          }
+        },
+        "tocUrl": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/Rule"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "wordCount": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/Rule"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "additionalProperties": false
+    },
     "BookRules": {
       "description": "一本书的字段抽取规则(均可省略)。",
       "type": "object",
@@ -219,6 +323,38 @@
           ]
         }
       ]
+    },
+    "Capture": {
+      "description": "一条结构化命名捕获:对**所属请求的响应**用 `value` 规则求一个字符串, 写入 `scope` 指定的作用域层,后续步骤/抽取规则以 `{{name}}` 引用。",
+      "type": "object",
+      "required": [
+        "name",
+        "value"
+      ],
+      "properties": {
+        "name": {
+          "description": "变量名(后续以 `{{name}}` 引用,走现有模板插值)。",
+          "type": "string"
+        },
+        "scope": {
+          "description": "写入哪一层作用域;默认 `chapter`(本次调用临时)。",
+          "default": "chapter",
+          "allOf": [
+            {
+              "$ref": "#/definitions/VarScope"
+            }
+          ]
+        },
+        "value": {
+          "description": "对响应求值的规则(复用 `Rule` AST,产物是字符串)。",
+          "allOf": [
+            {
+              "$ref": "#/definitions/Rule"
+            }
+          ]
+        }
+      },
+      "additionalProperties": false
     },
     "Category": {
       "description": "浏览分类。",
@@ -527,6 +663,13 @@
             }
           ]
         },
+        "prelude": {
+          "description": "正文主请求之前按序执行的前置请求链(见 design D7-bis);空 = 现状。",
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/PreStep"
+          }
+        },
         "value": {
           "$ref": "#/definitions/Rule"
         }
@@ -589,6 +732,13 @@
         },
         "list": {
           "$ref": "#/definitions/Rule"
+        },
+        "prelude": {
+          "description": "分类请求之前按序执行的前置请求链(见 design D7-bis);空 = 现状。",
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/PreStep"
+          }
         }
       },
       "additionalProperties": false
@@ -836,6 +986,59 @@
         "none"
       ]
     },
+    "PreStep": {
+      "description": "前置请求链中的一步:一个请求 + 其响应上的有序命名捕获(见 design D7-bis)。 本步 url/headers/body 可引用更早步骤捕获的 `{{name}}`。显式列字段(**不**用 `#[serde(flatten)]` 内嵌 [`Request`]:`Rule` 为 untagged 兜底,flatten 会令 `deny_unknown_fields` 校验失效)。",
+      "type": "object",
+      "required": [
+        "url"
+      ],
+      "properties": {
+        "body": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/UrlOrRule"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "capture": {
+          "description": "本步响应上的有序命名捕获(按数组顺序求值;`capture[i]` 可引用 `capture[0..i]`)。",
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/Capture"
+          }
+        },
+        "headers": {
+          "description": "请求头(值支持 `{{name}}` 模板,便于带 `Authorization: Bearer {{token}}`)。",
+          "default": {},
+          "type": "object",
+          "additionalProperties": {
+            "type": "string"
+          }
+        },
+        "method": {
+          "default": "GET",
+          "allOf": [
+            {
+              "$ref": "#/definitions/Method"
+            }
+          ]
+        },
+        "skipIfPresent": {
+          "description": "惰性短路:列出的 key 在作用域内**全部非空**则跳过本步(token 复用,避免每章重抓)。",
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "url": {
+          "$ref": "#/definitions/UrlOrRule"
+        }
+      },
+      "additionalProperties": false
+    },
     "RateLimit": {
       "description": "速率限制。",
       "type": "object",
@@ -893,8 +1096,7 @@
           "$ref": "#/definitions/UrlOrRule"
         },
         "vars": {
-          "description": "命名捕获,供 template 使用。",
-          "default": {},
+          "description": "命名捕获:对**本请求响应**每个 `(name, Rule)` 求值,写入 `chapter` 层(等价 `scope=chapter` 的 [`Capture`]),使本 op 的 list/item 与后续步骤以 `{{name}}` 引用。见 design D7-bis。 各条**独立**对响应求值(可引用 `base`/`key`/`page` 与前置 `prelude` 捕获,但**勿互相引用**: 需有序依赖请用 `prelude` 链)。用 `BTreeMap` 保证迭代/落点顺序确定(免哈希随机化幽灵 bug)。",
           "type": "object",
           "additionalProperties": {
             "$ref": "#/definitions/Rule"
@@ -1103,6 +1305,13 @@
         "list": {
           "$ref": "#/definitions/Rule"
         },
+        "prelude": {
+          "description": "主请求之前按序执行的前置请求链(见 design D7-bis);空 = 单发(现状)。",
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/PreStep"
+          }
+        },
         "request": {
           "$ref": "#/definitions/Request"
         }
@@ -1150,6 +1359,13 @@
             }
           ]
         },
+        "prelude": {
+          "description": "目录主请求之前按序执行的前置请求链(见 design D7-bis);空 = 现状。",
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/PreStep"
+          }
+        },
         "url": {
           "$ref": "#/definitions/Rule"
         }
@@ -1164,6 +1380,32 @@
         },
         {
           "$ref": "#/definitions/Rule"
+        }
+      ]
+    },
+    "VarScope": {
+      "description": "多步编排:捕获变量的作用域(三级级联 章节→书籍→书源,见 design D7-bis)。 默认 `Chapter`——最短寿命、零持久、零跨书外溢;`get` 时按 章节→书籍→书源 取第一个非空。",
+      "oneOf": [
+        {
+          "description": "仅本次 op 调用(search/explore/bookInfo/toc/content)内存活,调用结束消亡(默认)。 一次性 csrf/sign/cursor 用它。",
+          "type": "string",
+          "enum": [
+            "chapter"
+          ]
+        },
+        {
+          "description": "随 per-book 快照持久化(由 app 注入·导出);如详情/列表 token 复用到 toc/content。 注意:**search/explore 的 `prelude` 阶段尚无 per-book 载体**(用户选书后才建 per-book 引擎), 在那里用 `book` 会写进会被丢弃的实例 → 静默无效;search 阶段的 token 请用 `source`/`chapter`。",
+          "type": "string",
+          "enum": [
+            "book"
+          ]
+        },
+        {
+          "description": "书源级长存(引擎内跨 op 共享);如全站 API host/版本/全站 csrf。 跨会话持久仅在 app 接线落盘时保证(默认构建为进程内)。",
+          "type": "string",
+          "enum": [
+            "source"
+          ]
         }
       ]
     },
