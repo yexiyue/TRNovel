@@ -6,7 +6,7 @@
 
 **Goals:** `has_more` 翻页边界——书源 `hasMore` 规则 + 引擎返回 + UI 据此到头停翻。
 **Non-Goals:**
-- 精确「共 M 页」:`total_count` 不可靠;DOM 分页器要 render DOM,与 explore 的 `interceptApi`(拦 API、无 DOM)冲突,价值低。`has_more` 已满足「翻到头就停」的核心诉求。
+- 精确「共 M 页」:`has_more` 已满足「翻到头就停」的核心诉求;精确总页数(进度感「N / M」)交后续 change **`render-dual-source`**(见 D3)。
 - `search` 的 `has_more` 待确认(`search_book/v1` 是否有该字段);可只先给 `explore`。
 
 ## Decisions
@@ -18,8 +18,9 @@
 - 返回 `BookList { items: Vec<BookListItem>, has_more: Option<bool> }`(或 `(Vec, Option<bool>)`)。**改返回类型**,牵动 `find_book` + doctor + engine 测试。
 - 备选(否决):额外方法取 `has_more` —— 要二次取页,浪费;同一响应一并求值最省。
 
-**D3 — 不做精确总页数。**
-- `total_count` 实测 10000(占位)、≠ 分页器 99,不可靠;精确页数只在 DOM 分页器,explore 拦 API 无 DOM,为它再 render 一次不划算。
+**D3 — 本 change 不做精确总页数(交后续 `render-dual-source`)。**
+- `total_count` 实测 10000(占位)、≠ 分页器 99,不可靠;精确页数只在 DOM 分页器。
+- ~~explore 拦 API 无 DOM,为它再 render 一次不划算~~ —— **此前提已作废**:`interceptApi` 本就驱动真浏览器渲染一张活页面,DOM 分页器一直在,无需「再 render」。精确总页数改由 change **`render-dual-source`** 交付(render 拦截同时暴露 API JSON + 渲染 DOM,规则按 `via` 路由;`BookList` 在本 change 的基础上 additive 加 `total_pages`)。本 change 仍只管 `has_more` 布尔边界。
 
 **D4 — UI 边界。**
 - `find_book`:`has_more == Some(false)` 时「下一页」键不再 `+page`(到头);底部显示「第 N 页」(当前页,不强求总数)。`None`(无规则)时不限制(现状)。
