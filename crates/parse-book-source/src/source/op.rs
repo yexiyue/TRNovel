@@ -126,6 +126,10 @@ pub struct ExploreOp {
     /// `ready_for` 共存)。空 = 不返回总数。
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub total_pages: Option<Rule>,
+    /// 翻页边界规则(`list-has-more`):对取页结果求值「是否还有下一页」(非空且非 `false`/`0` → 有)。
+    /// 源路由同 `total_pages`(按 `via`)。空 = 不提供边界(UI 不限制)。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub has_more: Option<Rule>,
 }
 
 fn default_max_pages() -> u32 {

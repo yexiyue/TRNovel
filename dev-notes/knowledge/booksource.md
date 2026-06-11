@@ -36,7 +36,7 @@ render 路径（`render_dom`/`render_intercept`）**复用同一常驻 `Browser`
 render 的 `interceptApi` 会话**本来就在渲染一张真实页面**，拦 API（数据）之外可顺手抓渲染后 DOM（`outerHTML`），让 `via:css`/`xpath` 规则对 DOM 求值——典型用途：分页器的**精确总页数**（番茄 API 的 `total_count` 是占位 10000 不可靠，真数只在 DOM 分页器）。`explore`/`search` 返回类型因此从 `Vec<BookListItem>` 改为 `BookList { items, total_pages }`，UI 显示「第 N / M 页」。
 
 - **信号 = `interceptApi` + `ready_for` 共存**：二者过去是「二选一」，现放宽为可同时给——`interceptApi` 取 body，`ready_for` 作 DOM 就绪闸（分页器在 API 之后才渲染，得等它出现再抓）。只配 `interceptApi`（无 `ready_for`）则不抓 DOM、`dom_html=None`，逐字节同现状。
-- **路由 = dom-presence（不内省规则 via）**：`Rule` 是枚举、组合规则可混 via，逐规则内省太重。引擎实际按「**抓到 DOM 就对 DOM 求值 `totalPages`，否则对 body**」路由（`eval_total_pages`）。因为作者配 `ready_for`（→抓 DOM）正是 totalPages 要 DOM 的 opt-in；via:json 总数 / 非 render 的 css 总数则无 DOM、打 body（便宜档白送）。
+- **路由 = 按规则 `via`（`Rule::primary_via` + `pick_source`）**：`via:css`/`xpath` 的规则打渲染 DOM（没抓到则退 body），其余（json/regex/raw）打 body。`Rule` 是枚举、组合规则（`firstOf`/`concat`）取首个子规则的主 via。**关键**：这让 `has_more`（番茄 `via:json` → API body）与 `total_pages`（`via:css` → DOM）**同会话共存正确**——别用「抓到 DOM 就一律打 DOM」的 dom-presence 路由，那会把 has_more 也错误地丢给 DOM（json 解析 HTML 失败)。
 - **传输**：`FetchResponse.dom_html: Option<String>`，仅 render+intercept+要 DOM 时有值；`run_request_full`/`send_templated_full` 透传，普通取页仍用只回 body 的 `run_request`/`send_templated`。
 - **番茄分页器选择器**（agent-browser 实测，explore 书库 + search 同一字节 `byte-pagination` 组件）：总页数 = `.byte-pagination-item:not(.byte-pagination-item-icon):not(.byte-pagination-item-jumper)` 取 `index:-1`（末数字项；过滤掉前后箭头 icon 与 `...` jumper；少页/单页也成立）。`parse_total_pages` 再从结果抽首段数字。
 

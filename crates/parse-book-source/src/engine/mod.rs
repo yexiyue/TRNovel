@@ -259,13 +259,14 @@ impl Engine {
         }
         let vars = self.flatten(&chapter);
         let items = self.eval_list_items(&op.list, &op.item, html, &vars)?;
-        let total_pages = self.eval_total_pages(
-            op.request.total_pages.as_ref(),
-            html,
-            resp.dom_html.as_deref(),
-            &vars,
-        );
-        Ok(BookList { items, total_pages })
+        let dom = resp.dom_html.as_deref();
+        let total_pages = self.eval_total_pages(op.request.total_pages.as_ref(), html, dom, &vars);
+        let has_more = self.eval_has_more(op.request.has_more.as_ref(), html, dom, &vars);
+        Ok(BookList {
+            items,
+            total_pages,
+            has_more,
+        })
     }
 
     /// 浏览某分类的某一页(可选渲染取页;由用户递增 `page` 单页取)。返回书列表 + 可选总页数。
@@ -308,13 +309,14 @@ impl Engine {
         };
         let html = &resp.body;
         let items = self.eval_list_items(&op.list, &op.item, html, &vars)?;
-        let total_pages = self.eval_total_pages(
-            op.total_pages.as_ref(),
-            html,
-            resp.dom_html.as_deref(),
-            &vars,
-        );
-        Ok(BookList { items, total_pages })
+        let dom = resp.dom_html.as_deref();
+        let total_pages = self.eval_total_pages(op.total_pages.as_ref(), html, dom, &vars);
+        let has_more = self.eval_has_more(op.has_more.as_ref(), html, dom, &vars);
+        Ok(BookList {
+            items,
+            total_pages,
+            has_more,
+        })
     }
 
     /// 浏览分类列表,供上层选择后翻页。

@@ -46,22 +46,26 @@ pub struct BookListItem {
     pub book_url: String,
 }
 
-/// 搜索/浏览**一页**的结果:书列表 + 可选精确总页数(`render-dual-source`,翻页进度「第 N / M 页」;
-/// 书源未配 `totalPages` 或取不到则为 `None`)。`explore`/`search` 的返回类型。
+/// 搜索/浏览**一页**的结果:书列表 + 可选边界信号。`explore`/`search` 的返回类型。
 ///
-/// (后续 `list-has-more` 在此 additive 加 `has_more: Option<bool>` 翻页边界。)
+/// - `total_pages`(`render-dual-source`):精确总页数,进度「第 N / M 页」;
+/// - `has_more`(`list-has-more`):是否还有下一页,UI 据此到头停翻。
+///
+/// 二者书源未配或取不到则为 `None`(UI 不限制 / 不显示)。
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct BookList {
     pub items: Vec<BookListItem>,
     pub total_pages: Option<u32>,
+    pub has_more: Option<bool>,
 }
 
 impl BookList {
-    /// 仅书列表、无总页数(非 render / 未配 `totalPages` 的现状路径)。
+    /// 仅书列表、无边界信号(非 render / 未配规则的现状路径)。
     pub fn new(items: Vec<BookListItem>) -> Self {
         Self {
             items,
             total_pages: None,
+            has_more: None,
         }
     }
 }

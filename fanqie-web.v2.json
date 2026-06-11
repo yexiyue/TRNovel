@@ -1134,6 +1134,10 @@
       "select": ".byte-pagination-item:not(.byte-pagination-item-icon):not(.byte-pagination-item-jumper)",
       "index": -1
     },
+    "hasMore": {
+      "via": "json",
+      "select": "$.data.has_more"
+    },
     "list": {
       "via": "json",
       "select": "$.data.book_list[*]"

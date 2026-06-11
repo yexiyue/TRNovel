@@ -295,9 +295,9 @@ impl Engine {
         Ok(out)
     }
 
-    /// 求值精确总页数(`render-dual-source`)。**dom-presence 路由**:抓到渲染 DOM(说明书源配了
-    /// `ready_for` 要 DOM,`via:css` 的总页数在 DOM)→ 对 DOM 求值;否则对 `body`(`via:json` 拦的
-    /// API / 非 render 的整页 HTML)求值。无规则或解析失败 → `None`(不阻断列表,仅少个进度数)。
+    /// 求值精确总页数(`render-dual-source`):按规则 `via` 路由源(见 [`pick_source`]),
+    /// `via:css`/`xpath` 打渲染 DOM(分页器)、其余打 body。无规则或解析失败 → `None`
+    /// (不阻断列表,仅少个进度数)。
     pub(super) fn eval_total_pages(
         &self,
         rule: Option<&Rule>,
@@ -306,9 +306,25 @@ impl Engine {
         vars: &Vars,
     ) -> Option<u32> {
         let rule = rule?;
-        let ctx = dom.unwrap_or(body);
-        let s = eval_value(rule, ctx, vars).ok()?;
+        let s = eval_value(rule, pick_source(rule, body, dom), vars).ok()?;
         parse_total_pages(&s)
+    }
+
+    /// 求值「是否还有下一页」(`list-has-more`):求值结果**非空且非 `false`/`0`** → 还有下一页;
+    /// 无规则 → `None`(不提供边界,UI 不限制);求值失败 → `None`(不误停)。源路由同 totalPages
+    /// (按 `via`:番茄 `has_more` 是 `via:json` → 打 API body,即便同会话抓了 DOM 给 totalPages)。
+    pub(super) fn eval_has_more(
+        &self,
+        rule: Option<&Rule>,
+        body: &str,
+        dom: Option<&str>,
+        vars: &Vars,
+    ) -> Option<bool> {
+        let rule = rule?;
+        match eval_value(rule, pick_source(rule, body, dom), vars) {
+            Ok(s) => Some(!matches!(s.trim(), "" | "false" | "0")),
+            Err(_) => None,
+        }
     }
 
     pub(super) fn eval_book_info(&self, r: &BookRules, ctx: &str, vars: &Vars) -> Result<BookInfo> {
@@ -345,6 +361,17 @@ pub(super) fn opt_eval(rule: Option<&Rule>, ctx: &str, vars: &Vars) -> Result<St
         Some(r) => eval_value(r, ctx, vars)?,
         None => String::new(),
     })
+}
+
+/// 双源路由(`render-dual-source`):`via:css`/`xpath` 的规则对渲染 DOM 求值(没抓到 DOM 则退 body),
+/// 其余(json/regex/raw/纯值)对 body 求值。让 `has_more`(json→body)与 `total_pages`(css→DOM)
+/// 在同一会话(抓了 DOM)下各打对的源。
+fn pick_source<'a>(rule: &Rule, body: &'a str, dom: Option<&'a str>) -> &'a str {
+    use crate::source::Via;
+    match rule.primary_via() {
+        Some(Via::Css | Via::Xpath) => dom.unwrap_or(body),
+        _ => body,
+    }
 }
 
 /// 从总页数规则的求值结果抽出 `u32`:取首段连续 ASCII 数字(容忍「99」「共99页」等;失败 → None)。

@@ -94,6 +94,20 @@ pub enum Rule {
     Leaf(LeafRule),
 }
 
+impl Rule {
+    /// 决定本规则数据源的「主 `via`」(`render-dual-source` 的双源路由用):叶子取其 `via`,
+    /// 组合子(`firstOf`/`concat`)取首个子规则的主 via,纯值规则(literal/template/js)无源 → `None`。
+    /// 引擎据此把 `via:css`/`xpath` 的规则(如 `totalPages`)路由到渲染 DOM、其余路由到 body。
+    pub fn primary_via(&self) -> Option<Via> {
+        match self {
+            Rule::Leaf(l) => Some(l.via),
+            Rule::FirstOf { first_of } => first_of.first().and_then(Rule::primary_via),
+            Rule::Concat { concat, .. } => concat.first().and_then(Rule::primary_via),
+            Rule::Literal { .. } | Rule::Template { .. } | Rule::Js { .. } => None,
+        }
+    }
+}
+
 /// URL 字段:可为字符串模板,或一条规则。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Hash)]
 #[serde(untagged)]

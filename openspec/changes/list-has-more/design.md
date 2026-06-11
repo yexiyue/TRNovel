@@ -17,6 +17,7 @@
 **D2 — `explore`/`search` 返回携带 `has_more`。**
 - 返回 `BookList { items: Vec<BookListItem>, has_more: Option<bool> }`(或 `(Vec, Option<bool>)`)。**改返回类型**,牵动 `find_book` + doctor + engine 测试。
 - 备选(否决):额外方法取 `has_more` —— 要二次取页,浪费;同一响应一并求值最省。
+- **落地补注**:`render-dual-source` 已先行把返回类型改为 `BookList`(带 `items`/`total_pages`),本 change 只 **additive 加 `has_more: Option<bool>`**,故调用方不再二次受牵动。求值源路由复用 `render-dual-source` 的双源:抽 `Rule::primary_via` + `pick_source`,`has_more`(番茄 `via:json`)打 API body、`total_pages`(`via:css`)打渲染 DOM,**同会话共存正确**(顺带把 total_pages 从 dom-presence 升级为按-via 路由)。UI 到头停翻用 **`has_more` 或 `total_pages` 双信号**(任一到头即停);search 未单独接 `has_more`,靠 `total_pages` 兜底。
 
 **D3 — 本 change 不做精确总页数(交后续 `render-dual-source`)。**
 - `total_count` 实测 10000(占位)、≠ 分页器 99,不可靠;精确页数只在 DOM 分页器。

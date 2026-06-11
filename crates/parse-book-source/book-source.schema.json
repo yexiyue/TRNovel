@@ -737,6 +737,17 @@
             "$ref": "#/definitions/Category"
           }
         },
+        "hasMore": {
+          "description": "翻页边界规则(`list-has-more`):对取页结果求值「是否还有下一页」(非空且非 `false`/`0` → 有)。 源路由同 `total_pages`(按 `via`)。空 = 不提供边界(UI 不限制)。",
+          "anyOf": [
+            {
+              "$ref": "#/definitions/Rule"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
         "interceptApi": {
           "description": "CDP 拦截目标响应 URL 子串(方式 B:拦签名 API 响应体,交 `via:\"json\"` 规则)。可与 `ready_for` 共存。",
           "type": [
@@ -1110,6 +1121,17 @@
           "anyOf": [
             {
               "$ref": "#/definitions/UrlOrRule"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "hasMore": {
+          "description": "翻页边界规则(`list-has-more`):对取页结果求值「是否还有下一页」(非空且非 `false`/`0` → 有)。 源路由同 `total_pages`(按 `via`)。空 = 不提供边界(UI 不限制)。",
+          "anyOf": [
+            {
+              "$ref": "#/definitions/Rule"
             },
             {
               "type": "null"

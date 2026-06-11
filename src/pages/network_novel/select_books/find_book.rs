@@ -32,31 +32,7 @@ pub fn FindBooks(props: &FindBooksProps, mut hooks: Hooks) -> impl Into<AnyEleme
     let mut navigate = hooks.use_navigate();
     let is_editing = props.is_editing;
 
-    hooks.use_events(move |event| {
-        if let Event::Key(key) = event
-            && key.kind == KeyEventKind::Press
-            && is_editing
-            && !is_inputting.get()
-        {
-            match key.code {
-                KeyCode::Char('h') | KeyCode::Left if page.get() > 1 => {
-                    page.set(page.get() - 1);
-                }
-                KeyCode::Char('l') | KeyCode::Right => {
-                    page.set(page.get() + 1);
-                }
-                _ => {}
-            }
-        }
-    });
-
-    hooks.use_effect(
-        || {
-            page.set(1);
-        },
-        props.current_explore.clone(),
-    );
-
+    // books 先于 use_events 定义,使翻页处理能读「是否到头」(has_more/total_pages 双信号)。
     let (books, loading, error) = hooks.use_effect_state(
         {
             // 该 block 每次渲染都求值,**只能捕获值、绝不能在此 spawn 取页**:
@@ -90,6 +66,43 @@ pub fn FindBooks(props: &FindBooksProps, mut hooks: Hooks) -> impl Into<AnyEleme
             props.engine.read().is_some(),
             page.get(),
         ),
+    );
+
+    hooks.use_events(move |event| {
+        if let Event::Key(key) = event
+            && key.kind == KeyEventKind::Press
+            && is_editing
+            && !is_inputting.get()
+        {
+            match key.code {
+                KeyCode::Char('h') | KeyCode::Left if page.get() > 1 => {
+                    page.set(page.get() - 1);
+                }
+                KeyCode::Char('l') | KeyCode::Right => {
+                    // 到头停翻:has_more==Some(false)(list-has-more)或已达 total_pages
+                    //(render-dual-source)→ 不再 +page;两信号有其一即可,都无则不限制(现状)。
+                    let at_end = {
+                        let bl = books.read();
+                        bl.as_ref().and_then(|b| b.has_more) == Some(false)
+                            || bl
+                                .as_ref()
+                                .and_then(|b| b.total_pages)
+                                .is_some_and(|m| page.get() >= m)
+                    };
+                    if !at_end {
+                        page.set(page.get() + 1);
+                    }
+                }
+                _ => {}
+            }
+        }
+    });
+
+    hooks.use_effect(
+        || {
+            page.set(1);
+        },
+        props.current_explore.clone(),
     );
 
     element!(View{

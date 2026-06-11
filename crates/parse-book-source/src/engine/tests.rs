@@ -770,3 +770,81 @@ async fn total_pages_none_without_rule() {
     let books = engine.explore(&cat, 1, 20).await.unwrap();
     assert_eq!(books.total_pages, None, "未配 totalPages 应返回 None");
 }
+
+// ───────────────── list-has-more:翻页边界 has_more + 与 total_pages 双源路由共存 ─────────────────
+
+/// 纯 JSON body 的 explore 书源(对齐番茄:list/item/hasMore 走 json,totalPages 走 css→DOM)。
+fn explore_source_json(extra: &str) -> BookSource {
+    let json = format!(
+        r#"{{
+          "schema":"trnovel-booksource/v2","name":"t","url":"https://x",
+          "explore":{{
+            "categories":[{{"title":"全部","url":"{{{{base}}}}/lib/page_{{{{page}}}}"}}],
+            "render":true,"interceptApi":"book_list/v0","readyFor":".byte-pagination",
+            "list":{{"via":"json","select":"$.data.book_list[*]"}},
+            "item":{{"name":{{"via":"json","select":"$.name"}}}}{extra}
+          }},
+          "bookInfo":{{}},
+          "toc":{{"list":{{"via":"css","select":"a"}},"name":{{"via":"css","select":"a"}},"url":{{"via":"css","select":"a","extract":{{"attr":"href"}}}}}},
+          "content":{{"value":{{"via":"css","select":".c"}}}}
+        }}"#
+    );
+    BookSource::from_json(&json).unwrap()
+}
+
+// ① 双源路由共存:has_more(via:json)打 body、total_pages(via:css)打 DOM —— 即便同会话抓了 DOM。
+#[tokio::test]
+async fn has_more_and_total_pages_coexist_via_routing() {
+    let src = explore_source_json(&format!(
+        r#","totalPages":{{"via":"css","select":"{TP_SELECT}","index":-1}},"hasMore":{{"via":"json","select":"$.data.has_more"}}"#
+    ));
+    let cat = src.explore.as_ref().unwrap().categories[0].url.clone();
+    let fetcher = Arc::new(DualSourceFetcher {
+        body: r#"{"data":{"book_list":[{"name":"书A"},{"name":"书B"}],"has_more":false}}"#
+            .to_string(),
+        dom: Some(PAGINATOR_DOM.to_string()),
+    });
+    let engine = Engine::with_fetcher(src, fetcher);
+    let books = engine.explore(&cat, 1, 20).await.unwrap();
+    assert_eq!(books.items.len(), 2, "list/item 对 JSON body 求值");
+    assert_eq!(
+        books.total_pages,
+        Some(99),
+        "totalPages(css)对渲染 DOM 求值"
+    );
+    assert_eq!(
+        books.has_more,
+        Some(false),
+        "has_more(json)对 body 求值(非 DOM)——双源路由按 via 区分"
+    );
+}
+
+// ② has_more=true → Some(true);未配 → None。
+#[tokio::test]
+async fn has_more_true_and_none() {
+    let src = explore_source_json(r#","hasMore":{"via":"json","select":"$.data.has_more"}"#);
+    let cat = src.explore.as_ref().unwrap().categories[0].url.clone();
+    let fetcher = Arc::new(DualSourceFetcher {
+        body: r#"{"data":{"book_list":[{"name":"书"}],"has_more":true}}"#.to_string(),
+        dom: None,
+    });
+    let engine = Engine::with_fetcher(src, fetcher);
+    assert_eq!(
+        engine.explore(&cat, 1, 20).await.unwrap().has_more,
+        Some(true),
+        "has_more=true → Some(true)"
+    );
+
+    let src2 = explore_source_json("");
+    let cat2 = src2.explore.as_ref().unwrap().categories[0].url.clone();
+    let fetcher2 = Arc::new(DualSourceFetcher {
+        body: r#"{"data":{"book_list":[{"name":"书"}]}}"#.to_string(),
+        dom: None,
+    });
+    let engine2 = Engine::with_fetcher(src2, fetcher2);
+    assert_eq!(
+        engine2.explore(&cat2, 1, 20).await.unwrap().has_more,
+        None,
+        "未配 hasMore → None"
+    );
+}
