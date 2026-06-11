@@ -750,45 +750,51 @@
   "explore": {
     "categories": [
       {
-        "title": "推荐",
+        "title": "书库·最热",
         "url": {
-          "template": "{{base}}/"
+          "template": "{{base}}/library/all/page_{{page}}?sort=hottest"
+        }
+      },
+      {
+        "title": "书库·最新",
+        "url": {
+          "template": "{{base}}/library/all/page_{{page}}?sort=newest"
         }
       }
     ],
+    "render": true,
+    "interceptApi": "book_list/v0",
     "list": {
-      "via": "css",
-      "select": ".muye-bottom-choiceness-item"
+      "via": "json",
+      "select": "$.data.book_list[*]"
     },
     "item": {
-      "name": {
-        "via": "css",
-        "select": ".title",
-        "extract": "text"
-      },
-      "author": {
-        "via": "css",
-        "select": ".author",
-        "extract": "text"
-      },
-      "cover": {
-        "via": "css",
-        "select": ".book-cover-img",
-        "extract": {
-          "attr": "src"
-        },
-        "clean": [
+      "bookUrl": {
+        "concat": [
           {
-            "prepend": "https:"
+            "literal": "https://fanqienovel.com/page/"
+          },
+          {
+            "via": "json",
+            "select": "$.book_id"
           }
         ]
       },
-      "bookUrl": {
-        "via": "css",
-        "select": "a",
-        "extract": {
-          "attr": "href"
-        }
+      "name": {
+        "via": "json",
+        "select": "$.book_name"
+      },
+      "author": {
+        "via": "json",
+        "select": "$.author"
+      },
+      "cover": {
+        "via": "json",
+        "select": "$.thumb_url"
+      },
+      "kind": {
+        "via": "json",
+        "select": "$.category"
       }
     }
   },

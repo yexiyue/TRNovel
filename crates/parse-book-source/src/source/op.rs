@@ -79,7 +79,7 @@ impl BookInfoOp {
 
 /// 搜索操作。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 #[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 pub struct SearchOp {
     /// 主请求之前按序执行的前置请求链(见 design D7-bis);空 = 单发(现状)。
@@ -101,7 +101,7 @@ pub struct Category {
 
 /// 浏览操作。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 #[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 pub struct ExploreOp {
     /// 分类请求之前按序执行的前置请求链(见 design D7-bis);空 = 现状。
@@ -110,6 +110,16 @@ pub struct ExploreOp {
     pub categories: Vec<Category>,
     pub list: Rule,
     pub item: BookRules,
+    /// 渲染取页(对齐 search 的 `Request.render`;explore 各分类共享)。为真则用受控浏览器
+    /// 渲染分类 URL、跑站点 JS,SPA 浏览/分类列表才取得到数据(否则 reqwest 直取,现状)。
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub render: bool,
+    /// 渲染就绪 CSS 选择器(方式 A:取渲染后 DOM);与 `intercept_api` 二选一。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub ready_for: Option<String>,
+    /// CDP 拦截目标响应 URL 子串(方式 B:拦签名 API 响应体,交 `via:"json"` 规则)。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub intercept_api: Option<String>,
 }
 
 fn default_max_pages() -> u32 {

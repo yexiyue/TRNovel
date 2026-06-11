@@ -737,6 +737,13 @@
             "$ref": "#/definitions/Category"
           }
         },
+        "interceptApi": {
+          "description": "CDP 拦截目标响应 URL 子串(方式 B:拦签名 API 响应体,交 `via:\"json\"` 规则)。",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
         "item": {
           "$ref": "#/definitions/BookRules"
         },
@@ -749,6 +756,17 @@
           "items": {
             "$ref": "#/definitions/PreStep"
           }
+        },
+        "readyFor": {
+          "description": "渲染就绪 CSS 选择器(方式 A:取渲染后 DOM);与 `intercept_api` 二选一。",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "render": {
+          "description": "渲染取页(对齐 search 的 `Request.render`;explore 各分类共享)。为真则用受控浏览器 渲染分类 URL、跑站点 JS,SPA 浏览/分类列表才取得到数据(否则 reqwest 直取,现状)。",
+          "type": "boolean"
         }
       },
       "additionalProperties": false

@@ -12,7 +12,7 @@ use crate::eval::{eval_list, eval_value};
 use crate::fetch::cookie::CookieJar;
 use crate::fetch::{Fetcher, ReqwestFetcher};
 use crate::model::{BookInfo, BookListItem, Chapter, Toc, Volume};
-use crate::source::{BookSource, Category, UrlOrRule};
+use crate::source::{BookSource, Category, Method, UrlOrRule};
 use std::collections::BTreeMap;
 use std::sync::{Arc, RwLock};
 
@@ -229,6 +229,7 @@ impl Engine {
         chapter.insert("key".into(), key.to_string());
         chapter.insert("page".into(), page.to_string());
         chapter.insert("pageSize".into(), page_size.to_string());
+        // 前置链(捕获 token 等)在主请求前跑一次。
         self.run_prelude(&op.prelude, &mut chapter).await?;
 
         let vars = self.flatten(&chapter);
@@ -245,8 +246,8 @@ impl Engine {
             )
             .await?;
         // 主请求 vars 捕获(chapter 级):对搜索响应求值,使 list/item 可见(captured-before-referenced)。
-        // flatten 刻意提在循环外:各条 vars **独立**对响应求值(见 source `Request.vars` 契约
-        // 「勿互相引用」,有序依赖应走 prelude 链),也避免循环内重复克隆三层作用域。
+        // flatten 刻意分两次:各条 vars **独立**对响应求值(见 source `Request.vars` 契约「勿互相引用」,
+        // 有序依赖应走 prelude 链)。
         let flat = self.flatten(&chapter);
         for (name, rule) in &op.request.vars {
             let v = eval_value(rule, &html, &flat)?;
@@ -257,7 +258,7 @@ impl Engine {
         self.eval_list_items(&op.list, &op.item, &html, &self.flatten(&chapter))
     }
 
-    /// 浏览某分类的某一页。
+    /// 浏览某分类的某一页(可选渲染取页;由用户递增 `page` 单页取)。
     pub async fn explore(
         &self,
         category_url: &UrlOrRule,
@@ -274,8 +275,26 @@ impl Engine {
         chapter.insert("pageSize".into(), page_size.to_string());
         self.run_prelude(&op.prelude, &mut chapter).await?;
         let vars = self.flatten(&chapter);
-        let url = self.resolve_url(category_url, &vars)?;
-        let html = self.fetch_checked(url).await?;
+        let html = if op.render {
+            // 渲染取页:与 search 主请求同款路由(send_templated → run_request → fetch_full)。
+            // 空 headers:explore 分类请求无自定义头,渲染配置经 op 承载(对齐 search 主请求路由)。
+            let no_headers = std::collections::HashMap::new();
+            self.send_templated(
+                category_url,
+                Method::Get,
+                None,
+                &no_headers,
+                &vars,
+                op.render,
+                op.ready_for.as_deref(),
+                op.intercept_api.as_deref(),
+            )
+            .await?
+        } else {
+            // 未开 render:reqwest 直取(现状,逐字节不变)。
+            let url = self.resolve_url(category_url, &vars)?;
+            self.fetch_checked(url).await?
+        };
         self.eval_list_items(&op.list, &op.item, &html, &vars)
     }
 

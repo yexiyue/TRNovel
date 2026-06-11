@@ -152,6 +152,31 @@ sed -e 's/<[^>]*>/ /g' /tmp/page.html | tr -s ' \n' ' \n' | grep -v '^ *$' | hea
 ```
 浏览是搜索被反爬时的降级入口,优先做稳。
 
+**渲染 explore(SPA 书库站)**:`render`/`interceptApi`/`readyFor` 是 **explore 块级**字段(各分类共享),不是写在分类里。SPA 书库(无静态分类页、列表由签名接口拉取,典型:番茄书库)这样配:
+```json
+"explore": {
+  "categories": [
+    { "title": "书库·最热", "url": { "template": "{{base}}/library/all/page_{{page}}?sort=hottest" } },
+    { "title": "书库·最新", "url": { "template": "{{base}}/library/all/page_{{page}}?sort=newest" } }
+  ],
+  "render": true,
+  "interceptApi": "book_list/v0",
+  "list": { "via": "json", "select": "$.data.book_list[*]" },
+  "item": {
+    "bookUrl": { "concat": [ { "literal": "https://站点/page/" }, { "via": "json", "select": "$.book_id" } ] },
+    "name":   { "via": "json", "select": "$.book_name" },
+    "author": { "via": "json", "select": "$.author" },
+    "cover":  { "via": "json", "select": "$.thumb_url" },
+    "kind":   { "via": "json", "select": "$.category" }
+  }
+}
+```
+要点:
+- **开 `render` 后,`list`/`item` 必须对齐被拦截 API 的 JSON**(`via:"json"`),而不是渲染后 DOM——因为分类共享同一套 `interceptApi`+`list`。若站点还有可直取的 SSR 分类,单独建一个**不开 render** 的书源(或另一组纯 CSS 分类),别和渲染分类混在同一 `explore` 块。
+- **取页是单页,翻页交给阅读器**:`explore(category, page)` 只取 `{{page}}` 那一页;用户在阅读器里翻页 = 递增 `page` 重新取(引擎**不批量翻页**,一次只开一个浏览器)。分类 URL 模板带 `{{page}}` 即可,**不要加 `nextPage`**(列表 `nextPage` 已废弃;`nextPage`/`maxPages` 仅用于 `toc`/`content` 的正文/目录分页)。
+- **page 基数对齐约定(关键)**:URL 模板里 `{{page}}` **从 1 起**(`page_1` 是第一页),由**书源 URL 模板自己对齐**站点 API 的页码基数,引擎**不内置任何偏移**。例:番茄书库网页 URL `page_{{page}}`(1 起)实际驱动 API `book_list/v0?page_index=N-1`(`page_index` 从 0 起)——这个 -1 偏移由站点前端 SPA 自己换算,我们只管按站点 URL 规律填 `{{page}}`,拦到的响应体就是对应页。**以站点真实 URL 规律为准**。
+- **URL 不认页码的站(如番茄 search)**:页码只在 SPA 内按钮翻页、URL 不变,单页 render 只能取第一页。点击驱动翻页 / 动态总页数(从分页器读「共 M 页」)是后续能力,当前**保持单页,别加额外翻页字段**。
+
 ## 字符集
 中文乱码 → `http.charset`: `"gbk"`(最常见)/`"gb18030"`/`"big5"`;默认 `"auto"`(UTF-8 失败回退 GBK)。判断:`curl ... | file -` 或看 `<meta charset>`,或直接 doctor 看书名/正文是否乱码。
 
@@ -166,11 +191,11 @@ sed -e 's/<[^>]*>/ /g' /tmp/page.html | tr -s ' \n' ' \n' | grep -v '^ *$' | hea
    - 正文/搜索是 **token 门控的 JSON 接口**(需先有某 cookie):把下发该 cookie 的辅助端点(如 `https://站点/user/hm.html`)加进 `http.warmup`,引擎的 cookie_store 会跨请求保留,再用 `via:"json"` 解接口。
 4. **接受降级**。挑战自适应,有时需用户在弹出浏览器里点一下 Turnstile;阅读链路通常开放,搜索 ✗ 不影响读书,引导用浏览即可。
 
-**渲染型取页(render-fetcher,SPA / 签名接口站)**:若**结果由站点 JS 异步渲染 / 签名接口动态拉取**(如 SPA + ByteDance `sec_sdk`/CryptoJS 签名的 `/api/*`,无静态路径返回内容,典型:番茄网页搜索),给该 op 的 `request` 标 `render: true`,让受控浏览器**跑站点自身 JS**(签名由真浏览器+真 SPA 完成,我们从不复刻签名),再二选一取结果:
+**渲染型取页(render-fetcher,SPA / 签名接口站)**:若**结果由站点 JS 异步渲染 / 签名接口动态拉取**(如 SPA + ByteDance `sec_sdk`/CryptoJS 签名的 `/api/*`,无静态路径返回内容,典型:番茄网页搜索),标 `render: true` 让受控浏览器**跑站点自身 JS**(签名由真浏览器+真 SPA 完成,我们从不复刻签名),再二选一取结果。**作用位置**:`search` 写在 `search.request`(per-request);`explore` 写在 **`explore` 块级**(`render`/`interceptApi`/`readyFor` 与 `categories`/`list`/`item` 平级,各分类共享,见上「渲染 explore」)。两个取法:
 - `interceptApi: "<URL 子串>"` —— CDP 拦截匹配的**签名 API 响应体**(交 `via:"json"` 规则)。用于「结果只在签名接口、DOM 无关键字段(如 book_id)」的站。
 - `readyFor: "<CSS 选择器>"` —— 等该选择器渲染出现后取**渲染后 DOM**(交 CSS 规则)。用于「DOM 里有完整数据」的 SPA。
 
-渲染默认 **headless**(快、无窗口);失败优雅降级(无浏览器 → 该 op 标 ✗、不影响其它)。`doctor` 带浏览器构建,能真正渲染验证 render op。注意:**渲染页字体可能与正文页不同**(同 family、不同 woff2、PUA 映射不同),结果的 PUA 字段需各自的 `gen-fontmap` 表。番茄搜索范例见 `fanqie-web.v2.json` 的 `search`(`render`+`interceptApi:"search_book/v1"`,`via:json` 解 `$.data.search_book_data_list[*]`,`book_id`→bookUrl,名/作者走搜索 fontMap)。
+渲染默认 **headless**(快、无窗口);失败优雅降级(无浏览器 → 该 op 标 ✗、不影响其它)。`doctor` 带浏览器构建,能真正渲染验证 render op(含 explore:能否取到分类数据)。注意:**渲染页字体可能与正文页不同**(同 family、不同 woff2、PUA 映射不同),结果的 PUA 字段需各自的 `gen-fontmap` 表。范例见 `fanqie-web.v2.json`:`search`(`render`+`interceptApi:"search_book/v1"`,`via:json` 解 `$.data.search_book_data_list[*]`,`book_id`→bookUrl,名/作者走搜索 fontMap);`explore`(块级 `render`+`interceptApi:"book_list/v0"`,`library/all/page_{{page}}?sort=…` 单页驱动,`via:json` 解 `$.data.book_list[*]`)。
 
 **真正的边界**:若整站既无渲染入口也无可拦截的结构化接口(纯 canvas 绘制等),仍无解——如实告知用户。
 

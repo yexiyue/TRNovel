@@ -66,7 +66,7 @@ cargo run -- import /path/to/<站点>.v2.json
 - **toc(目录 + 分卷)**:目录页里**卷标题**(如 `第一卷`)和**章节链接**通常是兄弟节点。用一个 `list` 选择器**同时选中两者并保持文档顺序**(如 `.box > h2.module-title, .box a.module-row-text`);再用 `isVolume` 规则判定是否卷(对卷节点非空、对章节为空,例如选 `h2`);`name`/`url` 用 `firstOf` 兼容两种节点。引擎据 `isVolume` 切分「卷→章」。**常见坑**:目录开头常有 N 条「最新章节」预览(倒序、与正文区重复),用兄弟选择器(如 `#list dl dt:has(a[href*="txt_"]) ~ dd a`)只取「正文」标记之后的章节,避免重复/倒序。
 - **content(正文)**:找正文容器(`.article-content`/`#content`/`.read-content` 等),`extract: "html"` 会把标签转成换行后清理;分页正文用 `nextPage` + `maxPages`。**若正文夹大量私有区/豆腐字符(`U+E000`–`U+F8FF`,显示为豆腐 □)→ 是字体反爬,见下「字体反爬」。**
 - **search(搜索)**:从首页 `<form>` 找 action 与 input name(如 `searchkey`/`wd`)。`request.url` 用模板 `{{base}}/search.html?searchkey={{key}}`;`list` 选结果条目容器(**注意区分真正的结果区与推荐位**——它们可能用不同 class);`item` 里**必须含 `bookUrl`**(指向书详情)。POST 搜索用 `method:"POST"` + `body` 模板。
-- **explore(浏览)**:`categories` 列分类(title + url 模板,常含 `{{page}}`);`list`/`item` 同 search。浏览是搜索被反爬挡住时的**降级入口**,尽量做好。
+- **explore(浏览)**:`categories` 列分类(title + url 模板,常含 `{{page}}`);`list`/`item` 同 search。浏览是搜索被反爬挡住时的**降级入口**,尽量做好。**SPA 书库站**(分类列表由签名接口拉、无静态分类页):在 `explore` **块级**加 `render:true` + `interceptApi`(各分类共享),`list`/`item` 改 `via:"json"` 对齐被拦截 API。取页**单页**:`{{page}}` 映射 URL(**从 1 起**、由 URL 模板对齐站点 API 页码基数,引擎不内置偏移),交互翻页由阅读器递增 `page` 驱动(列表不加 `nextPage`)。详见 references/reverse-engineering.md「渲染 explore」。
 
 `{{base}}` = 站点根、`{{key}}` = 搜索词、`{{page}}`/`{{pageSize}}` = 分页。相对 URL 引擎会自动补全,**抽取 href 时保留相对路径即可**。
 

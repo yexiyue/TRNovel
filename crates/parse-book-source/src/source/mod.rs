@@ -472,6 +472,52 @@ mod tests {
         assert!(!json.contains("skipIfPresent"));
         assert!(!json.contains("\"capture\""));
     }
+
+    // ── render-list-pagination:explore 渲染通道(render/interceptApi)解析 / round-trip ──
+    #[test]
+    fn parses_explore_render() {
+        let json = r#"{
+          "schema":"trnovel-booksource/v2","name":"t","url":"https://x",
+          "explore":{
+            "categories":[{"title":"全部·最热","url":{"template":"{{base}}/library/all/page_{{page}}?sort=hottest"}}],
+            "render":true,
+            "interceptApi":"book_list/v0",
+            "list":{"via":"json","select":"$.data.book_list[*]"},
+            "item":{"name":{"via":"json","select":"$.book_name"}}
+          },
+          "bookInfo":{},
+          "toc":{"list":{"via":"css","select":"a"},"name":{"via":"css","select":"a"},"url":{"via":"css","select":"a","extract":{"attr":"href"}}},
+          "content":{"value":{"via":"css","select":".c"}}
+        }"#;
+        let bs = BookSource::from_json(json).expect("应解析 explore.render");
+        let ex = bs.explore.as_ref().unwrap();
+        assert!(ex.render);
+        assert_eq!(ex.intercept_api.as_deref(), Some("book_list/v0"));
+        // round-trip 相等。
+        let s = serde_json::to_string(&bs).unwrap();
+        assert_eq!(BookSource::from_json(&s).unwrap(), bs);
+    }
+
+    #[test]
+    fn explore_rejects_unknown_field_and_stays_back_compat() {
+        // deny_unknown_fields:explore 拼错字段被拒。
+        let bad = r#"{
+          "schema":"trnovel-booksource/v2","name":"t","url":"https://x",
+          "explore":{"categories":[],"list":{"via":"css","select":".i"},"item":{},"renderr":true},
+          "bookInfo":{},
+          "toc":{"list":{"via":"css","select":"a"},"name":{"via":"css","select":"a"},"url":{"via":"css","select":"a"}},
+          "content":{"value":{"via":"css","select":".c"}}
+        }"#;
+        assert!(
+            BookSource::from_json(bad).is_err(),
+            "explore 拼错字段(renderr)应被 deny_unknown_fields 拒"
+        );
+        // 向后兼容:未开 render 的既有 explore 序列化不含任何新字段(BILIXS_V2 含 explore)。
+        let bs = BookSource::from_json(BILIXS_V2).unwrap();
+        let json = serde_json::to_string(&bs).unwrap();
+        assert!(!json.contains("\"render\""), "未开 render 不应序列化");
+        assert!(!json.contains("interceptApi"), "无 interceptApi 不应序列化");
+    }
 }
 
 /// 防漂移:`book-source.schema.json` 必须等于从类型现生成的 schema(`--features schema`)。

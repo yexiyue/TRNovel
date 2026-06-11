@@ -557,3 +557,124 @@ async fn multiple_request_vars_all_captured() {
         "多条 request.vars 应都被捕获且对 item 可见"
     );
 }
+
+// ───────────────── render-list-pagination:explore 渲染通道(单页) ─────────────────
+
+/// 记录最近一次取页请求的 `render` 标志的替身(验证 explore 是否走渲染路径)。
+struct RenderProbe {
+    body: String,
+    last_render: Arc<Mutex<Option<bool>>>,
+}
+
+#[async_trait]
+impl Fetcher for RenderProbe {
+    async fn fetch(&self, req: FetchRequest) -> std::result::Result<String, FetchError> {
+        *self.last_render.lock().unwrap() = Some(req.render);
+        Ok(self.body.clone())
+    }
+}
+
+/// 单一分类、按 `page_{{page}}` 模板取页的 explore 书源(`list`/`item` 走 CSS)。
+/// `extra` 注入到 explore 块(如 `,"render":true,"interceptApi":"..."`)。
+fn explore_source(extra: &str) -> BookSource {
+    let json = format!(
+        r#"{{
+          "schema":"trnovel-booksource/v2","name":"t","url":"https://x",
+          "explore":{{
+            "categories":[{{"title":"全部","url":"{{{{base}}}}/lib/page_{{{{page}}}}"}}],
+            "list":{{"via":"css","select":".item"}},
+            "item":{{"name":{{"via":"css","select":".t","extract":"text"}}}}{extra}
+          }},
+          "bookInfo":{{}},
+          "toc":{{"list":{{"via":"css","select":"a"}},"name":{{"via":"css","select":"a"}},"url":{{"via":"css","select":"a","extract":{{"attr":"href"}}}}}},
+          "content":{{"value":{{"via":"css","select":".c"}}}}
+        }}"#
+    );
+    BookSource::from_json(&json).unwrap()
+}
+
+// ① explore 开 interceptApi(render)→ 取页走渲染路径(FetchRequest.render==true)。
+#[tokio::test]
+async fn explore_render_uses_render_fetch_path() {
+    let src = explore_source(r#","render":true,"interceptApi":"book_list/v0""#);
+    let cat = src.explore.as_ref().unwrap().categories[0].url.clone();
+    let last_render = Arc::new(Mutex::new(None));
+    let fetcher = Arc::new(RenderProbe {
+        body: r#"<div class="item"><span class="t">书</span></div>"#.to_string(),
+        last_render: last_render.clone(),
+    });
+    let engine = Engine::with_fetcher(src, fetcher);
+    let items = engine.explore(&cat, 1, 20).await.unwrap();
+    assert_eq!(items.len(), 1);
+    assert_eq!(items[0].info.name, "书");
+    assert_eq!(
+        *last_render.lock().unwrap(),
+        Some(true),
+        "explore 开 render 应走渲染取页路径(FetchRequest.render==true)"
+    );
+}
+
+// ② explore 未开 render → 仍走 fetch_checked(FetchRequest.render==false),逐字节兼容。
+#[tokio::test]
+async fn explore_without_render_uses_reqwest_path() {
+    let src = explore_source("");
+    let cat = src.explore.as_ref().unwrap().categories[0].url.clone();
+    let last_render = Arc::new(Mutex::new(None));
+    let fetcher = Arc::new(RenderProbe {
+        body: r#"<div class="item"><span class="t">书</span></div>"#.to_string(),
+        last_render: last_render.clone(),
+    });
+    let engine = Engine::with_fetcher(src, fetcher);
+    let items = engine.explore(&cat, 1, 20).await.unwrap();
+    assert_eq!(items.len(), 1);
+    assert_eq!(
+        *last_render.lock().unwrap(),
+        Some(false),
+        "explore 未开 render 应走 reqwest 取页(FetchRequest.render==false)"
+    );
+}
+
+// ②.5 渲染失败优雅降级(spec「渲染失败优雅降级」scenario):explore 开 render 但取页失败
+// (模拟浏览器超时 / 拦截无响应,与 reqwest 失败同走 paginate 的失败路径)→ 引擎传播 Err、
+// 不 panic、不静默吞成空列表。
+#[tokio::test]
+async fn explore_render_failure_degrades_to_err() {
+    struct FailFetcher;
+    #[async_trait]
+    impl Fetcher for FailFetcher {
+        async fn fetch(&self, _req: FetchRequest) -> std::result::Result<String, FetchError> {
+            Err(FetchError::Header("渲染拦截超时".into()))
+        }
+    }
+    let src = explore_source(r#","render":true,"interceptApi":"book_list/v0""#);
+    let cat = src.explore.as_ref().unwrap().categories[0].url.clone();
+    let engine = Engine::with_fetcher(src, Arc::new(FailFetcher));
+    // 第一页(起点)渲染取页失败 → 优雅降级为 Err(而非 panic / 静默空)。
+    assert!(
+        engine.explore(&cat, 1, 20).await.is_err(),
+        "explore 开 render 取页失败应优雅降级为 Err"
+    );
+}
+
+// 单页:无渲染时按入参 page 取一次,只发一次请求(由用户递增 page 翻页)。
+#[tokio::test]
+async fn explore_single_page_fetches_once() {
+    let src = explore_source("");
+    let cat = src.explore.as_ref().unwrap().categories[0].url.clone();
+    let (f, calls) = scripted(vec![
+        (
+            "page_1",
+            r#"<div class="item"><span class="t">a</span></div>"#,
+        ),
+        (
+            "page_2",
+            r#"<div class="item"><span class="t">b</span></div>"#,
+        ),
+    ]);
+    let engine = Engine::with_fetcher(src, f);
+    let items = engine.explore(&cat, 1, 20).await.unwrap();
+    assert_eq!(items.len(), 1, "explore 单页只取入参 page");
+    let c = calls.lock().unwrap();
+    assert_eq!(c.len(), 1, "应只发一次请求: {c:?}");
+    assert!(c[0].contains("page_1"), "应取起点 page=1: {c:?}");
+}
