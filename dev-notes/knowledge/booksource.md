@@ -56,6 +56,16 @@ render 的 `interceptApi` 会话**本来就在渲染一张真实页面**，拦 A
 - **App 端**：全本免费但需签名 + AES 解密。
 - 字体解密是两端通用能力。
 
+### 番茄有 ≥3 套混淆字体，各需独立 fontMap（content / search / explore 不通用）
+
+番茄不同页面/接口用**不同的**字体反爬字体,码点（PUA E3xx–E5xx）范围重叠但**映射不同**——拿 `search` 的 map 去解 explore 书库的书名会得到一串乱码（「时停起手」被解成「美停它从」）。故 `fontMaps` 里 `content`（阅读正文,class 见 reader）、`search`（搜索结果）、`explore`（书库 `book_list/v0` + DOM class `font-fKts9tCXDjS49UhH`,字体文件 `…/awesome-font/c/e26e946d8b2ccb7.woff2`）**各是一套**,书源每个 op 的 item 规则按来源挂对应 `clean:[{fontMap:"…"}]`。
+
+- **生成新字体的 map**：`cargo run -- gen-fontmap "<woff2 URL 或路径>" --out /tmp/x.json`（字形位图相似度匹配,自动下 Noto 基准;纯 Rust 零 C 依赖)。字体 URL 从页面 `@font-face` 的 `src` 取（`document.styleSheets` 里 `r.type===5` 的规则）。低置信（<0.55）项会标注、个别字可能错（与现有 content/search map 同等质量）。
+- **怎么定位用哪套**：渲染该页,`TreeWalker(SHOW_TEXT)` 扫含 PUA（0xE000–0xF8FF）的短文本节点,看 `parentElement.className` 的 `font-xxx`,再比对各 map 解码是否通顺。
+- **稳定性假设**：这些字体哈希在番茄基础设施上**相对稳定**（content/search map 静态内联已长期可用),故 explore map 也静态内联;若哪天轮换导致解码变乱码,重跑 `gen-fontmap` 更新即可。
+
+**相关文件**：`fanqie-web.v2.json`（`fontMaps.{content,search,explore}`）、`src/gen_fontmap.rs`、`dev-notes/blog/font-anti-scraping-and-fontmap.md`
+
 ### explore 是 URL 驱动，search 是点击驱动
 
 - **explore 书库** `/library/all/page_N`：URL 驱动——翻页 URL 变,直接导航该 URL 即渲染第 N 页。API `book_list/v0`（`page_index=N-1` 0 基）。**`by:url` 翻页可用**。
