@@ -59,31 +59,29 @@ pub fn FindBooks(props: &FindBooksProps, mut hooks: Hooks) -> impl Into<AnyEleme
 
     let (books, loading, error) = hooks.use_effect_state(
         {
+            // 该 block 每次渲染都求值,**只能捕获值、绝不能在此 spawn 取页**:
+            // 在此 `tokio::spawn(explore)` 会绕过 use_async_effect 的 deps 控制,每帧开一次
+            // 浏览器(render explore 时系统栏狂闪)。explore/search 一律在下面 async 体内 await,
+            // 由 use_async_effect 按 deps 仅在依赖变化时触发一次。
             let engine = props.engine.read().clone();
             let url = props.current_explore.as_ref().map(|e| e.0.url.clone());
-            let future = if filter_text.read().is_empty() {
-                engine.zip(url).map(|(engine, url)| {
-                    let page = page.get();
-                    let page_size = page_size.get();
-                    tokio::spawn(async move { engine.explore(&url, page, page_size).await })
-                })
-            } else {
-                engine.map(|engine| {
-                    let page = page.get();
-                    let page_size = page_size.get();
-                    let filter_text = filter_text.read().clone();
-                    tokio::spawn(async move { engine.search(&filter_text, page, page_size).await })
-                })
-            };
-
+            let page = page.get();
+            let page_size = page_size.get();
+            let filter_text = filter_text.read().clone();
             async move {
-                if let Some(future) = future {
-                    let res = future.await??;
-                    list_state.write().select(Some(0));
-                    return Ok(res);
-                }
-
-                Ok::<Vec<BookListItem>, Errors>(vec![])
+                let Some(engine) = engine else {
+                    return Ok::<Vec<BookListItem>, Errors>(vec![]);
+                };
+                let res = if filter_text.is_empty() {
+                    match url {
+                        Some(url) => engine.explore(&url, page, page_size).await?,
+                        None => return Ok(vec![]),
+                    }
+                } else {
+                    engine.search(&filter_text, page, page_size).await?
+                };
+                list_state.write().select(Some(0));
+                Ok(res)
             }
         },
         (
