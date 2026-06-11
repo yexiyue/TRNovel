@@ -6,7 +6,7 @@ use crate::{
     pages::network_novel::book_detail::BookDetailState,
 };
 use crossterm::event::{Event, KeyCode, KeyEventKind};
-use parse_book_source::{BookListItem, Engine};
+use parse_book_source::{BookList, BookListItem, Engine};
 use ratatui::{
     text::{Line, Span},
     widgets::{Block, Padding, Paragraph, Widget, WidgetRef, Wrap},
@@ -70,12 +70,12 @@ pub fn FindBooks(props: &FindBooksProps, mut hooks: Hooks) -> impl Into<AnyEleme
             let filter_text = filter_text.read().clone();
             async move {
                 let Some(engine) = engine else {
-                    return Ok::<Vec<BookListItem>, Errors>(vec![]);
+                    return Ok::<BookList, Errors>(BookList::default());
                 };
                 let res = if filter_text.is_empty() {
                     match url {
                         Some(url) => engine.explore(&url, page, page_size).await?,
-                        None => return Ok(vec![]),
+                        None => return Ok(BookList::default()),
                     }
                 } else {
                     engine.search(&filter_text, page, page_size).await?
@@ -107,7 +107,7 @@ pub fn FindBooks(props: &FindBooksProps, mut hooks: Hooks) -> impl Into<AnyEleme
             },
         )
         ListSelect<BookListItem>(
-            items: books.read().clone().unwrap_or_default(),
+            items: books.read().as_ref().map(|b| b.items.clone()).unwrap_or_default(),
             top_title: Line::from(
                 if let Some(explore)= &props.current_explore{
                     format!("选择书籍 ({})",explore.0.title)
@@ -115,12 +115,21 @@ pub fn FindBooks(props: &FindBooksProps, mut hooks: Hooks) -> impl Into<AnyEleme
                     "选择书籍".to_string()
                 }
             ).style(theme.basic.border_title).centered(),
-            bottom_title: if books.read().as_ref().map(|b|b.len()).unwrap_or(0)>0{
-                Line::from(
-                    format!("第 {} 页, {}/{}", page.get(), list_state.read().selected.unwrap_or(0)+1, books.read().as_ref().map(|b|b.len()).unwrap_or(0))
-                ).centered().style(theme.basic.border_info)
-            }else{
-                Line::from("暂无书籍").centered().style(theme.basic.border_info)
+            bottom_title: {
+                let books_g = books.read();
+                let count = books_g.as_ref().map(|b| b.items.len()).unwrap_or(0);
+                if count > 0 {
+                    // 有 total_pages(render-dual-source)显「第 N / M 页」,否则「第 N 页」。
+                    let label = match books_g.as_ref().and_then(|b| b.total_pages) {
+                        Some(m) => format!("第 {} / {} 页", page.get(), m),
+                        None => format!("第 {} 页", page.get()),
+                    };
+                    Line::from(
+                        format!("{label}, {}/{}", list_state.read().selected.unwrap_or(0)+1, count)
+                    ).centered().style(theme.basic.border_info)
+                } else {
+                    Line::from("暂无书籍").centered().style(theme.basic.border_info)
+                }
             },
             is_editing: !is_inputting.get() && props.is_editing,
             empty_message: "暂无书籍，请切换频道，或者搜索",
@@ -131,7 +140,7 @@ pub fn FindBooks(props: &FindBooksProps, mut hooks: Hooks) -> impl Into<AnyEleme
                 "搜索中..."
             },
             render_item: move |context:&ListBuildContext| {
-                let list=books.read().clone().unwrap_or_default();
+                let list=books.read().as_ref().map(|b| b.items.clone()).unwrap_or_default();
                 (FindBookItem {
                     book_list_item: list[context.index].clone(),
                     selected: context.is_selected,

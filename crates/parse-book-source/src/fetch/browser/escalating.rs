@@ -66,18 +66,25 @@ impl Fetcher for EscalatingFetcher {
             // 渲染超时调小(12s):失败更快、不再像卡死;渲染/拦截类瞬态失败有界重试一次。
             let timeout = Duration::from_secs(12);
             let mut attempt = 0u32;
-            let body = loop {
+            let (body, dom_html) = loop {
                 let r = if let Some(api) = &req.intercept_api {
-                    browser.render_intercept(&abs, api, timeout, true).await
+                    // 拦 API 取 body;`ready_for` 共存时(render-dual-source)再抓渲染 DOM 入 dom_html
+                    //(交 via:css 规则,如分页器总页数)。
+                    browser
+                        .render_intercept(&abs, api, timeout, true, req.ready_for.as_deref())
+                        .await
                 } else if let Some(ready) = &req.ready_for {
-                    browser.render_dom(&abs, ready, timeout, true).await
+                    browser
+                        .render_dom(&abs, ready, timeout, true)
+                        .await
+                        .map(|b| (b, None))
                 } else {
                     return Err(FetchError::Challenged(format!(
                         "render=true 需指定 interceptApi 或 readyFor @ {abs}"
                     )));
                 };
                 match r {
-                    Ok(b) => break b,
+                    Ok(pair) => break pair,
                     // 启动类失败(浏览器不可用)→ 置会话熔断,直接降级、不重试。
                     Err(e @ FetchError::Browser(_)) => {
                         RENDER_FAILED.store(true, Ordering::Relaxed);
@@ -97,6 +104,7 @@ impl Fetcher for EscalatingFetcher {
             return Ok(FetchResponse {
                 body,
                 status: 200,
+                dom_html,
                 ..Default::default()
             });
         }

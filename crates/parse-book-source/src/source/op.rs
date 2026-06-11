@@ -114,12 +114,18 @@ pub struct ExploreOp {
     /// 渲染分类 URL、跑站点 JS,SPA 浏览/分类列表才取得到数据(否则 reqwest 直取,现状)。
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub render: bool,
-    /// 渲染就绪 CSS 选择器(方式 A:取渲染后 DOM);与 `intercept_api` 二选一。
+    /// 渲染就绪 CSS 选择器。无 `intercept_api` 时取渲染后 DOM(方式 A);与 `intercept_api`
+    /// 共存时(`render-dual-source`)作 DOM 就绪闸,供 `via:css` 的 `total_pages` 对 DOM 求值。
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub ready_for: Option<String>,
-    /// CDP 拦截目标响应 URL 子串(方式 B:拦签名 API 响应体,交 `via:"json"` 规则)。
+    /// CDP 拦截目标响应 URL 子串(方式 B:拦签名 API 响应体,交 `via:"json"` 规则)。可与 `ready_for` 共存。
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub intercept_api: Option<String>,
+    /// 精确总页数规则(`render-dual-source`):对取页结果求值得「共 M 页」(翻页进度)。
+    /// `via:json` 对 API body 求值;`via:css`/`xpath` 对渲染 DOM 求值(需 `intercept_api` +
+    /// `ready_for` 共存)。空 = 不返回总数。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub total_pages: Option<Rule>,
 }
 
 fn default_max_pages() -> u32 {

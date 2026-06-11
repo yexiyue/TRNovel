@@ -281,14 +281,19 @@ pub async fn diagnose(engine: &Engine) -> DiagnoseReport {
     if src.explore.is_some() {
         match engine.explore_categories().first() {
             Some(cat) => match engine.explore(&cat.url, 1, 20).await {
-                Ok(books) if !books.is_empty() => {
+                Ok(books) if !books.items.is_empty() => {
                     probe_book_url = books
+                        .items
                         .iter()
                         .find(|b| !b.book_url.is_empty())
                         .map(|b| b.book_url.clone());
+                    let pages = books
+                        .total_pages
+                        .map(|m| format!(", 共 {m} 页"))
+                        .unwrap_or_default();
                     checks.push(Check::pass(
                         "浏览",
-                        format!("{} 本(分类「{}」)", books.len(), cat.title),
+                        format!("{} 本(分类「{}」{})", books.items.len(), cat.title, pages),
                     ));
                 }
                 Ok(_) => checks.push(Check::fail("浏览", "结果为空")),
@@ -313,8 +318,15 @@ pub async fn diagnose(engine: &Engine) -> DiagnoseReport {
     if src.search.is_some() {
         match src.samples.first().and_then(|s| s.expect.name.clone()) {
             Some(q) => match engine.search(&q, 1, 20).await {
-                Ok(books) if !books.is_empty() => {
-                    checks.push(Check::pass("搜索", format!("「{q}」→ {} 本", books.len())))
+                Ok(books) if !books.items.is_empty() => {
+                    let pages = books
+                        .total_pages
+                        .map(|m| format!(", 共 {m} 页"))
+                        .unwrap_or_default();
+                    checks.push(Check::pass(
+                        "搜索",
+                        format!("「{q}」→ {} 本{}", books.items.len(), pages),
+                    ))
                 }
                 Ok(_) => checks.push(Check::fail("搜索", format!("「{q}」无结果"))),
                 Err(e) => checks.push(Check::fail("搜索", err_detail(&e))),

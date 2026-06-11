@@ -31,6 +31,17 @@ render 路径（`render_dom`/`render_intercept`）**复用同一常驻 `Browser`
 
 **相关文件**：`crates/parse-book-source/src/fetch/browser/fetcher.rs`（`RENDER_POOL`/`new_pool_page`/`with_pool_page`/`with_ephemeral`/`shutdown_render_pool`）、`src/lib.rs`（退出钩子）、`openspec/changes/browser-pool/`
 
+### render 双源（render-dual-source）：拦 API 的同时也能读渲染 DOM
+
+render 的 `interceptApi` 会话**本来就在渲染一张真实页面**，拦 API（数据）之外可顺手抓渲染后 DOM（`outerHTML`），让 `via:css`/`xpath` 规则对 DOM 求值——典型用途：分页器的**精确总页数**（番茄 API 的 `total_count` 是占位 10000 不可靠，真数只在 DOM 分页器）。`explore`/`search` 返回类型因此从 `Vec<BookListItem>` 改为 `BookList { items, total_pages }`，UI 显示「第 N / M 页」。
+
+- **信号 = `interceptApi` + `ready_for` 共存**：二者过去是「二选一」，现放宽为可同时给——`interceptApi` 取 body，`ready_for` 作 DOM 就绪闸（分页器在 API 之后才渲染，得等它出现再抓）。只配 `interceptApi`（无 `ready_for`）则不抓 DOM、`dom_html=None`，逐字节同现状。
+- **路由 = dom-presence（不内省规则 via）**：`Rule` 是枚举、组合规则可混 via，逐规则内省太重。引擎实际按「**抓到 DOM 就对 DOM 求值 `totalPages`，否则对 body**」路由（`eval_total_pages`）。因为作者配 `ready_for`（→抓 DOM）正是 totalPages 要 DOM 的 opt-in；via:json 总数 / 非 render 的 css 总数则无 DOM、打 body（便宜档白送）。
+- **传输**：`FetchResponse.dom_html: Option<String>`，仅 render+intercept+要 DOM 时有值；`run_request_full`/`send_templated_full` 透传，普通取页仍用只回 body 的 `run_request`/`send_templated`。
+- **番茄分页器选择器**（agent-browser 实测，explore 书库 + search 同一字节 `byte-pagination` 组件）：总页数 = `.byte-pagination-item:not(.byte-pagination-item-icon):not(.byte-pagination-item-jumper)` 取 `index:-1`（末数字项；过滤掉前后箭头 icon 与 `...` jumper；少页/单页也成立）。`parse_total_pages` 再从结果抽首段数字。
+
+**相关文件**：`crates/parse-book-source/src/fetch/{mod.rs,browser/{fetcher.rs,escalating.rs}}`、`src/engine/{mod.rs,internal.rs}`（`eval_total_pages`）、`src/model.rs`（`BookList`）、`fanqie-web.v2.json`、`openspec/changes/render-dual-source/`
+
 ## 番茄（fanqienovel.com）接入
 
 ### 签名不可破解，render 让浏览器自己签

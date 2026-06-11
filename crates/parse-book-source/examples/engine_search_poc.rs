@@ -29,11 +29,15 @@ async fn main() {
     eprintln!("→ 渲染+CDP拦截搜索「{key}」(headless,复用登录 profile)…");
     match engine.search(&key, 1, 10).await {
         Ok(books) => {
+            let pages = books
+                .total_pages
+                .map(|m| format!(", 共 {m} 页"))
+                .unwrap_or_default();
             println!(
-                "\n✅ 搜索返回 {} 本(名/作者经搜索 fontMap 解码,book_id→bookUrl):",
-                books.len()
+                "\n✅ 搜索返回 {} 本{pages}(名/作者经搜索 fontMap 解码,book_id→bookUrl):",
+                books.items.len()
             );
-            for b in &books {
+            for b in &books.items {
                 println!("  {} / {} → {}", b.info.name, b.info.author, b.book_url);
             }
         }

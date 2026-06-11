@@ -45,3 +45,23 @@ pub struct BookListItem {
     pub info: BookInfo,
     pub book_url: String,
 }
+
+/// 搜索/浏览**一页**的结果:书列表 + 可选精确总页数(`render-dual-source`,翻页进度「第 N / M 页」;
+/// 书源未配 `totalPages` 或取不到则为 `None`)。`explore`/`search` 的返回类型。
+///
+/// (后续 `list-has-more` 在此 additive 加 `has_more: Option<bool>` 翻页边界。)
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct BookList {
+    pub items: Vec<BookListItem>,
+    pub total_pages: Option<u32>,
+}
+
+impl BookList {
+    /// 仅书列表、无总页数(非 render / 未配 `totalPages` 的现状路径)。
+    pub fn new(items: Vec<BookListItem>) -> Self {
+        Self {
+            items,
+            total_pages: None,
+        }
+    }
+}

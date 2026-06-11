@@ -764,6 +764,12 @@
     ],
     "render": true,
     "interceptApi": "book_list/v0",
+    "readyFor": ".byte-pagination",
+    "totalPages": {
+      "via": "css",
+      "select": ".byte-pagination-item:not(.byte-pagination-item-icon):not(.byte-pagination-item-jumper)",
+      "index": -1
+    },
     "list": {
       "via": "json",
       "select": "$.data.book_list[*]"
@@ -908,7 +914,13 @@
       },
       "method": "GET",
       "render": true,
-      "interceptApi": "search_book/v1"
+      "interceptApi": "search_book/v1",
+      "readyFor": ".byte-pagination",
+      "totalPages": {
+        "via": "css",
+        "select": ".byte-pagination-item:not(.byte-pagination-item-icon):not(.byte-pagination-item-jumper)",
+        "index": -1
+      }
     },
     "list": {
       "via": "json",

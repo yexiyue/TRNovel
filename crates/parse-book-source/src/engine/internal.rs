@@ -4,10 +4,10 @@
 use super::Engine;
 use crate::error::{BookSourceError, Result};
 use crate::eval::{Vars, eval_list, eval_value, interpolate};
-use crate::fetch::FetchRequest;
 use crate::fetch::cookie::{
     merge_login_into_headers, registrable_domain, request_registrable_domain,
 };
+use crate::fetch::{FetchRequest, FetchResponse};
 use crate::model::{BookInfo, BookListItem};
 use crate::source::{BookRules, Capture, Method, PreStep, Rule, UrlOrRule, VarScope};
 use std::collections::HashMap;
@@ -56,9 +56,10 @@ impl Engine {
         );
     }
 
-    /// 发请求(带登录态)→ `enabledCookieJar` 时回灌 `Set-Cookie` → `loginCheckJs` 校验登录态。
-    /// 失效返回 [`BookSourceError::LoginExpired`]。引擎所有取页统一经此。
-    pub(super) async fn run_request(&self, req: FetchRequest) -> Result<String> {
+    /// 发请求(带登录态)→ `enabledCookieJar` 时回灌 `Set-Cookie` → `loginCheckJs` 校验登录态,
+    /// 返回**完整响应**(body + 可选渲染 DOM)。失效返回 [`BookSourceError::LoginExpired`]。
+    /// 引擎所有取页统一经此;只需 body 的调用方走 [`Engine::run_request`]。
+    pub(super) async fn run_request_full(&self, req: FetchRequest) -> Result<FetchResponse> {
         let domain = self.request_domain(&req.url);
         // 渲染取页(render-fetcher):body 是拦截的 API 响应 / 渲染后 DOM(非整页),且无真实响应头
         // (浏览器渲染响应不回传 Set-Cookie)。故不参与 loginCheckJs 整页校验,避免误判登录失效。
@@ -73,7 +74,12 @@ impl Engine {
         if !is_render {
             self.check_login(&resp.body)?;
         }
-        Ok(resp.body)
+        Ok(resp)
+    }
+
+    /// [`Engine::run_request_full`] 的便捷封装:只回 body(绝大多数取页路径)。
+    pub(super) async fn run_request(&self, req: FetchRequest) -> Result<String> {
+        Ok(self.run_request_full(req).await?.body)
     }
 
     /// 取页(带登录态 + 回灌 + 登录校验)。
@@ -154,7 +160,7 @@ impl Engine {
     /// `vars` 须为调用方已 flatten 的扁平表;请求后的差异化处理(`Request.vars` 捕获 /
     /// prelude 的 `capture_into`)留在调用点。
     #[allow(clippy::too_many_arguments)]
-    pub(super) async fn send_templated(
+    pub(super) async fn send_templated_full(
         &self,
         url: &UrlOrRule,
         method: Method,
@@ -166,7 +172,7 @@ impl Engine {
         render: bool,
         ready_for: Option<&str>,
         intercept_api: Option<&str>,
-    ) -> Result<String> {
+    ) -> Result<FetchResponse> {
         let url = self.resolve_url(url, vars)?;
         let body = match body {
             Some(b) => Some(self.resolve_url(b, vars)?),
@@ -177,7 +183,7 @@ impl Engine {
             hdrs.insert(k.clone(), interpolate(v, vars));
         }
         self.apply_auth(&url, &mut hdrs);
-        self.run_request(FetchRequest {
+        self.run_request_full(FetchRequest {
             url,
             method,
             body,
@@ -187,6 +193,34 @@ impl Engine {
             intercept_api: intercept_api.map(str::to_string),
         })
         .await
+    }
+
+    /// [`Engine::send_templated_full`] 的便捷封装:只回 body(prelude / 不需 DOM 的取页)。
+    #[allow(clippy::too_many_arguments)]
+    pub(super) async fn send_templated(
+        &self,
+        url: &UrlOrRule,
+        method: Method,
+        body: Option<&UrlOrRule>,
+        headers: &HashMap<String, String>,
+        vars: &Vars,
+        render: bool,
+        ready_for: Option<&str>,
+        intercept_api: Option<&str>,
+    ) -> Result<String> {
+        Ok(self
+            .send_templated_full(
+                url,
+                method,
+                body,
+                headers,
+                vars,
+                render,
+                ready_for,
+                intercept_api,
+            )
+            .await?
+            .body)
     }
 
     /// 对一段响应按 `capture` 顺序求值并写入各作用域层;空串不写(防污染低优先级层的非空值)。
@@ -261,6 +295,22 @@ impl Engine {
         Ok(out)
     }
 
+    /// 求值精确总页数(`render-dual-source`)。**dom-presence 路由**:抓到渲染 DOM(说明书源配了
+    /// `ready_for` 要 DOM,`via:css` 的总页数在 DOM)→ 对 DOM 求值;否则对 `body`(`via:json` 拦的
+    /// API / 非 render 的整页 HTML)求值。无规则或解析失败 → `None`(不阻断列表,仅少个进度数)。
+    pub(super) fn eval_total_pages(
+        &self,
+        rule: Option<&Rule>,
+        body: &str,
+        dom: Option<&str>,
+        vars: &Vars,
+    ) -> Option<u32> {
+        let rule = rule?;
+        let ctx = dom.unwrap_or(body);
+        let s = eval_value(rule, ctx, vars).ok()?;
+        parse_total_pages(&s)
+    }
+
     pub(super) fn eval_book_info(&self, r: &BookRules, ctx: &str, vars: &Vars) -> Result<BookInfo> {
         Ok(BookInfo {
             name: opt_eval(r.name.as_ref(), ctx, vars)?,
@@ -295,4 +345,16 @@ pub(super) fn opt_eval(rule: Option<&Rule>, ctx: &str, vars: &Vars) -> Result<St
         Some(r) => eval_value(r, ctx, vars)?,
         None => String::new(),
     })
+}
+
+/// 从总页数规则的求值结果抽出 `u32`:取首段连续 ASCII 数字(容忍「99」「共99页」等;失败 → None)。
+fn parse_total_pages(s: &str) -> Option<u32> {
+    let s = s.trim();
+    let start = s.find(|c: char| c.is_ascii_digit())?;
+    s[start..]
+        .chars()
+        .take_while(char::is_ascii_digit)
+        .collect::<String>()
+        .parse()
+        .ok()
 }

@@ -158,17 +158,31 @@ impl BrowserFetcher {
         .await
     }
 
-    /// 渲染后 DOM 取页核心:在已导航到 `url` 的 `page` 上注入 MutationObserver,轮询直到
-    /// `ready_for`(CSS 选择器)出现,返回渲染后 `outerHTML`;超时未就绪返回 `Err`(供上层降级)。
+    /// 渲染后 DOM 取页核心:等 `ready_for`(CSS 选择器)在 `timeout` 内出现,返回渲染后 `outerHTML`;
+    /// 超时未就绪返回 `Err`(供上层降级)。
     async fn render_dom_page(
         page: &Page,
         url: &str,
         ready_for: &str,
         timeout: Duration,
     ) -> Result<String, FetchError> {
+        if !Self::wait_ready(page, ready_for, timeout).await? {
+            return Err(FetchError::Challenged(format!(
+                "渲染就绪超时(等待「{ready_for}」)@ {url}"
+            )));
+        }
+        Self::outer_html(page).await
+    }
+
+    /// 事件驱动等待 `ready_for`(CSS 选择器)在 `timeout` 内出现:注入 MutationObserver,一出现即
+    /// resolve(true);JS 侧 setTimeout 作总超时兜底(非 Rust 侧定时器轮询)。返回是否就绪。
+    /// `{:?}` 把选择器转义为安全的 JS 字符串字面量。
+    async fn wait_ready(
+        page: &Page,
+        ready_for: &str,
+        timeout: Duration,
+    ) -> Result<bool, FetchError> {
         use chromiumoxide::cdp::js_protocol::runtime::EvaluateParams;
-        // 事件驱动等待:注入 MutationObserver,选择器一出现即 resolve(true);JS 侧 setTimeout 仅作
-        // 总超时兜底(非 Rust 侧定时器轮询)。`{:?}` 把选择器转义为安全的 JS 字符串字面量。
         let timeout_ms = timeout.as_millis().min(u32::MAX as u128) as u64;
         let wait_js = format!(
             "new Promise((resolve)=>{{const s={ready_for:?};\
@@ -183,23 +197,21 @@ impl BrowserFetcher {
             .return_by_value(true)
             .build()
             .map_err(|e| FetchError::Browser(format!("构建 evaluate 参数失败: {e}")))?;
-        let ready = page
+        Ok(page
             .evaluate(params)
             .await
             .map_err(browser_err)?
             .into_value::<bool>()
-            .unwrap_or(false);
-        if !ready {
-            return Err(FetchError::Challenged(format!(
-                "渲染就绪超时(等待「{ready_for}」)@ {url}"
-            )));
-        }
-        // outerHTML 取值失败也作为明确错误返回(供降级/诊断),而非静默空串。
+            .unwrap_or(false))
+    }
+
+    /// 取渲染后整页 `outerHTML`;取值失败作明确错误(供降级/诊断),而非静默空串。
+    async fn outer_html(page: &Page) -> Result<String, FetchError> {
         page.evaluate("document.documentElement.outerHTML")
             .await
             .map_err(browser_err)?
             .into_value::<String>()
-            .map_err(|e| FetchError::Browser(format!("渲染后取 DOM 失败: {e} @ {url}")))
+            .map_err(|e| FetchError::Browser(format!("渲染后取 DOM 失败: {e}")))
     }
 
     /// 实际启动一个浏览器进程(**不取锁**;调用方须已持 [`BROWSER_LOCK`] 并确保 profile 无其它
@@ -356,18 +368,40 @@ impl BrowserFetcher {
         api_contains: &str,
         timeout: Duration,
         headless: bool,
-    ) -> Result<String, FetchError> {
+        dom_ready: Option<&str>,
+    ) -> Result<(String, Option<String>), FetchError> {
         // 渲染走进程级常驻池(同 render_dom):从池开新空白 Page,拦截完关 Page 留 Browser。
+        // `dom_ready` 有值(render-dual-source)时,拦完 API 再等就绪闸、另抓渲染 DOM 一并返回。
         self.with_pool_page("about:blank", headless, async |page| {
-            Self::intercept_page(page, url, api_contains, timeout).await
+            Self::intercept_page(page, url, api_contains, timeout, dom_ready).await
         })
         .await
+    }
+
+    /// 拦截取页 +(可选)渲染 DOM(`render-dual-source`):先 `intercept_body` 拦到 API body;
+    /// `dom_ready` 有值时,等该选择器出现(尽力——超时也抓当前 DOM)再抓 `outerHTML` 一并返回。
+    async fn intercept_page(
+        page: &Page,
+        url: &str,
+        api_contains: &str,
+        timeout: Duration,
+        dom_ready: Option<&str>,
+    ) -> Result<(String, Option<String>), FetchError> {
+        let body = Self::intercept_body(page, url, api_contains, timeout).await?;
+        let dom = match dom_ready {
+            Some(sel) => {
+                let _ = Self::wait_ready(page, sel, timeout).await; // 就绪闸尽力等;超时仍抓当前 DOM
+                Self::outer_html(page).await.ok()
+            }
+            None => None,
+        };
+        Ok((body, dom))
     }
 
     /// CDP 拦截取页核心:在池开好的空白 `page` 上开 Network + 挂监听(`responseReceived` 拿
     /// request_id;`loadingFinished` 是 body 完成的精确事件信号),**再** `goto(url)`,
     /// 避免错过 SPA 启动即发的请求;拦到 URL 含 `api_contains` 的响应体并返回。
-    async fn intercept_page(
+    async fn intercept_body(
         page: &Page,
         url: &str,
         api_contains: &str,

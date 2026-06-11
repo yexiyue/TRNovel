@@ -27,11 +27,12 @@ async fn main() {
     for (label, headless) in [("headful(有头)", false), ("headless(无头)", true)] {
         eprintln!("\n========== {label} ==========");
         eprintln!("→ 打开 {url} ,CDP 拦截 {api} 响应(最多 30s)…");
+        // dom_ready=None:本 PoC 只验拦 API,不取渲染 DOM(render-dual-source 才需要)。
         match browser
-            .render_intercept(&url, api, Duration::from_secs(30), headless)
+            .render_intercept(&url, api, Duration::from_secs(30), headless, None)
             .await
         {
-            Ok(body) => {
+            Ok((body, _dom)) => {
                 let _ = std::fs::write(
                     if headless {
                         "/tmp/search_headless.json"

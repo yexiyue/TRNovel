@@ -11,7 +11,7 @@ use crate::error::{BookSourceError, Result};
 use crate::eval::{eval_list, eval_value};
 use crate::fetch::cookie::CookieJar;
 use crate::fetch::{Fetcher, ReqwestFetcher};
-use crate::model::{BookInfo, BookListItem, Chapter, Toc, Volume};
+use crate::model::{BookInfo, BookList, Chapter, Toc, Volume};
 use crate::source::{BookSource, Category, Method, UrlOrRule};
 use std::collections::BTreeMap;
 use std::sync::{Arc, RwLock};
@@ -218,8 +218,8 @@ impl Engine {
         Ok(parts.join("\n"))
     }
 
-    /// 搜索。
-    pub async fn search(&self, key: &str, page: u32, page_size: u32) -> Result<Vec<BookListItem>> {
+    /// 搜索。返回书列表 + 可选精确总页数(`render-dual-source`)。
+    pub async fn search(&self, key: &str, page: u32, page_size: u32) -> Result<BookList> {
         let op = self
             .source
             .search
@@ -233,8 +233,9 @@ impl Engine {
         self.run_prelude(&op.prelude, &mut chapter).await?;
 
         let vars = self.flatten(&chapter);
-        let html = self
-            .send_templated(
+        // 完整响应:body(列表/has_more 等)+ 可选渲染 DOM(via:css 的 totalPages,见 render-dual-source)。
+        let resp = self
+            .send_templated_full(
                 &op.request.url,
                 op.request.method,
                 op.request.body.as_ref(),
@@ -245,26 +246,35 @@ impl Engine {
                 op.request.intercept_api.as_deref(),
             )
             .await?;
+        let html = &resp.body;
         // 主请求 vars 捕获(chapter 级):对搜索响应求值,使 list/item 可见(captured-before-referenced)。
         // flatten 刻意分两次:各条 vars **独立**对响应求值(见 source `Request.vars` 契约「勿互相引用」,
         // 有序依赖应走 prelude 链)。
         let flat = self.flatten(&chapter);
         for (name, rule) in &op.request.vars {
-            let v = eval_value(rule, &html, &flat)?;
+            let v = eval_value(rule, html, &flat)?;
             if !v.is_empty() {
                 chapter.insert(name.clone(), v);
             }
         }
-        self.eval_list_items(&op.list, &op.item, &html, &self.flatten(&chapter))
+        let vars = self.flatten(&chapter);
+        let items = self.eval_list_items(&op.list, &op.item, html, &vars)?;
+        let total_pages = self.eval_total_pages(
+            op.request.total_pages.as_ref(),
+            html,
+            resp.dom_html.as_deref(),
+            &vars,
+        );
+        Ok(BookList { items, total_pages })
     }
 
-    /// 浏览某分类的某一页(可选渲染取页;由用户递增 `page` 单页取)。
+    /// 浏览某分类的某一页(可选渲染取页;由用户递增 `page` 单页取)。返回书列表 + 可选总页数。
     pub async fn explore(
         &self,
         category_url: &UrlOrRule,
         page: u32,
         page_size: u32,
-    ) -> Result<Vec<BookListItem>> {
+    ) -> Result<BookList> {
         let op = self
             .source
             .explore
@@ -275,11 +285,11 @@ impl Engine {
         chapter.insert("pageSize".into(), page_size.to_string());
         self.run_prelude(&op.prelude, &mut chapter).await?;
         let vars = self.flatten(&chapter);
-        let html = if op.render {
-            // 渲染取页:与 search 主请求同款路由(send_templated → run_request → fetch_full)。
+        let resp = if op.render {
+            // 渲染取页:与 search 主请求同款路由(send_templated_full → run_request_full → fetch_full)。
             // 空 headers:explore 分类请求无自定义头,渲染配置经 op 承载(对齐 search 主请求路由)。
             let no_headers = std::collections::HashMap::new();
-            self.send_templated(
+            self.send_templated_full(
                 category_url,
                 Method::Get,
                 None,
@@ -291,11 +301,20 @@ impl Engine {
             )
             .await?
         } else {
-            // 未开 render:reqwest 直取(现状,逐字节不变)。
+            // 未开 render:reqwest 直取(现状,逐字节不变);走 run_request_full 以便 via:css 的
+            // totalPages 也能对整页 HTML 求值(便宜档,无 DOM 也有总页数源)。
             let url = self.resolve_url(category_url, &vars)?;
-            self.fetch_checked(url).await?
+            self.run_request_full(self.get_req(url)).await?
         };
-        self.eval_list_items(&op.list, &op.item, &html, &vars)
+        let html = &resp.body;
+        let items = self.eval_list_items(&op.list, &op.item, html, &vars)?;
+        let total_pages = self.eval_total_pages(
+            op.total_pages.as_ref(),
+            html,
+            resp.dom_html.as_deref(),
+            &vars,
+        );
+        Ok(BookList { items, total_pages })
     }
 
     /// 浏览分类列表,供上层选择后翻页。

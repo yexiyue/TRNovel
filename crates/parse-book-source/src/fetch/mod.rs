@@ -94,9 +94,12 @@ pub struct FetchRequest {
     /// 跑站点自身 JS,而非 reqwest 直取。仅 [`crate::fetch::browser::EscalatingFetcher`] 在
     /// `browser` feature 下识别;其它 fetcher 忽略本字段(退化为普通取页)。
     pub render: bool,
-    /// 渲染就绪等待选择器:无 `intercept_api` 时,渲染后轮询该 CSS 选择器出现再取 DOM。
+    /// 渲染就绪等待选择器。两种用法:
+    /// - **无 `intercept_api`**(方式 A):渲染后轮询该选择器出现,取渲染后 DOM 作 body;
+    /// - **与 `intercept_api` 共存**(`render-dual-source`):拦 API 取 body 之外,等该选择器出现后
+    ///   另抓渲染 DOM 入 [`FetchResponse::dom_html`](供 `via:css` 规则对 DOM 求值,如分页器总页数)。
     pub ready_for: Option<String>,
-    /// CDP 拦截:渲染时拦截 URL 含此子串的响应体作为取页结果(优先于 `ready_for`)。
+    /// CDP 拦截:渲染时拦截 URL 含此子串的响应体作为取页 body。可与 `ready_for` 共存(见上)。
     pub intercept_api: Option<String>,
 }
 
@@ -119,6 +122,10 @@ pub struct FetchResponse {
     pub body: String,
     pub status: u16,
     pub headers: HashMap<String, String>,
+    /// 渲染后 DOM(`render-dual-source`):**仅** render + `interceptApi` 且调用方要 DOM 时有值
+    /// (拦到 API body 后另抓 `outerHTML`,供 `via:css`/`xpath` 规则对 DOM 求值,如分页器总页数)。
+    /// 其它取页路径恒为 `None`。
+    pub dom_html: Option<String>,
 }
 
 /// 取页抽象。实现者负责发请求 + 按目标站字符集解码为文本。
@@ -135,6 +142,7 @@ pub trait Fetcher: Send + Sync {
             body,
             status: 200,
             headers: HashMap::new(),
+            dom_html: None,
         })
     }
 }
@@ -249,6 +257,7 @@ impl ReqwestFetcher {
             body: text,
             status: status.as_u16(),
             headers,
+            dom_html: None,
         })
     }
 

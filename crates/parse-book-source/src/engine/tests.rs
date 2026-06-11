@@ -55,6 +55,7 @@ impl Fetcher for CookieEchoFetcher {
             body: CATALOG.to_string(),
             status: 200,
             headers,
+            dom_html: None,
         })
     }
 }
@@ -339,7 +340,7 @@ async fn prelude_captures_token_into_main_request() {
         ),
     ]);
     let engine = Engine::with_fetcher(src, f);
-    let items = engine.search("k", 1, 20).await.unwrap();
+    let items = engine.search("k", 1, 20).await.unwrap().items;
     assert_eq!(items.len(), 1);
     assert_eq!(items[0].info.name, "书名");
     let c = calls.lock().unwrap();
@@ -415,7 +416,7 @@ async fn request_vars_visible_to_list_items() {
     let src = BookSource::from_json(json).unwrap();
     let html = r#"<span class="site">甲站</span><div class="item">x</div>"#;
     let engine = Engine::with_fetcher(src, Arc::new(MockFetcher(html.to_string())));
-    let items = engine.search("k", 1, 20).await.unwrap();
+    let items = engine.search("k", 1, 20).await.unwrap().items;
     assert_eq!(items.len(), 1);
     assert_eq!(
         items[0].info.name, "甲站-书",
@@ -551,7 +552,7 @@ async fn multiple_request_vars_all_captured() {
     let src = BookSource::from_json(json).unwrap();
     let html = r#"<span class="a">甲</span><span class="b">乙</span><div class="item">x</div>"#;
     let engine = Engine::with_fetcher(src, Arc::new(MockFetcher(html.to_string())));
-    let items = engine.search("k", 1, 20).await.unwrap();
+    let items = engine.search("k", 1, 20).await.unwrap().items;
     assert_eq!(
         items[0].info.name, "甲-乙",
         "多条 request.vars 应都被捕获且对 item 可见"
@@ -604,7 +605,7 @@ async fn explore_render_uses_render_fetch_path() {
         last_render: last_render.clone(),
     });
     let engine = Engine::with_fetcher(src, fetcher);
-    let items = engine.explore(&cat, 1, 20).await.unwrap();
+    let items = engine.explore(&cat, 1, 20).await.unwrap().items;
     assert_eq!(items.len(), 1);
     assert_eq!(items[0].info.name, "书");
     assert_eq!(
@@ -625,7 +626,7 @@ async fn explore_without_render_uses_reqwest_path() {
         last_render: last_render.clone(),
     });
     let engine = Engine::with_fetcher(src, fetcher);
-    let items = engine.explore(&cat, 1, 20).await.unwrap();
+    let items = engine.explore(&cat, 1, 20).await.unwrap().items;
     assert_eq!(items.len(), 1);
     assert_eq!(
         *last_render.lock().unwrap(),
@@ -672,9 +673,100 @@ async fn explore_single_page_fetches_once() {
         ),
     ]);
     let engine = Engine::with_fetcher(src, f);
-    let items = engine.explore(&cat, 1, 20).await.unwrap();
+    let items = engine.explore(&cat, 1, 20).await.unwrap().items;
     assert_eq!(items.len(), 1, "explore 单页只取入参 page");
     let c = calls.lock().unwrap();
     assert_eq!(c.len(), 1, "应只发一次请求: {c:?}");
     assert!(c[0].contains("page_1"), "应取起点 page=1: {c:?}");
+}
+
+// ───────────────── render-dual-source:精确总页数(totalPages 的 dom-presence 路由) ─────────────────
+
+/// 取页替身:返回 body + 可选渲染 DOM(模拟 render+interceptApi 的双源)。
+struct DualSourceFetcher {
+    body: String,
+    dom: Option<String>,
+}
+#[async_trait]
+impl Fetcher for DualSourceFetcher {
+    async fn fetch(&self, req: FetchRequest) -> std::result::Result<String, FetchError> {
+        self.fetch_full(req).await.map(|r| r.body)
+    }
+    async fn fetch_full(
+        &self,
+        _req: FetchRequest,
+    ) -> std::result::Result<FetchResponse, FetchError> {
+        Ok(FetchResponse {
+            body: self.body.clone(),
+            status: 200,
+            headers: HashMap::new(),
+            dom_html: self.dom.clone(),
+        })
+    }
+}
+
+// 番茄字节分页器(末数字项即总页数)的最小 DOM。
+const PAGINATOR_DOM: &str = r#"<ul class="byte-pagination-list">
+  <li class="byte-pagination-item byte-pagination-item-icon disabled"></li>
+  <li class="byte-pagination-item byte-pagination-item-active">1</li>
+  <li class="byte-pagination-item">2</li>
+  <li class="byte-pagination-item byte-pagination-item-jumper"></li>
+  <li class="byte-pagination-item">99</li>
+  <li class="byte-pagination-item byte-pagination-item-icon"></li>
+</ul>"#;
+const TP_SELECT: &str =
+    ".byte-pagination-item:not(.byte-pagination-item-icon):not(.byte-pagination-item-jumper)";
+
+// ① 抓到渲染 DOM 时,via:css 的 totalPages 对 **DOM**(分页器)求值 → Some(99);
+//    同会话 list/item 仍对 body 求值(双源路由)。
+#[tokio::test]
+async fn total_pages_from_dom_via_css() {
+    let src = explore_source(&format!(
+        r#","render":true,"interceptApi":"book_list/v0","readyFor":".byte-pagination","totalPages":{{"via":"css","select":"{TP_SELECT}","index":-1}}"#
+    ));
+    let cat = src.explore.as_ref().unwrap().categories[0].url.clone();
+    let fetcher = Arc::new(DualSourceFetcher {
+        body: r#"<div class="item"><span class="t">书</span></div>"#.to_string(),
+        dom: Some(PAGINATOR_DOM.to_string()),
+    });
+    let engine = Engine::with_fetcher(src, fetcher);
+    let books = engine.explore(&cat, 1, 20).await.unwrap();
+    assert_eq!(books.items.len(), 1, "list/item 仍对 body 求值");
+    assert_eq!(
+        books.total_pages,
+        Some(99),
+        "via:css 的 totalPages 应从渲染 DOM 分页器读末页数字"
+    );
+}
+
+// ② 无 DOM(便宜档:非 render / 未配 readyFor)时,totalPages 对 body 求值(整页 HTML 的分页器)。
+#[tokio::test]
+async fn total_pages_from_body_when_no_dom() {
+    let src = explore_source(&format!(
+        r#","totalPages":{{"via":"css","select":"{TP_SELECT}","index":-1}}"#
+    ));
+    let cat = src.explore.as_ref().unwrap().categories[0].url.clone();
+    let body = format!(r#"<div class="item"><span class="t">书</span></div>{PAGINATOR_DOM}"#);
+    let fetcher = Arc::new(DualSourceFetcher { body, dom: None });
+    let engine = Engine::with_fetcher(src, fetcher);
+    let books = engine.explore(&cat, 1, 20).await.unwrap();
+    assert_eq!(
+        books.total_pages,
+        Some(99),
+        "无 DOM 时 totalPages 应对 body(整页 HTML)求值"
+    );
+}
+
+// ③ 未配 totalPages → None(现状,不阻断列表)。
+#[tokio::test]
+async fn total_pages_none_without_rule() {
+    let src = explore_source("");
+    let cat = src.explore.as_ref().unwrap().categories[0].url.clone();
+    let fetcher = Arc::new(DualSourceFetcher {
+        body: r#"<div class="item"><span class="t">书</span></div>"#.to_string(),
+        dom: None,
+    });
+    let engine = Engine::with_fetcher(src, fetcher);
+    let books = engine.explore(&cat, 1, 20).await.unwrap();
+    assert_eq!(books.total_pages, None, "未配 totalPages 应返回 None");
 }

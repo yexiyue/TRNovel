@@ -31,7 +31,7 @@ pub mod verify;
 pub use engine::Engine;
 pub use error::{BookSourceError, ConfigError, EvalError, FetchError, Result};
 pub use fetch::{FetchRequest, FetchResponse, Fetcher, ReqwestFetcher, is_challenge};
-pub use model::{BookInfo, BookListItem, Chapter, Toc, Volume};
+pub use model::{BookInfo, BookList, BookListItem, Chapter, Toc, Volume};
 pub use source::{BookSource, Category, FetchMode, UrlOrRule};
 pub use verify::{Check, CheckStatus, DiagnoseReport, VerifyReport, diagnose, verify_sample};
 

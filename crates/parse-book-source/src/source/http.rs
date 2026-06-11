@@ -198,12 +198,20 @@ pub struct Request {
     /// 仅 `browser` feature 且浏览器可用时生效;否则该 op 优雅降级。
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub render: bool,
-    /// 渲染就绪等待:渲染后轮询直到该 CSS 选择器出现,再取渲染后 DOM 交 CSS 规则。
-    /// 与 `interceptApi` 二选一:无 `interceptApi` 时用本字段走「渲染后 DOM」取页。
+    /// 渲染就绪等待选择器。两种用法:
+    /// - **无 `interceptApi`**:渲染后轮询该选择器出现,取渲染后 DOM 交 CSS 规则(方式 A);
+    /// - **与 `interceptApi` 共存**(`render-dual-source`):拦 API 取 body 之外,等该选择器出现后
+    ///   另抓渲染 DOM,供 `via:css` 的 `totalPages` 等对 DOM 求值(如分页器总页数)。
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub ready_for: Option<String>,
-    /// CDP 拦截:渲染时拦截 URL 含此子串的响应体作为取页结果(交 `via:"json"` 规则)。
+    /// CDP 拦截:渲染时拦截 URL 含此子串的响应体作为取页 body(交 `via:"json"` 规则)。
     /// 用于「结果只在签名 API、DOM 无关键字段」的站点(典型:番茄搜索 `search_book/v1`)。
+    /// 可与 `ready_for` 共存(见上)。
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub intercept_api: Option<String>,
+    /// 精确总页数规则(`render-dual-source`):对取页结果求值得「共 M 页」(search 翻页进度)。
+    /// `via:json` 对 API body 求值;`via:css`/`xpath` 对渲染 DOM 求值(需 `interceptApi` +
+    /// `ready_for` 共存,抓到 DOM 才有源)。空 = 不返回总数(现状)。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub total_pages: Option<Rule>,
 }

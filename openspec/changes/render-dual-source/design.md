@@ -24,6 +24,7 @@ render 取页有两种方式(`render-fetcher`):`ready_for`(取渲染后 DOM)与 
 **D1 — render(intercept)双源:API JSON + 可选渲染 DOM,规则按 `via` 路由。**
 - `render_intercept` 拦到 API body 后,**当本 op 配了「DOM 源规则」**(`via:css`/`xpath` 的 `totalPages` 等)时,等就绪选择器出现、抓 `document.documentElement.outerHTML`,与 API body 一并返回。
 - 引擎求值时按 `Rule.via` 路由:`via:json` → API body;`via:css`/`xpath` → DOM。`list`/`item`/`has_more`(番茄均 `via:json`)不变,仍打 API body;`totalPages`(`via:css`)打 DOM。
+- **落地补注(dom-presence 路由)**:`Rule` 是枚举、组合规则(`firstOf`/`concat`)可混 `via`,逐规则内省「主 via」过重。实现改为**按「是否抓到 DOM」路由 `totalPages`**:`eval_total_pages` 在 `dom_html` 为 `Some` 时对 DOM 求值、否则对 body;`list`/`item` 恒对 body。因为书源配 `ready_for`(→ 抓 DOM)正是 css-`totalPages` 要 DOM 的 opt-in,故对支持的场景(番茄 css→DOM、via:json→body、非 render css→HTML body)与「按 via 路由」等价,且免去枚举内省。
 - **备选(否决)B —— render 层直接 `page.evaluate` 选择器只回一个值**:把规则求值劈到浏览器层,破坏「规则即数据、统一在 `eval` 引擎求值」的分层,且丢失 chain/fallback/regex/clean 全套规则能力。故选「render 只负责把 DOM 这一份原样带出,求值仍在引擎」。
 
 **D2 — `totalPages` 是通用书源规则(规则即数据,同 `has_more` 的 D1)。**
