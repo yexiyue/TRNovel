@@ -4,10 +4,15 @@
 //! - [`eval_value`]:值规则 → 一个字符串。
 //! - [`eval_list`]:列表规则 → 多个「子上下文」内容串(每个供后续 item 规则求值)。
 
-use super::backend;
-use super::error::EvalError;
-use super::source::{CleanStep, Rule};
-use super::transform;
+// 求值子模块:抽取后端(css/json/regex/raw 分派)、XPath 后端、确定性 transform 算子、JS 逃生舱。
+pub(crate) mod backend;
+#[cfg(feature = "js")]
+pub(crate) mod js;
+pub(crate) mod transform;
+mod xpath;
+
+use crate::error::EvalError;
+use crate::source::{CleanStep, Rule};
 use fancy_regex::Regex;
 use std::collections::HashMap;
 use std::sync::LazyLock;
@@ -52,7 +57,7 @@ pub fn eval_value(rule: &Rule, ctx: &str, vars: &Vars) -> Result<String, EvalErr
 fn run_js(script: &str, result: &str, vars: &Vars) -> Result<String, EvalError> {
     #[cfg(feature = "js")]
     {
-        crate::js::eval_js(script, result, vars)
+        js::eval_js(script, result, vars)
     }
     #[cfg(not(feature = "js"))]
     {

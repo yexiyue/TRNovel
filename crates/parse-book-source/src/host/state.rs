@@ -6,10 +6,10 @@
 //! 凭据(`login_info`)用**机器绑定**的 AES key(machine-uid 派生)加密,与明文 `login_header` 分桶。
 
 use crate::error::EvalError;
+use crate::eval::transform;
 use crate::source::{
     ByteEnc, CipherAlgo, CipherMode, CipherOp, CipherStep, HashAlgo, HashOut, HashStep, Padding,
 };
-use crate::transform;
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 use std::path::Path;

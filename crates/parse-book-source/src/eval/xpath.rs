@@ -14,8 +14,8 @@
 //! 仅 XPath 表达式本身语法非法 → `EvalError::Xpath`。
 
 use super::backend::{clean_html, resolve_index};
-use super::error::EvalError;
-use super::source::{Extract, ExtractOp};
+use crate::error::EvalError;
+use crate::source::{Extract, ExtractOp};
 use sxd_document::Package;
 use sxd_document::dom::{ChildOfElement, Document as SxdDoc, Element as SxdEl};
 use sxd_xpath::nodeset::Node as XNode;

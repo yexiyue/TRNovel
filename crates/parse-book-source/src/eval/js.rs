@@ -1,16 +1,16 @@
 //! JS 逻辑编排逃生舱(`js` feature)。纯 Rust JS 引擎(boa),同步求值。
 //!
 //! 注入只读全局:`result`(当前上下文)、`baseUrl`、以及各模板变量(`key`/`page`/…);
-//! 另注入 `crypto` 助手对象——其方法**直接复用 [`crate::transform`] 的纯 Rust crypto fn**
+//! 另注入 `crypto` 助手对象——其方法**直接复用 [`crate::eval::transform`] 的纯 Rust crypto fn**
 //! (单一真相源,非 `java`)。无任何网络/文件/宿主能力,攻击面极小(见 design D4/D5)。
 
 use crate::error::EvalError;
 use crate::eval::Vars;
+use crate::eval::transform;
 use crate::source::{
     ByteEnc, CipherAlgo, CipherMode, CipherOp, CipherStep, CnConvert, Codec, HashAlgo, HashOut,
     HashStep,
 };
-use crate::transform;
 use boa_engine::object::ObjectInitializer;
 use boa_engine::property::Attribute;
 use boa_engine::{

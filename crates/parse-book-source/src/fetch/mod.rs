@@ -2,9 +2,13 @@
 //! 默认实现 [`ReqwestFetcher`];反爬后端(wreq / FlareSolverr)可作为另一个 `Fetcher`
 //! 适配器接入而不动引擎(见 design D8/D10)。
 
-use super::cookie::{merge_cookie_str, sanitize_header_value};
-use super::error::FetchError;
-use super::source::{BookSource, Charset, Method, RateLimit, Retry};
+#[cfg(feature = "browser")]
+pub mod browser;
+pub mod cookie;
+
+use crate::error::FetchError;
+use crate::fetch::cookie::{merge_cookie_str, sanitize_header_value};
+use crate::source::{BookSource, Charset, Method, RateLimit, Retry};
 use async_trait::async_trait;
 use reqwest::header::{HeaderMap, HeaderName, HeaderValue};
 use std::collections::HashMap;
@@ -87,7 +91,7 @@ pub struct FetchRequest {
     pub body: Option<String>,
     pub headers: HashMap<String, String>,
     /// 渲染型取页(`render-fetcher`):为真则用受控浏览器渲染本 URL(默认 headless),
-    /// 跑站点自身 JS,而非 reqwest 直取。仅 [`crate::browser::EscalatingFetcher`] 在
+    /// 跑站点自身 JS,而非 reqwest 直取。仅 [`crate::fetch::browser::EscalatingFetcher`] 在
     /// `browser` feature 下识别;其它 fetcher 忽略本字段(退化为普通取页)。
     pub render: bool,
     /// 渲染就绪等待选择器:无 `intercept_api` 时,渲染后轮询该 CSS 选择器出现再取 DOM。

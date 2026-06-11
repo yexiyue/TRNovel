@@ -5,8 +5,8 @@
 //! 后代、也匹配根元素自身(dom_query 解析片段后根入树),这与旧引擎一致,使
 //! `select:"a" + attr:href` 能取「列表项自身的 href」、`select:"h2"` 能判「该项是不是卷」。
 
-use super::error::EvalError;
-use super::source::{Extract, ExtractOp, Via};
+use crate::error::EvalError;
+use crate::source::{Extract, ExtractOp, Via};
 use dom_query::{Document, Matcher};
 use fancy_regex::Regex;
 use jsonpath_rust::JsonPath;
@@ -26,7 +26,7 @@ pub fn extract(
         Via::Json => json_extract(content, select, index, ex),
         Via::Regex => regex_extract(content, select, index),
         Via::Raw => Ok(content.to_string()),
-        Via::Xpath => crate::xpath::xpath_extract(content, select, index, ex),
+        Via::Xpath => super::xpath::xpath_extract(content, select, index, ex),
     }
 }
 
@@ -58,7 +58,7 @@ pub fn select_all(via: Via, content: &str, select: &str) -> Result<Vec<String>, 
                 .collect())
         }
         Via::Raw => Ok(vec![content.to_string()]),
-        Via::Xpath => crate::xpath::xpath_select_all(content, select),
+        Via::Xpath => super::xpath::xpath_select_all(content, select),
     }
 }
 
