@@ -2,6 +2,16 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+## 开发工作流
+
+**IMPORTANT**：执行任何开发任务（编写代码、修改配置、添加依赖）前，必须先调用 `/dev-workflow` skill。它会加载项目知识库（`dev-notes/knowledge/`）中的最佳实践和踩坑记录，并在开发完成后引导更新知识库。
+
+知识库主题：
+
+- `dev-notes/knowledge/tui-ratatui-kit.md` — ratatui-kit 的 hooks 求值时机（狂闪 bug）、键位约定、路由
+- `dev-notes/knowledge/booksource.md` — 书源规则 DSL、render-fetcher、番茄签名/翻页、反爬、novel-tts
+- `dev-notes/knowledge/toolchain.md` — Cargo workspace（mod.rs 风格）、feature 门控、依赖钉版、构建/发布坑
+
 ## Overview
 
 TRNovel is a terminal novel reader (Rust, edition 2024) built on `ratatui` + a custom React-like TUI framework crate, `ratatui-kit`. It reads local `.txt` novels and network novels (via Legado-style "book sources"), tracks reading history, supports color themes, and offers TTS playback using the Kokoro model. UI text and code comments are in Chinese.

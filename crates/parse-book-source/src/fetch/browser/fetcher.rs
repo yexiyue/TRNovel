@@ -171,10 +171,17 @@ impl BrowserFetcher {
             .chrome_executable(&self.exe)
             .user_data_dir(&self.opts.profile_dir)
             .arg("--no-first-run")
-            .arg("--no-default-browser-check")
-            .arg("--disable-blink-features=AutomationControlled");
+            .arg("--no-default-browser-check");
         if !headless {
-            builder = builder.with_head();
+            // 解挑战(headful):chromiumoxide 默认参数含 `--enable-automation`,它让 Chrome 显示
+            // 「受自动化控制」并改 window.chrome,是 Cloudflare 识别 CDP 自动化的经典信号——实测会导致
+            // 用户点过 Turnstile、CF reload 后仍反复重新挑战、`cf_clearance` 永不签发(cookie 卡在 `cf_chl_*`)。
+            // `disable_default_args` 拔掉含它的全部默认参数(其余多为噪声/性能项),`hide` 补回
+            // `--disable-blink-features=AutomationControlled`(隐藏 navigator.webdriver 的 blink 特征)。
+            builder = builder.disable_default_args().hide().with_head();
+        } else {
+            // 渲染(headless):保持原参数(番茄渲染流已验证可用,不动)。
+            builder = builder.arg("--disable-blink-features=AutomationControlled");
         }
         let config = builder.build().map_err(FetchError::Browser)?;
         let (browser, mut handler) = Browser::launch(config).await.map_err(browser_err)?;

@@ -1,0 +1,14 @@
+{
+  "hooks": {
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash -c 'CHANGED=$(git diff --name-only HEAD 2>/dev/null | grep -E \"^(src/|crates/.*/src/)\" | head -1); if [ -n \"$CHANGED\" ]; then echo \"[dev-workflow] 检测到 src/ 或 crates/*/src/ 下有代码变更，请运行 /simplify 检查代码质量\"; fi'"
+          }
+        ]
+      }
+    ]
+  }
+}
