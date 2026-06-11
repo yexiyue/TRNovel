@@ -30,8 +30,10 @@ static SOLVE_FAILED: AtomicBool = AtomicBool::new(false);
 static RENDER_FAILED: AtomicBool = AtomicBool::new(false);
 
 /// 浏览器会话进程内串行锁:render/solve/login **共享同一持久 profile**(`~/.novel/browser-profile`),
-/// 并发启动会抢 `SingletonLock` 互相挤崩/频闪。所有启动浏览器的路径经 [`BrowserFetcher::launch`]
-/// 取此锁、持到 `browser.close()`,保证同一时刻只有一个浏览器实例占用 profile。
+/// 并发启动会抢 `SingletonLock` 互相挤崩/频闪。所有启动浏览器的路径都经 [`BrowserFetcher::spawn_browser`]
+/// 启动(render 经常驻池 `new_pool_page` 懒启动/复用、headful solve/login 经 `launch_ephemeral`),三者
+/// 均在此锁之下:render 持锁到 `page.close()`(Browser 常驻复用),ephemeral 持锁到 `browser.close()`。
+/// 锁序固定 `BROWSER_LOCK → RENDER_POOL`,保证同一时刻只有一个浏览器实例占用 profile。
 static BROWSER_LOCK: Mutex<()> = Mutex::const_new(());
 
 /// 渲染失败时的有界重试次数(瞬态/风控常重渲即恢复;总尝试 = 1 + 重试)。
@@ -243,4 +245,4 @@ mod escalating;
 mod fetcher;
 
 pub use escalating::EscalatingFetcher;
-pub use fetcher::BrowserFetcher;
+pub use fetcher::{BrowserFetcher, shutdown_render_pool};

@@ -69,6 +69,9 @@ where
 
     element!(App(..props)).fullscreen().await?;
 
+    // 退出前关闭进程级常驻渲染浏览器:它是 static,不触发 Drop,不显式关会让 headless 子进程被孤儿化。
+    parse_book_source::shutdown_render_pool().await;
+
     Ok(())
 }
 

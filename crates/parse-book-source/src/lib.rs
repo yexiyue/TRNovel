@@ -46,6 +46,7 @@ pub use host::state;
 pub use fetch::browser::{
     AuthDecision, BrowserCookie, BrowserFetcher, BrowserOptions, BrowserUi, Clearance,
     EscalatingFetcher, LoginCriteria, LoginOutcome, LoginSignal, detect_browser,
+    shutdown_render_pool,
 };
 
 /// 测试共用工具:最小书源 + 一次性本地 HTTP 服务(host / browser 等模块单测共享,

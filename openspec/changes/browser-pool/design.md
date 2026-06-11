@@ -21,26 +21,29 @@
 ## Decisions
 
 **D1 — 单个常驻 `Browser` + per-render 新 `Page`。**
-- `BrowserFetcher` 持有 `Arc<Mutex<Option<(Browser, JoinHandle)>>>`(或专门 `BrowserPool` 类型):首次渲染取页时 `launch` 建一次,存入;后续取页**复用该 `Browser`**,`browser.new_page(...)` 开新页、导航、拦截/读 DOM、用完 `page.close()`,**`Browser` 留着**。
-- 备选(否决):`Page` 也复用(不每次新建)——SPA 状态/cookie 跨页残留易串味,新 `Page` 更干净;`new_page` 比 `launch` 快几个数量级,够了。
+- 常驻池是**进程级单例** `static RENDER_POOL: Mutex<Option<Resident>>`(`Resident { browser, handler, headless }`),**不是** `BrowserFetcher` 的实例字段。首次渲染取页时 `spawn_browser` 建一次,存入;后续取页**复用该 `Browser`**,`browser.new_page(...)` 开新页、导航、拦截/读 DOM、用完 `page.close()`,**`Browser` 留着**。
+- **为何全局单例(落地时修正,原稿写「`BrowserFetcher` 持有」是错的)**:所有书源共享同一持久 profile(`~/.novel/browser-profile`),`build_engine` 每次新建一个 `BrowserFetcher`。若池是实例字段,多书源/路由回退栈下两个实例各自的常驻浏览器会同时存活、互抢 profile 的 `SingletonLock`(后建者 `spawn_browser` 无条件删锁)→ profile 数据竞争。`BROWSER_LOCK` 只保证「同一时刻只一个浏览器在启动/渲染」,常驻化把「存活」与「持锁」解耦后跨实例存活并存不受锁保护,只有全局单例能根治。
+- 备选(否决):`Page` 也复用(不每次新建)——SPA 状态/cookie 跨页残留易串味,新 `Page` 更干净;`new_page` 比 `spawn_browser` 快几个数量级,够了。
 
-**D2 — 生命周期:懒启动 + 空闲超时/退出关 + 崩溃重建。**
+**D2 — 生命周期:懒启动 + 退出显式关 + 崩溃重建。**
 - 懒启动:首个渲染请求才建浏览器(纯净/无渲染需求时零开销)。
-- 关闭:app 退出时显式关(`Drop` 或退出钩子);可选空闲超时(N 分钟无渲染则关,省内存)。
-- 重建:取/用 `Browser` 时若发现已断连(handler task 结束 / CDP 失败)→ 丢弃、重新 `launch`。
+- 关闭:池是 static、进程退出**不触发 `Drop`**,故 app 在退出点显式 `parse_book_source::shutdown_render_pool().await`(`src/lib.rs`);headful solve/login 前也调它腾 profile。**不能**给 `BrowserFetcher` 加 `Drop` 拆全局池——任一 engine drop 会杀掉别 engine 仍在用的浏览器。空闲超时:Non-Goal,未实现(故意)。
+- 重建:`new_pool_page` 取 `Browser` 时 `handler.is_finished()` 快路检查 + **开页(`new_page`)套 8s 超时**(死浏览器的 `new_page` 要等 CDP 默认 30s 才报错且独占 `BROWSER_LOCK`);失败/超时 → 丢弃、重 `spawn_browser`,至多重建一次。
 - 复用 `RENDER_FAILED`:启动类失败仍熔断本会话。
 
 **D3 — handler task 与 `Send`。**
-- chromiumoxide `Browser::launch` 返回 `(Browser, Handler)`,`Handler` 需常驻 `tokio::spawn` 驱动 CDP 事件循环;池要持有其 `JoinHandle`,关闭时一并取消。
+- chromiumoxide `Browser::launch` 返回 `(Browser, Handler)`,`Handler` 需常驻 `tokio::spawn` 驱动 CDP 事件循环;`Resident` 持其 `JoinHandle`,拆除时一并 `abort`。
 - `Browser` 跨 await 复用,需保证 `EscalatingFetcher`/`BrowserFetcher` 的相关 Future 仍 `Send`(主程序在 `tokio::spawn` 内取页)。
 
 **D4 — 保留串行与熔断。**
-- `BROWSER_LOCK` 继续串行化「取池 → 开 Page → 渲染」整段(避免并发开 Page 触发番茄风控);池本身的取/建也在锁内,天然防并发重复 launch。
+- `BROWSER_LOCK` 继续串行化「取池 → 开 Page → 渲染」整段(避免并发开 Page 触发番茄风控);池的取/建/拆都在锁内,锁序固定 `BROWSER_LOCK → RENDER_POOL`,天然防并发重复 launch。
 
 ## Risks / Trade-offs
 
-- [常驻浏览器进程占内存] → 空闲超时关闭(D2);仅在用过渲染的会话存在。
-- [浏览器崩溃/断连后池里是僵尸] → 用前探活 + 重建(D2)。
-- [handler task 泄漏] → 池持 `JoinHandle`,关闭时 `abort`。
+- [常驻浏览器进程占内存] → 仅在用过渲染的会话存在;退出显式关(D2)。空闲超时为 Non-Goal。
+- [浏览器崩溃/断连后池里是僵尸] → 开页失败/超时触发拆除重建(D2;`is_finished()` 不可靠故靠开页超时兜底)。
+- [多 engine 共享 profile 抢 `SingletonLock`] → 池提为进程级单例(D1)。
+- [handler task 泄漏] → `Resident` 持 `JoinHandle`,拆除时 `abort`。
+- [static 不触发 `Drop` → 退出泄漏浏览器进程] → app 退出点显式 `shutdown_render_pool()`(D2)。
 - [跨 `Page` 状态串味] → 每次新 `Page`(D1),不复用 Page。
 - [`Send` 回归] → 与 explore/search 修复同源教训:改完必 `cargo build` 主程序验证 `tokio::spawn` 仍编译。

@@ -83,7 +83,8 @@ impl Fetcher for EscalatingFetcher {
                         RENDER_FAILED.store(true, Ordering::Relaxed);
                         return Err(e);
                     }
-                    // 渲染/拦截失败(超时/未拦截到,常为瞬态/风控)→ 有界重试一次(整轮重开浏览器)。
+                    // 渲染/拦截失败(超时/未拦截到,常为瞬态/风控)→ 有界重试一次
+                    //(复用常驻浏览器、只重开新 Page,不再重启整个浏览器)。
                     Err(e) => {
                         if attempt >= RENDER_RETRY {
                             return Err(e);

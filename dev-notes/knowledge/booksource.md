@@ -14,6 +14,23 @@
 
 **相关文件**：`crates/parse-book-source/src/fetch/browser/`、`src/source/op.rs`
 
+### 常驻浏览器池（browser-pool）：render 复用浏览器、只开新 Page
+
+render 路径（`render_dom`/`render_intercept`）**复用同一常驻 `Browser`、每次只开新 `Page`**，用完 `page.close()` 留 `Browser`，免去每次 launch 的秒级开销（翻页顺滑；也是 P2 点击翻页的基础）。`solve`/`login`（headful）**不**走池，仍每次 `launch_ephemeral` 临时起、用完 close。两类 headful/render 生命周期分别由 `with_ephemeral`/`with_pool_page` 收口。
+
+几个非显然点：
+
+- **池必须是进程级单例**（`static RENDER_POOL: Mutex<Option<Resident>>`），**不能**做成 `BrowserFetcher` 的实例字段。因为所有书源共享同一持久 profile（`~/.novel/browser-profile`）：若每个 `BrowserFetcher`（每次 `build_engine` 新建一个）各持一个常驻浏览器，多书源/路由回退栈场景下两个实例会同时存活、互抢 profile 的 `SingletonLock`（后建者 `spawn_browser` 无条件删锁）→ profile 数据竞争/「配置文件已在使用」。`BROWSER_LOCK` 只保证「同一时刻只一个浏览器在启动/渲染」，**常驻化把「存活」与「持锁」解耦后，「跨实例存活并存」不再受锁保护** —— 全局单例才能根治。
+- **关 Page 不会让浏览器退出**：Chrome 经 CDP 调试连接启动后，只要调试连接（handler task）在连就存活，零标签页也不退 —— 所以「关 render 的 Page、留 Browser」成立，池化真实生效。浏览器退出只发生在 `Browser::close()`/进程崩溃。
+- **headful 解挑战/登录前必须先拆常驻渲染浏览器**：`launch_ephemeral` 里先 `shutdown_render_pool().await`（优雅 `close` 释放 profile 的 `SingletonLock`）再起 headful 实例。
+- **`handler.is_finished()` 不是可靠断连探活**：常驻浏览器从不 `close()`，崩溃/断连时 handler task 多半 parked 在 `Pending`、`is_finished()` 仍为 false（只有显式 `Browser::close()` 才结束）。它只是廉价乐观快路；**真正的断连兜底是 `new_pool_page` 开页失败/超时后拆掉重建**。且死浏览器的 `new_page` 不会立刻报错，要等 CDP 默认 30s 请求超时，期间还独占 `BROWSER_LOCK` 阻塞所有书源 —— 故给开页套一道短超时（8s），超时即判断连重建。
+- **锁序**：render 整段持 `BROWSER_LOCK`，池的取/建/拆都在其下（`BROWSER_LOCK → RENDER_POOL`），与 `launch_ephemeral` 同序，无死锁。
+- **退出收尾走显式 `shutdown_render_pool()`，不能靠 `Drop`**：池是 static，进程退出**不触发** `Drop`；且即便给 `BrowserFetcher` 加 `Drop` 也错（任一 engine drop 会杀掉别 engine 仍在用的全局浏览器）。故 app 在退出点（`src/lib.rs` 的 `App.fullscreen().await` 之后）显式 `parse_book_source::shutdown_render_pool().await`，否则 headless 子进程被孤儿化。
+
+**不要**：让 render 复用同一个 `Page`（SPA 状态/cookie 跨页串味，design 已否决）—— `new_page` 比 `launch` 快几个数量级，每次新 Page 足够。
+
+**相关文件**：`crates/parse-book-source/src/fetch/browser/fetcher.rs`（`RENDER_POOL`/`new_pool_page`/`with_pool_page`/`with_ephemeral`/`shutdown_render_pool`）、`src/lib.rs`（退出钩子）、`openspec/changes/browser-pool/`
+
 ## 番茄（fanqienovel.com）接入
 
 ### 签名不可破解，render 让浏览器自己签
@@ -65,7 +82,24 @@ builder = builder.disable_default_args().hide().with_head();
 - 用 `enable_stealth_mode()` 全套——它伪造 WebGL（`NVIDIA GTX 1050` Windows D3D11）+ 插件，与本机真实环境（如 macOS）矛盾，UA↔WebGL 不一致反而是更易被指纹识别的信号。
 - 动 headless 渲染路径（番茄流）——它保留默认参数已验证可用，解挑战的改动只加在 `if !headless` 分支。
 
-**相关文件**：`crates/parse-book-source/src/fetch/browser/fetcher.rs`（`launch`）
+**相关文件**：`crates/parse-book-source/src/fetch/browser/fetcher.rs`（`spawn_browser`）
+
+### `disable_default_args()` 是「全有或全无」，会连带拔掉抑制首次运行体验(FRE)的参数 → Edge 弹欢迎登录模态卡死解挑战
+
+上一条为去 `--enable-automation` 调了 `disable_default_args()`，但 chromiumoxide 这个开关**不能只去一个默认参数**——它把 `DEFAULT_ARGS`（24 项）**全部**拔掉。其中 `--disable-sync`/`--disable-default-apps`/`--disable-client-side-phishing-detection` 等是抑制浏览器**首次运行体验(FRE)**的关键。实测 Windows 上探测到的浏览器是 **Edge** 时，headful 解挑战会弹出「欢迎使用 Microsoft Edge / 同步登录(是，继续 / 否，注销我)」模态**挡住挑战页**，用户无从点「确认真人」→ 解挑战拿不到 `cf_clearance` → 下游 reqwest 重试 `HTTP 403`。headless 渲染路径(番茄)保留了默认参数，故无此问题。
+
+**正确做法**：headful 分支 `disable_default_args()` 后，手动补回「`DEFAULT_ARGS` 去掉 `--enable-automation`」的等价集（常量 `HEADFUL_DEFAULT_ARGS`，关键是 `--disable-sync`）：
+```rust
+builder = builder.disable_default_args().hide().with_head();
+for &arg in HEADFUL_DEFAULT_ARGS { builder = builder.arg(arg); }
+```
+- 补回的都是环境/性能/FRE 抑制项，**没有**自动化指纹信号（CF 只认 `--enable-automation`），故不破坏上一条的 CF 修复。
+- 略去 `--lang=en_US`（保用户原生 UI 语言）与 `--enable-blink-features=IdleDetection`。
+- `HEADFUL_DEFAULT_ARGS` 是 chromiumoxide **0.9.1** 的 `DEFAULT_ARGS` 镜像，**升级该依赖时需复核**这份列表。
+
+**不要**：以为 `--no-first-run` 就够了——它只压住「首次运行」那一道，Edge 的同步登录 FRE 模态要靠 `--disable-sync` 才压得住。
+
+**相关文件**：`crates/parse-book-source/src/fetch/browser/fetcher.rs`（`HEADFUL_DEFAULT_ARGS`、`spawn_browser`）
 
 ## novel-tts
 
