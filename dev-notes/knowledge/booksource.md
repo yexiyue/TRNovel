@@ -25,11 +25,13 @@ render 路径（`render_dom`/`render_intercept`）**复用同一常驻 `Browser`
 - **headful 解挑战/登录前必须先拆常驻渲染浏览器**：`launch_ephemeral` 里先 `shutdown_render_pool().await`（优雅 `close` 释放 profile 的 `SingletonLock`）再起 headful 实例。
 - **`handler.is_finished()` 不是可靠断连探活**：常驻浏览器从不 `close()`，崩溃/断连时 handler task 多半 parked 在 `Pending`、`is_finished()` 仍为 false（只有显式 `Browser::close()` 才结束）。它只是廉价乐观快路；**真正的断连兜底是 `new_pool_page` 开页失败/超时后拆掉重建**。且死浏览器的 `new_page` 不会立刻报错，要等 CDP 默认 30s 请求超时，期间还独占 `BROWSER_LOCK` 阻塞所有书源 —— 故给开页套一道短超时（8s），超时即判断连重建。
 - **锁序**：render 整段持 `BROWSER_LOCK`，池的取/建/拆都在其下（`BROWSER_LOCK → RENDER_POOL`），与 `launch_ephemeral` 同序，无死锁。
-- **退出收尾走显式 `shutdown_render_pool()`，不能靠 `Drop`**：池是 static，进程退出**不触发** `Drop`；且即便给 `BrowserFetcher` 加 `Drop` 也错（任一 engine drop 会杀掉别 engine 仍在用的全局浏览器）。故 app 在退出点（`src/lib.rs` 的 `App.fullscreen().await` 之后）显式 `parse_book_source::shutdown_render_pool().await`，否则 headless 子进程被孤儿化。
+- **跨进程启动也要锁 + 冲突退到临时 profile**：`BROWSER_LOCK` 只在本进程内生效；两个 TRNovel 进程同时第一次启动时，单靠 owner marker 仍可能同时跨过“marker 不存在”的窗口。`spawn_browser` 因此先用 `std::fs::File::try_lock` 锁 `~/.novel/browser-profile/.trnovel-browser.lock`，只覆盖“恢复旧 marker → 删 Singleton* → launch → 写新 marker”的临界区；文件锁随进程退出自动释放，**不负责关闭浏览器**。若主 profile 的 owner 仍活着（另一个终端正在使用），不要报错阻断，也不要抢锁；自动退到 `~/.novel/browser-sessions/<pid>` 临时 profile 继续取页，并通过 `BrowserUi::notice` 给 TUI 一个非阻断提醒（代价是该终端不共享主 profile 登录态）。
+- **退出收尾走显式 `shutdown_render_pool()`，不能靠 `Drop`**：池是 static，进程退出**不触发** `Drop`；且即便给 `BrowserFetcher` 加 `Drop` 也错（任一 engine drop 会杀掉别 engine 仍在用的全局浏览器）。故 app 在最外层 `try_run` 统一收尾并监听 Ctrl+C，显式 `parse_book_source::shutdown_render_pool().await`，否则 headless 子进程被孤儿化。
+- **崩溃恢复靠 owner marker，而不是无条件删 profile 锁**：`spawn_browser` 启动前检查 `~/.novel/browser-profile/.trnovel-browser.json`。若 marker 的 owner pid 仍活着且不是本进程，说明另一个 TRNovel 正占用 profile，必须报错不抢占；若 owner 已死，则按 marker 里的 browser pid 清理孤儿浏览器进程树，再删除 marker 与 `SingletonLock/SingletonSocket/SingletonCookie`。启动成功后写 marker，`shutdown_render_pool`/`with_ephemeral`/断连重建删除匹配本进程、本 browser pid 的 marker。
 
 **不要**：让 render 复用同一个 `Page`（SPA 状态/cookie 跨页串味，design 已否决）—— `new_page` 比 `launch` 快几个数量级，每次新 Page 足够。
 
-**相关文件**：`crates/parse-book-source/src/fetch/browser/fetcher.rs`（`RENDER_POOL`/`new_pool_page`/`with_pool_page`/`with_ephemeral`/`shutdown_render_pool`）、`src/lib.rs`（退出钩子）、`openspec/changes/browser-pool/`
+**相关文件**：`crates/parse-book-source/src/fetch/browser/fetcher.rs`（`RENDER_POOL`/`new_pool_page`/`with_pool_page`/`with_ephemeral`/`shutdown_render_pool`/owner marker/profile lock）、`src/lib.rs`（统一退出钩子 + Ctrl+C）、`openspec/changes/browser-pool/`
 
 ### render 双源（render-dual-source）：拦 API 的同时也能读渲染 DOM
 

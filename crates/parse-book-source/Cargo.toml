@@ -2,6 +2,7 @@
 name = "parse-book-source"
 version = "0.6.0"
 edition = "2024"
+rust-version = "1.89"
 description = "Terminal reader for novel"
 authors = ["yexiyue <yexiyue666@qq.com>"]
 license = "MIT"

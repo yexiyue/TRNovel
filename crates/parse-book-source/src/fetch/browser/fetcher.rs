@@ -1,6 +1,13 @@
 //! 浏览器取页器 [`BrowserFetcher`]:headful 解 Cloudflare 挑战、渲染取页(DOM 轮询 / CDP 拦截)、手动登录。
 
 use super::*;
+use serde::{Deserialize, Serialize};
+use std::{
+    fs::{self, File, OpenOptions, TryLockError},
+    path::Path,
+    process::Command,
+    time::{SystemTime, UNIX_EPOCH},
+};
 
 /// 常驻渲染浏览器实例(`browser-pool`):render 路径复用同一 `Browser`、只开新 `Page`,
 /// 避免每次 launch/close 整个浏览器的秒级开销(交互翻页顺滑;也是 P2 点击翻页的基础设施)。
@@ -15,6 +22,14 @@ struct Resident {
     handler: tokio::task::JoinHandle<()>,
     /// 本实例启动时的 headless 标志;请求标志不一致时拆掉重建。
     headless: bool,
+    /// profile owner marker 路径。显式拆池时只删除匹配本进程/本浏览器的 marker。
+    marker_path: PathBuf,
+    /// 浏览器主进程 pid。用于下次启动恢复上次崩溃留下的孤儿浏览器。
+    browser_pid: Option<u32>,
+    /// 浏览器实际使用的 profile。主 profile 被别的 TRNovel 占用时会退到进程专属 session profile。
+    profile_dir: PathBuf,
+    /// 是否在显式收尾时删除 profile 目录。仅自动 session profile 为 true。
+    remove_profile_on_drop: bool,
 }
 
 /// **进程级**常驻渲染浏览器池(与 [`BROWSER_LOCK`] 同为全局 static)。
@@ -28,6 +43,38 @@ struct Resident {
 /// 访问恒在 [`BROWSER_LOCK`] 之下(锁序 `BROWSER_LOCK → RENDER_POOL`);用 tokio `Mutex` 以便把池内
 /// `Browser` 引用跨 await 持有(渲染期间)。app 退出由 [`shutdown_render_pool`] 收尾(static 不触发 `Drop`)。
 static RENDER_POOL: Mutex<Option<Resident>> = Mutex::const_new(None);
+
+const OWNER_MARKER: &str = ".trnovel-browser.json";
+const SPAWN_LOCK: &str = ".trnovel-browser.lock";
+
+#[derive(Debug, Deserialize, Serialize)]
+struct BrowserOwnerMarker {
+    owner_pid: u32,
+    browser_pid: Option<u32>,
+    started_at_ms: u64,
+    headless: bool,
+    executable: String,
+}
+
+struct ProfileSpawnLock {
+    _file: File,
+}
+
+struct SpawnProfile {
+    dir: PathBuf,
+    remove_on_drop: bool,
+    notice: Option<String>,
+    _lock: ProfileSpawnLock,
+}
+
+struct SpawnedBrowser {
+    browser: Browser,
+    handler: tokio::task::JoinHandle<()>,
+    browser_pid: Option<u32>,
+    marker_path: PathBuf,
+    profile_dir: PathBuf,
+    remove_profile_on_drop: bool,
+}
 
 /// chromiumoxide 0.9 `DEFAULT_ARGS` **去掉 `--enable-automation` 后**的等价集。
 ///
@@ -215,17 +262,18 @@ impl BrowserFetcher {
     }
 
     /// 实际启动一个浏览器进程(**不取锁**;调用方须已持 [`BROWSER_LOCK`] 并确保 profile 无其它
-    /// 实例占用)。清单例锁 → 按 `headless` 配参 → `Browser::launch` + spawn handler 事件循环。
-    async fn spawn_browser(
-        &self,
-        headless: bool,
-    ) -> Result<(Browser, tokio::task::JoinHandle<()>), FetchError> {
-        for name in ["SingletonLock", "SingletonSocket", "SingletonCookie"] {
-            let _ = std::fs::remove_file(self.opts.profile_dir.join(name));
+    /// 实例占用)。恢复上次崩溃残留 → 清单例锁 → 按 `headless` 配参 → `Browser::launch` +
+    /// 写 owner marker → spawn handler 事件循环。
+    async fn spawn_browser(&self, headless: bool) -> Result<SpawnedBrowser, FetchError> {
+        let profile = prepare_spawn_profile(&self.opts.profile_dir)?;
+        if let Some(message) = &profile.notice
+            && let Some(ui) = &self.opts.ui
+        {
+            ui.notice(message);
         }
         let mut builder = BrowserConfig::builder()
             .chrome_executable(&self.exe)
-            .user_data_dir(&self.opts.profile_dir)
+            .user_data_dir(&profile.dir)
             .arg("--no-first-run")
             .arg("--no-default-browser-check");
         if !headless {
@@ -247,9 +295,21 @@ impl BrowserFetcher {
             builder = builder.arg("--disable-blink-features=AutomationControlled");
         }
         let config = builder.build().map_err(FetchError::Browser)?;
-        let (browser, mut handler) = Browser::launch(config).await.map_err(browser_err)?;
+        let (mut browser, mut handler) = Browser::launch(config).await.map_err(browser_err)?;
+        let browser_pid = browser
+            .get_mut_child()
+            .and_then(|child| child.as_mut_inner().id());
+        let marker_path = owner_marker_path(&profile.dir);
+        write_owner_marker(&marker_path, browser_pid, headless, &self.exe)?;
         let handler_task = tokio::spawn(async move { while handler.next().await.is_some() {} });
-        Ok((browser, handler_task))
+        Ok(SpawnedBrowser {
+            browser,
+            handler: handler_task,
+            browser_pid,
+            marker_path,
+            profile_dir: profile.dir,
+            remove_profile_on_drop: profile.remove_on_drop,
+        })
     }
 
     /// 临时浏览器启动(headful 解挑战 / 登录用):取 [`BROWSER_LOCK`] 串行化 → **先拆掉常驻渲染
@@ -263,6 +323,10 @@ impl BrowserFetcher {
         (
             Browser,
             tokio::task::JoinHandle<()>,
+            Option<u32>,
+            PathBuf,
+            PathBuf,
+            bool,
             tokio::sync::MutexGuard<'static, ()>,
         ),
         FetchError,
@@ -270,8 +334,16 @@ impl BrowserFetcher {
         let guard = BROWSER_LOCK.lock().await;
         // 常驻渲染浏览器还活着会占住 profile:先优雅关掉,腾出 SingletonLock 给本次 headful。
         shutdown_render_pool().await;
-        let (browser, handler_task) = self.spawn_browser(headless).await?;
-        Ok((browser, handler_task, guard))
+        let spawned = self.spawn_browser(headless).await?;
+        Ok((
+            spawned.browser,
+            spawned.handler,
+            spawned.browser_pid,
+            spawned.marker_path,
+            spawned.profile_dir,
+            spawned.remove_profile_on_drop,
+            guard,
+        ))
     }
 
     /// 临时浏览器生命周期收口(`solve`/`login` 共用):取临时实例 → 跑 `f(&browser)` → 收尾。
@@ -282,10 +354,21 @@ impl BrowserFetcher {
         headless: bool,
         f: impl AsyncFnOnce(&Browser) -> Result<T, FetchError>,
     ) -> Result<T, FetchError> {
-        let (mut browser, handler_task, _guard) = self.launch_ephemeral(headless).await?;
+        let (
+            mut browser,
+            handler_task,
+            browser_pid,
+            marker_path,
+            profile_dir,
+            remove_profile_on_drop,
+            _guard,
+        ) = self.launch_ephemeral(headless).await?;
         let result = f(&browser).await;
         let _ = browser.close().await;
+        remove_owner_marker(&marker_path, browser_pid);
         handler_task.abort();
+        drop(browser);
+        cleanup_spawn_profile(&profile_dir, remove_profile_on_drop);
         result
     }
 
@@ -329,11 +412,15 @@ impl BrowserFetcher {
             );
             if !healthy {
                 drop_resident(pool); // 同步拆(可能已死,不能 await close)
-                let (browser, handler) = self.spawn_browser(headless).await?;
+                let spawned = self.spawn_browser(headless).await?;
                 *pool = Some(Resident {
-                    browser,
-                    handler,
+                    browser: spawned.browser,
+                    handler: spawned.handler,
                     headless,
+                    marker_path: spawned.marker_path,
+                    browser_pid: spawned.browser_pid,
+                    profile_dir: spawned.profile_dir,
+                    remove_profile_on_drop: spawned.remove_profile_on_drop,
                 });
             }
             // 开页(带超时):成功即返回;失败/超时说明实例已坏 → 拆掉,循环重建一次。
@@ -764,13 +851,236 @@ fn to_browser_cookie(c: Cookie) -> BrowserCookie {
     }
 }
 
+fn owner_marker_path(profile_dir: &Path) -> PathBuf {
+    profile_dir.join(OWNER_MARKER)
+}
+
+fn prepare_spawn_profile(main_profile_dir: &Path) -> Result<SpawnProfile, FetchError> {
+    match try_prepare_main_profile(main_profile_dir) {
+        Ok(profile) => Ok(profile),
+        Err(ProfileBusyReason::SpawnLockBusy) | Err(ProfileBusyReason::LiveOwner) => {
+            prepare_session_profile(main_profile_dir)
+        }
+        Err(ProfileBusyReason::Error(e)) => Err(e),
+    }
+}
+
+fn try_prepare_main_profile(profile_dir: &Path) -> Result<SpawnProfile, ProfileBusyReason> {
+    let lock = acquire_profile_spawn_lock(profile_dir)?;
+    if live_foreign_owner_pid(profile_dir).is_some() {
+        return Err(ProfileBusyReason::LiveOwner);
+    }
+    prepare_profile_for_spawn(profile_dir).map_err(ProfileBusyReason::Error)?;
+    Ok(SpawnProfile {
+        dir: profile_dir.to_path_buf(),
+        remove_on_drop: false,
+        notice: None,
+        _lock: lock,
+    })
+}
+
+fn prepare_session_profile(main_profile_dir: &Path) -> Result<SpawnProfile, FetchError> {
+    let profile_dir = session_profile_dir(main_profile_dir);
+    let lock = acquire_profile_spawn_lock(&profile_dir).map_err(|reason| match reason {
+        ProfileBusyReason::SpawnLockBusy => {
+            FetchError::Browser("本进程临时浏览器 profile 正在启动,请稍后重试".into())
+        }
+        ProfileBusyReason::LiveOwner => {
+            FetchError::Browser("本进程临时浏览器 profile 正被占用,请稍后重试".into())
+        }
+        ProfileBusyReason::Error(e) => e,
+    })?;
+    prepare_profile_for_spawn(&profile_dir)?;
+    Ok(SpawnProfile {
+        dir: profile_dir,
+        remove_on_drop: true,
+        notice: Some(
+            "主浏览器会话正在被另一个 TRNovel 终端使用。\n本终端已改用临时浏览器会话继续取页；如需共享登录态,请关闭另一个终端后重试。"
+                .to_string(),
+        ),
+        _lock: lock,
+    })
+}
+
+fn session_profile_dir(main_profile_dir: &Path) -> PathBuf {
+    let base = main_profile_dir
+        .parent()
+        .unwrap_or(main_profile_dir)
+        .join("browser-sessions");
+    base.join(std::process::id().to_string())
+}
+
+enum ProfileBusyReason {
+    SpawnLockBusy,
+    LiveOwner,
+    Error(FetchError),
+}
+
+fn acquire_profile_spawn_lock(profile_dir: &Path) -> Result<ProfileSpawnLock, ProfileBusyReason> {
+    fs::create_dir_all(profile_dir).map_err(|e| {
+        ProfileBusyReason::Error(FetchError::Browser(format!(
+            "创建浏览器 profile 目录失败: {e}"
+        )))
+    })?;
+    let path = profile_dir.join(SPAWN_LOCK);
+    let file = OpenOptions::new()
+        .read(true)
+        .write(true)
+        .create(true)
+        .truncate(false)
+        .open(&path)
+        .map_err(|e| {
+            ProfileBusyReason::Error(FetchError::Browser(format!("打开浏览器启动锁失败: {e}")))
+        })?;
+
+    match file.try_lock() {
+        Ok(()) => Ok(ProfileSpawnLock { _file: file }),
+        Err(TryLockError::WouldBlock) => Err(ProfileBusyReason::SpawnLockBusy),
+        Err(TryLockError::Error(e)) => Err(ProfileBusyReason::Error(FetchError::Browser(format!(
+            "获取浏览器启动锁失败({}): {e}",
+            path.display()
+        )))),
+    }
+}
+
+fn prepare_profile_for_spawn(profile_dir: &Path) -> Result<(), FetchError> {
+    fs::create_dir_all(profile_dir)
+        .map_err(|e| FetchError::Browser(format!("创建浏览器 profile 目录失败: {e}")))?;
+    recover_stale_owner(profile_dir)?;
+    cleanup_singleton_files(profile_dir);
+    Ok(())
+}
+
+fn live_foreign_owner_pid(profile_dir: &Path) -> Option<u32> {
+    let marker = read_owner_marker(&owner_marker_path(profile_dir))?;
+    (marker.owner_pid != std::process::id() && process_exists(marker.owner_pid))
+        .then_some(marker.owner_pid)
+}
+
+fn recover_stale_owner(profile_dir: &Path) -> Result<(), FetchError> {
+    let marker_path = owner_marker_path(profile_dir);
+    let Some(marker) = read_owner_marker(&marker_path) else {
+        return Ok(());
+    };
+
+    let current_pid = std::process::id();
+    if marker.owner_pid != current_pid && process_exists(marker.owner_pid) {
+        return Err(FetchError::Browser(format!(
+            "浏览器 profile 正由另一个 TRNovel 进程占用(pid={}),暂不抢占",
+            marker.owner_pid
+        )));
+    }
+
+    if let Some(pid) = marker.browser_pid
+        && pid != 0
+        && process_exists(pid)
+    {
+        terminate_process_tree(pid);
+    }
+    let _ = fs::remove_file(marker_path);
+    Ok(())
+}
+
+fn read_owner_marker(path: &Path) -> Option<BrowserOwnerMarker> {
+    let text = fs::read_to_string(path).ok()?;
+    serde_json::from_str(&text).ok()
+}
+
+fn write_owner_marker(
+    path: &Path,
+    browser_pid: Option<u32>,
+    headless: bool,
+    executable: &Path,
+) -> Result<(), FetchError> {
+    let marker = BrowserOwnerMarker {
+        owner_pid: std::process::id(),
+        browser_pid,
+        started_at_ms: SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .map(|d| d.as_millis().min(u64::MAX as u128) as u64)
+            .unwrap_or_default(),
+        headless,
+        executable: executable.display().to_string(),
+    };
+    let text = serde_json::to_string_pretty(&marker)
+        .map_err(|e| FetchError::Browser(format!("序列化浏览器 owner marker 失败: {e}")))?;
+    fs::write(path, text)
+        .map_err(|e| FetchError::Browser(format!("写入浏览器 owner marker 失败: {e}")))
+}
+
+fn remove_owner_marker(path: &Path, browser_pid: Option<u32>) {
+    let Some(marker) = read_owner_marker(path) else {
+        return;
+    };
+    if marker.owner_pid == std::process::id() && marker.browser_pid == browser_pid {
+        let _ = fs::remove_file(path);
+    }
+}
+
+fn cleanup_spawn_profile(profile_dir: &Path, remove_profile_on_drop: bool) {
+    if remove_profile_on_drop {
+        let _ = fs::remove_dir_all(profile_dir);
+    }
+}
+
+fn cleanup_singleton_files(profile_dir: &Path) {
+    for name in ["SingletonLock", "SingletonSocket", "SingletonCookie"] {
+        let _ = fs::remove_file(profile_dir.join(name));
+    }
+}
+
+#[cfg(target_os = "windows")]
+fn process_exists(pid: u32) -> bool {
+    let filter = format!("PID eq {pid}");
+    let output = Command::new("tasklist")
+        .args(["/FI", filter.as_str(), "/NH"])
+        .output();
+    output
+        .ok()
+        .and_then(|o| String::from_utf8(o.stdout).ok())
+        .is_some_and(|stdout| {
+            let needle = pid.to_string();
+            stdout
+                .lines()
+                .any(|line| line.split_whitespace().nth(1) == Some(needle.as_str()))
+        })
+}
+
+#[cfg(not(target_os = "windows"))]
+fn process_exists(pid: u32) -> bool {
+    Command::new("kill")
+        .args(["-0", &pid.to_string()])
+        .status()
+        .is_ok_and(|status| status.success())
+}
+
+#[cfg(target_os = "windows")]
+fn terminate_process_tree(pid: u32) {
+    let pid = pid.to_string();
+    let _ = Command::new("taskkill")
+        .args(["/PID", pid.as_str(), "/T", "/F"])
+        .status();
+}
+
+#[cfg(not(target_os = "windows"))]
+fn terminate_process_tree(pid: u32) {
+    let pid_arg = pid.to_string();
+    let _ = Command::new("kill").args(["-TERM", &pid_arg]).status();
+    std::thread::sleep(Duration::from_millis(500));
+    if process_exists(pid) {
+        let _ = Command::new("kill").args(["-KILL", &pid_arg]).status();
+    }
+}
+
 /// 同步拆除一个常驻实例(abort handler + drop `Browser`)。用于断连重建——此时浏览器可能已死,
 /// 不能 `await close()`(会挂);`Browser` 的子进程设了 `kill_on_drop`,drop 即在后台被杀/reap,
 /// 不残留僵尸进程。优雅关闭(release SingletonLock)走 [`shutdown_render_pool`]。
 fn drop_resident(slot: &mut Option<Resident>) {
     if let Some(r) = slot.take() {
+        remove_owner_marker(&r.marker_path, r.browser_pid);
         r.handler.abort();
-        // drop(r.browser):child kill_on_drop。
+        drop(r.browser); // child kill_on_drop。
+        cleanup_spawn_profile(&r.profile_dir, r.remove_profile_on_drop);
     }
 }
 

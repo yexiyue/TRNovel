@@ -35,6 +35,22 @@ where
     I: IntoIterator<Item = A> + Debug,
     A: Into<OsString> + Clone,
 {
+    let result = tokio::select! {
+        result = try_run_inner(args) => result,
+        signal = tokio::signal::ctrl_c() => {
+            signal?;
+            Ok(())
+        }
+    };
+    parse_book_source::shutdown_render_pool().await;
+    result
+}
+
+async fn try_run_inner<I, A>(args: I) -> Result<()>
+where
+    I: IntoIterator<Item = A> + Debug,
+    A: Into<OsString> + Clone,
+{
     let trnovel = TRNovel::parse_from(args);
 
     if let Some(Commands::Clear) = trnovel.subcommand {
@@ -68,9 +84,6 @@ where
     let props = AppProps { trnovel };
 
     element!(App(..props)).fullscreen().await?;
-
-    // 退出前关闭进程级常驻渲染浏览器:它是 static,不触发 Drop,不显式关会让 headless 子进程被孤儿化。
-    parse_book_source::shutdown_render_pool().await;
 
     Ok(())
 }

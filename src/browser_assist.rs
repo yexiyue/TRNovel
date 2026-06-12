@@ -33,6 +33,8 @@ pub enum BrowserPrompt {
         url: String,
         cancel: Arc<AtomicBool>,
     },
+    /// 非阻断提醒:浏览器仍会继续工作,用户按键关闭提示即可。
+    Notice { message: String },
 }
 
 // ───────────────────────── 会话授权决定(本次 / 拒绝)─────────────────────────
@@ -130,8 +132,19 @@ impl BrowserUi for TuiBrowserUi {
         });
     }
 
+    fn notice(&self, message: &str) {
+        *self.state.write() = Some(BrowserPrompt::Notice {
+            message: message.to_string(),
+        });
+    }
+
     fn done(&self) {
-        *self.state.write() = None;
+        if !matches!(
+            self.state.read().as_ref(),
+            Some(BrowserPrompt::Notice { .. })
+        ) {
+            *self.state.write() = None;
+        }
     }
 }
 

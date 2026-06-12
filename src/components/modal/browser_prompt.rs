@@ -33,6 +33,7 @@ pub fn BrowserPromptModal(mut hooks: Hooks) -> impl Into<AnyElement<'static>> {
             let variant = match state.read().as_ref() {
                 Some(BrowserPrompt::Authorize { .. }) => 1u8,
                 Some(BrowserPrompt::Click { .. }) => 2u8,
+                Some(BrowserPrompt::Notice { .. }) => 3u8,
                 None => return,
             };
             match (variant, key.code) {
@@ -46,6 +47,9 @@ pub fn BrowserPromptModal(mut hooks: Hooks) -> impl Into<AnyElement<'static>> {
                     respond(state, AuthDecision::Deny, false)
                 }
                 (2, KeyCode::Esc) => cancel_click(state),
+                (3, KeyCode::Enter | KeyCode::Esc) => {
+                    *state.write() = None;
+                }
                 _ => {}
             }
         }
@@ -64,6 +68,11 @@ pub fn BrowserPromptModal(mut hooks: Hooks) -> impl Into<AnyElement<'static>> {
             "请在浏览器中确认".to_string(),
             "请在弹出的浏览器窗口里点一下「确认您是真人」。\n完成后会自动继续。\n\n[Esc] 取消"
                 .to_string(),
+        ),
+        Some(BrowserPrompt::Notice { message }) => (
+            true,
+            "浏览器会话提醒".to_string(),
+            format!("{message}\n\n[Enter/Esc] 关闭"),
         ),
         None => (false, String::new(), String::new()),
     };

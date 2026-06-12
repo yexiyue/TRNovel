@@ -133,6 +133,8 @@ pub trait BrowserUi: Send + Sync {
     /// 出现 Turnstile 勾选框:提示用户去弹出的浏览器里点「确认您是真人」。
     /// 用户主动取消时把 `cancel` 置真,解挑战会随即中止并降级。
     fn prompt_click(&self, url: &str, cancel: Arc<AtomicBool>);
+    /// 非阻断提醒:浏览器仍会继续工作,调用方可选择在 UI 中展示。
+    fn notice(&self, _message: &str) {}
     /// 解挑战结束(成功 / 失败 / 取消),撤下提示。
     fn done(&self);
 }
