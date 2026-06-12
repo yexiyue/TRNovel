@@ -40,7 +40,9 @@ pub fn FindBooks(props: &FindBooksProps, mut hooks: Hooks) -> impl Into<AnyEleme
             // 浏览器(render explore 时系统栏狂闪)。explore/search 一律在下面 async 体内 await,
             // 由 use_async_effect 按 deps 仅在依赖变化时触发一次。
             let engine = props.engine.read().clone();
-            let url = props.current_explore.as_ref().map(|e| e.0.url.clone());
+            // 入口身份是「标题 + 变量」(不再是固定 URL):取页时把整个 entry 交给 explore,
+            // 由 explore.page.request 用入口变量 + {{page}} 生成取页 URL。
+            let entry = props.current_explore.as_ref().map(|e| e.0.clone());
             let page = page.get();
             let page_size = page_size.get();
             let filter_text = filter_text.read().clone();
@@ -49,8 +51,8 @@ pub fn FindBooks(props: &FindBooksProps, mut hooks: Hooks) -> impl Into<AnyEleme
                     return Ok::<BookList, Errors>(BookList::default());
                 };
                 let res = if filter_text.is_empty() {
-                    match url {
-                        Some(url) => engine.explore(&url, page, page_size).await?,
+                    match entry {
+                        Some(entry) => engine.explore(&entry, page, page_size).await?,
                         None => return Ok(BookList::default()),
                     }
                 } else {

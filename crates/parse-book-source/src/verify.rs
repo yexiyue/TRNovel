@@ -59,9 +59,10 @@ mod tests {
       "search":{"request":{"url":{"template":"{{base}}/s?q={{key}}"}},
                 "list":{"via":"css","select":".module-item"},
                 "item":{"bookUrl":{"via":"css","select":".module-item-title","extract":{"attr":"href"}},"name":{"via":"css","select":".module-item-title","extract":"text"}}},
-      "explore":{"categories":[{"title":"全部","url":{"template":"{{base}}/all_{{page}}"}}],
-                 "list":{"via":"css","select":".module-item"},
-                 "item":{"bookUrl":{"via":"css","select":".module-item-title","extract":{"attr":"href"}},"name":{"via":"css","select":".module-item-title","extract":"text"}}},
+      "explore":{"entries":[{"static":[{"title":"全部"}]}],
+                 "page":{"request":{"url":{"template":"{{base}}/all_{{page}}"}},
+                         "list":{"via":"css","select":".module-item"},
+                         "item":{"bookUrl":{"via":"css","select":".module-item-title","extract":{"attr":"href"}},"name":{"via":"css","select":".module-item-title","extract":"text"}}}},
       "bookInfo":{"name":{"via":"css","select":"[property=\"og:novel:book_name\"]","extract":{"attr":"content"}},
                   "tocUrl":{"via":"css","select":"[property=\"og:novel:read_url\"]","extract":{"attr":"content"}}},
       "toc":{"list":{"via":"css","select":".box > h2.module-title.type, .box a.module-row-text"},
@@ -279,27 +280,37 @@ pub async fn diagnose(engine: &Engine) -> DiagnoseReport {
     // 浏览(同时探一个可用 book_url 供读取路径在无样例时使用)
     let mut probe_book_url: Option<String> = None;
     if src.explore.is_some() {
-        match engine.explore_categories().first() {
-            Some(cat) => match engine.explore(&cat.url, 1, 20).await {
-                Ok(books) if !books.items.is_empty() => {
-                    probe_book_url = books
-                        .items
-                        .iter()
-                        .find(|b| !b.book_url.is_empty())
-                        .map(|b| b.book_url.clone());
-                    let pages = books
-                        .total_pages
-                        .map(|m| format!(", 共 {m} 页"))
-                        .unwrap_or_default();
-                    checks.push(Check::pass(
-                        "浏览",
-                        format!("{} 本(分类「{}」{})", books.items.len(), cat.title, pages),
-                    ));
-                }
-                Ok(_) => checks.push(Check::fail("浏览", "结果为空")),
-                Err(e) => checks.push(Check::fail("浏览", err_detail(&e))),
+        // 先加载动态入口(可能请求远端分类 API),再用首个可用入口测列表。
+        match engine.explore_entries().await {
+            Ok(entries) => match entries.first() {
+                Some(entry) => match engine.explore(entry, 1, 20).await {
+                    Ok(books) if !books.items.is_empty() => {
+                        probe_book_url = books
+                            .items
+                            .iter()
+                            .find(|b| !b.book_url.is_empty())
+                            .map(|b| b.book_url.clone());
+                        let pages = books
+                            .total_pages
+                            .map(|m| format!(", 共 {m} 页"))
+                            .unwrap_or_default();
+                        checks.push(Check::pass(
+                            "浏览",
+                            format!(
+                                "{} 本(入口「{}」,共 {} 个入口{})",
+                                books.items.len(),
+                                entry.title,
+                                entries.len(),
+                                pages
+                            ),
+                        ));
+                    }
+                    Ok(_) => checks.push(Check::fail("浏览", "结果为空")),
+                    Err(e) => checks.push(Check::fail("浏览", err_detail(&e))),
+                },
+                None => checks.push(Check::skip("浏览", "无可用入口")),
             },
-            None => checks.push(Check::skip("浏览", "未配置分类")),
+            Err(e) => checks.push(Check::fail("浏览", err_detail(&e))),
         }
     } else {
         checks.push(Check::skip("浏览", "未配置"));

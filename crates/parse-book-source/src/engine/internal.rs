@@ -8,9 +8,12 @@ use crate::fetch::cookie::{
     merge_login_into_headers, registrable_domain, request_registrable_domain,
 };
 use crate::fetch::{FetchRequest, FetchResponse};
-use crate::model::{BookInfo, BookListItem};
-use crate::source::{BookRules, Capture, Method, PreStep, Rule, UrlOrRule, VarScope};
-use std::collections::HashMap;
+use crate::model::{BookInfo, BookList, BookListItem, ExploreEntry};
+use crate::source::{
+    BookRules, Capture, EntrySource, FetchEntrySource, ListPageSpec, Method, PreStep, Rule,
+    UrlOrRule, VarScope,
+};
+use std::collections::{BTreeMap, HashMap};
 
 impl Engine {
     pub(super) fn base_vars(&self) -> Vars {
@@ -338,6 +341,163 @@ impl Engine {
             UrlOrRule::Rule(r) => eval_value(r, "", vars)?,
         })
     }
+
+    /// 共享列表页 runner(`dynamic-explore-entries`):search/explore 取一页书的统一实现——
+    /// 取页 → 主请求 vars 捕获 → list/item 抽取 → totalPages/hasMore。`extra_vars` 是各操作注入的
+    /// 额外变量(search 的 `{key}` / explore 的入口变量),与 base/page/pageSize 合并后驱动
+    /// `spec.request`(render / interceptApi / pageBy 等均在其上)。`kind` 仅用于渲染结果缓存键前缀。
+    pub(super) async fn run_list_page(
+        &self,
+        spec: &ListPageSpec,
+        kind: char,
+        extra_vars: &BTreeMap<String, String>,
+        page: u32,
+        page_size: u32,
+    ) -> Result<BookList> {
+        let req = &spec.request;
+        // 渲染结果缓存(仅 render 路径):同 (操作,入口/词,页,页大小) 命中即返回,免重新驱动浏览器
+        // 点击翻页(UI 回翻/重访的 O(N) 点击成本只在首访付一次)。
+        let cache_key = req
+            .render
+            .then(|| list_cache_key(kind, extra_vars, page, page_size));
+        if let Some(hit) = cache_key.as_deref().and_then(|k| self.cached_page(k)) {
+            return Ok(hit);
+        }
+        let mut chapter = self.base_vars();
+        chapter.extend(extra_vars.iter().map(|(k, v)| (k.clone(), v.clone())));
+        chapter.insert("page".into(), page.to_string());
+        chapter.insert("pageSize".into(), page_size.to_string());
+        // 前置链(捕获 token 等)在主请求前跑一次。
+        self.run_prelude(&spec.prelude, &mut chapter).await?;
+        let vars = self.flatten(&chapter);
+        // 完整响应:body(列表 / has_more 等)+ 可选渲染 DOM(via:css 的 totalPages,见 render-dual-source)。
+        let resp = self
+            .send_templated_full(
+                &req.url,
+                req.method,
+                req.body.as_ref(),
+                &req.headers,
+                &vars,
+                // 点击驱动翻页(search-click-pagination):URL 不认页码的 SPA 靠 pageBy.click 在一张
+                // 活页点 page-1 次翻到目标页;page_by 缺席(如 URL 驱动的 explore)= `{{page}}` 进 URL 模板。
+                RenderArgs {
+                    render: req.render,
+                    ready_for: req.ready_for.as_deref(),
+                    intercept_api: req.intercept_api.as_deref(),
+                    page,
+                    page_by: req.page_by.as_ref().map(|p| p.click.as_str()),
+                },
+            )
+            .await?;
+        let html = &resp.body;
+        // 主请求 vars 捕获(chapter 级):对响应求值,使 list/item 可见。各条**独立**对响应求值
+        // (见 source `Request.vars` 契约「勿互相引用」,有序依赖应走 prelude 链)。
+        let flat = self.flatten(&chapter);
+        for (name, rule) in &req.vars {
+            let v = eval_value(rule, html, &flat)?;
+            if !v.is_empty() {
+                chapter.insert(name.clone(), v);
+            }
+        }
+        let vars = self.flatten(&chapter);
+        let items = self.eval_list_items(&spec.list, &spec.item, html, &vars)?;
+        let dom = resp.dom_html.as_deref();
+        let total_pages = self.eval_total_pages(req.total_pages.as_ref(), html, dom, &vars);
+        let has_more = self.eval_has_more(req.has_more.as_ref(), html, dom, &vars);
+        let result = BookList {
+            items,
+            total_pages,
+            has_more,
+        };
+        if let Some(k) = cache_key {
+            self.cache_page(k, &result);
+        }
+        Ok(result)
+    }
+
+    /// 加载一个入口源 → 扁平 `ExploreEntry` 列表(静态固定入口直接映射;动态源走抓取)。
+    pub(super) async fn load_entry_source(&self, src: &EntrySource) -> Result<Vec<ExploreEntry>> {
+        match src {
+            EntrySource::Static { static_entries } => Ok(static_entries
+                .iter()
+                .map(|e| ExploreEntry {
+                    title: e.title.clone(),
+                    vars: e.vars.clone(),
+                })
+                .collect()),
+            EntrySource::Fetch { fetch } => self.load_fetch_entries(fetch).await,
+        }
+    }
+
+    /// 加载远端抓取入口源:按 `forEach`(空 = 一次)循环,每次请求远端数据、`list` 抽项、每项经
+    /// `item.title`/`item.vars` 求值生成入口。`item` 规则上下文 = 当前数据项;vars = base + 当前循环
+    /// 变量(故规则既能 `via:json` 读项字段,也能 `{{name}}` 引用循环变量)。
+    pub(super) async fn load_fetch_entries(
+        &self,
+        f: &FetchEntrySource,
+    ) -> Result<Vec<ExploreEntry>> {
+        // forEach 为空 = 执行一次(空循环变量);用切片避免 `Vec<&BTreeMap>` 收集与哨兵命名。
+        let default = [BTreeMap::new()];
+        let loops: &[BTreeMap<String, String>] = if f.for_each.is_empty() {
+            &default
+        } else {
+            &f.for_each
+        };
+        let req = &f.request;
+        let mut out = Vec::new();
+        for loop_vars in loops {
+            let mut chapter = self.base_vars();
+            chapter.extend(loop_vars.iter().map(|(k, v)| (k.clone(), v.clone())));
+            let vars = self.flatten(&chapter);
+            let resp = self
+                .send_templated_full(
+                    &req.url,
+                    req.method,
+                    req.body.as_ref(),
+                    &req.headers,
+                    &vars,
+                    RenderArgs {
+                        render: req.render,
+                        ready_for: req.ready_for.as_deref(),
+                        intercept_api: req.intercept_api.as_deref(),
+                        ..Default::default()
+                    },
+                )
+                .await?;
+            let html = &resp.body;
+            for item_ctx in eval_list(&f.list, html)? {
+                let title = eval_value(&f.item.title, &item_ctx, &vars)?;
+                let mut evars = BTreeMap::new();
+                for (name, rule) in &f.item.vars {
+                    evars.insert(name.clone(), eval_value(rule, &item_ctx, &vars)?);
+                }
+                out.push(ExploreEntry { title, vars: evars });
+            }
+        }
+        Ok(out)
+    }
+}
+
+/// 渲染结果缓存键(`dynamic-explore-entries`):操作类型前缀 + 额外变量(`BTreeMap` 有序)+ 页 +
+/// 页大小,各段以 `\0` 分隔。同入口/同词稳定命中;不同入口因变量段不同而不串缓存。仅 render 路径用。
+fn list_cache_key(
+    kind: char,
+    extra: &BTreeMap<String, String>,
+    page: u32,
+    page_size: u32,
+) -> String {
+    let mut k = String::from(kind);
+    for (name, val) in extra {
+        k.push('\u{0}');
+        k.push_str(name);
+        k.push('=');
+        k.push_str(val);
+    }
+    k.push('\u{0}');
+    k.push_str(&page.to_string());
+    k.push('\u{0}');
+    k.push_str(&page_size.to_string());
+    k
 }
 
 /// 求值一个可选规则;None 或空 → 空串。

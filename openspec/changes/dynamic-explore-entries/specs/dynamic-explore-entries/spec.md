@@ -14,14 +14,14 @@
 - **WHEN** 动态入口源返回多组远端分类数据
 - **THEN** 系统 SHALL 将它们转换为 UI 可直接选择的扁平 `ExploreEntry` 列表
 
-### Requirement: Entry sources support static, fetch, and chain composition
+### Requirement: Entry sources compose as an ordered array
 
-系统 SHALL 支持静态入口源、远端抓取入口源与链式组合入口源。链式组合 SHALL 按声明顺序合并子入口源结果。
+系统 SHALL 支持静态入口源与远端抓取入口源。`entries` SHALL 为入口源数组，系统 SHALL 按数组声明顺序合并各入口源产出的入口。系统 SHALL NOT 引入单独的链式组合（chain）类型；按序合并即由数组遍历表达。
 
 #### Scenario: Static and dynamic entries are merged
 
-- **WHEN** explore entries 配置包含一个 static source 和一个 fetch source
-- **THEN** 系统 SHALL 返回 static source 生成的入口以及 fetch source 生成的入口
+- **WHEN** `entries` 数组包含一个 static source 和一个 fetch source
+- **THEN** 系统 SHALL 按数组顺序返回 static source 生成的入口以及 fetch source 生成的入口
 
 #### Scenario: Entry source can iterate request variables
 

@@ -1112,73 +1112,120 @@
     }
   },
   "explore": {
-    "categories": [
+    "entries": [
       {
-        "title": "书库·最热",
-        "url": {
-          "template": "{{base}}/library/all/page_{{page}}?sort=hottest"
-        }
+        "static": [
+          {
+            "title": "书库·最热",
+            "vars": {
+              "filter": "all",
+              "sort": "hottest"
+            }
+          },
+          {
+            "title": "书库·最新",
+            "vars": {
+              "filter": "all",
+              "sort": "newest"
+            }
+          }
+        ]
       },
       {
-        "title": "书库·最新",
-        "url": {
-          "template": "{{base}}/library/all/page_{{page}}?sort=newest"
+        "fetch": {
+          "forEach": [
+            { "gender": "0", "audience": "女" },
+            { "gender": "1", "audience": "男" }
+          ],
+          "request": {
+            "url": {
+              "template": "{{base}}/api/author/book/category_list/v0/?gender={{gender}}"
+            }
+          },
+          "list": {
+            "via": "json",
+            "select": "$.data[?(@.label=='主分类')]"
+          },
+          "item": {
+            "title": {
+              "concat": [
+                { "template": "{{audience}}·" },
+                { "via": "json", "select": "$.name" }
+              ]
+            },
+            "vars": {
+              "filter": {
+                "concat": [
+                  { "template": "audience{{gender}}-cat2-" },
+                  { "via": "json", "select": "$.category_id" }
+                ]
+              },
+              "sort": { "literal": "hottest" }
+            }
+          }
         }
       }
     ],
-    "render": true,
-    "interceptApi": "book_list/v0",
-    "readyFor": ".byte-pagination",
-    "totalPages": {
-      "via": "css",
-      "select": ".byte-pagination-item:not(.byte-pagination-item-icon):not(.byte-pagination-item-jumper)",
-      "index": -1
-    },
-    "hasMore": {
-      "via": "json",
-      "select": "$.data.has_more"
-    },
-    "list": {
-      "via": "json",
-      "select": "$.data.book_list[*]"
-    },
-    "item": {
-      "bookUrl": {
-        "concat": [
-          {
-            "literal": "https://fanqienovel.com/page/"
-          },
-          {
-            "via": "json",
-            "select": "$.book_id"
-          }
-        ]
+    "page": {
+      "request": {
+        "url": {
+          "template": "{{base}}/library/{{filter}}/page_{{page}}?sort={{sort}}"
+        },
+        "render": true,
+        "interceptApi": "book_list/v0",
+        "readyFor": ".byte-pagination",
+        "totalPages": {
+          "via": "css",
+          "select": ".byte-pagination-item:not(.byte-pagination-item-icon):not(.byte-pagination-item-jumper)",
+          "index": -1
+        },
+        "hasMore": {
+          "via": "json",
+          "select": "$.data.has_more"
+        }
       },
-      "name": {
+      "list": {
         "via": "json",
-        "select": "$.book_name",
-        "clean": [
-          {
-            "fontMap": "explore"
-          }
-        ]
+        "select": "$.data.book_list[*]"
       },
-      "author": {
-        "via": "json",
-        "select": "$.author",
-        "clean": [
-          {
-            "fontMap": "explore"
-          }
-        ]
-      },
-      "cover": {
-        "via": "json",
-        "select": "$.thumb_url"
-      },
-      "kind": {
-        "via": "json",
-        "select": "$.category"
+      "item": {
+        "bookUrl": {
+          "concat": [
+            {
+              "literal": "https://fanqienovel.com/page/"
+            },
+            {
+              "via": "json",
+              "select": "$.book_id"
+            }
+          ]
+        },
+        "name": {
+          "via": "json",
+          "select": "$.book_name",
+          "clean": [
+            {
+              "fontMap": "explore"
+            }
+          ]
+        },
+        "author": {
+          "via": "json",
+          "select": "$.author",
+          "clean": [
+            {
+              "fontMap": "explore"
+            }
+          ]
+        },
+        "cover": {
+          "via": "json",
+          "select": "$.thumb_url"
+        },
+        "kind": {
+          "via": "json",
+          "select": "$.category"
+        }
       }
     }
   },

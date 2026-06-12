@@ -209,9 +209,12 @@ mod tests {
         }
       },
       "explore": {
-        "categories": [ { "title": "最近更新", "url": { "template": "{{base}}/book/lastupdate_0_1_0_0_0_0_0_{{page}}_0.html" } } ],
-        "list": { "via": "css", "select": ".module-item" },
-        "item": { "name": { "via": "css", "select": ".module-item-title", "extract": "text" } }
+        "entries": [ { "static": [ { "title": "最近更新" } ] } ],
+        "page": {
+          "request": { "url": { "template": "{{base}}/book/lastupdate_0_1_0_0_0_0_0_{{page}}_0.html" } },
+          "list": { "via": "css", "select": ".module-item" },
+          "item": { "name": { "via": "css", "select": ".module-item-title", "extract": "text" } }
+        }
       },
       "bookInfo": {
         "name": { "via": "css", "select": "[property=\"og:novel:book_name\"]", "extract": { "attr": "content" } },
@@ -473,50 +476,90 @@ mod tests {
         assert!(!json.contains("\"capture\""));
     }
 
-    // ── render-list-pagination:explore 渲染通道(render/interceptApi)解析 / round-trip ──
+    // ── dynamic-explore-entries:explore 两阶段(entries + page,page.request 承载 render/interceptApi)──
     #[test]
-    fn parses_explore_render() {
+    fn parses_explore_entries_and_page() {
+        // static + fetch(含 forEach)入口源数组 + render 列表页(render/interceptApi 在 page.request 上)。
         let json = r#"{
           "schema":"trnovel-booksource/v2","name":"t","url":"https://x",
           "explore":{
-            "categories":[{"title":"全部·最热","url":{"template":"{{base}}/library/all/page_{{page}}?sort=hottest"}}],
-            "render":true,
-            "interceptApi":"book_list/v0",
-            "list":{"via":"json","select":"$.data.book_list[*]"},
-            "item":{"name":{"via":"json","select":"$.book_name"}}
+            "entries":[
+              { "static":[ {"title":"全部·最热","vars":{"filter":"all","sort":"hottest"}} ] },
+              { "fetch":{
+                  "forEach":[ {"gender":"0","audience":"女生"}, {"gender":"1","audience":"男生"} ],
+                  "request":{"url":{"template":"{{base}}/api/category?gender={{gender}}"}},
+                  "list":{"via":"json","select":"$.data[*]"},
+                  "item":{
+                    "title":{"concat":[{"template":"{{audience}}·"},{"via":"json","select":"$.name"}]},
+                    "vars":{"filter":{"via":"json","select":"$.id"},"sort":{"literal":"hottest"}}
+                  }
+              }}
+            ],
+            "page":{
+              "request":{
+                "url":{"template":"{{base}}/library/{{filter}}/page_{{page}}?sort={{sort}}"},
+                "render":true,
+                "interceptApi":"book_list/v0"
+              },
+              "list":{"via":"json","select":"$.data.book_list[*]"},
+              "item":{"name":{"via":"json","select":"$.book_name"}}
+            }
           },
           "bookInfo":{},
           "toc":{"list":{"via":"css","select":"a"},"name":{"via":"css","select":"a"},"url":{"via":"css","select":"a","extract":{"attr":"href"}}},
           "content":{"value":{"via":"css","select":".c"}}
         }"#;
-        let bs = BookSource::from_json(json).expect("应解析 explore.render");
+        let bs = BookSource::from_json(json).expect("应解析 explore entries/page");
         let ex = bs.explore.as_ref().unwrap();
-        assert!(ex.render);
-        assert_eq!(ex.intercept_api.as_deref(), Some("book_list/v0"));
+        assert_eq!(ex.entries.len(), 2, "static + fetch 两个入口源");
+        assert!(matches!(ex.entries[0], EntrySource::Static { .. }));
+        match &ex.entries[1] {
+            EntrySource::Fetch { fetch } => assert_eq!(fetch.for_each.len(), 2),
+            other => panic!("第二个入口源应为 fetch,实际 {other:?}"),
+        }
+        // render/interceptApi 在 page.request 上(与 search 同构)。
+        assert!(ex.page.request.render);
+        assert_eq!(
+            ex.page.request.intercept_api.as_deref(),
+            Some("book_list/v0")
+        );
         // round-trip 相等。
         let s = serde_json::to_string(&bs).unwrap();
         assert_eq!(BookSource::from_json(&s).unwrap(), bs);
     }
 
     #[test]
-    fn explore_rejects_unknown_field_and_stays_back_compat() {
+    fn explore_rejects_unknown_field() {
         // deny_unknown_fields:explore 拼错字段被拒。
         let bad = r#"{
           "schema":"trnovel-booksource/v2","name":"t","url":"https://x",
-          "explore":{"categories":[],"list":{"via":"css","select":".i"},"item":{},"renderr":true},
+          "explore":{"entries":[],"page":{"request":{"url":{"template":"{{base}}/x"}},"list":{"via":"css","select":".i"},"item":{}},"entriez":[]},
           "bookInfo":{},
           "toc":{"list":{"via":"css","select":"a"},"name":{"via":"css","select":"a"},"url":{"via":"css","select":"a"}},
           "content":{"value":{"via":"css","select":".c"}}
         }"#;
         assert!(
             BookSource::from_json(bad).is_err(),
-            "explore 拼错字段(renderr)应被 deny_unknown_fields 拒"
+            "explore 拼错字段(entriez)应被 deny_unknown_fields 拒"
         );
-        // 向后兼容:未开 render 的既有 explore 序列化不含任何新字段(BILIXS_V2 含 explore)。
-        let bs = BookSource::from_json(BILIXS_V2).unwrap();
-        let json = serde_json::to_string(&bs).unwrap();
-        assert!(!json.contains("\"render\""), "未开 render 不应序列化");
-        assert!(!json.contains("interceptApi"), "无 interceptApi 不应序列化");
+    }
+
+    #[test]
+    fn old_explore_categories_format_is_rejected() {
+        // 不兼容旧格式:`categories` + 内联 list/item 的旧 explore 必须被拒(deny_unknown_fields:
+        // 缺 entries/page 必填字段且含未知 categories/list/item),而非静默转换。
+        let old = r#"{
+          "schema":"trnovel-booksource/v2","name":"t","url":"https://x",
+          "explore":{"categories":[{"title":"全部","url":{"template":"{{base}}/all/{{page}}"}}],
+                     "list":{"via":"css","select":".i"},"item":{}},
+          "bookInfo":{},
+          "toc":{"list":{"via":"css","select":"a"},"name":{"via":"css","select":"a"},"url":{"via":"css","select":"a"}},
+          "content":{"value":{"via":"css","select":".c"}}
+        }"#;
+        assert!(
+            BookSource::from_json(old).is_err(),
+            "旧 explore.categories 格式应被拒绝,不静默转换"
+        );
     }
 }
 

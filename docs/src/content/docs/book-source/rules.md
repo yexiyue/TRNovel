@@ -66,7 +66,7 @@ lastUpdated: 2026-06-02
 
 ## URL 与模板变量
 
-URL 字段(`search.request.url`、`explore.categories[].url` 等)可以是**字符串模板**或一条规则:
+URL 字段(`search.request.url`、`explore.page.request.url` 等)可以是**字符串模板**或一条规则:
 
 ```json
 "url": { "template": "{{base}}/search.html?searchkey={{key}}" }

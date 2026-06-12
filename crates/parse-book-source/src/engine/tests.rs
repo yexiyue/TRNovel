@@ -578,13 +578,18 @@ impl Fetcher for RenderProbe {
 /// 单一分类、按 `page_{{page}}` 模板取页的 explore 书源(`list`/`item` 走 CSS)。
 /// `extra` 注入到 explore 块(如 `,"render":true,"interceptApi":"..."`)。
 fn explore_source(extra: &str) -> BookSource {
+    // 新两阶段格式:单个静态入口 + page;extra 注入 page.request(render/interceptApi/
+    // readyFor/totalPages/hasMore... 均在 Request 上)。
     let json = format!(
         r#"{{
           "schema":"trnovel-booksource/v2","name":"t","url":"https://x",
           "explore":{{
-            "categories":[{{"title":"全部","url":"{{{{base}}}}/lib/page_{{{{page}}}}"}}],
-            "list":{{"via":"css","select":".item"}},
-            "item":{{"name":{{"via":"css","select":".t","extract":"text"}}}}{extra}
+            "entries":[{{"static":[{{"title":"全部"}}]}}],
+            "page":{{
+              "request":{{"url":{{"template":"{{{{base}}}}/lib/page_{{{{page}}}}"}}{extra}}},
+              "list":{{"via":"css","select":".item"}},
+              "item":{{"name":{{"via":"css","select":".t","extract":"text"}}}}
+            }}
           }},
           "bookInfo":{{}},
           "toc":{{"list":{{"via":"css","select":"a"}},"name":{{"via":"css","select":"a"}},"url":{{"via":"css","select":"a","extract":{{"attr":"href"}}}}}},
@@ -594,11 +599,19 @@ fn explore_source(extra: &str) -> BookSource {
     BookSource::from_json(&json).unwrap()
 }
 
+/// 上面 explore_source 的单一静态入口(无 vars:page URL `/lib/page_{{page}}` 不需变量)。
+fn explore_entry() -> ExploreEntry {
+    ExploreEntry {
+        title: "全部".to_string(),
+        vars: std::collections::BTreeMap::new(),
+    }
+}
+
 // ① explore 开 interceptApi(render)→ 取页走渲染路径(FetchRequest.render==true)。
 #[tokio::test]
 async fn explore_render_uses_render_fetch_path() {
     let src = explore_source(r#","render":true,"interceptApi":"book_list/v0""#);
-    let cat = src.explore.as_ref().unwrap().categories[0].url.clone();
+    let cat = explore_entry();
     let last_render = Arc::new(Mutex::new(None));
     let fetcher = Arc::new(RenderProbe {
         body: r#"<div class="item"><span class="t">书</span></div>"#.to_string(),
@@ -619,7 +632,7 @@ async fn explore_render_uses_render_fetch_path() {
 #[tokio::test]
 async fn explore_without_render_uses_reqwest_path() {
     let src = explore_source("");
-    let cat = src.explore.as_ref().unwrap().categories[0].url.clone();
+    let cat = explore_entry();
     let last_render = Arc::new(Mutex::new(None));
     let fetcher = Arc::new(RenderProbe {
         body: r#"<div class="item"><span class="t">书</span></div>"#.to_string(),
@@ -648,7 +661,7 @@ async fn explore_render_failure_degrades_to_err() {
         }
     }
     let src = explore_source(r#","render":true,"interceptApi":"book_list/v0""#);
-    let cat = src.explore.as_ref().unwrap().categories[0].url.clone();
+    let cat = explore_entry();
     let engine = Engine::with_fetcher(src, Arc::new(FailFetcher));
     // 第一页(起点)渲染取页失败 → 优雅降级为 Err(而非 panic / 静默空)。
     assert!(
@@ -661,7 +674,7 @@ async fn explore_render_failure_degrades_to_err() {
 #[tokio::test]
 async fn explore_single_page_fetches_once() {
     let src = explore_source("");
-    let cat = src.explore.as_ref().unwrap().categories[0].url.clone();
+    let cat = explore_entry();
     let (f, calls) = scripted(vec![
         (
             "page_1",
@@ -724,7 +737,7 @@ async fn total_pages_from_dom_via_css() {
     let src = explore_source(&format!(
         r#","render":true,"interceptApi":"book_list/v0","readyFor":".byte-pagination","totalPages":{{"via":"css","select":"{TP_SELECT}","index":-1}}"#
     ));
-    let cat = src.explore.as_ref().unwrap().categories[0].url.clone();
+    let cat = explore_entry();
     let fetcher = Arc::new(DualSourceFetcher {
         body: r#"<div class="item"><span class="t">书</span></div>"#.to_string(),
         dom: Some(PAGINATOR_DOM.to_string()),
@@ -745,7 +758,7 @@ async fn total_pages_from_body_when_no_dom() {
     let src = explore_source(&format!(
         r#","totalPages":{{"via":"css","select":"{TP_SELECT}","index":-1}}"#
     ));
-    let cat = src.explore.as_ref().unwrap().categories[0].url.clone();
+    let cat = explore_entry();
     let body = format!(r#"<div class="item"><span class="t">书</span></div>{PAGINATOR_DOM}"#);
     let fetcher = Arc::new(DualSourceFetcher { body, dom: None });
     let engine = Engine::with_fetcher(src, fetcher);
@@ -761,7 +774,7 @@ async fn total_pages_from_body_when_no_dom() {
 #[tokio::test]
 async fn total_pages_none_without_rule() {
     let src = explore_source("");
-    let cat = src.explore.as_ref().unwrap().categories[0].url.clone();
+    let cat = explore_entry();
     let fetcher = Arc::new(DualSourceFetcher {
         body: r#"<div class="item"><span class="t">书</span></div>"#.to_string(),
         dom: None,
@@ -775,14 +788,18 @@ async fn total_pages_none_without_rule() {
 
 /// 纯 JSON body 的 explore 书源(对齐番茄:list/item/hasMore 走 json,totalPages 走 css→DOM)。
 fn explore_source_json(extra: &str) -> BookSource {
+    // 纯 JSON body 的 explore:render/interceptApi/readyFor 固定在 page.request;extra 追加
+    // totalPages/hasMore(亦在 Request 上)。
     let json = format!(
         r#"{{
           "schema":"trnovel-booksource/v2","name":"t","url":"https://x",
           "explore":{{
-            "categories":[{{"title":"全部","url":"{{{{base}}}}/lib/page_{{{{page}}}}"}}],
-            "render":true,"interceptApi":"book_list/v0","readyFor":".byte-pagination",
-            "list":{{"via":"json","select":"$.data.book_list[*]"}},
-            "item":{{"name":{{"via":"json","select":"$.name"}}}}{extra}
+            "entries":[{{"static":[{{"title":"全部"}}]}}],
+            "page":{{
+              "request":{{"url":{{"template":"{{{{base}}}}/lib/page_{{{{page}}}}"}},"render":true,"interceptApi":"book_list/v0","readyFor":".byte-pagination"{extra}}},
+              "list":{{"via":"json","select":"$.data.book_list[*]"}},
+              "item":{{"name":{{"via":"json","select":"$.name"}}}}
+            }}
           }},
           "bookInfo":{{}},
           "toc":{{"list":{{"via":"css","select":"a"}},"name":{{"via":"css","select":"a"}},"url":{{"via":"css","select":"a","extract":{{"attr":"href"}}}}}},
@@ -798,7 +815,7 @@ async fn has_more_and_total_pages_coexist_via_routing() {
     let src = explore_source_json(&format!(
         r#","totalPages":{{"via":"css","select":"{TP_SELECT}","index":-1}},"hasMore":{{"via":"json","select":"$.data.has_more"}}"#
     ));
-    let cat = src.explore.as_ref().unwrap().categories[0].url.clone();
+    let cat = explore_entry();
     let fetcher = Arc::new(DualSourceFetcher {
         body: r#"{"data":{"book_list":[{"name":"书A"},{"name":"书B"}],"has_more":false}}"#
             .to_string(),
@@ -823,7 +840,7 @@ async fn has_more_and_total_pages_coexist_via_routing() {
 #[tokio::test]
 async fn has_more_true_and_none() {
     let src = explore_source_json(r#","hasMore":{"via":"json","select":"$.data.has_more"}"#);
-    let cat = src.explore.as_ref().unwrap().categories[0].url.clone();
+    let cat = explore_entry();
     let fetcher = Arc::new(DualSourceFetcher {
         body: r#"{"data":{"book_list":[{"name":"书"}],"has_more":true}}"#.to_string(),
         dom: None,
@@ -836,7 +853,7 @@ async fn has_more_true_and_none() {
     );
 
     let src2 = explore_source_json("");
-    let cat2 = src2.explore.as_ref().unwrap().categories[0].url.clone();
+    let cat2 = explore_entry();
     let fetcher2 = Arc::new(DualSourceFetcher {
         body: r#"{"data":{"book_list":[{"name":"书"}]}}"#.to_string(),
         dom: None,
@@ -959,6 +976,23 @@ fn fanqie_search_config_has_page_by() {
         "pageBy.click 应是番茄 NEXT 选择器: {}",
         pb.click
     );
+
+    // dynamic-explore-entries:explore 已迁移为 entries + page 新结构(含至少一个静态入口源),
+    // 且 render/interceptApi 在 page.request 上(book_list/v0)。
+    let ex = src.explore.as_ref().expect("应有 explore");
+    assert!(!ex.entries.is_empty(), "explore.entries 应非空");
+    assert!(
+        ex.entries
+            .iter()
+            .any(|s| matches!(s, crate::source::EntrySource::Static { .. })),
+        "explore.entries 应含静态入口源(书库·最热/最新)"
+    );
+    assert!(ex.page.request.render, "explore.page.request 应开 render");
+    assert_eq!(
+        ex.page.request.intercept_api.as_deref(),
+        Some("book_list/v0"),
+        "explore.page.request 应拦截 book_list/v0"
+    );
 }
 
 // ───────────── search-click-pagination 后续:渲染结果缓存(回翻/重访免重点击) ─────────────
@@ -1026,4 +1060,174 @@ async fn reqwest_search_is_not_cached() {
         2,
         "非 render 搜索不缓存,两次都应取页"
     );
+}
+
+// ── dynamic-explore-entries:入口加载 + 共享列表页 runner ──
+
+// 静态入口的变量驱动 page 取页 URL(filter/sort/page 全部进 URL,而非读固定 URL);
+// 同时验证共享 runner 把 explore 的 hasMore(via:json → body)接好。
+#[tokio::test]
+async fn explore_static_entry_vars_drive_page_request() {
+    let json = r#"{
+          "schema":"trnovel-booksource/v2","name":"t","url":"https://x",
+          "explore":{
+            "entries":[ { "static":[
+              {"title":"全部·最热","vars":{"filter":"all","sort":"hottest"}}
+            ] } ],
+            "page":{
+              "request":{
+                "url":{"template":"{{base}}/library/{{filter}}/page_{{page}}?sort={{sort}}"},
+                "hasMore":{"via":"json","select":"$.has_more"}
+              },
+              "list":{"via":"json","select":"$.books[*]"},
+              "item":{"name":{"via":"json","select":"$.name"}}
+            }
+          },
+          "bookInfo":{},
+          "toc":{"list":{"via":"css","select":"a"},"name":{"via":"css","select":"a"},"url":{"via":"css","select":"a","extract":{"attr":"href"}}},
+          "content":{"value":{"via":"css","select":".c"}}
+        }"#;
+    let src = BookSource::from_json(json).unwrap();
+    let (f, calls) = scripted(vec![(
+        "/library/all/page_2?sort=hottest",
+        r#"{"has_more":true,"books":[{"name":"甲"},{"name":"乙"}]}"#,
+    )]);
+    let engine = Engine::with_fetcher(src, f);
+    let entries = engine.explore_entries().await.unwrap();
+    assert_eq!(entries.len(), 1);
+    assert_eq!(entries[0].title, "全部·最热");
+
+    let books = engine.explore(&entries[0], 2, 20).await.unwrap();
+    assert_eq!(books.items.len(), 2);
+    assert_eq!(books.items[0].info.name, "甲");
+    assert_eq!(
+        books.has_more,
+        Some(true),
+        "共享 runner 应接好 explore 的 hasMore"
+    );
+    let c = calls.lock().unwrap();
+    assert!(
+        c.iter()
+            .any(|u| u.contains("/library/all/page_2?sort=hottest")),
+        "取页 URL 应由入口变量 filter/sort + page 生成: {c:?}"
+    );
+}
+
+// fetch 入口源:forEach 两次请求合并;item.title/vars 既读数据项(via:json)也引用循环变量({{audience}})。
+#[tokio::test]
+async fn explore_fetch_entries_for_each_merges_and_computes_vars() {
+    let json = r#"{
+          "schema":"trnovel-booksource/v2","name":"t","url":"https://x",
+          "explore":{
+            "entries":[ { "fetch":{
+              "forEach":[ {"gender":"0","audience":"女生"}, {"gender":"1","audience":"男生"} ],
+              "request":{"url":{"template":"{{base}}/cat?gender={{gender}}"}},
+              "list":{"via":"json","select":"$.data[*]"},
+              "item":{
+                "title":{"concat":[{"template":"{{audience}}·"},{"via":"json","select":"$.name"}]},
+                "vars":{"filter":{"via":"json","select":"$.id"},"sort":{"literal":"hottest"}}
+              }
+            } } ],
+            "page":{
+              "request":{"url":{"template":"{{base}}/library/{{filter}}/page_{{page}}?sort={{sort}}"}},
+              "list":{"via":"json","select":"$.books[*]"},
+              "item":{"name":{"via":"json","select":"$.name"}}
+            }
+          },
+          "bookInfo":{},
+          "toc":{"list":{"via":"css","select":"a"},"name":{"via":"css","select":"a"},"url":{"via":"css","select":"a","extract":{"attr":"href"}}},
+          "content":{"value":{"via":"css","select":".c"}}
+        }"#;
+    let src = BookSource::from_json(json).unwrap();
+    let (f, _) = scripted(vec![
+        ("/cat?gender=0", r#"{"data":[{"name":"言情","id":"c1"}]}"#),
+        (
+            "/cat?gender=1",
+            r#"{"data":[{"name":"玄幻","id":"c2"},{"name":"都市","id":"c3"}]}"#,
+        ),
+    ]);
+    let engine = Engine::with_fetcher(src, f);
+    let entries = engine.explore_entries().await.unwrap();
+    // forEach 合并:1(女) + 2(男) = 3 个入口。
+    assert_eq!(entries.len(), 3);
+    assert_eq!(entries[0].title, "女生·言情");
+    assert_eq!(
+        entries[0].vars.get("filter").map(String::as_str),
+        Some("c1")
+    );
+    assert_eq!(
+        entries[0].vars.get("sort").map(String::as_str),
+        Some("hottest")
+    );
+    assert_eq!(entries[1].title, "男生·玄幻");
+    assert_eq!(entries[2].title, "男生·都市");
+    assert_eq!(
+        entries[2].vars.get("filter").map(String::as_str),
+        Some("c3")
+    );
+}
+
+// 数组顺序即合并顺序:static 入口在前、fetch 动态入口在后,按声明顺序拼接。
+#[tokio::test]
+async fn explore_entries_array_merges_static_then_fetch_in_order() {
+    let json = r#"{
+          "schema":"trnovel-booksource/v2","name":"t","url":"https://x",
+          "explore":{
+            "entries":[
+              { "static":[ {"title":"全部·最热","vars":{"filter":"all"}} ] },
+              { "fetch":{
+                  "request":{"url":{"template":"{{base}}/cat"}},
+                  "list":{"via":"json","select":"$.data[*]"},
+                  "item":{"title":{"via":"json","select":"$.name"},"vars":{"filter":{"via":"json","select":"$.id"}}}
+              } }
+            ],
+            "page":{
+              "request":{"url":{"template":"{{base}}/library/{{filter}}/page_{{page}}"}},
+              "list":{"via":"json","select":"$.books[*]"},
+              "item":{"name":{"via":"json","select":"$.name"}}
+            }
+          },
+          "bookInfo":{},
+          "toc":{"list":{"via":"css","select":"a"},"name":{"via":"css","select":"a"},"url":{"via":"css","select":"a","extract":{"attr":"href"}}},
+          "content":{"value":{"via":"css","select":".c"}}
+        }"#;
+    let src = BookSource::from_json(json).unwrap();
+    let (f, _) = scripted(vec![("/cat", r#"{"data":[{"name":"玄幻","id":"c2"}]}"#)]);
+    let engine = Engine::with_fetcher(src, f);
+    let entries = engine.explore_entries().await.unwrap();
+    assert_eq!(entries.len(), 2, "static(1) + fetch(1)");
+    assert_eq!(entries[0].title, "全部·最热", "静态入口在前");
+    assert_eq!(entries[1].title, "玄幻", "动态入口在后");
+}
+
+// 部分成功:fetch 源失败(返回非 JSON 致 list 求值报错)时保留已成功的静态入口,不阻断整体加载。
+#[tokio::test]
+async fn explore_entries_partial_success_keeps_static_when_fetch_fails() {
+    let json = r#"{
+          "schema":"trnovel-booksource/v2","name":"t","url":"https://x",
+          "explore":{
+            "entries":[
+              { "static":[ {"title":"静态","vars":{"filter":"all"}} ] },
+              { "fetch":{
+                  "request":{"url":{"template":"{{base}}/cat"}},
+                  "list":{"via":"json","select":"$.data[*]"},
+                  "item":{"title":{"via":"json","select":"$.name"}}
+              } }
+            ],
+            "page":{
+              "request":{"url":{"template":"{{base}}/library/{{filter}}/page_{{page}}"}},
+              "list":{"via":"json","select":"$.books[*]"},
+              "item":{"name":{"via":"json","select":"$.name"}}
+            }
+          },
+          "bookInfo":{},
+          "toc":{"list":{"via":"css","select":"a"},"name":{"via":"css","select":"a"},"url":{"via":"css","select":"a","extract":{"attr":"href"}}},
+          "content":{"value":{"via":"css","select":".c"}}
+        }"#;
+    let src = BookSource::from_json(json).unwrap();
+    let (f, _) = scripted(vec![("/cat", "NOT JSON")]); // fetch list 求值失败
+    let engine = Engine::with_fetcher(src, f);
+    let entries = engine.explore_entries().await.unwrap();
+    assert_eq!(entries.len(), 1, "fetch 失败但保留静态入口");
+    assert_eq!(entries[0].title, "静态");
 }

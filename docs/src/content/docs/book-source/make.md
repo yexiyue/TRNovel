@@ -109,13 +109,16 @@ trn -n                            # 在网络小说里选用
     }
   },
   "explore": {
-    "categories": [
-      { "title": "最近更新", "url": { "template": "{{base}}/book/lastupdate_0_1_0_0_0_0_0_{{page}}_0.html" } }
+    "entries": [
+      { "static": [ { "title": "最近更新" } ] }
     ],
-    "list": { "via": "css", "select": ".module-item" },
-    "item": {
-      "name": { "via": "css", "select": ".module-item-title", "extract": "text" },
-      "tocUrl": { "via": "css", "select": ".module-item-title", "extract": { "attr": "href" } }
+    "page": {
+      "request": { "url": { "template": "{{base}}/book/lastupdate_0_1_0_0_0_0_0_{{page}}_0.html" } },
+      "list": { "via": "css", "select": ".module-item" },
+      "item": {
+        "name": { "via": "css", "select": ".module-item-title", "extract": "text" },
+        "tocUrl": { "via": "css", "select": ".module-item-title", "extract": { "attr": "href" } }
+      }
     }
   },
   "bookInfo": {

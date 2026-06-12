@@ -11,8 +11,8 @@ use crate::error::{BookSourceError, Result};
 use crate::eval::{eval_list, eval_value};
 use crate::fetch::cookie::CookieJar;
 use crate::fetch::{Fetcher, ReqwestFetcher};
-use crate::model::{BookInfo, BookList, Chapter, Toc, Volume};
-use crate::source::{BookSource, Category, Method, UrlOrRule};
+use crate::model::{BookInfo, BookList, Chapter, ExploreEntry, Toc, Volume};
+use crate::source::BookSource;
 use std::collections::{BTreeMap, HashMap};
 use std::sync::{Arc, RwLock};
 
@@ -54,6 +54,11 @@ pub struct Engine {
     /// 清空)。**仅 render 路径缓存**:reqwest 取页便宜,且缓存它会跳过 cookie 回灌 / 命名捕获等可观察
     /// 副作用(故不缓存,保持现状语义)。
     page_cache: Arc<RwLock<HashMap<String, BookList>>>,
+    /// explore 动态入口加载缓存(`dynamic-explore-entries`):入口源可能请求远端分类 API,
+    /// 缓存一次成功加载的 `Vec<ExploreEntry>`,避免 UI 每次进入 explore 都重抓。随 `Clone` 的引擎
+    /// 共享(`Arc`),per-source 会话级(引擎重建即清空)。**仅完全成功(无动态源报错)才缓存**:
+    /// 有动态源失败时返回已成功的部分入口但不缓存,使下次进入可重试。
+    entries_cache: Arc<RwLock<Option<Vec<ExploreEntry>>>>,
 }
 
 impl std::fmt::Debug for Engine {
@@ -83,6 +88,7 @@ impl Engine {
             source_vars: Arc::new(RwLock::new(BTreeMap::new())),
             book_vars: Arc::new(RwLock::new(BTreeMap::new())),
             page_cache: Arc::new(RwLock::new(HashMap::new())),
+            entries_cache: Arc::new(RwLock::new(None)),
         }
     }
 
@@ -254,80 +260,24 @@ impl Engine {
         Ok(parts.join("\n"))
     }
 
-    /// 搜索。返回书列表 + 可选精确总页数(`render-dual-source`)。
+    /// 搜索。返回书列表 + 可选精确总页数(`render-dual-source`)/ 边界(`list-has-more`)。
+    /// `key` 作为 `{{key}}` 变量并入共享列表页 runner。
     pub async fn search(&self, key: &str, page: u32, page_size: u32) -> Result<BookList> {
         let op = self
             .source
             .search
             .as_ref()
             .ok_or(BookSourceError::Missing("search"))?;
-        // 渲染结果缓存(仅 render 路径,见字段注释):同 (词,页,页大小) 命中即返回,免重新驱动
-        // 浏览器点击翻页(UI 回翻/重访的 O(N) 点击成本只在首访付一次)。
-        let cache_key = op
-            .request
-            .render
-            .then(|| format!("s\u{0}{key}\u{0}{page}\u{0}{page_size}"));
-        if let Some(hit) = cache_key.as_deref().and_then(|k| self.cached_page(k)) {
-            return Ok(hit);
-        }
-        let mut chapter = self.base_vars();
-        chapter.insert("key".into(), key.to_string());
-        chapter.insert("page".into(), page.to_string());
-        chapter.insert("pageSize".into(), page_size.to_string());
-        // 前置链(捕获 token 等)在主请求前跑一次。
-        self.run_prelude(&op.prelude, &mut chapter).await?;
-
-        let vars = self.flatten(&chapter);
-        // 完整响应:body(列表/has_more 等)+ 可选渲染 DOM(via:css 的 totalPages,见 render-dual-source)。
-        let resp = self
-            .send_templated_full(
-                &op.request.url,
-                op.request.method,
-                op.request.body.as_ref(),
-                &op.request.headers,
-                &vars,
-                // 点击驱动翻页(search-click-pagination):URL 不认页码的 SPA(番茄 search)靠
-                // pageBy.click 在一张活页点 page-1 次翻到目标页;page_by 缺席 = 现状单页。
-                RenderArgs {
-                    render: op.request.render,
-                    ready_for: op.request.ready_for.as_deref(),
-                    intercept_api: op.request.intercept_api.as_deref(),
-                    page,
-                    page_by: op.request.page_by.as_ref().map(|p| p.click.as_str()),
-                },
-            )
-            .await?;
-        let html = &resp.body;
-        // 主请求 vars 捕获(chapter 级):对搜索响应求值,使 list/item 可见(captured-before-referenced)。
-        // flatten 刻意分两次:各条 vars **独立**对响应求值(见 source `Request.vars` 契约「勿互相引用」,
-        // 有序依赖应走 prelude 链)。
-        let flat = self.flatten(&chapter);
-        for (name, rule) in &op.request.vars {
-            let v = eval_value(rule, html, &flat)?;
-            if !v.is_empty() {
-                chapter.insert(name.clone(), v);
-            }
-        }
-        let vars = self.flatten(&chapter);
-        let items = self.eval_list_items(&op.list, &op.item, html, &vars)?;
-        let dom = resp.dom_html.as_deref();
-        let total_pages = self.eval_total_pages(op.request.total_pages.as_ref(), html, dom, &vars);
-        let has_more = self.eval_has_more(op.request.has_more.as_ref(), html, dom, &vars);
-        let result = BookList {
-            items,
-            total_pages,
-            has_more,
-        };
-        if let Some(k) = cache_key {
-            self.cache_page(k, &result);
-        }
-        Ok(result)
+        let mut extra = BTreeMap::new();
+        extra.insert("key".to_string(), key.to_string());
+        self.run_list_page(op, 's', &extra, page, page_size).await
     }
 
-    /// 浏览某分类的某一页(可选渲染取页;由用户递增 `page` 单页取)。返回书列表 + 可选总页数。
+    /// 浏览选中入口的某一页(由用户递增 `page` 单页取)。用入口变量驱动共享列表页 runner;
+    /// 取页 URL 由 `explore.page.request` 用入口变量 + `{{page}}` 模板生成(入口不再持固定 URL)。
     pub async fn explore(
         &self,
-        category_url: &UrlOrRule,
+        entry: &ExploreEntry,
         page: u32,
         page_size: u32,
     ) -> Result<BookList> {
@@ -336,67 +286,44 @@ impl Engine {
             .explore
             .as_ref()
             .ok_or(BookSourceError::Missing("explore"))?;
-        // 渲染结果缓存(仅 render):键用**静态分类 URL 模板** + 页(模板各分类不同、`{{page}}` 仍是
-        // 字面量,page 单独入键 → 各分类各页唯一)。`Rule` 形分类 URL 无静态键 → 不缓存。
-        let cache_key = match (op.render, category_url) {
-            (true, UrlOrRule::Str(tpl)) => Some(format!("e\u{0}{tpl}\u{0}{page}\u{0}{page_size}")),
-            _ => None,
-        };
-        if let Some(hit) = cache_key.as_deref().and_then(|k| self.cached_page(k)) {
-            return Ok(hit);
-        }
-        let mut chapter = self.base_vars();
-        chapter.insert("page".into(), page.to_string());
-        chapter.insert("pageSize".into(), page_size.to_string());
-        self.run_prelude(&op.prelude, &mut chapter).await?;
-        let vars = self.flatten(&chapter);
-        let resp = if op.render {
-            // 渲染取页:与 search 主请求同款路由(send_templated_full → run_request_full → fetch_full)。
-            // 空 headers:explore 分类请求无自定义头,渲染配置经 op 承载(对齐 search 主请求路由)。
-            let no_headers = std::collections::HashMap::new();
-            self.send_templated_full(
-                category_url,
-                Method::Get,
-                None,
-                &no_headers,
-                &vars,
-                // explore 是 URL 驱动(/library/all/page_{{page}}),不点击翻页 → page=0/page_by=None。
-                RenderArgs {
-                    render: op.render,
-                    ready_for: op.ready_for.as_deref(),
-                    intercept_api: op.intercept_api.as_deref(),
-                    ..Default::default()
-                },
-            )
-            .await?
-        } else {
-            // 未开 render:reqwest 直取(现状,逐字节不变);走 run_request_full 以便 via:css 的
-            // totalPages 也能对整页 HTML 求值(便宜档,无 DOM 也有总页数源)。
-            let url = self.resolve_url(category_url, &vars)?;
-            self.run_request_full(self.get_req(url)).await?
-        };
-        let html = &resp.body;
-        let items = self.eval_list_items(&op.list, &op.item, html, &vars)?;
-        let dom = resp.dom_html.as_deref();
-        let total_pages = self.eval_total_pages(op.total_pages.as_ref(), html, dom, &vars);
-        let has_more = self.eval_has_more(op.has_more.as_ref(), html, dom, &vars);
-        let result = BookList {
-            items,
-            total_pages,
-            has_more,
-        };
-        if let Some(k) = cache_key {
-            self.cache_page(k, &result);
-        }
-        Ok(result)
+        self.run_list_page(&op.page, 'e', &entry.vars, page, page_size)
+            .await
     }
 
-    /// 浏览分类列表,供上层选择后翻页。
-    pub fn explore_categories(&self) -> Vec<Category> {
-        self.source
-            .explore
-            .as_ref()
-            .map(|e| e.categories.clone())
-            .unwrap_or_default()
+    /// 加载 explore 入口(`dynamic-explore-entries`):按声明顺序遍历入口源数组,合并各源产出的
+    /// 扁平 `ExploreEntry`(静态固定入口 + 远端抓取动态入口)。
+    ///
+    /// 失败策略:某个(动态)源失败时保留已成功入口(含前面的静态源),不阻断;仅当**零入口**产出
+    /// 且有源报错时返回该错误。完全成功(无任何源报错)才写入口缓存,使下次进入可重试失败的动态源。
+    pub async fn explore_entries(&self) -> Result<Vec<ExploreEntry>> {
+        if let Some(cached) = self.entries_cache.read().ok().and_then(|g| g.clone()) {
+            return Ok(cached);
+        }
+        let Some(op) = self.source.explore.as_ref() else {
+            return Ok(Vec::new());
+        };
+        let mut out: Vec<ExploreEntry> = Vec::new();
+        let mut first_err: Option<BookSourceError> = None;
+        for src in &op.entries {
+            match self.load_entry_source(src).await {
+                Ok(mut entries) => out.append(&mut entries),
+                Err(e) => {
+                    first_err.get_or_insert(e);
+                }
+            }
+        }
+        // 零入口且有报错 → 把错误冒泡给 UI(否则用户看到空分类却无原因)。
+        if out.is_empty()
+            && let Some(e) = first_err.take()
+        {
+            return Err(e);
+        }
+        // 完全成功才缓存;有动态源失败时返回部分入口但不缓存(下次进入重试)。
+        if first_err.is_none()
+            && let Ok(mut g) = self.entries_cache.write()
+        {
+            *g = Some(out.clone());
+        }
+        Ok(out)
     }
 }

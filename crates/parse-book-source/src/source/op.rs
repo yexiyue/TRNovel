@@ -1,8 +1,9 @@
 //! 操作规则:搜索 / 浏览 / 书详情 / 目录 / 正文 的字段抽取与分页配置,以及黄金样例。
 
 use super::http::{PreStep, Request};
-use super::rule::{Rule, UrlOrRule};
+use super::rule::Rule;
 use serde::{Deserialize, Serialize};
+use std::collections::BTreeMap;
 
 /// 一本书的字段抽取规则(均可省略)。
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
@@ -77,11 +78,16 @@ impl BookInfoOp {
     }
 }
 
-/// 搜索操作。
+/// 共享列表页规格:search 与 explore 取一页书共用。承载前置链、请求(render / interceptApi /
+/// readyFor / totalPages / hasMore / pageBy / vars 均在 [`Request`] 上)、列表选择与每项字段抽取。
+/// 引擎以 `run_list_page(spec, vars, page, page_size)` 统一执行。
+///
+/// 这正是历史 `SearchOp` 的形状——前序 change 已把全部取页旋钮收敛到 [`Request`],故 search/explore
+/// 共用同一规格,无需各维护一套列表求值分支。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 #[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
-pub struct SearchOp {
+pub struct ListPageSpec {
     /// 主请求之前按序执行的前置请求链(见 design D7-bis);空 = 单发(现状)。
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub prelude: Vec<PreStep>,
@@ -90,46 +96,73 @@ pub struct SearchOp {
     pub item: BookRules,
 }
 
-/// 浏览分类。
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Hash)]
-#[serde(deny_unknown_fields)]
+/// 搜索操作 == 共享列表页规格(裸用,不包 `page` 层;search JSON 形状不变)。
+pub type SearchOp = ListPageSpec;
+
+/// 一个静态入口:固定标题 + 取页变量(字面量)。供「全部·最热」这类固定入口声明。
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 #[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
-pub struct Category {
+pub struct StaticEntry {
     pub title: String,
-    pub url: UrlOrRule,
+    /// 取页变量:与 base/page/pageSize 合并后运行 `explore.page`。值为字面量。
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub vars: BTreeMap<String, String>,
 }
 
-/// 浏览操作。
+/// fetch 入口项的生成规则:标题 + 变量。两者对「当前数据项(ctx)+ 外层 forEach 变量(vars)」求值,
+/// 故 `title`/`vars` 规则既能 `via:json` 读数据项字段,也能 `{{name}}` 引用循环变量。
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
+pub struct FetchEntryItem {
+    pub title: Rule,
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub vars: BTreeMap<String, Rule>,
+}
+
+/// 远端抓取入口源:请求远端分类数据 → `list` 抽数组 → 每项经 `item` 生成入口。
+/// 可选 `forEach` 按多组变量重复请求并合并入口(空 = 执行一次)。
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
+pub struct FetchEntrySource {
+    /// 循环变量集:对每组变量各请求一次、合并结果;变量在请求模板与 `item` 规则中可见。空 = 一次。
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub for_each: Vec<BTreeMap<String, String>>,
+    /// 入口数据请求(复用 [`Request`]:支持 render / interceptApi / charset / headers / 模板)。
+    pub request: Request,
+    /// 从响应抽取数据项数组(每项作为 `item` 规则的上下文)。
+    pub list: Rule,
+    pub item: FetchEntryItem,
+}
+
+/// 入口源:静态固定入口 或 远端抓取入口。`explore.entries` 是其数组,按声明顺序合并
+/// (无独立 chain 类型——「按序合并」即数组遍历)。与 [`Rule`] 一致用 untagged + 唯一键判别
+/// (`static` / `fetch`)。
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(untagged)]
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
+pub enum EntrySource {
+    /// 静态入口列表。
+    Static {
+        #[serde(rename = "static")]
+        static_entries: Vec<StaticEntry>,
+    },
+    /// 远端抓取动态入口(`Box`:`FetchEntrySource` 含完整 `Request`,避免枚举变体尺寸悬殊;
+    /// `Box<T>` 对 serde/schemars 透明,JSON 与 schema 形状不变)。
+    Fetch { fetch: Box<FetchEntrySource> },
+}
+
+/// 浏览操作:两阶段——`entries` 生成可选择的入口,`page` 用选中入口的变量取书。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 #[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 pub struct ExploreOp {
-    /// 分类请求之前按序执行的前置请求链(见 design D7-bis);空 = 现状。
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub prelude: Vec<PreStep>,
-    pub categories: Vec<Category>,
-    pub list: Rule,
-    pub item: BookRules,
-    /// 渲染取页(对齐 search 的 `Request.render`;explore 各分类共享)。为真则用受控浏览器
-    /// 渲染分类 URL、跑站点 JS,SPA 浏览/分类列表才取得到数据(否则 reqwest 直取,现状)。
-    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
-    pub render: bool,
-    /// 渲染就绪 CSS 选择器。无 `intercept_api` 时取渲染后 DOM(方式 A);与 `intercept_api`
-    /// 共存时(`render-dual-source`)作 DOM 就绪闸,供 `via:css` 的 `total_pages` 对 DOM 求值。
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub ready_for: Option<String>,
-    /// CDP 拦截目标响应 URL 子串(方式 B:拦签名 API 响应体,交 `via:"json"` 规则)。可与 `ready_for` 共存。
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub intercept_api: Option<String>,
-    /// 精确总页数规则(`render-dual-source`):对取页结果求值得「共 M 页」(翻页进度)。
-    /// `via:json` 对 API body 求值;`via:css`/`xpath` 对渲染 DOM 求值(需 `intercept_api` +
-    /// `ready_for` 共存)。空 = 不返回总数。
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub total_pages: Option<Rule>,
-    /// 翻页边界规则(`list-has-more`):对取页结果求值「是否还有下一页」(非空且非 `false`/`0` → 有)。
-    /// 源路由同 `total_pages`(按 `via`)。空 = 不提供边界(UI 不限制)。
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub has_more: Option<Rule>,
+    /// 入口源数组(按声明顺序合并;static + fetch 组合)。
+    pub entries: Vec<EntrySource>,
+    /// 共享列表页规格:用选中入口变量 + page/pageSize 取书。
+    pub page: ListPageSpec,
 }
 
 fn default_max_pages() -> u32 {

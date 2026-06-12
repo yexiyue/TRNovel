@@ -31,8 +31,8 @@ pub mod verify;
 pub use engine::Engine;
 pub use error::{BookSourceError, ConfigError, EvalError, FetchError, Result};
 pub use fetch::{FetchRequest, FetchResponse, Fetcher, ReqwestFetcher, is_challenge};
-pub use model::{BookInfo, BookList, BookListItem, Chapter, Toc, Volume};
-pub use source::{BookSource, Category, FetchMode, UrlOrRule};
+pub use model::{BookInfo, BookList, BookListItem, Chapter, ExploreEntry, Toc, Volume};
+pub use source::{BookSource, FetchMode, UrlOrRule};
 pub use verify::{Check, CheckStatus, DiagnoseReport, VerifyReport, diagnose, verify_sample};
 
 // 兼容 re-export:聚合后保持历史公开模块路径稳定(主程序/examples 直接引用)。

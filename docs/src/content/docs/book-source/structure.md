@@ -53,16 +53,27 @@ lastUpdated: 2026-06-02
 
 ## explore —— 分类浏览
 
+两阶段:`entries` 生成可选择的**入口**,`page` 用选中入口的**变量**取一页书。入口身份是「标题 + 变量」而非固定 URL——取页 URL 由 `page.request` 用入口变量与 `{{page}}` 模板生成。
+
 ```json
 "explore": {
-  "categories": [ { "title": "玄幻", "url": { "template": "{{base}}/sort/1_{{page}}.html" } } ],
-  "list": { "via": "css", "select": ".module-item" },
-  "item": { "bookUrl": { "…": "…" }, "name": { "…": "…" } }
+  "entries": [
+    { "static": [ { "title": "玄幻", "vars": { "cat": "1" } } ] }
+  ],
+  "page": {
+    "request": { "url": { "template": "{{base}}/sort/{{cat}}_{{page}}.html" } },
+    "list": { "via": "css", "select": ".module-item" },
+    "item": { "bookUrl": { "…": "…" }, "name": { "…": "…" } }
+  }
 }
 ```
 
-- `categories`:分类列表,每项 `title` + `url`(常含 `{{page}}` 翻页)。
-- `list` / `item`:同 `search`。搜索被反爬挡住时,浏览是重要的降级入口。
+- `entries`:**入口源数组**,按声明顺序合并(没有独立的 chain 类型——「按序合并」就是数组本身)。每个源是:
+  - `static`:固定入口列表,每项 `title` + 可选 `vars`(字面量取页变量)。
+  - `fetch`:请求远端分类数据动态生成入口——`request`(复用 search 的请求形态)、`list` 抽数据项、`item.title`/`item.vars` 生成入口;可选 `forEach` 用多组变量重复请求并合并。`item` 规则可同时读当前数据项(`via:json` 等)与外层 `forEach` 变量(`{{name}}`)。
+- `page`:与 `search` **同构的列表页规格**(`prelude`/`request`/`list`/`item`,`render`/`interceptApi`/`totalPages`/`hasMore`/`pageBy` 都在 `request` 上)。选中入口变量 + `page`/`pageSize` 合并后驱动它取页。
+
+搜索被反爬挡住时,浏览是重要的降级入口。
 
 ## bookInfo —— 书详情
 

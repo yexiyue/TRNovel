@@ -10,7 +10,7 @@
 
 `fetch_checked` 是纯 reqwest（拿静态 HTML / 普通 API），**SPA 站点拿不到数据**（首屏是空壳，数据靠 JS 拉）。SPA 走 **render 通道**（CDP 驱动真浏览器渲染 + `interceptApi` 拦签名 API 响应），由 `fetch/browser/` 下的 fetcher + EscalatingFetcher 实现。
 
-**op 上的 render 三字段**：`render`（开渲染）/`readyFor`（等待选择器/条件）/`interceptApi`（拦哪个 API 的响应当数据源）。重构后 `ExploreOp`/`SearchOp` 都对齐了这三字段（早期只有 search 的主 Request 有）。
+**render 三字段在 `Request` 上**：`render`（开渲染）/`readyFor`（等待选择器/条件）/`interceptApi`（拦哪个 API 的响应当数据源），连同 `totalPages`/`hasMore`/`pageBy`/`vars` 全部收敛在 `source::http::Request` 上。search 与 explore 因此共用同一份「列表页规格」`ListPageSpec`（见下「explore 两阶段 + 共享 ListPageSpec」），不再各自抄一份渲染字段。
 
 **相关文件**：`crates/parse-book-source/src/fetch/browser/`、`src/source/op.rs`
 
@@ -89,6 +89,21 @@ render 的 `interceptApi` 会话**本来就在渲染一张真实页面**，拦 A
 - **回翻/重访的成本与缓解(渲染结果缓存)**:点击翻页是**无状态重点击**——UI 翻到第 N 页 = 开新活页从第 1 页点 N-1 次,**上一页也一样**(`target_page=page-1`,从头少点几次,根本不点 PREV)。故回翻/重访已看过的页本会重付 O(N) 点击。`Engine` 加了 **`page_cache`**(`Arc<RwLock<HashMap<键, BookList>>>`,随 Clone 共享、per-source 会话级)缓解:键 = `操作\0词或分类模板\0页\0页大小`,**仅 render 路径缓存**(reqwest 便宜且缓存会跳过 cookie 回灌/命名捕获副作用),命中即返回、不再驱动浏览器。回翻/重访已取页**即时**,只首访某页付点击成本。注:缓存的是「页数据」,explore 用静态分类 URL 模板作键(`UrlOrRule::Str`;`Rule` 形不缓存)。
 
 **相关文件**：`crates/parse-book-source/src/fetch/browser/fetcher.rs`（`render_intercept`/`intercept`/`wait_matching_body`/`click_next`/`url_page_index`）、`src/source/http.rs`（`PageBy`）、`src/fetch/mod.rs`（`FetchRequest.page/page_by`）、`src/fetch/browser/escalating.rs`（render 分支路由,据 `pageBy`+`page>1` 算 `paging`）、`src/engine/{mod.rs,internal.rs}`（`page_cache` 渲染结果缓存、`RenderArgs` 参数束）、`fanqie-web.v2.json`（search.request.pageBy）、`openspec/changes/search-click-pagination/`
+
+### explore 两阶段 + 共享 ListPageSpec（dynamic-explore-entries）
+
+explore 不再是「分类 URL + 内联列表字段」，而是两阶段：`entries` 生成可选择的入口，`page` 用选中入口的变量取一页书。入口身份 = **标题 + 变量**（`ExploreEntry { title, vars }`，运行时类型在 `model.rs`），不再是固定 URL——取页 URL 由 `explore.page.request.url` 用入口变量 + `{{page}}` 模板生成。
+
+- **`ExploreOp { entries: Vec<EntrySource>, page: ListPageSpec }`**。`entries` 是入口源数组，按声明顺序合并（**没有独立 chain 类型**——「按序合并」就是数组遍历本身；包成枚举只会多一层嵌套）。
+- **`EntrySource`**（`untagged` + 唯一键判别，同 `Rule`）：`static`（固定入口列表 `{title, vars: BTreeMap<String,String>}`）/ `fetch`（远端抓取，`Box` 包裹避免大变体）。`fetch` 含 `forEach`（多组变量重复请求并合并，空=一次）、`request`（**复用 `Request`**，白送 render/intercept/charset/headers）、`list` 抽项、`item: {title: Rule, vars: BTreeMap<String,Rule>}`。
+- **`item` 规则的求值上下文**：ctx = 当前数据项（`via:json` 读其字段），vars = base + 当前 `forEach` 循环变量（`{{name}}` 引用循环变量）。JS 规则里 `result` 是数据项 **JSON 字符串**，需 `JSON.parse(result).field`（不是已解析对象）。
+- **`SearchOp = ListPageSpec`**（`pub type` 别名，裸用不包 `page` 层，search JSON 形状不变）。`ListPageSpec { prelude, request, list, item }` 就是历史 `SearchOp` 的形状——前序 change 已把全部取页旋钮收敛到 `Request`，故 search/explore 共用一个 runner。
+- **引擎收敛到 `run_list_page(spec, kind, extra_vars, page, page_size)`**（`engine/internal.rs`）：search 传 `{key}`、explore 传入口变量;渲染结果缓存键含 `kind`('s'/'e') + 有序 `extra_vars` + 页 + 页大小（不同入口因变量段不同不串缓存）。explore 收敛后**白捡** search 已有的「响应命名捕获 `request.vars`」能力。
+- **`Engine::explore_entries().await -> Result<Vec<ExploreEntry>>`** 替代旧同步 `explore_categories()`。**部分成功**：某动态源失败时保留已成功入口（含静态源），不阻断；仅当零入口产出且有源报错才返回 Err。**仅完全成功才缓存**（`entries_cache`，per-source 会话级），失败的动态源下次进入可重试。
+- **UI**（`select_books/mod.rs`）：入口加载本就在 `use_init_state(async move{})` 内，改 `explore_entries().await?` 即可；`ExploreListItem(ExploreEntry)`，取页把整个 entry 交给 `engine.explore(&entry, page, size)`。
+- **番茄迁移**：静态入口「书库·最热/最新」（`vars: {filter:"all", sort:"hottest"|"newest"}`）+ page URL `{{base}}/library/{{filter}}/page_{{page}}?sort={{sort}}`，render/intercept/totalPages/hasMore/explore fontMap 全部挪到 `page.request`/`page.item`，对这两个入口字节等价。**动态分类入口**（按 gender forEach 调 `category_list/v0`）的活体正确性需 `trn doctor` 对站点验证;即便动态源失配，部分成功也会退化到静态入口、explore 仍可用。
+
+**相关文件**：`crates/parse-book-source/src/source/op.rs`（`ListPageSpec`/`EntrySource`/`StaticEntry`/`FetchEntrySource`/`FetchEntryItem`/`ExploreOp`）、`src/model.rs`（`ExploreEntry`）、`src/engine/{mod.rs,internal.rs}`（`explore_entries`/`run_list_page`/`load_entry_source`/`load_fetch_entries`）、`fanqie-web.v2.json`、`openspec/changes/dynamic-explore-entries/`
 
 ### explore 单页 + UI 递增 page（不引擎批量翻页）
 

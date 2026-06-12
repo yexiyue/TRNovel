@@ -1,6 +1,18 @@
 //! 领域类型(纯数据,无 IO、无规则逻辑)。
 
 use serde::{Deserialize, Serialize};
+use std::collections::BTreeMap;
+
+/// 一个 explore 入口(运行时):展示标题 + 取页变量。由入口加载(`Engine::explore_entries`)
+/// 从静态/动态入口源产生,供 UI 选择;取页时与 base/page/pageSize 合并后运行 `explore.page`。
+///
+/// 入口身份是「标题 + 变量」而非固定 URL——取页 URL 由 `explore.page.request` 用这些变量与
+/// `{{page}}` 模板生成。
+#[derive(Debug, Clone, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub struct ExploreEntry {
+    pub title: String,
+    pub vars: BTreeMap<String, String>,
+}
 
 /// 目录条目(章节;`is_volume` 为 true 时表示卷标题,不是可阅读章节)。
 #[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, Eq)]

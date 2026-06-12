@@ -5,7 +5,7 @@ use crate::{
     hooks::{UseInitState, UseThemeConfig},
 };
 use crossterm::event::{Event, KeyCode, KeyEventKind};
-use parse_book_source::{BookSource, Category, Engine};
+use parse_book_source::{BookSource, Engine, ExploreEntry};
 use ratatui::{
     layout::{Constraint, Margin},
     style::Style,
@@ -18,7 +18,7 @@ mod find_book;
 use find_book::*;
 
 #[derive(Debug, Clone, Hash)]
-pub struct ExploreListItem(pub Category);
+pub struct ExploreListItem(pub ExploreEntry);
 
 impl From<ExploreListItem> for ListItem<'_> {
     fn from(value: ExploreListItem) -> Self {
@@ -43,7 +43,8 @@ pub fn SelectBooks(mut hooks: Hooks) -> impl Into<AnyElement<'static>> {
         let engine = crate::browser_assist::build_engine((*book_source).clone())?;
         // 预热会话 cookie(若书源配置了 http.warmup)。
         engine.warmup().await;
-        let book_source_explores = engine.explore_categories();
+        // 动态入口加载:静态固定入口 + 远端抓取入口(可能请求分类 API),故为 async。
+        let book_source_explores = engine.explore_entries().await?;
 
         if let Some(explore) = book_source_explores.first() {
             current_explore.set(Some(ExploreListItem(explore.clone())));
