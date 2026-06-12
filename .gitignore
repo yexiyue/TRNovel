@@ -12,3 +12,4 @@ espeak-ng-data
 .claude/skills/*
 !.claude/skills/dev-workflow/
 **/.obsidian
+.codex
