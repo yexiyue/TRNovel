@@ -66,10 +66,29 @@ render 的 `interceptApi` 会话**本来就在渲染一张真实页面**，拦 A
 
 **相关文件**：`fanqie-web.v2.json`（`fontMaps.{content,search,explore}`）、`src/gen_fontmap.rs`、`dev-notes/blog/font-anti-scraping-and-fontmap.md`
 
-### explore 是 URL 驱动，search 是点击驱动
+### explore 是 URL 驱动，search 是点击驱动（已落地 `search-click-pagination`）
 
-- **explore 书库** `/library/all/page_N`：URL 驱动——翻页 URL 变,直接导航该 URL 即渲染第 N 页。API `book_list/v0`（`page_index=N-1` 0 基）。**`by:url` 翻页可用**。
-- **search** `/search/{词}`：SPA **不认 URL 页码**（path/query 变体实测都回第 1 页），只能点分页器"下一页"触发 `page_index` 递增。API `search_book/v1`。`by:url` 对 search 无效，需 `by:click`（render 会话内拦 N 个 + 每页点下一页，P2 范围）。
+- **explore 书库** `/library/all/page_N`：URL 驱动——翻页 URL 变,直接导航该 URL 即渲染第 N 页。API `book_list/v0`（`page_index=N-1` 0 基）。**`by:url` 翻页可用**（`{{page}}` 进 URL 模板,不需任何点击配置）。
+- **search** `/search/{词}`：SPA **不认 URL 页码**（agent-browser 实测 6 种直达变体 `/page_2`=404、`?page_index=1`、`?page=2`、`#/page/2` 等**全部回第 1 页**——对抗性反驳失败,by:url 对 search 不可行）,只能点分页器「下一页」触发 `page_index` 递增。API `search_book/v1`,`a_bogus`+`msToken` 每请求重签。
+
+### 点击驱动翻页 `pageBy.click`（render 拦截源,URL 不认页码时）
+
+书源在 `request` 上配 `pageBy: { click: "<next 选择器>" }`;`page > 1` 时引擎在**一张活页**内点 `page-1` 次翻到目标页、拦该页 API 响应。配置极简、只补 click 一种（by:url 用 `{{page}}` URL 模板已覆盖,不复活完整 enum）。`pageBy` 缺席 = 现状单拦截,翻页行为逐字节不变。
+
+- **番茄 search 分页器选择器**（`byte-pagination` 组件,逐字节实测）：NEXT = `.byte-pagination .byte-pagination-item-icon:has(.byte-icon-right)`（永远 list 末 `<li>`、翻页不漂移）;PREV = `:has(.byte-icon-left)`。**prev/next 无 aria/text,唯一判别是子 svg `byte-icon-right` vs `byte-icon-left`**。末页 NEXT 加 `disabled` **class**（无 aria-disabled/disabled 属性）、点了不发请求。当前页 = `.byte-pagination-item-active[data-active=true]`。
+- **四摩擦**（点击翻页 `intercept` 必须处理,否则一定踩）：
+  1. **点击投递**：NEXT 渲染在折叠下方（实测 y≈2534）,CDP/CLI 单击「成功」但页没翻;**`scrollIntoView` + evaluate 派发真 `MouseEvent`(mousedown/mouseup/click)才稳翻**(触发站点 React)。
+  2. **`page_index` 强制相关性**：前进判据 = 等「点击之后到达、URL 含 `interceptApi`、且 `page_index == 目标页-1`」的响应（`url_page_index` 解析）。**必须按 page_index 对齐**——软封锁 reload 会注入残留 `page_index=0`,纯 substring 匹配会误采。监听流（`EventResponseReceived`）**跨整个点击循环持有**,自然只认「点击后到达」的。
+  3. **软封锁 reload-once**：冷启/stale 签名 → `search_book/v1` 回 **HTTP 200 空 body** + `.muye-search-empty`「共 0 项」+ `verify.zijieapi.com` 滑块 iframe;**拦到空 body → reload 当前页一次**即恢复。此恢复也接进现有单页 `intercept_body`（第 1 页偶发软封锁同样修;空 body 本是失败态,严格改善、不改成功结果）。
+  4. **page-N DOM 落定**：点击后 DOM **异步于网络响应**更新（新请求 ~1s）,抓第 N 页 `outerHTML`（给 `via:css` 的 totalPages）前**重等就绪闸**（`wait_ready(readyFor)`),免抓到半截分页器。注:番茄 totalPages 选择器取末数字项「30」,各页恒定,故 staleness 对它影响小,但仍重等保险。
+- **统一的 `intercept`(单页 + 点击翻页一个方法)**：`render_intercept(url, api, timeout, headless, dom_ready, paging: Option<(目标页, next选择器)>)` 一个公开入口——`paging=None` 单页、`Some` 点击翻页(escalating 据 `pageBy`+`page>1` 计算 `paging` 单次调用)。核心 `intercept` 内:arm 监听(`responseReceived`/`loadingFinished`,**先挂再 goto**)→ 首页取页 + reload-once → 可选点击循环 → 可选抓 DOM,**只写一遍**(早期 `intercept_body`/`intercept_page`/`intercept_paged` 三方法的 arm/reload/DOM 重复已合并)。等响应抽成泛型 `wait_matching_body<R,F>`(持两个事件流、按 api 子串 + 可选 page_index 对齐等下一个匹配 body;匹配到但空 body 返回 `Ok("")` 作软封锁信号、非 Err)。
+- **到头停翻 vs 点击失败(消歧很关键)**：点 NEXT 返回 `missing`/`disabled`（控件缺失/禁用）= **真到头** → 停、返回当前(末)页（D6 结构快路;`page > 实际总页` 由此自然收尾）。点了但目标页响应超时未到 = **点击失败/拥塞(非到头)** → **重试一次**（`CLICK_RETRY`,spec SHALL）;重试耗尽仍未达目标页 → **报错传播**（交上层 `RENDER_RETRY` 整页重试 / 优雅降级），**绝不静默返回更早的页冒充第 N 页**（CDP back-pressure 下尤其要紧）。两者别混:返回 `Ok(当前页)` 只在真到头时发生。
+- **软封锁的「空 body」信号**:`wait_matching_body` 对「匹配到响应但 body 空」返回 **`Ok("")`**(非 `Err`),`Err` 只留给「完全没匹配到响应」。否则 `response_body` 把空 body 映射成 `None` → 函数返回 `Err` → `.await?` 短路,reload-once 守卫成**死代码**(评审实测发现)。空串 = 软封锁精确信号,交调用方 reload。
+- **`BROWSER_LOCK` 占用**：`with_pool_page` 整个闭包持全局 `BROWSER_LOCK`;一次多页 search 现持锁 ≈ N 个 render 时长,期间其它书源 render / solve-login 全被串行阻塞（深页/软封锁可达数十秒）。search 现实 N≤5 可接受;真实 env 验深页线性翻稳定性 + 其它 op 不被饿死（`search-click-pagination` tasks 4.3 gating）。
+- **CDP back-pressure**:独立复核实测 secsdk SPA 上 CDP 通道会 `os error 35`、停顿 1-2min → 每页响应超时要宽,勿把「慢但在途」误判成到头/软封锁。
+- **回翻/重访的成本与缓解(渲染结果缓存)**:点击翻页是**无状态重点击**——UI 翻到第 N 页 = 开新活页从第 1 页点 N-1 次,**上一页也一样**(`target_page=page-1`,从头少点几次,根本不点 PREV)。故回翻/重访已看过的页本会重付 O(N) 点击。`Engine` 加了 **`page_cache`**(`Arc<RwLock<HashMap<键, BookList>>>`,随 Clone 共享、per-source 会话级)缓解:键 = `操作\0词或分类模板\0页\0页大小`,**仅 render 路径缓存**(reqwest 便宜且缓存会跳过 cookie 回灌/命名捕获副作用),命中即返回、不再驱动浏览器。回翻/重访已取页**即时**,只首访某页付点击成本。注:缓存的是「页数据」,explore 用静态分类 URL 模板作键(`UrlOrRule::Str`;`Rule` 形不缓存)。
+
+**相关文件**：`crates/parse-book-source/src/fetch/browser/fetcher.rs`（`render_intercept`/`intercept`/`wait_matching_body`/`click_next`/`url_page_index`）、`src/source/http.rs`（`PageBy`）、`src/fetch/mod.rs`（`FetchRequest.page/page_by`）、`src/fetch/browser/escalating.rs`（render 分支路由,据 `pageBy`+`page>1` 算 `paging`）、`src/engine/{mod.rs,internal.rs}`（`page_cache` 渲染结果缓存、`RenderArgs` 参数束）、`fanqie-web.v2.json`（search.request.pageBy）、`openspec/changes/search-click-pagination/`
 
 ### explore 单页 + UI 递增 page（不引擎批量翻页）
 

@@ -175,7 +175,10 @@ sed -e 's/<[^>]*>/ /g' /tmp/page.html | tr -s ' \n' ' \n' | grep -v '^ *$' | hea
 - **开 `render` 后,`list`/`item` 必须对齐被拦截 API 的 JSON**(`via:"json"`),而不是渲染后 DOM——因为分类共享同一套 `interceptApi`+`list`。若站点还有可直取的 SSR 分类,单独建一个**不开 render** 的书源(或另一组纯 CSS 分类),别和渲染分类混在同一 `explore` 块。
 - **取页是单页,翻页交给阅读器**:`explore(category, page)` 只取 `{{page}}` 那一页;用户在阅读器里翻页 = 递增 `page` 重新取(引擎**不批量翻页**,一次只开一个浏览器)。分类 URL 模板带 `{{page}}` 即可,**不要加 `nextPage`**(列表 `nextPage` 已废弃;`nextPage`/`maxPages` 仅用于 `toc`/`content` 的正文/目录分页)。
 - **page 基数对齐约定(关键)**:URL 模板里 `{{page}}` **从 1 起**(`page_1` 是第一页),由**书源 URL 模板自己对齐**站点 API 的页码基数,引擎**不内置任何偏移**。例:番茄书库网页 URL `page_{{page}}`(1 起)实际驱动 API `book_list/v0?page_index=N-1`(`page_index` 从 0 起)——这个 -1 偏移由站点前端 SPA 自己换算,我们只管按站点 URL 规律填 `{{page}}`,拦到的响应体就是对应页。**以站点真实 URL 规律为准**。
-- **URL 不认页码的站(如番茄 search)**:页码只在 SPA 内按钮翻页、URL 不变,单页 render 只能取第一页。点击驱动翻页 / 动态总页数(从分页器读「共 M 页」)是后续能力,当前**保持单页,别加额外翻页字段**。
+- **URL 不认页码的站(如番茄 search)→ 点击驱动翻页 `pageBy.click`**:页码只在 SPA 内按钮翻页、URL 不变(`{{page}}` 进 URL 无效,实测 path/query 变体都回第 1 页)。在 `render`+`interceptApi` 的 `request` 上加 `"pageBy": { "click": "<下一页控件 CSS 选择器>" }`——引擎在**一张活页**内点该选择器 `page-1` 次翻到目标页、按 `page_index` 对齐拦每页 API 响应。`pageBy` 缺席 = 现状单页。
+  - **选择器要稳**:取「下一页」控件本身(如番茄 `byte-pagination` 的 `.byte-pagination .byte-pagination-item-icon:has(.byte-icon-right)`——末箭头 `<li>`,翻页不漂移);末页控件常加 `disabled` class、点了不发请求(引擎据此/超时到头停)。
+  - **软封锁**:签名站冷启/翻页可能回 200 空 body(+ 验证码),引擎已内置 reload-once 兜底;但选择器/页码基数仍以站点真实结构为准。
+  - **动态总页数**:配 `readyFor`(分页器选择器)+ `totalPages`(`via:css` 取末页码)即返回「共 M 页」(见 `render-dual-source`);范例见 `fanqie-web.v2.json` 的 `search.request`(`pageBy`+`totalPages`+`readyFor` 三件套)。
 
 ## 字符集
 中文乱码 → `http.charset`: `"gbk"`(最常见)/`"gb18030"`/`"big5"`;默认 `"auto"`(UTF-8 失败回退 GBK)。判断:`curl ... | file -` 或看 `<meta charset>`,或直接 doctor 看书名/正文是否乱码。

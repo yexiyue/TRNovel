@@ -1,7 +1,7 @@
 //! 引擎内部管线(私有 `impl Engine`):请求构造与登录态注入、取页与登录校验、模板化请求
 //! 骨架、命名捕获、有界分页、列表/详情求值。均为 [`super::Engine`] 五个公开操作共享的实现细节。
 
-use super::Engine;
+use super::{Engine, RenderArgs};
 use crate::error::{BookSourceError, Result};
 use crate::eval::{Vars, eval_list, eval_value, interpolate};
 use crate::fetch::cookie::{
@@ -144,9 +144,7 @@ impl Engine {
                     step.body.as_ref(),
                     &step.headers,
                     &flat,
-                    false,
-                    None,
-                    None,
+                    RenderArgs::default(),
                 )
                 .await?;
             self.capture_into(&step.capture, &resp, chapter)?;
@@ -159,7 +157,6 @@ impl Engine {
     /// 并入登录态(apply_auth)→ [`Engine::run_request`]。
     /// `vars` 须为调用方已 flatten 的扁平表;请求后的差异化处理(`Request.vars` 捕获 /
     /// prelude 的 `capture_into`)留在调用点。
-    #[allow(clippy::too_many_arguments)]
     pub(super) async fn send_templated_full(
         &self,
         url: &UrlOrRule,
@@ -167,11 +164,9 @@ impl Engine {
         body: Option<&UrlOrRule>,
         headers: &HashMap<String, String>,
         vars: &Vars,
-        // 渲染型取页配置(`render-fetcher`):prelude 等普通请求传 `false, None, None`;
-        // search 等可渲染的 op 传其 `request.render/ready_for/intercept_api`。
-        render: bool,
-        ready_for: Option<&str>,
-        intercept_api: Option<&str>,
+        // 渲染 + 点击翻页参数(`render-fetcher` / `search-click-pagination`);
+        // prelude 等普通请求传 `RenderArgs::default()`(全关闭 = reqwest 单页)。
+        args: RenderArgs<'_>,
     ) -> Result<FetchResponse> {
         let url = self.resolve_url(url, vars)?;
         let body = match body {
@@ -188,15 +183,16 @@ impl Engine {
             method,
             body,
             headers: hdrs,
-            render,
-            ready_for: ready_for.map(str::to_string),
-            intercept_api: intercept_api.map(str::to_string),
+            render: args.render,
+            ready_for: args.ready_for.map(str::to_string),
+            intercept_api: args.intercept_api.map(str::to_string),
+            page: args.page,
+            page_by: args.page_by.map(str::to_string),
         })
         .await
     }
 
     /// [`Engine::send_templated_full`] 的便捷封装:只回 body(prelude / 不需 DOM 的取页)。
-    #[allow(clippy::too_many_arguments)]
     pub(super) async fn send_templated(
         &self,
         url: &UrlOrRule,
@@ -204,21 +200,10 @@ impl Engine {
         body: Option<&UrlOrRule>,
         headers: &HashMap<String, String>,
         vars: &Vars,
-        render: bool,
-        ready_for: Option<&str>,
-        intercept_api: Option<&str>,
+        args: RenderArgs<'_>,
     ) -> Result<String> {
         Ok(self
-            .send_templated_full(
-                url,
-                method,
-                body,
-                headers,
-                vars,
-                render,
-                ready_for,
-                intercept_api,
-            )
+            .send_templated_full(url, method, body, headers, vars, args)
             .await?
             .body)
     }

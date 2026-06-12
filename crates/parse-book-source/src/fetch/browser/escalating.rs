@@ -68,10 +68,23 @@ impl Fetcher for EscalatingFetcher {
             let mut attempt = 0u32;
             let (body, dom_html) = loop {
                 let r = if let Some(api) = &req.intercept_api {
-                    // 拦 API 取 body;`ready_for` 共存时(render-dual-source)再抓渲染 DOM 入 dom_html
-                    //(交 via:css 规则,如分页器总页数)。
+                    // 点击驱动翻页(search-click-pagination):有 pageBy 且 page>1 → 一张活页点
+                    // page-1 次翻到目标页拦响应(`paging`);否则现状单拦截(`None`)。`ready_for` 共存时
+                    //(render-dual-source)再抓渲染 DOM 入 dom_html(交 via:css 规则,如分页器总页数)。
+                    let paging = req
+                        .page_by
+                        .as_deref()
+                        .filter(|_| req.page > 1)
+                        .map(|sel| (req.page, sel));
                     browser
-                        .render_intercept(&abs, api, timeout, true, req.ready_for.as_deref())
+                        .render_intercept(
+                            &abs,
+                            api,
+                            timeout,
+                            true,
+                            req.ready_for.as_deref(),
+                            paging,
+                        )
                         .await
                 } else if let Some(ready) = &req.ready_for {
                     browser

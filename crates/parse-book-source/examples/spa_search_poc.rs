@@ -28,8 +28,9 @@ async fn main() {
         eprintln!("\n========== {label} ==========");
         eprintln!("→ 打开 {url} ,CDP 拦截 {api} 响应(最多 30s)…");
         // dom_ready=None:本 PoC 只验拦 API,不取渲染 DOM(render-dual-source 才需要)。
+        // paging=None:单页拦截(点击翻页 search-click-pagination 才传 Some)。
         match browser
-            .render_intercept(&url, api, Duration::from_secs(30), headless, None)
+            .render_intercept(&url, api, Duration::from_secs(30), headless, None, None)
             .await
         {
             Ok((body, _dom)) => {

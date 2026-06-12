@@ -37,6 +37,18 @@ pub struct RateLimit {
     pub per_ms: u64,
 }
 
+/// 点击驱动翻页策略(`search-click-pagination`):URL 不认页码的 SPA(如番茄 search)翻页只能点
+/// 分页器「下一页」,不能靠 `{{page}}` 改 URL。配在可渲染 + 拦截(`render` + `interceptApi`)的
+/// `Request` 上,`page > 1` 时引擎在**一张活页**内点 `click` 选择器 `page-1` 次翻到目标页。
+/// 用 `{ click: ... }` 形(留 `by` 扩展位、语义自描述),当前只 `click` 一支。
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+#[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
+pub struct PageBy {
+    /// 「下一页」控件的 CSS 选择器(如番茄 `.byte-pagination .byte-pagination-item-icon:has(.byte-icon-right)`)。
+    pub click: String,
+}
+
 /// 取页模式:是否动用浏览器解反爬挑战。
 /// 真正是否开浏览器还需 app/用户级授权(两级取交集,见 OpenSpec change `browser-fetcher` D12)。
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
@@ -218,4 +230,10 @@ pub struct Request {
     /// 源路由同 `total_pages`(按 `via`)。空 = 不提供边界(UI 不限制)。
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub has_more: Option<Rule>,
+    /// 点击驱动翻页(`search-click-pagination`):URL 不认页码的 SPA(如番茄 search)靠点分页器
+    /// 「下一页」递增页码。配 `render` + `interceptApi` 且 `page > 1` 时,引擎在一张活页内点
+    /// `pageBy.click` 选择器 `page-1` 次翻到目标页、拦该页 API 响应。空 = 现状(单拦截 /
+    /// `{{page}}` URL 模板翻页),逐字节不变。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub page_by: Option<PageBy>,
 }

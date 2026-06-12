@@ -101,6 +101,13 @@ pub struct FetchRequest {
     pub ready_for: Option<String>,
     /// CDP 拦截:渲染时拦截 URL 含此子串的响应体作为取页 body。可与 `ready_for` 共存(见上)。
     pub intercept_api: Option<String>,
+    /// 目标页码(`search-click-pagination`,1 基):仅 render + `intercept_api` 的点击翻页路径用——
+    /// 与 `page_by` 共存且 `> 1` 时,引擎在一张活页内点 `page-1` 次翻到此页。其它路径忽略(默认 0)。
+    pub page: u32,
+    /// 点击驱动翻页的「下一页」CSS 选择器(`search-click-pagination`):URL 不认页码的 SPA
+    /// (如番茄 search)靠点它递增页码。`Some` 且 `page > 1` + 有 `intercept_api` 时启用点击翻页;
+    /// 其它路径忽略(默认 `None` = 现状单拦截 / `{{page}}` URL 模板翻页)。
+    pub page_by: Option<String>,
 }
 
 impl FetchRequest {

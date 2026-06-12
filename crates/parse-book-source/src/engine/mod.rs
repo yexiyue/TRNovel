@@ -13,8 +13,22 @@ use crate::fetch::cookie::CookieJar;
 use crate::fetch::{Fetcher, ReqwestFetcher};
 use crate::model::{BookInfo, BookList, Chapter, Toc, Volume};
 use crate::source::{BookSource, Category, Method, UrlOrRule};
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, HashMap};
 use std::sync::{Arc, RwLock};
+
+/// [`Engine::send_templated_full`] 的渲染 + 点击翻页参数束(避免十参数):`render-fetcher` 的
+/// `render`/`ready_for`/`intercept_api` + `search-click-pagination` 的目标页 `page` 与「下一页」
+/// 选择器 `page_by`。普通请求(如 prelude)用 `RenderArgs::default()`(全关闭 = 现状 reqwest 单页)。
+#[derive(Clone, Copy, Default)]
+struct RenderArgs<'a> {
+    render: bool,
+    ready_for: Option<&'a str>,
+    intercept_api: Option<&'a str>,
+    /// 目标页码(1 基);仅 render+intercept 且 `> 1` + `page_by` 有值时驱动点击翻页。
+    page: u32,
+    /// 「下一页」CSS 选择器(`pageBy.click`)。
+    page_by: Option<&'a str>,
+}
 
 /// 书源运行时引擎。
 #[derive(Clone)]
@@ -34,6 +48,12 @@ pub struct Engine {
     /// 书籍级捕获变量(`scope=book`,D7-bis):per-book,由 app 经 [`Engine::with_book_vars`]
     /// 注入、[`Engine::book_vars`] 导出(随 per-book 快照持久化)。
     book_vars: Arc<RwLock<BTreeMap<String, String>>>,
+    /// **渲染取页**的搜索/浏览结果缓存(`键 -> BookList`,`search-click-pagination` 后续):使 UI
+    /// 回翻 / 重访已取页**无需重新驱动浏览器**(render 点击翻页 O(N) 点击成本只付一次)。键含
+    /// 操作 + 词/分类 + 页 + 页大小。随 `Clone` 的引擎共享(`Arc`),**per-source 会话级**(引擎重建即
+    /// 清空)。**仅 render 路径缓存**:reqwest 取页便宜,且缓存它会跳过 cookie 回灌 / 命名捕获等可观察
+    /// 副作用(故不缓存,保持现状语义)。
+    page_cache: Arc<RwLock<HashMap<String, BookList>>>,
 }
 
 impl std::fmt::Debug for Engine {
@@ -62,6 +82,22 @@ impl Engine {
             cookies: Arc::new(RwLock::new(CookieJar::default())),
             source_vars: Arc::new(RwLock::new(BTreeMap::new())),
             book_vars: Arc::new(RwLock::new(BTreeMap::new())),
+            page_cache: Arc::new(RwLock::new(HashMap::new())),
+        }
+    }
+
+    /// 读渲染结果缓存(命中返回克隆)。键由 [`Engine::search`]/[`Engine::explore`] 构造(含页码)。
+    fn cached_page(&self, key: &str) -> Option<BookList> {
+        self.page_cache
+            .read()
+            .ok()
+            .and_then(|c| c.get(key).cloned())
+    }
+
+    /// 写渲染结果缓存(取页成功后)。锁竞争失败则静默跳过(缓存仅为优化,丢一条不影响正确性)。
+    fn cache_page(&self, key: String, list: &BookList) {
+        if let Ok(mut c) = self.page_cache.write() {
+            c.insert(key, list.clone());
         }
     }
 
@@ -225,6 +261,15 @@ impl Engine {
             .search
             .as_ref()
             .ok_or(BookSourceError::Missing("search"))?;
+        // 渲染结果缓存(仅 render 路径,见字段注释):同 (词,页,页大小) 命中即返回,免重新驱动
+        // 浏览器点击翻页(UI 回翻/重访的 O(N) 点击成本只在首访付一次)。
+        let cache_key = op
+            .request
+            .render
+            .then(|| format!("s\u{0}{key}\u{0}{page}\u{0}{page_size}"));
+        if let Some(hit) = cache_key.as_deref().and_then(|k| self.cached_page(k)) {
+            return Ok(hit);
+        }
         let mut chapter = self.base_vars();
         chapter.insert("key".into(), key.to_string());
         chapter.insert("page".into(), page.to_string());
@@ -241,9 +286,15 @@ impl Engine {
                 op.request.body.as_ref(),
                 &op.request.headers,
                 &vars,
-                op.request.render,
-                op.request.ready_for.as_deref(),
-                op.request.intercept_api.as_deref(),
+                // 点击驱动翻页(search-click-pagination):URL 不认页码的 SPA(番茄 search)靠
+                // pageBy.click 在一张活页点 page-1 次翻到目标页;page_by 缺席 = 现状单页。
+                RenderArgs {
+                    render: op.request.render,
+                    ready_for: op.request.ready_for.as_deref(),
+                    intercept_api: op.request.intercept_api.as_deref(),
+                    page,
+                    page_by: op.request.page_by.as_ref().map(|p| p.click.as_str()),
+                },
             )
             .await?;
         let html = &resp.body;
@@ -262,11 +313,15 @@ impl Engine {
         let dom = resp.dom_html.as_deref();
         let total_pages = self.eval_total_pages(op.request.total_pages.as_ref(), html, dom, &vars);
         let has_more = self.eval_has_more(op.request.has_more.as_ref(), html, dom, &vars);
-        Ok(BookList {
+        let result = BookList {
             items,
             total_pages,
             has_more,
-        })
+        };
+        if let Some(k) = cache_key {
+            self.cache_page(k, &result);
+        }
+        Ok(result)
     }
 
     /// 浏览某分类的某一页(可选渲染取页;由用户递增 `page` 单页取)。返回书列表 + 可选总页数。
@@ -281,6 +336,15 @@ impl Engine {
             .explore
             .as_ref()
             .ok_or(BookSourceError::Missing("explore"))?;
+        // 渲染结果缓存(仅 render):键用**静态分类 URL 模板** + 页(模板各分类不同、`{{page}}` 仍是
+        // 字面量,page 单独入键 → 各分类各页唯一)。`Rule` 形分类 URL 无静态键 → 不缓存。
+        let cache_key = match (op.render, category_url) {
+            (true, UrlOrRule::Str(tpl)) => Some(format!("e\u{0}{tpl}\u{0}{page}\u{0}{page_size}")),
+            _ => None,
+        };
+        if let Some(hit) = cache_key.as_deref().and_then(|k| self.cached_page(k)) {
+            return Ok(hit);
+        }
         let mut chapter = self.base_vars();
         chapter.insert("page".into(), page.to_string());
         chapter.insert("pageSize".into(), page_size.to_string());
@@ -296,9 +360,13 @@ impl Engine {
                 None,
                 &no_headers,
                 &vars,
-                op.render,
-                op.ready_for.as_deref(),
-                op.intercept_api.as_deref(),
+                // explore 是 URL 驱动(/library/all/page_{{page}}),不点击翻页 → page=0/page_by=None。
+                RenderArgs {
+                    render: op.render,
+                    ready_for: op.ready_for.as_deref(),
+                    intercept_api: op.intercept_api.as_deref(),
+                    ..Default::default()
+                },
             )
             .await?
         } else {
@@ -312,11 +380,15 @@ impl Engine {
         let dom = resp.dom_html.as_deref();
         let total_pages = self.eval_total_pages(op.total_pages.as_ref(), html, dom, &vars);
         let has_more = self.eval_has_more(op.has_more.as_ref(), html, dom, &vars);
-        Ok(BookList {
+        let result = BookList {
             items,
             total_pages,
             has_more,
-        })
+        };
+        if let Some(k) = cache_key {
+            self.cache_page(k, &result);
+        }
+        Ok(result)
     }
 
     /// 浏览分类列表,供上层选择后翻页。

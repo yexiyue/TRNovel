@@ -737,8 +737,19 @@
             "$ref": "#/definitions/Category"
           }
         },
+        "hasMore": {
+          "description": "翻页边界规则(`list-has-more`):对取页结果求值「是否还有下一页」(非空且非 `false`/`0` → 有)。 源路由同 `total_pages`(按 `via`)。空 = 不提供边界(UI 不限制)。",
+          "anyOf": [
+            {
+              "$ref": "#/definitions/Rule"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
         "interceptApi": {
-          "description": "CDP 拦截目标响应 URL 子串(方式 B:拦签名 API 响应体,交 `via:\"json\"` 规则)。",
+          "description": "CDP 拦截目标响应 URL 子串(方式 B:拦签名 API 响应体,交 `via:\"json\"` 规则)。可与 `ready_for` 共存。",
           "type": [
             "string",
             "null"
@@ -758,7 +769,7 @@
           }
         },
         "readyFor": {
-          "description": "渲染就绪 CSS 选择器(方式 A:取渲染后 DOM);与 `intercept_api` 二选一。",
+          "description": "渲染就绪 CSS 选择器。无 `intercept_api` 时取渲染后 DOM(方式 A);与 `intercept_api` 共存时(`render-dual-source`)作 DOM 就绪闸,供 `via:css` 的 `total_pages` 对 DOM 求值。",
           "type": [
             "string",
             "null"
@@ -767,6 +778,17 @@
         "render": {
           "description": "渲染取页(对齐 search 的 `Request.render`;explore 各分类共享)。为真则用受控浏览器 渲染分类 URL、跑站点 JS,SPA 浏览/分类列表才取得到数据(否则 reqwest 直取,现状)。",
           "type": "boolean"
+        },
+        "totalPages": {
+          "description": "精确总页数规则(`render-dual-source`):对取页结果求值得「共 M 页」(翻页进度)。 `via:json` 对 API body 求值;`via:css`/`xpath` 对渲染 DOM 求值(需 `intercept_api` + `ready_for` 共存)。空 = 不返回总数。",
+          "anyOf": [
+            {
+              "$ref": "#/definitions/Rule"
+            },
+            {
+              "type": "null"
+            }
+          ]
         }
       },
       "additionalProperties": false
@@ -1014,6 +1036,20 @@
         "none"
       ]
     },
+    "PageBy": {
+      "description": "点击驱动翻页策略(`search-click-pagination`):URL 不认页码的 SPA(如番茄 search)翻页只能点 分页器「下一页」,不能靠 `{{page}}` 改 URL。配在可渲染 + 拦截(`render` + `interceptApi`)的 `Request` 上,`page > 1` 时引擎在**一张活页**内点 `click` 选择器 `page-1` 次翻到目标页。 用 `{ click: ... }` 形(留 `by` 扩展位、语义自描述),当前只 `click` 一支。",
+      "type": "object",
+      "required": [
+        "click"
+      ],
+      "properties": {
+        "click": {
+          "description": "「下一页」控件的 CSS 选择器(如番茄 `.byte-pagination .byte-pagination-item-icon:has(.byte-icon-right)`)。",
+          "type": "string"
+        }
+      },
+      "additionalProperties": false
+    },
     "PreStep": {
       "description": "前置请求链中的一步:一个请求 + 其响应上的有序命名捕获(见 design D7-bis)。 本步 url/headers/body 可引用更早步骤捕获的 `{{name}}`。显式列字段(**不**用 `#[serde(flatten)]` 内嵌 [`Request`]:`Rule` 为 untagged 兜底,flatten 会令 `deny_unknown_fields` 校验失效)。",
       "type": "object",
@@ -1105,6 +1141,17 @@
             }
           ]
         },
+        "hasMore": {
+          "description": "翻页边界规则(`list-has-more`):对取页结果求值「是否还有下一页」(非空且非 `false`/`0` → 有)。 源路由同 `total_pages`(按 `via`)。空 = 不提供边界(UI 不限制)。",
+          "anyOf": [
+            {
+              "$ref": "#/definitions/Rule"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
         "headers": {
           "default": {},
           "type": "object",
@@ -1113,7 +1160,7 @@
           }
         },
         "interceptApi": {
-          "description": "CDP 拦截:渲染时拦截 URL 含此子串的响应体作为取页结果(交 `via:\"json\"` 规则)。 用于「结果只在签名 API、DOM 无关键字段」的站点(典型:番茄搜索 `search_book/v1`)。",
+          "description": "CDP 拦截:渲染时拦截 URL 含此子串的响应体作为取页 body(交 `via:\"json\"` 规则)。 用于「结果只在签名 API、DOM 无关键字段」的站点(典型:番茄搜索 `search_book/v1`)。 可与 `ready_for` 共存(见上)。",
           "type": [
             "string",
             "null"
@@ -1127,8 +1174,19 @@
             }
           ]
         },
+        "pageBy": {
+          "description": "点击驱动翻页(`search-click-pagination`):URL 不认页码的 SPA(如番茄 search)靠点分页器 「下一页」递增页码。配 `render` + `interceptApi` 且 `page > 1` 时,引擎在一张活页内点 `pageBy.click` 选择器 `page-1` 次翻到目标页、拦该页 API 响应。空 = 现状(单拦截 / `{{page}}` URL 模板翻页),逐字节不变。",
+          "anyOf": [
+            {
+              "$ref": "#/definitions/PageBy"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
         "readyFor": {
-          "description": "渲染就绪等待:渲染后轮询直到该 CSS 选择器出现,再取渲染后 DOM 交 CSS 规则。 与 `interceptApi` 二选一:无 `interceptApi` 时用本字段走「渲染后 DOM」取页。",
+          "description": "渲染就绪等待选择器。两种用法: - **无 `interceptApi`**:渲染后轮询该选择器出现,取渲染后 DOM 交 CSS 规则(方式 A); - **与 `interceptApi` 共存**(`render-dual-source`):拦 API 取 body 之外,等该选择器出现后 另抓渲染 DOM,供 `via:css` 的 `totalPages` 等对 DOM 求值(如分页器总页数)。",
           "type": [
             "string",
             "null"
@@ -1137,6 +1195,17 @@
         "render": {
           "description": "渲染型取页(`render-fetcher`):为真则用受控浏览器渲染本请求 URL、跑站点自身 JS, 而非 reqwest 直取——用于 SPA 站点(结果由 JS 渲染 / 签名 API 返回)。默认 false = 现状。 仅 `browser` feature 且浏览器可用时生效;否则该 op 优雅降级。",
           "type": "boolean"
+        },
+        "totalPages": {
+          "description": "精确总页数规则(`render-dual-source`):对取页结果求值得「共 M 页」(search 翻页进度)。 `via:json` 对 API body 求值;`via:css`/`xpath` 对渲染 DOM 求值(需 `interceptApi` + `ready_for` 共存,抓到 DOM 才有源)。空 = 不返回总数(现状)。",
+          "anyOf": [
+            {
+              "$ref": "#/definitions/Rule"
+            },
+            {
+              "type": "null"
+            }
+          ]
         },
         "url": {
           "$ref": "#/definitions/UrlOrRule"

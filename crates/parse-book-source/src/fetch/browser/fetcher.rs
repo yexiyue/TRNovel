@@ -358,10 +358,14 @@ impl BrowserFetcher {
         Err(last_err.unwrap_or_else(|| FetchError::Browser("常驻浏览器开页反复失败".into())))
     }
 
-    /// 渲染 + CDP 拦截(方式 B PoC):打开 `url`,跑站点自身 JS(SPA 用 sec_sdk 自签名发请求),
-    /// 通过 CDP Network 域拦截 **URL 含 `api_contains`** 的响应体并返回(签名只在浏览器内用,我们只取结果)。
-    /// `headless=true` 走无头(更快、无窗口;登录之外的渲染适用,但需实测 sec_sdk 是否拒签无头)。
-    /// 复用登录过的 profile,故拦截到的是会员态结果。
+    /// 渲染 + CDP 拦截取页(`render-fetcher` / `render-dual-source` / `search-click-pagination` 统一入口):
+    /// 从常驻池开一张空白 `Page`(用完关 Page 留 Browser)渲染 `url`、跑站点自身 JS(SPA 自签名发请求),
+    /// 拦 **URL 含 `api_contains`** 的响应体返回(签名只在浏览器内用,我们只取结果)。
+    /// - `dom_ready` 有值(`render-dual-source`):拦完 API 再等就绪闸、另抓渲染 DOM 一并返回(供 via:css 规则)。
+    /// - `paging` 有值 `(target_page, next_selector)`(`search-click-pagination`):URL 不认页码的 SPA
+    ///   (如番茄 search)从首页点 `next_selector` 翻到第 `target_page` 页;`None` = 单页(现状)。
+    ///
+    /// `headless=true` 走无头(更快、无窗口);复用登录过的 profile,故拦到的是会员态结果。
     pub async fn render_intercept(
         &self,
         url: &str,
@@ -369,44 +373,28 @@ impl BrowserFetcher {
         timeout: Duration,
         headless: bool,
         dom_ready: Option<&str>,
+        paging: Option<(u32, &str)>,
     ) -> Result<(String, Option<String>), FetchError> {
-        // 渲染走进程级常驻池(同 render_dom):从池开新空白 Page,拦截完关 Page 留 Browser。
-        // `dom_ready` 有值(render-dual-source)时,拦完 API 再等就绪闸、另抓渲染 DOM 一并返回。
         self.with_pool_page("about:blank", headless, async |page| {
-            Self::intercept_page(page, url, api_contains, timeout, dom_ready).await
+            Self::intercept(page, url, api_contains, timeout, dom_ready, paging).await
         })
         .await
     }
 
-    /// 拦截取页 +(可选)渲染 DOM(`render-dual-source`):先 `intercept_body` 拦到 API body;
-    /// `dom_ready` 有值时,等该选择器出现(尽力——超时也抓当前 DOM)再抓 `outerHTML` 一并返回。
-    async fn intercept_page(
+    /// 拦截取页核心(单页 / 点击翻页统一):池开好的空白 `page` 上开 Network + 挂监听(`responseReceived`
+    /// 拿 request_id;`loadingFinished` 是 body 完成的精确事件信号),**先挂再 `goto`**——避免错过 SPA 启动即
+    /// 发的请求;两个事件流**跨整个点击循环持有**,自然只认「本次 goto/点击之后到达」的响应。流程:
+    /// goto → 拦首页 API(软封锁空 body → reload-once,D5)→ `paging` 有值则点 `next_selector` 翻到
+    /// `target_page`(每页按 `page_index` 对齐,排除 reload 残留 0)→ `dom_ready` 有值则抓落定后 DOM。
+    /// 返回 (第 `target_page` 页 body, 可选渲染 DOM)。
+    async fn intercept(
         page: &Page,
         url: &str,
         api_contains: &str,
         timeout: Duration,
         dom_ready: Option<&str>,
+        paging: Option<(u32, &str)>,
     ) -> Result<(String, Option<String>), FetchError> {
-        let body = Self::intercept_body(page, url, api_contains, timeout).await?;
-        let dom = match dom_ready {
-            Some(sel) => {
-                let _ = Self::wait_ready(page, sel, timeout).await; // 就绪闸尽力等;超时仍抓当前 DOM
-                Self::outer_html(page).await.ok()
-            }
-            None => None,
-        };
-        Ok((body, dom))
-    }
-
-    /// CDP 拦截取页核心:在池开好的空白 `page` 上开 Network + 挂监听(`responseReceived` 拿
-    /// request_id;`loadingFinished` 是 body 完成的精确事件信号),**再** `goto(url)`,
-    /// 避免错过 SPA 启动即发的请求;拦到 URL 含 `api_contains` 的响应体并返回。
-    async fn intercept_body(
-        page: &Page,
-        url: &str,
-        api_contains: &str,
-        timeout: Duration,
-    ) -> Result<String, FetchError> {
         use chromiumoxide::cdp::browser_protocol::network::{
             EnableParams, EventLoadingFinished, EventResponseReceived,
         };
@@ -421,10 +409,104 @@ impl BrowserFetcher {
             .event_listener::<EventLoadingFinished>()
             .await
             .map_err(browser_err)?;
-        page.goto(url).await.map_err(browser_err)?;
 
+        // 首页:点击翻页按 page_index=0 对齐;单页不约束(None)。软封锁(空 body)→ reload 一次重试。
+        let first_idx = paging.map(|_| 0);
+        page.goto(url).await.map_err(browser_err)?;
+        let mut body = Self::wait_matching_body(
+            page,
+            &mut responses,
+            &mut finished,
+            api_contains,
+            timeout,
+            first_idx,
+        )
+        .await?;
+        if body.trim().is_empty() {
+            page.goto(url).await.map_err(browser_err)?;
+            body = Self::wait_matching_body(
+                page,
+                &mut responses,
+                &mut finished,
+                api_contains,
+                timeout,
+                first_idx,
+            )
+            .await?;
+        }
+
+        // 点击翻页:逐页点「下一页」翻到 target_page,每页按 page_index = human_page-1 对齐拦响应。
+        // 控件禁用/缺失(AtEnd)= 真到头(page 超过总页数)→ 收尾返回当前(末)页;点击未令页前进
+        //(拥塞/未生效)→ 重试一次(spec SHALL),重试耗尽仍未达目标页 → **报错**(交上层整页重试/降级),
+        // **不静默把更早的页当成第 N 页返回**(重试若致过度翻页则 page_index 对不上 → 同样 Err)。
+        if let Some((target_page, next_selector)) = paging {
+            const CLICK_RETRY: u32 = 2; // 总尝试次数 = 1 次 + 1 重试
+            'pages: for human_page in 2..=target_page {
+                for attempt in 0..CLICK_RETRY {
+                    match Self::click_next(page, next_selector).await? {
+                        ClickOutcome::AtEnd => break 'pages,
+                        ClickOutcome::Clicked => {}
+                    }
+                    match Self::wait_matching_body(
+                        page,
+                        &mut responses,
+                        &mut finished,
+                        api_contains,
+                        timeout,
+                        Some(human_page - 1),
+                    )
+                    .await
+                    {
+                        Ok(b) => {
+                            body = b;
+                            continue 'pages; // 该页到手,翻下一页
+                        }
+                        Err(e) if attempt + 1 >= CLICK_RETRY => return Err(e),
+                        Err(_) => {} // 重试:重新滚动入视 + 重派点击
+                    }
+                }
+            }
+        }
+
+        // 渲染 DOM(`render-dual-source`):抓 outerHTML 前对就绪闸重等一次。注:番茄场景 dom_ready
+        // (`.byte-pagination`)从第 1 页起就在,故此 wait_ready 即时返回(非「等到第 N 页」屏障)——
+        // 对番茄安全,因 totalPages 取末数字项(总页数各页恒定、与 active 页无关)。若未来书源的 DOM
+        // 规则依赖 active 页,需改为 poll `.byte-pagination-item-active`==目标页。
+        let dom = match dom_ready {
+            Some(sel) => {
+                let _ = Self::wait_ready(page, sel, timeout).await;
+                Self::outer_html(page).await.ok()
+            }
+            None => None,
+        };
+        Ok((body, dom))
+    }
+
+    /// 在已布设监听的页上等「下一个匹配响应」的 body([`BrowserFetcher::intercept`] 首页取页与逐页
+    /// 点击共用)。匹配 = URL 含 `api_contains`;`expect_idx` 有值时还要求 URL 的 `page_index`
+    /// 等于它(点击翻页**按目标页对齐**,排除 reload 残留的 `page_index=0`;URL 无该参数则不约束)。
+    /// 监听流跨调用持有 → 自然只认「本次调用(点击/导航)之后到达」的响应。先试取 body,否则等该
+    /// request 的 `loadingFinished`(body 完成的精确信号)再取,避免取到半截/空 body。
+    /// **返回约定**:匹配到响应且 body 非空 → `Ok(body)`;匹配到但 body 空(软封锁,HTTP 200 空 body)
+    /// → `Ok("")`(交调用方 reload-once 兜底,D5);**完全没匹配到**响应 → `Err`(真没发出 / 被风控)。
+    async fn wait_matching_body<R, F>(
+        page: &Page,
+        responses: &mut R,
+        finished: &mut F,
+        api_contains: &str,
+        timeout: Duration,
+        expect_idx: Option<u32>,
+    ) -> Result<String, FetchError>
+    where
+        R: futures_util::Stream<
+                Item = Arc<chromiumoxide::cdp::browser_protocol::network::EventResponseReceived>,
+            > + Unpin,
+        F: futures_util::Stream<
+                Item = Arc<chromiumoxide::cdp::browser_protocol::network::EventLoadingFinished>,
+            > + Unpin,
+    {
         let deadline = Instant::now() + timeout;
-        // ① 事件驱动:等到 URL 含 api_contains 的 responseReceived,拿其 request_id。
+        // ① 等匹配的 responseReceived,拿 request_id(api 子串 + 可选 page_index 对齐)。
         let mut rid = None;
         while rid.is_none() {
             let remaining = deadline.saturating_duration_since(Instant::now());
@@ -432,7 +514,12 @@ impl BrowserFetcher {
                 break;
             }
             match tokio::time::timeout(remaining, responses.next()).await {
-                Ok(Some(ev)) if ev.response.url.contains(api_contains) => {
+                Ok(Some(ev))
+                    if ev.response.url.contains(api_contains)
+                        && expect_idx.is_none_or(|exp| {
+                            url_page_index(&ev.response.url).is_none_or(|got| got == exp)
+                        }) =>
+                {
                     rid = Some(ev.request_id.clone());
                 }
                 Ok(Some(_)) => {}           // 其它响应,继续
@@ -441,12 +528,13 @@ impl BrowserFetcher {
         }
         let Some(rid) = rid else {
             return Err(FetchError::Challenged(format!(
-                "未拦截到含「{api_contains}」的响应(疑似未发出/被风控)@ {url}"
+                "未拦截到含「{api_contains}」{}的响应(疑似未发出/被风控)",
+                expect_idx
+                    .map(|i| format!("(page_index={i})"))
+                    .unwrap_or_default()
             )));
         };
-
-        // ② 先试取一次(快响应 body 可能已就绪);否则**等该 request 的 loadingFinished**
-        //    (body 完成的事件信号,不靠定时器轮询)再取,避免取到半截/空 body。
+        // ② 先试取一次,否则等该 request 的 loadingFinished(body 完成事件)再取。
         if let Some(body) = response_body(page, &rid).await {
             return Ok(body);
         }
@@ -466,10 +554,67 @@ impl BrowserFetcher {
                 Ok(None) | Err(_) => break, // 流结束 / 超时
             }
         }
-        Err(FetchError::Challenged(format!(
-            "拦截到含「{api_contains}」的响应但读取 body 失败/为空 @ {url}"
-        )))
+        // 匹配到了响应(rid 有值),但 loadingFinished 后 body 仍为空 → 返回**空串(非 Err)**:
+        // 这正是软封锁的精确信号(HTTP 200 空 body),交调用方 `if body.is_empty()` 触发 reload-once
+        // 兜底(D5)。区别于上面「没匹配到任何响应」的 Err(那才是真没发出 / 被风控)。response_body
+        // 对空 body 返回 None,若这里也返回 Err 会让 `.await?` 短路、reload 守卫成死代码。
+        Ok(String::new())
     }
+
+    /// 在已加载页上点「下一页」(`next_selector`):滚动入视 + 派发真实 `MouseEvent`(实测离屏
+    /// CLI 单击无效、需真事件才触发站点 React 翻页);控件缺失 / 带 `disabled`(或 `aria-disabled`)
+    /// → 到头(D6 结构快路,兼与「点击失败/拥塞」消歧)。返回是否实际点了。`{:?}` 把选择器转义为
+    /// 安全 JS 字符串字面量。
+    async fn click_next(page: &Page, next_selector: &str) -> Result<ClickOutcome, FetchError> {
+        use chromiumoxide::cdp::js_protocol::runtime::EvaluateParams;
+        let js = format!(
+            "(function(){{const el=document.querySelector({next_selector:?});\
+             if(!el)return 'missing';\
+             if(el.classList.contains('disabled')||el.getAttribute('aria-disabled')==='true')return 'disabled';\
+             el.scrollIntoView({{block:'center',inline:'center'}});\
+             ['mousedown','mouseup','click'].forEach(t=>el.dispatchEvent(\
+               new MouseEvent(t,{{bubbles:true,cancelable:true,view:window}})));\
+             return 'clicked';}})()"
+        );
+        let params = EvaluateParams::builder()
+            .expression(js)
+            .return_by_value(true)
+            .build()
+            .map_err(|e| FetchError::Browser(format!("构建 evaluate 参数失败: {e}")))?;
+        let state = page
+            .evaluate(params)
+            .await
+            .map_err(browser_err)?
+            .into_value::<String>()
+            .unwrap_or_default();
+        Ok(if state == "clicked" {
+            ClickOutcome::Clicked
+        } else {
+            ClickOutcome::AtEnd // missing / disabled / 取值失败 → 到头
+        })
+    }
+}
+
+/// 点「下一页」的结果:实际点了(等待翻页)/ 到头(控件缺失或禁用,停止翻页)。
+enum ClickOutcome {
+    Clicked,
+    AtEnd,
+}
+
+/// 从响应 URL 解析 `page_index=N` 的 N(点击翻页**按目标页对齐**、排除 reload 残留 `page_index=0`);
+/// 无该参数 / 值非数字 → `None`(调用方据「点击后下一个匹配响应」兜底,保通用)。
+/// 按 `&` 切 query 后**精确匹配** key `page_index`,避免 `item_page_index=9` 等诱饵子串误命中。
+fn url_page_index(url: &str) -> Option<u32> {
+    let query = url.split_once('?')?.1;
+    let value = query
+        .split('&')
+        .find_map(|kv| kv.strip_prefix("page_index="))?;
+    value
+        .chars()
+        .take_while(char::is_ascii_digit)
+        .collect::<String>()
+        .parse()
+        .ok()
 }
 
 /// 取一个请求的响应体并按 CDP `base64_encoded` 标志解码;取不到/为空/解码失败返回 `None`。
@@ -684,4 +829,34 @@ async fn challenge_visible(page: &Page) -> bool {
         .ok()
         .and_then(|v| v.into_value::<bool>().ok())
         .unwrap_or(false)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::url_page_index;
+
+    // page_index 解析:按 `&` 切 query 精确匹配 key,诱饵子串不误命中(点击翻页相关性的基石)。
+    #[test]
+    fn url_page_index_parses_exact_key() {
+        // 番茄实际形态:page_index 在中段。
+        assert_eq!(
+            url_page_index(
+                "https://x/api/author/search/search_book/v1?filter=127&page_count=10&page_index=2&query_word=k"
+            ),
+            Some(2)
+        );
+        // 首参。
+        assert_eq!(url_page_index("https://x/api?page_index=0&a=1"), Some(0));
+        // 诱饵 key(以 page_index 结尾的别的参数)在前 → 不误命中,取真 key。
+        assert_eq!(
+            url_page_index("https://x/api?item_page_index=9&page_index=3"),
+            Some(3)
+        );
+        // 无 page_index 参数 → None(调用方兜底为「点击后下一个匹配响应」)。
+        assert_eq!(url_page_index("https://x/api?page=2&offset=10"), None);
+        // 无 query。
+        assert_eq!(url_page_index("https://x/api/search_book/v1"), None);
+        // 空值 → None。
+        assert_eq!(url_page_index("https://x/api?page_index=&foo=1"), None);
+    }
 }

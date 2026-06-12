@@ -848,3 +848,182 @@ async fn has_more_true_and_none() {
         "未配 hasMore → None"
     );
 }
+
+// ───────────── search-click-pagination:点击翻页路由(引擎透传 page + pageBy) ─────────────
+
+/// 记录最近一次取页请求的 `page` / `page_by` 的替身:验证 `search` 是否把点击翻页信息透传进
+/// `FetchRequest`。真点击循环在 `EscalatingFetcher` + 真浏览器里(单测/沙箱跑不了),这里只验证
+/// 引擎接线把 `pageBy.click` + 目标 `page` 灌进了请求(对应 design/tasks 的「替身验证」)。
+struct PageByProbe {
+    body: String,
+    last_page: Arc<Mutex<Option<u32>>>,
+    last_page_by: Arc<Mutex<Option<String>>>,
+}
+#[async_trait]
+impl Fetcher for PageByProbe {
+    async fn fetch(&self, req: FetchRequest) -> std::result::Result<String, FetchError> {
+        *self.last_page.lock().unwrap() = Some(req.page);
+        *self.last_page_by.lock().unwrap() = req.page_by.clone();
+        Ok(self.body.clone())
+    }
+}
+
+/// search 书源:`request` 可注入 render/interceptApi/pageBy(`extra`,以 `,` 起头)。
+fn search_source(extra: &str) -> BookSource {
+    let json = format!(
+        r#"{{
+          "schema":"trnovel-booksource/v2","name":"t","url":"https://x",
+          "search":{{
+            "request":{{"url":{{"template":"{{{{base}}}}/search/{{{{key}}}}"}}{extra}}},
+            "list":{{"via":"css","select":".item"}},
+            "item":{{"name":{{"via":"css","select":".t","extract":"text"}}}}
+          }},
+          "bookInfo":{{}},
+          "toc":{{"list":{{"via":"css","select":"a"}},"name":{{"via":"css","select":"a"}},"url":{{"via":"css","select":"a","extract":{{"attr":"href"}}}}}},
+          "content":{{"value":{{"via":"css","select":".c"}}}}
+        }}"#
+    );
+    BookSource::from_json(&json).unwrap()
+}
+
+// ① search 配 pageBy + render + interceptApi,page=3 → 请求带 page=3 + page_by(选择器)。
+#[tokio::test]
+async fn search_click_pagination_threads_page_and_selector() {
+    let src = search_source(
+        r#","render":true,"interceptApi":"search_book/v1","pageBy":{"click":".next"}"#,
+    );
+    let last_page = Arc::new(Mutex::new(None));
+    let last_page_by = Arc::new(Mutex::new(None));
+    let fetcher = Arc::new(PageByProbe {
+        body: r#"<div class="item"><span class="t">书</span></div>"#.to_string(),
+        last_page: last_page.clone(),
+        last_page_by: last_page_by.clone(),
+    });
+    let engine = Engine::with_fetcher(src, fetcher);
+    let items = engine.search("k", 3, 10).await.unwrap().items;
+    assert_eq!(items.len(), 1);
+    assert_eq!(
+        *last_page.lock().unwrap(),
+        Some(3),
+        "应把目标页 page=3 透传进请求(供 escalating 点 page-1 次)"
+    );
+    assert_eq!(
+        last_page_by.lock().unwrap().as_deref(),
+        Some(".next"),
+        "应把 pageBy.click 选择器透传进请求"
+    );
+}
+
+// ② search 未配 pageBy → 请求 page_by==None(走现状单拦截 / {{page}} URL 模板,逐字节兼容)。
+#[tokio::test]
+async fn search_without_page_by_has_no_selector() {
+    let src = search_source(r#","render":true,"interceptApi":"search_book/v1""#);
+    let last_page = Arc::new(Mutex::new(None));
+    let last_page_by = Arc::new(Mutex::new(None));
+    let fetcher = Arc::new(PageByProbe {
+        body: r#"<div class="item"><span class="t">书</span></div>"#.to_string(),
+        last_page: last_page.clone(),
+        last_page_by: last_page_by.clone(),
+    });
+    let engine = Engine::with_fetcher(src, fetcher);
+    let _ = engine.search("k", 2, 10).await.unwrap();
+    assert_eq!(*last_page.lock().unwrap(), Some(2));
+    assert_eq!(
+        *last_page_by.lock().unwrap(),
+        None,
+        "未配 pageBy → 请求不带选择器(现状单拦截)"
+    );
+}
+
+// ③ 落地校验:仓库内的 fanqie-web.v2.json 能解析(deny_unknown_fields 下 pageBy 被识别),
+// 且 search.request 带上了点击翻页选择器。文件在 workspace 根(非本 crate),打包场景缺失则跳过。
+#[test]
+fn fanqie_search_config_has_page_by() {
+    let path = concat!(env!("CARGO_MANIFEST_DIR"), "/../../fanqie-web.v2.json");
+    let Ok(json) = std::fs::read_to_string(path) else {
+        eprintln!("跳过:未找到 {path}(打包/隔离构建场景)");
+        return;
+    };
+    let src =
+        BookSource::from_json(&json).expect("fanqie-web.v2.json 应能解析(pageBy 已是已知字段)");
+    let pb = src
+        .search
+        .as_ref()
+        .expect("应有 search")
+        .request
+        .page_by
+        .as_ref()
+        .expect("search.request 应配 pageBy(点击翻页)");
+    assert!(
+        pb.click.contains("byte-icon-right"),
+        "pageBy.click 应是番茄 NEXT 选择器: {}",
+        pb.click
+    );
+}
+
+// ───────────── search-click-pagination 后续:渲染结果缓存(回翻/重访免重点击) ─────────────
+
+/// 计数取页替身:每次 `fetch` 计一次,返回固定 body(验证缓存命中时不再取页)。
+struct CountingFetcher {
+    body: String,
+    calls: Arc<Mutex<u32>>,
+}
+#[async_trait]
+impl Fetcher for CountingFetcher {
+    async fn fetch(&self, _req: FetchRequest) -> std::result::Result<String, FetchError> {
+        *self.calls.lock().unwrap() += 1;
+        Ok(self.body.clone())
+    }
+}
+
+fn counting(body: &str) -> (Arc<CountingFetcher>, Arc<Mutex<u32>>) {
+    let calls = Arc::new(Mutex::new(0));
+    (
+        Arc::new(CountingFetcher {
+            body: body.to_string(),
+            calls: calls.clone(),
+        }),
+        calls,
+    )
+}
+
+// ① render 搜索:同 (词,页) 第二次命中缓存、不再取页;不同页重新取。
+#[tokio::test]
+async fn render_search_result_is_cached_per_page() {
+    let src = search_source(
+        r#","render":true,"interceptApi":"search_book/v1","pageBy":{"click":".next"}"#,
+    );
+    let (fetcher, calls) = counting(r#"<div class="item"><span class="t">书</span></div>"#);
+    let engine = Engine::with_fetcher(src, fetcher);
+
+    let a = engine.search("k", 2, 10).await.unwrap();
+    let b = engine.search("k", 2, 10).await.unwrap(); // 同页 → 缓存命中
+    assert_eq!(
+        *calls.lock().unwrap(),
+        1,
+        "同 (词,页) 第二次应命中缓存,不再取页"
+    );
+    assert_eq!(a.items, b.items, "缓存结果应与首次一致");
+
+    let _ = engine.search("k", 3, 10).await.unwrap(); // 不同页 → 取页
+    assert_eq!(*calls.lock().unwrap(), 2, "不同页应重新取页");
+
+    let _ = engine.search("other", 2, 10).await.unwrap(); // 不同词 → 取页
+    assert_eq!(*calls.lock().unwrap(), 3, "不同词应重新取页");
+}
+
+// ② reqwest 搜索(无 render)不缓存:每次都取页(保持现状副作用语义)。
+#[tokio::test]
+async fn reqwest_search_is_not_cached() {
+    let src = search_source(""); // 无 render
+    let (fetcher, calls) = counting(r#"<div class="item"><span class="t">书</span></div>"#);
+    let engine = Engine::with_fetcher(src, fetcher);
+
+    let _ = engine.search("k", 1, 10).await.unwrap();
+    let _ = engine.search("k", 1, 10).await.unwrap();
+    assert_eq!(
+        *calls.lock().unwrap(),
+        2,
+        "非 render 搜索不缓存,两次都应取页"
+    );
+}
