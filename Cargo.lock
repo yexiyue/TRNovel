@@ -3854,6 +3854,8 @@ dependencies = [
 [[package]]
 name = "ratatui-kit"
 version = "0.7.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "60b4a9c30a6f2156e0e2dc1882b0f7b68b7513e4a98ac25bdf6a80fbd0148c51"
 dependencies = [
  "any_key",
  "crossterm 0.29.0",
@@ -3871,6 +3873,8 @@ dependencies = [
 [[package]]
 name = "ratatui-kit-macros"
 version = "0.6.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "4a511f2edcdb49972b88d32aca5a8385cce30e64694e0a906008dbc1763a9f79"
 dependencies = [
  "proc-macro2",
  "quote",

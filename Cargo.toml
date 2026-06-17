@@ -46,10 +46,7 @@ thiserror = { workspace = true }
 tokio = { workspace = true }
 futures = { workspace = true }
 dirs = { workspace = true }
-# 临时:本地 path 调试 ratatui-kit 的两处修复(element! 子节点位宏调用 / widget() 收按值 widget),
-# 对应本地 ratatui-kit 0.7.1。version 兜底让有 0.7.1 缓存的环境可解析;待 0.7.1 发布到 crates.io 后,
-# 删掉 `path = ...`、只留 `version = "0.7.1"` 即可。
-ratatui-kit = { path = "../ratatui-kit/crates/ratatui-kit", version = "0.7.1", features = ["full"] }
+ratatui-kit = { version = "0.7.1", features = ["full"] }
 textwrap = { version = "0.16.2" }
 novel-tts = { path = "crates/novel-tts", version = "0.3.0" }
 strum = { version = "0.28", features = ["derive"] }
