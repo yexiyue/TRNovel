@@ -1,4 +1,4 @@
-use crate::{TTSConfig, ThemeConfig, components::Loading, hooks::UseScrollbar};
+use crate::{TTSConfig, components::Loading, hooks::UseScrollbar};
 use crossterm::event::{Event, KeyCode, KeyEventKind};
 use novel_tts::utils::TextSegment;
 use ratatui::{
@@ -29,12 +29,14 @@ pub fn ReadContent(
     props: &mut ReadContentProps,
     mut hooks: Hooks,
 ) -> impl Into<AnyElement<'static>> {
-    let theme_config = *hooks.use_context::<State<ThemeConfig>>();
+    // 主题 / TTS 模型句柄已迁为全局 atom(state.rs);此处用 use_atom 订阅(原 use_context 的
+    // ThemeConfig/NovelTTS provider 已删,继续 use_context 会运行期 panic)。tts_config 仍走 context。
+    let theme_config = hooks.use_atom(&crate::state::THEME);
     let theme = theme_config.read().clone();
     let mut is_listening = hooks.use_state(|| false);
     let mut highlight_range = hooks.use_state(|| None::<TextSegment>);
     let tts_config = *hooks.use_context::<State<TTSConfig>>();
-    let novel_tts = *hooks.use_context::<State<Option<novel_tts::NovelTTS>>>();
+    let novel_tts = hooks.use_atom(&crate::state::NOVEL_TTS);
     let mut chapter_tts = hooks.use_state(|| None::<novel_tts::ChapterTTS>);
     let mut player = hooks.use_state(|| None::<novel_tts::Player>);
     let mut is_listening_done = hooks.use_state(|| false);
@@ -171,7 +173,7 @@ pub fn ReadContent(
         (
             is_listening.get(),
             highlight_range.read().clone(),
-            &props.content.clone(),
+            props.content.clone(),
             props.width,
         ),
     );
@@ -198,94 +200,107 @@ pub fn ReadContent(
     hooks.use_scrollbar(line_count, Some(current_line));
 
     let props_content = props.content.clone();
-    hooks.use_events(move |event| {
-        if let Event::Key(key) = event
-            && key.kind == KeyEventKind::Press
-            && is_scroll
-        {
-            match key.code {
-                KeyCode::Up | KeyCode::Char('k') => {
-                    if current_line > 0 {
-                        current_line -= 1;
-                        line_percent.set((current_line as f64) / (line_count as f64));
-                    } else {
-                        on_prev(true);
-                    }
+    hooks.use_event_handler(EventScope::Current, EventPriority::Normal, move |event| {
+        let Event::Key(key) = event else {
+            return EventResult::Ignored;
+        };
+        if key.kind != KeyEventKind::Press || !is_scroll {
+            return EventResult::Ignored;
+        }
+        match key.code {
+            KeyCode::Up | KeyCode::Char('k') => {
+                if current_line > 0 {
+                    current_line -= 1;
+                    line_percent.set((current_line as f64) / (line_count as f64));
+                } else {
+                    on_prev(true);
                 }
-                KeyCode::Down | KeyCode::Char('j') => {
-                    if current_line < line_count {
-                        current_line += 1;
-                        line_percent.set((current_line as f64) / (line_count as f64));
-                    } else {
-                        on_next(());
-                    }
-                }
-                KeyCode::Left | KeyCode::Char('h') => {
-                    on_prev(false);
-                }
-                KeyCode::Right | KeyCode::Char('l') => {
+                EventResult::Consumed
+            }
+            KeyCode::Down | KeyCode::Char('j') => {
+                if current_line < line_count {
+                    current_line += 1;
+                    line_percent.set((current_line as f64) / (line_count as f64));
+                } else {
                     on_next(());
                 }
-                KeyCode::PageUp => {
-                    current_line = current_line.saturating_sub(5);
-                    line_percent.set((current_line as f64) / (line_count as f64));
-                }
-                KeyCode::PageDown => {
-                    current_line = (current_line + 5).min(line_count);
-                    line_percent.set((current_line as f64) / (line_count as f64));
-                }
-                KeyCode::Home => {
-                    line_percent.set(0.0);
-                }
-                KeyCode::End => {
-                    line_percent.set(1.0);
-                }
-                KeyCode::Char('+') => {
-                    tts_config.write().increase_volume();
-                }
-                KeyCode::Char('-') => {
-                    tts_config.write().decrease_volume();
-                }
-                KeyCode::Char('p') => {
-                    if let Some(player) = player.read().as_ref() {
-                        if is_listening.get() {
-                            player.pause();
-                            is_listening.set(false);
-                        } else {
-                            player.play();
-                            is_listening.set(true);
-                        }
-                    } else if let Some(tts) = novel_tts.read().as_ref() {
-                        let mut chapter = tts.chapter_tts(&props_content);
-                        let (queue_output, mut receiver) =
-                            chapter.stream(tts_config.read().voice.into(), |e| {
-                                eprintln!("{e:?}");
-                            });
-
-                        let texts = chapter.texts.clone();
-                        tokio::spawn(async move {
-                            while let Some(index) = receiver.recv().await {
-                                if let Some(index) = index {
-                                    highlight_range.set(Some(texts[index].clone()));
-                                } else {
-                                    is_listening_done.set(true);
-                                }
-                            }
-                        });
-                        let p = tts.player(queue_output);
-                        p.set_speed(tts_config.read().speed);
-                        p.set_volume(tts_config.read().volume);
-                        is_listening.set(true);
-                        player.set(Some(p));
-                        chapter_tts.set(Some(chapter));
-                    }
-                }
-                KeyCode::Char('v') => {
-                    theme_config.write().novel.show_title = theme.novel.show_title.not();
-                    let _ = theme_config.write().save();
-                }
-                _ => {}
+                EventResult::Consumed
             }
+            KeyCode::Left | KeyCode::Char('h') => {
+                on_prev(false);
+                EventResult::Consumed
+            }
+            KeyCode::Right | KeyCode::Char('l') => {
+                on_next(());
+                EventResult::Consumed
+            }
+            KeyCode::PageUp => {
+                current_line = current_line.saturating_sub(5);
+                line_percent.set((current_line as f64) / (line_count as f64));
+                EventResult::Consumed
+            }
+            KeyCode::PageDown => {
+                current_line = (current_line + 5).min(line_count);
+                line_percent.set((current_line as f64) / (line_count as f64));
+                EventResult::Consumed
+            }
+            KeyCode::Home => {
+                line_percent.set(0.0);
+                EventResult::Consumed
+            }
+            KeyCode::End => {
+                line_percent.set(1.0);
+                EventResult::Consumed
+            }
+            KeyCode::Char('+') => {
+                tts_config.write().increase_volume();
+                EventResult::Consumed
+            }
+            KeyCode::Char('-') => {
+                tts_config.write().decrease_volume();
+                EventResult::Consumed
+            }
+            KeyCode::Char('p') => {
+                if let Some(player) = player.read().as_ref() {
+                    if is_listening.get() {
+                        player.pause();
+                        is_listening.set(false);
+                    } else {
+                        player.play();
+                        is_listening.set(true);
+                    }
+                } else if let Some(tts) = novel_tts.read().as_ref() {
+                    let mut chapter = tts.chapter_tts(&props_content);
+                    let (queue_output, mut receiver) =
+                        chapter.stream(tts_config.read().voice.into(), |e| {
+                            eprintln!("{e:?}");
+                        });
+
+                    let texts = chapter.texts.clone();
+                    tokio::spawn(async move {
+                        while let Some(index) = receiver.recv().await {
+                            if let Some(index) = index {
+                                highlight_range.set(Some(texts[index].clone()));
+                            } else {
+                                is_listening_done.set(true);
+                            }
+                        }
+                    });
+                    let p = tts.player(queue_output);
+                    p.set_speed(tts_config.read().speed);
+                    p.set_volume(tts_config.read().volume);
+                    is_listening.set(true);
+                    player.set(Some(p));
+                    chapter_tts.set(Some(chapter));
+                }
+                EventResult::Consumed
+            }
+            KeyCode::Char('v') => {
+                theme_config.write().novel.show_title = theme.novel.show_title.not();
+                let _ = theme_config.write().save();
+                EventResult::Consumed
+            }
+            _ => EventResult::Ignored,
         }
     });
 
@@ -313,7 +328,7 @@ pub fn ReadContent(
             None
         },
     ){
-        #(if props.is_loading {
+        { if props.is_loading {
             element!(Loading(tip:"加载内容中...")).into_any()
         }else{
             element!(Text(
@@ -321,15 +336,15 @@ pub fn ReadContent(
                 style:theme.basic.text,
                 scroll: (current_line as u16,0))
             ).into_any()
-        })
+        } }
         View(
             flex_direction: Direction::Horizontal,
             justify_content: Flex::SpaceBetween,
             height: Constraint::Length(1),
             margin: Margin::new(1,0),
         ){
-            $Line::from(format!("{current_line}/{line_count} 行")).style(theme.novel.page)
-            $Line::from(format!("{:.2}% {}",props.chapter_percent, current_time.read().clone())).style(theme.novel.progress).right_aligned()
+            widget(Line::from(format!("{current_line}/{line_count} 行")).style(theme.novel.page))
+            widget(Line::from(format!("{:.2}% {}",props.chapter_percent, current_time.read().clone())).style(theme.novel.progress).right_aligned())
         }
     })
 }

@@ -1,5 +1,5 @@
 use ratatui_kit::{Hooks, UseEffect, UseState};
-use std::{hash::Hash, time::Duration};
+use std::time::Duration;
 
 /// 防抖选项配置结构体
 ///
@@ -59,14 +59,14 @@ pub trait UseDebounceEffect {
     fn use_debounce_effect<F, D>(&mut self, callback: F, deps: D, options: DebounceOptions)
     where
         F: FnMut() + Send + 'static,
-        D: Hash;
+        D: PartialEq + Unpin + 'static;
 }
 
 impl UseDebounceEffect for Hooks<'_, '_> {
     fn use_debounce_effect<F, D>(&mut self, mut callback: F, deps: D, options: DebounceOptions)
     where
         F: FnMut() + Send + 'static,
-        D: Hash,
+        D: PartialEq + Unpin + 'static,
     {
         // 跟踪是否已经执行过 leading 回调
         let mut has_leading = self.use_state(|| false);

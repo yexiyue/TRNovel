@@ -72,28 +72,32 @@ where
 
     hooks.use_scrollbar(list.len(), state.read().selected());
 
-    hooks.use_events({
+    hooks.use_event_handler(EventScope::Current, EventPriority::Normal, {
         let items = props.items.clone();
         let is_editing = props.is_editing;
         move |event| {
-            if let Event::Key(key) = event
-                && key.kind == KeyEventKind::Press
-                && is_editing
-            {
-                match key.code {
-                    KeyCode::Char('j') | KeyCode::Down => {
-                        state.write().select_next();
-                    }
-                    KeyCode::Char('k') | KeyCode::Up => {
-                        state.write().select_previous();
-                    }
-                    KeyCode::Enter => {
-                        if let Some(index) = state.read().selected() {
-                            on_select(items[index].clone());
-                        }
-                    }
-                    _ => {}
+            let Event::Key(key) = event else {
+                return EventResult::Ignored;
+            };
+            if key.kind != KeyEventKind::Press || !is_editing {
+                return EventResult::Ignored;
+            }
+            match key.code {
+                KeyCode::Char('j') | KeyCode::Down => {
+                    state.write().select_next();
+                    EventResult::Consumed
                 }
+                KeyCode::Char('k') | KeyCode::Up => {
+                    state.write().select_previous();
+                    EventResult::Consumed
+                }
+                KeyCode::Enter => {
+                    if let Some(index) = state.read().selected() {
+                        on_select(items[index].clone());
+                    }
+                    EventResult::Consumed
+                }
+                _ => EventResult::Ignored,
             }
         }
     });
@@ -125,6 +129,6 @@ where
         top_title:props.top_title.clone(),
         bottom_title:props.bottom_title.clone()
     ){
-        $(list,state)
+        stateful(list, state)
     })
 }

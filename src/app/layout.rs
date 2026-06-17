@@ -4,8 +4,8 @@ use crate::{
 };
 use crossterm::event::{Event, KeyCode, KeyEventKind};
 use ratatui_kit::{
-    AnyElement, Hooks, State, UseContext, UseEffect, UseEvents, UseExit, UseRouter, component,
-    element,
+    AnyElement, EventPriority, EventResult, EventScope, Hooks, State, UseContext, UseEffect,
+    UseEventHandler, UseExit, UseRouter, component, element,
     prelude::{Fragment, Outlet},
 };
 use std::path::PathBuf;
@@ -16,7 +16,6 @@ pub fn Layout(mut hooks: Hooks) -> impl Into<AnyElement<'static>> {
     let mut exit = hooks.use_exit();
     let params = hooks.try_use_route_state::<TRNovel>();
     let history = *hooks.use_context::<State<Option<History>>>();
-    let is_inputting = *hooks.use_context::<State<bool>>();
 
     hooks.use_effect(
         || {
@@ -59,23 +58,32 @@ pub fn Layout(mut hooks: Hooks) -> impl Into<AnyElement<'static>> {
         params.clone(),
     );
 
-    hooks.use_events(move |event| {
-        if let Event::Key(key) = event
-            && key.kind == KeyEventKind::Press
-            && !is_inputting.get()
-        {
-            match key.code {
-                KeyCode::Char('q') | KeyCode::Char('Q') => {
-                    exit();
-                }
-                KeyCode::Char('g') | KeyCode::Char('G') => {
-                    navigate.go(1);
-                }
-                KeyCode::Char('b') | KeyCode::Char('B') => {
-                    navigate.go(-1);
-                }
-                _ => {}
+    // 背景 shell 键:注册在 root 层(Current)。当页面的搜索框/模态开启 blocks_lower 输入层时,
+    // 本 handler 随之被框架自动截断 —— 这正是旧 `is_inputting` 手动门控的事,现由输入层零竞态完成。
+    // 不设 Global:否则会在文本输入时劫持 q/g/b。非自身键返回 Ignored,让 Outlet 子页面继续处理。
+    // 优先级用 Low:让页面级 Normal handler 先跑(如书源管理页的 `b` 切换浏览器验证,
+    // 与本 shell 的 `b` 后退同键)。q/g 无页面竞争,Low 照常生效。
+    hooks.use_event_handler(EventScope::Current, EventPriority::Low, move |event| {
+        let Event::Key(key) = event else {
+            return EventResult::Ignored;
+        };
+        if key.kind != KeyEventKind::Press {
+            return EventResult::Ignored;
+        }
+        match key.code {
+            KeyCode::Char('q') | KeyCode::Char('Q') => {
+                exit();
+                EventResult::Consumed
             }
+            KeyCode::Char('g') | KeyCode::Char('G') => {
+                navigate.go(1);
+                EventResult::Consumed
+            }
+            KeyCode::Char('b') | KeyCode::Char('B') => {
+                navigate.go(-1);
+                EventResult::Consumed
+            }
+            _ => EventResult::Ignored,
         }
     });
     element!(Fragment {

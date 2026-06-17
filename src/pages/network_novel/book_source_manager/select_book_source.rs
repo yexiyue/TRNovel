@@ -115,34 +115,38 @@ pub fn SelectBookSource(
         .collect();
 
     let book_sources_keys = book_sources.clone();
-    hooks.use_events(move |event| {
-        if let Event::Key(key) = event
-            && key.kind == KeyEventKind::Press
-        {
-            match key.code {
-                KeyCode::Char('d') | KeyCode::Char('D') => {
-                    if state.read().selected.is_some() && !delete_modal_open.get() {
-                        delete_modal_open.set(true);
-                    } else {
-                        delete_modal_open.set(false);
-                    }
+    hooks.use_event_handler(EventScope::Current, EventPriority::Normal, move |event| {
+        let Event::Key(key) = event else {
+            return EventResult::Ignored;
+        };
+        if key.kind != KeyEventKind::Press {
+            return EventResult::Ignored;
+        }
+        match key.code {
+            KeyCode::Char('d') | KeyCode::Char('D') => {
+                if state.read().selected.is_some() && !delete_modal_open.get() {
+                    delete_modal_open.set(true);
+                } else {
+                    delete_modal_open.set(false);
                 }
-                // 书源登录(loginUrl/loginUi 非空才有意义):未登录 → 进登录页;
-                // 已登录 → 无需重复登录,直接进选书页(「已登录 → 直接进入下一路由」)。
-                KeyCode::Char('l') | KeyCode::Char('L') => {
-                    if let Some(i) = state.read().selected
-                        && let Some(src) = book_sources_keys.get(i).cloned()
-                        && src.has_login()
-                    {
-                        if crate::login::is_logged_in(&src.url) {
-                            navigate.push_with_state("/select-books", src);
-                        } else {
-                            navigate.push_with_state("/book-source-login", src);
-                        }
-                    }
-                }
-                _ => {}
+                EventResult::Consumed
             }
+            // 书源登录(loginUrl/loginUi 非空才有意义):未登录 → 进登录页;
+            // 已登录 → 无需重复登录,直接进选书页(「已登录 → 直接进入下一路由」)。
+            KeyCode::Char('l') | KeyCode::Char('L') => {
+                if let Some(i) = state.read().selected
+                    && let Some(src) = book_sources_keys.get(i).cloned()
+                    && src.has_login()
+                {
+                    if crate::login::is_logged_in(&src.url) {
+                        navigate.push_with_state("/select-books", src);
+                    } else {
+                        navigate.push_with_state("/book-source-login", src);
+                    }
+                }
+                EventResult::Consumed
+            }
+            _ => EventResult::Ignored,
         }
     });
 

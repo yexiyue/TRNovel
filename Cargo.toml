@@ -34,10 +34,9 @@ parse-book-source = { path = "crates/parse-book-source", version = "0.6.0", feat
 ] }
 ratatui = { version = "0.30.1", features = ["unstable", "serde"] }
 throbber-widgets-tui = "0.11.0"
-tui-scrollview = "0.6.4"
 tui-tree-widget = "0.24.0"
 tui-widget-list = "0.15.2"
-tui-big-text = "0.8.4"
+tui-big-text = "0.8.7"
 walkdir = "2.5.0"
 anyhow = { workspace = true }
 regex = { workspace = true }
@@ -45,14 +44,13 @@ serde = { workspace = true }
 serde_json = { workspace = true }
 thiserror = { workspace = true }
 tokio = { workspace = true }
-tokio-util = { workspace = true }
 futures = { workspace = true }
 dirs = { workspace = true }
-ratatui-kit = { version = "0.6.0", features = ["full"] }
+# 临时:本地 path 调试 ratatui-kit 的两处修复(element! 子节点位宏调用 / widget() 收按值 widget),
+# 对应本地 ratatui-kit 0.7.1。version 兜底让有 0.7.1 缓存的环境可解析;待 0.7.1 发布到 crates.io 后,
+# 删掉 `path = ...`、只留 `version = "0.7.1"` 即可。
+ratatui-kit = { path = "../ratatui-kit/crates/ratatui-kit", version = "0.7.1", features = ["full"] }
 textwrap = { version = "0.16.2" }
-# 注:rodio 0.22 为音频 API 重构(OutputStreamBuilder / Sink::connect_new / SamplesBuffer·Zero 签名变更),
-# 需配合音频实测单独迁移,暂留 0.21.x。
-rodio = { version = "0.21.1", default-features = false, features = ["playback", "wav"] }
 novel-tts = { path = "crates/novel-tts", version = "0.3.0" }
 strum = { version = "0.28", features = ["derive"] }
 swash = "0.2.7"

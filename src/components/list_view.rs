@@ -1,5 +1,8 @@
 use ratatui::widgets::{Widget, WidgetRef};
-use ratatui::{style::Style, widgets::Clear};
+use ratatui::{
+    style::Style,
+    widgets::{Block, Clear},
+};
 use ratatui_kit::prelude::*;
 use std::{ops::Deref, sync::Arc};
 use tui_widget_list::{
@@ -90,7 +93,7 @@ pub struct ListView {
     pub state: Option<State<ListState>>,
     pub scroll_axis: ScrollAxis,
     pub style: Style,
-    pub block: SendBlock,
+    pub block: Option<Block<'static>>,
     pub scroll_padding: u16,
     pub infinite_scrolling: bool,
     pub render_item: RenderItem<'static>,

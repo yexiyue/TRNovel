@@ -28,7 +28,9 @@ pub fn BookSourceLogin(mut hooks: Hooks) -> impl Into<AnyElement<'static>> {
     let source = (*hooks.use_route_state::<BookSource>()).clone();
     let theme = hooks.use_theme_config();
     let mut navigate = hooks.use_navigate();
-    let mut is_inputting = *hooks.use_context::<State<bool>>();
+    // 登录页是独占全屏表单:开一个 blocks_lower 输入层,本页独占输入并自动截断 Layout 的全局键
+    // (q/g/b),取代旧的全局 `is_inputting` 标志;离页卸载后该层下一帧自动消失。
+    let layer = hooks.use_input_layer(true, true);
 
     let ui = source.login_ui.clone();
     let n = ui.len();
@@ -48,14 +50,6 @@ pub fn BookSourceLogin(mut hooks: Hooks) -> impl Into<AnyElement<'static>> {
     // 会替换在飞登录 future(双开浏览器抢同一 profile / 丢弃脚本登录结果),故按键互斥
     // 以 in_flight 为准,loading 仅驱动 spinner 渲染。
     let mut in_flight = hooks.use_state(|| false);
-
-    // 进入登录页:占用输入态,抑制其它页/Layout 的全局快捷键(自行处理 Esc 返回)。
-    hooks.use_effect(
-        move || {
-            is_inputting.set(true);
-        },
-        (),
-    );
 
     // 触发登录:keyed on submit 计数(mount 时 submit=0 → no-op,不自动登录)。
     let (_done, loading, error) = hooks.use_effect_state(
@@ -101,7 +95,6 @@ pub fn BookSourceLogin(mut hooks: Hooks) -> impl Into<AnyElement<'static>> {
             let source = source.clone();
             move || {
                 if submit.get() > 0 && !loading.get() && error.read().is_none() {
-                    is_inputting.set(false);
                     navigate.push_with_state("/select-books", source.clone());
                 }
             }
@@ -109,12 +102,18 @@ pub fn BookSourceLogin(mut hooks: Hooks) -> impl Into<AnyElement<'static>> {
         loading.get(),
     );
 
-    hooks.use_events(move |event| {
-        if let Event::Key(key) = event
-            && key.kind == KeyEventKind::Press
-        {
+    hooks.use_event_handler(
+        EventScope::Layer(layer),
+        EventPriority::Normal,
+        move |event| {
+            let Event::Key(key) = event else {
+                return EventResult::Ignored;
+            };
+            if key.kind != KeyEventKind::Press {
+                return EventResult::Ignored;
+            }
             // 登录进行中(in_flight 同步互斥):浏览器登录可 Enter 完成 / Esc 取消;
-            // 脚本登录 Esc 可放弃等待返回书源页;其余按键忽略。
+            // 脚本登录 Esc 可放弃等待返回书源页;其余按键忽略(但本层独占,统一 Consumed)。
             if in_flight.get() {
                 if browsering.get() {
                     match key.code {
@@ -132,26 +131,27 @@ pub fn BookSourceLogin(mut hooks: Hooks) -> impl Into<AnyElement<'static>> {
                     // 脚本登录无取消通道(spawn_blocking 里的 block_on 不可中断):允许用户
                     // 离开登录页;在飞任务由 30s 默认超时兜底自行了结,其慢成功结果随组件
                     // 卸载被丢弃不落盘(用户主动放弃语义,可接受)。
-                    is_inputting.set(false);
                     navigate.push("/book-source");
                 }
-                return;
+                return EventResult::Consumed;
             }
             match key.code {
                 KeyCode::Esc => {
-                    is_inputting.set(false);
                     navigate.push("/book-source");
+                    EventResult::Consumed
                 }
                 KeyCode::Down | KeyCode::Tab if n > 0 => {
                     active.set((active.get() + 1) % n);
+                    EventResult::Consumed
                 }
                 KeyCode::Up | KeyCode::BackTab if n > 0 => {
                     active.set((active.get() + n - 1) % n);
+                    EventResult::Consumed
                 }
                 KeyCode::Enter => {
                     // loginUi-only 配置错误:凭据无处可去,拦截提交(页面已有提示)。
                     if misconfigured {
-                        return;
+                        return EventResult::Consumed;
                     }
                     // 重试前清掉上次错误:返回导航以 error 为空为条件,不清的话即使重试成功
                     // 也永远卡在错误弹窗、不返回书源页。
@@ -161,15 +161,17 @@ pub fn BookSourceLogin(mut hooks: Hooks) -> impl Into<AnyElement<'static>> {
                     }
                     in_flight.set(true);
                     submit.set(submit.get() + 1);
+                    EventResult::Consumed
                 }
                 _ if n > 0 => {
                     let i = active.get().min(n - 1);
                     fields.write()[i].handle_event(&event);
+                    EventResult::Consumed
                 }
-                _ => {}
+                _ => EventResult::Ignored,
             }
-        }
-    });
+        },
+    );
 
     // 表单文本(单 Paragraph 渲染:name: 值,password 掩码,active 行高亮 + 光标标记)。
     let active_idx = active.get();
@@ -235,11 +237,11 @@ pub fn BookSourceLogin(mut hooks: Hooks) -> impl Into<AnyElement<'static>> {
                 Text(text: Paragraph::new(Line::from(hint).style(theme.basic.border_info)))
             }
         }
-        #(if loading.get() {
+        {if loading.get() {
             element!(Loading(tip: if browsering.get() {"等待浏览器登录..."} else {"登录中..."})).into_any()
         } else {
             element!(Fragment).into_any()
-        })
+        }}
         WarningModal(
             tip: format!("登录失败:{}", error.read().as_ref().map(|e| e.to_string()).unwrap_or_default()),
             is_error: error.read().is_some(),

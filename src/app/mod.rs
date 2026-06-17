@@ -1,7 +1,6 @@
 use std::{fs::File, sync::Arc, time::Duration};
 
 use futures::FutureExt;
-use novel_tts::NovelTTS;
 use ratatui_kit::{
     AnyElement, Context, Hooks, Props, UseFuture, UseState, UseTerminalSize, component, element,
     prelude::{ContextProvider, Fragment, RouteState, RouterProvider},
@@ -10,7 +9,7 @@ use ratatui_kit::{
 use tokio::sync::Notify;
 
 use crate::{
-    History, TRNovel, TTSConfig, ThemeConfig,
+    History, TRNovel, TTSConfig,
     book_source::BookSourceCache,
     components::{Loading, WarningModal},
     errors::Errors,
@@ -40,15 +39,10 @@ pub struct AppProps {
 pub fn App(props: &AppProps, mut hooks: Hooks) -> impl Into<AnyElement<'static>> {
     hooks.use_terminal_size();
     let mut loading = hooks.use_state(|| true);
-    let mut theme_config_state = hooks.use_state(ThemeConfig::default);
+    // 主题 / TTS 模型句柄 / 浏览器提示已改为全局 Atom(见 `crate::state` 与 `browser_assist`);
+    // 此处只保留带 Drop 兜底存档的缓存(History/BookSourceCache/TTSConfig),仍由 App use_state 持有。
     let history_state = hooks.use_state(|| None::<History>);
     let book_sources_catch_state = hooks.use_state(|| None::<BookSourceCache>);
-    let novel_tts_state = hooks.use_state(|| None::<NovelTTS>);
-    let is_inputting = hooks.use_state(|| false);
-    // 反爬:浏览器辅助验证的交互提示(授权 / 点击),由全局上下文承载。
-    let browser_prompt = hooks.use_state(|| None::<crate::browser_assist::BrowserPrompt>);
-    // 把该状态登记为全局浏览器 UI(供 build_engine 在撞挑战时弹模态);OnceLock 仅首次生效。
-    crate::browser_assist::init_browser_ui(browser_prompt);
     let mut tts_config = hooks.use_state(TTSConfig::default);
     let error = hooks.use_state(|| None::<String>);
 
@@ -77,7 +71,7 @@ pub fn App(props: &AppProps, mut hooks: Hooks) -> impl Into<AnyElement<'static>>
             let path = novel_catch_dir()?.join("theme.json");
 
             if let Ok(file) = File::open(path) {
-                theme_config_state.set(serde_json::from_reader(file).unwrap_or_default());
+                crate::state::THEME.set(serde_json::from_reader(file).unwrap_or_default());
             }
 
             Ok::<(), Errors>(())
@@ -119,31 +113,23 @@ pub fn App(props: &AppProps, mut hooks: Hooks) -> impl Into<AnyElement<'static>>
         .into_any()
     } else {
         element!(Fragment{
-            #(if loading.get() {
+            {if loading.get() {
                 element!(Loading(tip:"加载缓存中...")).into_any()
             } else {
                 element!(
-                    ContextProvider(value:Context::owned(theme_config_state)){
-                        ContextProvider(value:Context::owned(history_state)){
-                            ContextProvider(value:Context::owned(book_sources_catch_state)){
-                                ContextProvider(value:Context::owned(tts_config)){
-                                    ContextProvider(value:Context::owned(novel_tts_state)){
-                                        ContextProvider(value:Context::owned(is_inputting)){
-                                            ContextProvider(value:Context::owned(browser_prompt)){
-                                                RouterProvider(
-                                                    routes: routes,
-                                                    index_path: "/home",
-                                                    state: RouteState::new(props.trnovel.clone())
-                                                )
-                                            }
-                                        }
-                                    }
-                                }
+                    ContextProvider(value:Context::owned(history_state)){
+                        ContextProvider(value:Context::owned(book_sources_catch_state)){
+                            ContextProvider(value:Context::owned(tts_config)){
+                                RouterProvider(
+                                    routes: routes,
+                                    index_path: "/home",
+                                    state: RouteState::new(props.trnovel.clone())
+                                )
                             }
                         }
                     }
                 ).into_any()
-            })
+            }}
         })
         .into_any()
     }

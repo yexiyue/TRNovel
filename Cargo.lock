@@ -2894,7 +2894,6 @@ version = "0.3.0"
 dependencies = [
  "anyhow",
  "dirs",
- "futures",
  "kokoro-tts",
  "ort",
  "regex",
@@ -3854,9 +3853,7 @@ dependencies = [
 
 [[package]]
 name = "ratatui-kit"
-version = "0.6.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "8194a825fac18c9caf679d8ca733fef838e1caa9017ccedfa7c8f07f6bdfa820"
+version = "0.7.1"
 dependencies = [
  "any_key",
  "crossterm 0.29.0",
@@ -3865,15 +3862,15 @@ dependencies = [
  "ratatui",
  "ratatui-kit-macros",
  "regex",
+ "textwrap",
  "tui-input",
  "tui-tree-widget",
+ "tui-widget-list",
 ]
 
 [[package]]
 name = "ratatui-kit-macros"
-version = "0.5.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "22bf3a8e830d8a0db564c642d017597c912580049a7569e79708007acef9de73"
+version = "0.6.1"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -4152,7 +4149,7 @@ dependencies = [
  "errno",
  "libc",
  "linux-raw-sys 0.4.15",
- "windows-sys 0.59.0",
+ "windows-sys 0.52.0",
 ]
 
 [[package]]
@@ -5222,7 +5219,6 @@ dependencies = [
  "ratatui-kit",
  "regex",
  "reqwest",
- "rodio",
  "serde",
  "serde_json",
  "strum",
@@ -5231,9 +5227,7 @@ dependencies = [
  "thiserror 2.0.18",
  "throbber-widgets-tui",
  "tokio",
- "tokio-util",
  "tui-big-text",
- "tui-scrollview",
  "tui-tree-widget",
  "tui-widget-list",
  "walkdir",
@@ -5249,9 +5243,9 @@ checksum = "e421abadd41a4225275504ea4d6566923418b7f05506fbc9c0fe86ba7396114b"
 
 [[package]]
 name = "tui-big-text"
-version = "0.8.4"
+version = "0.8.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6833ec23415d48753f28caec76fa149d0d319ebaedec77ad7d09f7e2094bee8a"
+checksum = "24b9e71a381bd363cbf6392a66573c52e5da46e83fc7b57621c4d3e4769aa516"
 dependencies = [
  "derive_builder",
  "font8x8",
@@ -5269,17 +5263,6 @@ dependencies = [
  "ratatui",
  "unicode-segmentation",
  "unicode-width",
-]
-
-[[package]]
-name = "tui-scrollview"
-version = "0.6.4"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "94a94f467c7ac7c291039b0733e3b2d379c77884e34fc27d167921fc1ab4842f"
-dependencies = [
- "indoc",
- "ratatui-core",
- "ratatui-widgets",
 ]
 
 [[package]]
@@ -5919,15 +5902,6 @@ name = "windows-sys"
 version = "0.52.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "282be5f36a8ce781fad8c8ae18fa3f9beff57ec1b52cb3de0789201425d9a33d"
-dependencies = [
- "windows-targets 0.52.6",
-]
-
-[[package]]
-name = "windows-sys"
-version = "0.59.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1e38bc4d79ed67fd075bcc251a1c39b32a1776bbe92e5bef1f0bf1f8c531853b"
 dependencies = [
  "windows-targets 0.52.6",
 ]

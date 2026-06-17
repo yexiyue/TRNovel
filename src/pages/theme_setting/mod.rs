@@ -106,29 +106,34 @@ impl ColorItem {
 #[component]
 pub fn ThemeSetting(mut hooks: Hooks) -> impl Into<AnyElement<'static>> {
     let mut info_modal_open = hooks.use_state(|| false);
-    let theme_config = *hooks.use_context::<State<ThemeConfig>>();
+    // 主题已迁为全局 atom;用 use_atom 订阅 + 写回(原 ThemeConfig context provider 已删,
+    // 继续 use_context 会运行期 panic)。写入经 THEME 唤醒所有 use_theme_config 订阅者。
+    let theme_config = hooks.use_atom(&crate::state::THEME);
     let theme = theme_config.read().clone();
     let mut current = hooks.use_state(|| None::<ColorItem>);
-    let is_inputting = *hooks.use_context::<State<bool>>();
     let mut reset_modal_open = hooks.use_state(|| false);
 
-    hooks.use_events(move |event| {
-        if let Event::Key(key) = event
-            && key.kind == KeyEventKind::Press
-            && !is_inputting.get()
-        {
-            match key.code {
-                KeyCode::Char('i') | KeyCode::Char('I') if current.read().is_none() => {
-                    info_modal_open.set(!info_modal_open.get());
-                }
-                KeyCode::Char('d') | KeyCode::Char('D') if current.read().is_none() => {
-                    reset_modal_open.set(!reset_modal_open.get());
-                }
-                KeyCode::Esc if current.read().is_some() => {
-                    current.set(None);
-                }
-                _ => {}
+    hooks.use_event_handler(EventScope::Current, EventPriority::Normal, move |event| {
+        let Event::Key(key) = event else {
+            return EventResult::Ignored;
+        };
+        if key.kind != KeyEventKind::Press {
+            return EventResult::Ignored;
+        }
+        match key.code {
+            KeyCode::Char('i') | KeyCode::Char('I') if current.read().is_none() => {
+                info_modal_open.set(!info_modal_open.get());
+                EventResult::Consumed
             }
+            KeyCode::Char('d') | KeyCode::Char('D') if current.read().is_none() => {
+                reset_modal_open.set(!reset_modal_open.get());
+                EventResult::Consumed
+            }
+            KeyCode::Esc if current.read().is_some() => {
+                current.set(None);
+                EventResult::Consumed
+            }
+            _ => EventResult::Ignored,
         }
     });
 
@@ -157,8 +162,8 @@ pub fn ThemeSetting(mut hooks: Hooks) -> impl Into<AnyElement<'static>> {
                 current.set(Some(item));
             },
         )
-        #(if let Some(selected_item) = current.read().clone() {
-            element!(SelectColor(
+        if let Some(selected_item) = current.read().clone() {
+            SelectColor(
                 color: selected_item.get_color(&theme_config.read().clone()),
                 is_editing: true,
                 on_change: move |color| {
@@ -170,9 +175,9 @@ pub fn ThemeSetting(mut hooks: Hooks) -> impl Into<AnyElement<'static>> {
                     // 更新current状态以刷新UI
                     current.set(None);
                 }
-            )).into_any()
-        }else{
-            element!(ShortcutInfoModal(
+            )
+        } else {
+            ShortcutInfoModal(
                 key_shortcut_info: KeyShortcutInfo::new(vec![
                     ("选择下一个", "J / ▼"),
                     ("选择上一个", "K / ▲"),
@@ -180,8 +185,8 @@ pub fn ThemeSetting(mut hooks: Hooks) -> impl Into<AnyElement<'static>> {
                     ("重置主题", "D"),
                 ]),
                 open: info_modal_open.get(),
-            )).into_any()
-        })
+            )
+        }
         ConfirmModal(
             title: "重置主题",
             content: "是否确定要重置主题？",

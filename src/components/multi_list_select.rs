@@ -66,37 +66,42 @@ where
 
     let is_empty = props.items.is_empty();
 
-    hooks.use_events({
+    hooks.use_event_handler(EventScope::Current, EventPriority::Normal, {
         let is_editing = props.is_editing;
         let mut on_select = props.on_select.take();
         let data = props.items.clone();
         move |event| {
-            if let Event::Key(key) = event
-                && key.kind == KeyEventKind::Press
-                && is_editing
-            {
-                match key.code {
-                    KeyCode::Char('j') | KeyCode::Down => {
-                        state.write().next();
-                    }
-                    KeyCode::Char('k') | KeyCode::Up => {
-                        state.write().previous();
-                    }
-                    KeyCode::Char('\n') | KeyCode::Char(' ') => {
-                        if let Some(item) = state.read().selected {
-                            let is_included = selected.read().contains(&item);
-                            if is_included {
-                                selected.write().remove(&item);
-                            } else {
-                                selected.write().insert(item);
-                            }
+            let Event::Key(key) = event else {
+                return EventResult::Ignored;
+            };
+            if key.kind != KeyEventKind::Press || !is_editing {
+                return EventResult::Ignored;
+            }
+            match key.code {
+                KeyCode::Char('j') | KeyCode::Down => {
+                    state.write().next();
+                    EventResult::Consumed
+                }
+                KeyCode::Char('k') | KeyCode::Up => {
+                    state.write().previous();
+                    EventResult::Consumed
+                }
+                KeyCode::Char('\n') | KeyCode::Char(' ') => {
+                    if let Some(item) = state.read().selected {
+                        let is_included = selected.read().contains(&item);
+                        if is_included {
+                            selected.write().remove(&item);
+                        } else {
+                            selected.write().insert(item);
                         }
                     }
-                    KeyCode::Enter => {
-                        on_select(selected.read().iter().map(|&i| data[i].clone()).collect());
-                    }
-                    _ => {}
+                    EventResult::Consumed
                 }
+                KeyCode::Enter => {
+                    on_select(selected.read().iter().map(|&i| data[i].clone()).collect());
+                    EventResult::Consumed
+                }
+                _ => EventResult::Ignored,
             }
         }
     });

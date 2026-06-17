@@ -30,34 +30,39 @@ pub fn FileSelect(props: &mut FileSelectProps, mut hooks: Hooks) -> impl Into<An
 
     let mut on_select = props.on_select.take();
 
-    hooks.use_events({
+    hooks.use_event_handler(EventScope::Current, EventPriority::Normal, {
         let is_editing = props.is_editing;
         move |event| {
-            if let Event::Key(key) = event
-                && key.kind == KeyEventKind::Press
-                && is_editing
-            {
-                match key.code {
-                    KeyCode::Char('h') | KeyCode::Left => {
-                        state.write().key_left();
-                    }
-                    KeyCode::Char('j') | KeyCode::Down => {
-                        state.write().key_down();
-                    }
-                    KeyCode::Char('k') | KeyCode::Up => {
-                        state.write().key_up();
-                    }
-                    KeyCode::Char('l') | KeyCode::Right | KeyCode::Enter => {
-                        let res: Option<PathBuf> = state.read().selected().last().cloned();
-                        if let Some(path) = res {
-                            state.write().toggle_selected();
-                            if path.is_file() {
-                                on_select(path);
-                            }
+            let Event::Key(key) = event else {
+                return EventResult::Ignored;
+            };
+            if key.kind != KeyEventKind::Press || !is_editing {
+                return EventResult::Ignored;
+            }
+            match key.code {
+                KeyCode::Char('h') | KeyCode::Left => {
+                    state.write().key_left();
+                    EventResult::Consumed
+                }
+                KeyCode::Char('j') | KeyCode::Down => {
+                    state.write().key_down();
+                    EventResult::Consumed
+                }
+                KeyCode::Char('k') | KeyCode::Up => {
+                    state.write().key_up();
+                    EventResult::Consumed
+                }
+                KeyCode::Char('l') | KeyCode::Right | KeyCode::Enter => {
+                    let res: Option<PathBuf> = state.read().selected().last().cloned();
+                    if let Some(path) = res {
+                        state.write().toggle_selected();
+                        if path.is_file() {
+                            on_select(path);
                         }
                     }
-                    _ => {}
+                    EventResult::Consumed
                 }
+                _ => EventResult::Ignored,
             }
         }
     });

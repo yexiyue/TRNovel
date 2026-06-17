@@ -1,7 +1,8 @@
 use crossterm::event::{Event, KeyCode, KeyEventKind};
 use ratatui::layout::Direction;
 use ratatui_kit::{
-    AnyElement, Hooks, State, UseContext, UseEvents, UseState, component, element, prelude::View,
+    AnyElement, EventPriority, EventResult, EventScope, Hooks, State, UseContext, UseEventHandler,
+    UseState, component, element, prelude::View,
 };
 
 mod import_book_source;
@@ -22,28 +23,31 @@ pub fn BookSourceManager(mut hooks: Hooks) -> impl Into<AnyElement<'static>> {
             .as_ref()
             .is_some_and(|c| !c.book_sources.is_empty())
     });
-    let is_inputting = *hooks.use_context::<State<bool>>();
     let mut info_modal_open = hooks.use_state(|| false);
 
-    hooks.use_events(move |event| {
-        if let Event::Key(key) = event
-            && key.kind == KeyEventKind::Press
-            && !is_inputting.get()
-        {
-            match key.code {
-                KeyCode::Char('i') | KeyCode::Char('I') => {
-                    info_modal_open.set(!info_modal_open.get());
-                }
-                KeyCode::Tab => {
-                    only_select.set(!only_select.get());
-                }
-                // 反爬:开/关「浏览器辅助验证」总是允许(读 flag 翻转并持久化)。
-                KeyCode::Char('b') | KeyCode::Char('B') => {
-                    let on = crate::browser_assist::always_allowed();
-                    let _ = crate::browser_assist::set_always_allowed(!on);
-                }
-                _ => {}
+    hooks.use_event_handler(EventScope::Current, EventPriority::Normal, move |event| {
+        let Event::Key(key) = event else {
+            return EventResult::Ignored;
+        };
+        if key.kind != KeyEventKind::Press {
+            return EventResult::Ignored;
+        }
+        match key.code {
+            KeyCode::Char('i') | KeyCode::Char('I') => {
+                info_modal_open.set(!info_modal_open.get());
+                EventResult::Consumed
             }
+            KeyCode::Tab => {
+                only_select.set(!only_select.get());
+                EventResult::Consumed
+            }
+            // 反爬:开/关「浏览器辅助验证」总是允许(读 flag 翻转并持久化)。
+            KeyCode::Char('b') | KeyCode::Char('B') => {
+                let on = crate::browser_assist::always_allowed();
+                let _ = crate::browser_assist::set_always_allowed(!on);
+                EventResult::Consumed
+            }
+            _ => EventResult::Ignored,
         }
     });
 

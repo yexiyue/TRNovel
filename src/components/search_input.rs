@@ -1,9 +1,11 @@
 use crate::hooks::UseThemeConfig;
-use crossterm::event::{Event, KeyCode, KeyEventKind};
-use ratatui::{layout::Constraint, style::Style, text::Line};
-use ratatui_kit::prelude::*;
-use std::ops::Deref;
-use tui_input::backend::crossterm::EventHandler;
+use ratatui::{
+    layout::Constraint,
+    style::{Color, Style},
+};
+use ratatui_kit::{
+    AnyElement, Handler, Hooks, Props, component, element, prelude::SearchInput as KitSearchInput,
+};
 
 #[derive(Default, Props)]
 pub struct SearchInputProps {
@@ -17,126 +19,37 @@ pub struct SearchInputProps {
     pub on_clear: Handler<'static, ()>,
 }
 
+/// 搜索框:薄主题适配层,委托框架 `SearchInput`。
+///
+/// 框架 0.7 的 `SearchInput` 自带 `activate_key` + 独占输入层(编辑时 blocks_lower),
+/// 因此本组件**不再需要全局 `is_inputting` 门控**,也从根上消除了旧广播模型下
+/// 「提交搜索的同一个 Enter 被父级列表误当作选中」的跨帧竞态。wrapper 仅把 TRNovel
+/// 主题映射成内置所需的 Style props,并透传校验/提交/清空回调与编辑开关。
 #[component]
 pub fn SearchInput(
     props: &mut SearchInputProps,
     mut hooks: Hooks,
 ) -> impl Into<AnyElement<'static>> {
-    let is_editing = props.is_editing;
-    let mut is_inputting = *hooks.use_context::<State<bool>>();
-
-    let mut value = hooks.use_state(tui_input::Input::default);
-    // Enter 提交后「退出输入态」延迟到下一帧(经下方 effect),而非在 Enter 处理中同步翻 false。
-    // 否则同一个 Enter 被广播给所有 use_events 时,因 handler 执行顺序不定 + State::set 立即生效,
-    // 父级列表(门控 `!is_inputting`)可能在本次分发中途看到 is_inputting=false → 误触「选中→进入阅读/关列表」。
-    let mut pending_exit = hooks.use_state(|| false);
-    let mut is_valid = hooks.use_state(|| None::<bool>);
-    let mut validate_fn = props.validate.take();
-    let mut status_message = hooks.use_state(String::new);
     let theme = hooks.use_theme_config();
 
-    let clear_on_submit = props.clear_on_submit;
-    let clear_on_escape = props.clear_on_escape;
-    let mut on_submit = props.on_submit.take();
-    let mut on_clear = props.on_clear.take();
-
-    hooks.use_effect(
-        || {
-            let new_value = value.read().clone().with_value(props.value.clone());
-            value.set(new_value);
-        },
-        props.value.clone(),
-    );
-
-    // 延迟退出输入态:Enter 提交置 `pending_exit`,本帧结束后才真正 is_inputting=false,
-    // 与广播到父级列表的同一个 Enter 解耦,杜绝「搜索 Enter 误触选中章节」。
-    hooks.use_effect(
-        move || {
-            if pending_exit.get() {
-                is_inputting.set(false);
-                pending_exit.set(false);
-            }
-        },
-        pending_exit.get(),
-    );
-
-    hooks.use_events(move |event| {
-        if let Event::Key(key) = event
-            && key.kind == KeyEventKind::Press
-            && is_editing
-        {
-            if is_inputting.get() {
-                match key.code {
-                    KeyCode::Esc => {
-                        if clear_on_escape {
-                            value.write().reset();
-                            is_valid.set(None);
-                            status_message.set(String::new());
-                            on_clear(());
-                        }
-                        is_inputting.set(false);
-                    }
-                    KeyCode::Enter => {
-                        if !on_submit.is_default() {
-                            let valid = on_submit(value.read().value().to_string());
-                            if valid && clear_on_submit {
-                                value.write().reset();
-                                is_valid.set(None);
-                                status_message.set(String::new());
-                                on_clear(());
-                            }
-                            if valid {
-                                // 延迟到下一帧退出输入态(见上方 effect),避免与同一 Enter 抢跑。
-                                pending_exit.set(true);
-                            }
-                        }
-                    }
-                    _ => {
-                        value.write().handle_event(&event);
-
-                        if !validate_fn.is_default() {
-                            let (valid, message) = validate_fn(value.read().value().to_string());
-                            is_valid.set(Some(valid));
-                            status_message.set(message);
-                        }
-                    }
-                }
-            } else if let KeyCode::Char('s') = key.code {
-                is_inputting.set(true);
-            }
-        }
-    });
-
-    element!(
-        Border(
-            height:Constraint::Length(3),
-            border_style: if let Some(valid)=is_valid.get() && is_inputting.get(){
-                if valid {
-                    theme.search.success_border
-                } else {
-                    theme.search.error_border
-                }
-            } else {
-                theme.basic.border
-            },
-            top_title: if let Some(valid)=is_valid.get() && !status_message.read().is_empty() && is_inputting.get(){
-                if valid {
-                    Some(Line::from(status_message.read().deref().to_string()).style(theme.search.success_border_info))
-                } else {
-                    Some(Line::from(status_message.read().deref().to_string()).style(theme.search.error_border_info))
-                }
-            } else {
-                None
-            },
-        ){
-            Input(
-                input: value.read().clone(),
-                cursor_style: Style::new().on_dark_gray(),
-                style: theme.search.text,
-                placeholder: props.placeholder.clone(),
-                placeholder_style: theme.search.placeholder,
-                hide_cursor: !is_inputting.get(),
-            )
-        }
-    )
+    element!(KitSearchInput(
+        width: Constraint::Fill(1),
+        value: props.value.clone(),
+        placeholder: props.placeholder.clone(),
+        is_editing: props.is_editing,
+        validate: props.validate.take(),
+        on_submit: props.on_submit.take(),
+        on_clear: props.on_clear.take(),
+        clear_on_submit: props.clear_on_submit,
+        clear_on_escape: props.clear_on_escape,
+        border_style: theme.basic.border,
+        active_border_style: theme.basic.border,
+        success_border_style: theme.search.success_border,
+        error_border_style: theme.search.error_border,
+        input_style: theme.search.text,
+        placeholder_style: theme.search.placeholder,
+        cursor_style: Style::new().bg(Color::DarkGray),
+        success_status_style: theme.search.success_border_info,
+        error_status_style: theme.search.error_border_info,
+    ))
 }

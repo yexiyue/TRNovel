@@ -19,6 +19,7 @@ pub mod import;
 pub mod login;
 pub mod novel;
 pub mod pages;
+pub mod state;
 pub mod utils;
 
 pub use cache::*;

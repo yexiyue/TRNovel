@@ -92,7 +92,6 @@ pub fn ImportBookSource(
     let selected = hooks.use_state(HashSet::<usize>::default);
     let mut book_source_url = hooks.use_state(String::new);
     let is_editing = props.is_editing;
-    let is_inputting = *hooks.use_context::<State<bool>>();
     let theme = hooks.use_theme_config();
 
     let book_source_cache = *hooks.use_context::<State<Option<BookSourceCache>>>();
@@ -138,7 +137,7 @@ pub fn ImportBookSource(
         )
         MultiListSelect<BookSource>(
             state: selected,
-            is_editing: !is_inputting.get() && is_editing,
+            is_editing: is_editing,
             empty_message: "暂无数据",
             loading: loading.get(),
             top_title: Line::from("选择要导入的书源 (空格选择, 回车确认)").style(

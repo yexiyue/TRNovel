@@ -25,14 +25,13 @@ pub struct FindBooksProps {
 pub fn FindBooks(props: &FindBooksProps, mut hooks: Hooks) -> impl Into<AnyElement<'static>> {
     let mut filter_text = hooks.use_state(String::default);
     let theme = hooks.use_theme_config();
-    let is_inputting = *hooks.use_context::<State<bool>>();
     let mut page = hooks.use_state(|| 1);
     let page_size = hooks.use_state(|| 20);
     let list_state = hooks.use_state(ListState::default);
     let mut navigate = hooks.use_navigate();
     let is_editing = props.is_editing;
 
-    // books 先于 use_events 定义,使翻页处理能读「是否到头」(has_more/total_pages 双信号)。
+    // books 先于事件处理器定义,使翻页处理能读「是否到头」(has_more/total_pages 双信号)。
     let (books, loading, error) = hooks.use_effect_state(
         {
             // 该 block 每次渲染都求值,**只能捕获值、绝不能在此 spawn 取页**:
@@ -70,33 +69,35 @@ pub fn FindBooks(props: &FindBooksProps, mut hooks: Hooks) -> impl Into<AnyEleme
         ),
     );
 
-    hooks.use_events(move |event| {
-        if let Event::Key(key) = event
-            && key.kind == KeyEventKind::Press
-            && is_editing
-            && !is_inputting.get()
-        {
-            match key.code {
-                KeyCode::Char('h') | KeyCode::Left if page.get() > 1 => {
-                    page.set(page.get() - 1);
-                }
-                KeyCode::Char('l') | KeyCode::Right => {
-                    // 到头停翻:has_more==Some(false)(list-has-more)或已达 total_pages
-                    //(render-dual-source)→ 不再 +page;两信号有其一即可,都无则不限制(现状)。
-                    let at_end = {
-                        let bl = books.read();
-                        bl.as_ref().and_then(|b| b.has_more) == Some(false)
-                            || bl
-                                .as_ref()
-                                .and_then(|b| b.total_pages)
-                                .is_some_and(|m| page.get() >= m)
-                    };
-                    if !at_end {
-                        page.set(page.get() + 1);
-                    }
-                }
-                _ => {}
+    hooks.use_event_handler(EventScope::Current, EventPriority::Normal, move |event| {
+        let Event::Key(key) = event else {
+            return EventResult::Ignored;
+        };
+        if key.kind != KeyEventKind::Press || !is_editing {
+            return EventResult::Ignored;
+        }
+        match key.code {
+            KeyCode::Char('h') | KeyCode::Left if page.get() > 1 => {
+                page.set(page.get() - 1);
+                EventResult::Consumed
             }
+            KeyCode::Char('l') | KeyCode::Right => {
+                // 到头停翻:has_more==Some(false)(list-has-more)或已达 total_pages
+                //(render-dual-source)→ 不再 +page;两信号有其一即可,都无则不限制(现状)。
+                let at_end = {
+                    let bl = books.read();
+                    bl.as_ref().and_then(|b| b.has_more) == Some(false)
+                        || bl
+                            .as_ref()
+                            .and_then(|b| b.total_pages)
+                            .is_some_and(|m| page.get() >= m)
+                };
+                if !at_end {
+                    page.set(page.get() + 1);
+                }
+                EventResult::Consumed
+            }
+            _ => EventResult::Ignored,
         }
     });
 
@@ -146,7 +147,7 @@ pub fn FindBooks(props: &FindBooksProps, mut hooks: Hooks) -> impl Into<AnyEleme
                     Line::from("暂无书籍").centered().style(theme.basic.border_info)
                 }
             },
-            is_editing: !is_inputting.get() && props.is_editing,
+            is_editing: props.is_editing,
             empty_message: "暂无书籍，请切换频道，或者搜索",
             loading: loading.get(),
             loading_tip: if filter_text.read().is_empty() {
