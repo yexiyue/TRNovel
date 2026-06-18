@@ -1,0 +1,222 @@
+{
+  "schema": "trnovel-booksource/v2",
+  "name": "书海阁",
+  "group": "书海",
+  "url": "https://book.feius.live",
+  "http": {
+    "charset": "auto",
+    "fetcher": "auto",
+    "headers": {
+      "User-Agent": "Mozilla/5.0 (Linux; Android 13; Pixel 7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Mobile Safari/537.36",
+      "Referer": "https://book.feius.live/",
+      "Accept-Language": "zh-CN,zh;q=0.9"
+    },
+    "warmup": [
+      "https://book.feius.live/"
+    ],
+    "timeout": 15000,
+    "retry": {
+      "max": 2,
+      "backoffMs": 500
+    }
+  },
+  "search": {
+    "request": {
+      "url": "{{base}}/search?searchKey={{key}}",
+      "render": true,
+      "readyFor": ".searchBookCard"
+    },
+    "list": {
+      "via": "css",
+      "select": ".searchBookCard"
+    },
+    "item": {
+      "bookUrl": {
+        "via": "css",
+        "select": ".searchBookCoverLink",
+        "extract": { "attr": "href" }
+      },
+      "name": {
+        "via": "css",
+        "select": ".searchBookTitle a",
+        "extract": "text"
+      },
+      "cover": {
+        "via": "css",
+        "select": ".searchBookCoverLink img",
+        "extract": { "attr": "src" }
+      },
+      "author": {
+        "via": "css",
+        "select": ".searchBookAuthor a",
+        "extract": "text"
+      },
+      "intro": {
+        "via": "css",
+        "select": ".searchBookDesc",
+        "extract": "text"
+      }
+    }
+  },
+  "explore": {
+    "entries": [
+      {
+        "fetch": {
+          "request": {
+            "url": "{{base}}/book/bookclass.html"
+          },
+          "list": {
+            "via": "css",
+            "select": "#allCategoryList a[filter-value]"
+          },
+          "item": {
+            "title": {
+              "via": "css",
+              "select": "a",
+              "extract": "text"
+            },
+            "vars": {
+              "category": {
+                "via": "css",
+                "select": "a",
+                "extract": { "attr": "filter-value" }
+              }
+            }
+          }
+        }
+      }
+    ],
+    "page": {
+      "request": {
+        "url": "{{base}}/book/bookclass.html?c={{category}}&page={{page}}"
+      },
+      "list": {
+        "via": "css",
+        "select": "article.classBookCard"
+      },
+      "item": {
+        "bookUrl": {
+          "via": "css",
+          "select": ".classBookCoverLink",
+          "extract": { "attr": "href" }
+        },
+        "name": {
+          "via": "css",
+          "select": ".classBookTitle a",
+          "extract": "text"
+        },
+        "cover": {
+          "via": "css",
+          "select": ".classBookCoverLink img",
+          "extract": { "attr": "src" }
+        },
+        "author": {
+          "via": "css",
+          "select": ".classBookAuthor a",
+          "extract": "text"
+        },
+        "kind": {
+          "via": "css",
+          "select": ".classBookMeta",
+          "extract": "text"
+        },
+        "intro": {
+          "via": "css",
+          "select": ".classBookDesc",
+          "extract": "text"
+        },
+        "lastChapter": {
+          "via": "css",
+          "select": ".classBookChapter a",
+          "extract": "text"
+        }
+      }
+    }
+  },
+  "bookInfo": {
+    "name": {
+      "via": "css",
+      "select": "h1#bookName",
+      "extract": "text"
+    },
+    "author": {
+      "via": "css",
+      "select": "a#bookAuthor",
+      "extract": "text"
+    },
+    "cover": {
+      "via": "css",
+      "select": "img#bookCoverImg",
+      "extract": { "attr": "src" }
+    },
+    "intro": {
+      "via": "css",
+      "select": "p#bookDesc",
+      "extract": "text"
+    },
+    "kind": {
+      "via": "css",
+      "select": "em#bookStatus",
+      "extract": "text"
+    },
+    "lastChapter": {
+      "via": "css",
+      "select": "a#lastIndexLink",
+      "extract": "text"
+    },
+    "tocUrl": {
+      "via": "css",
+      "select": "a#allIndexLink",
+      "extract": { "attr": "href" }
+    },
+    "wordCount": {
+      "via": "css",
+      "select": "em#bookWordCount",
+      "extract": "text"
+    }
+  },
+  "toc": {
+    "list": {
+      "via": "css",
+      "select": "#bookIndexList li[data-index-id] a"
+    },
+    "name": {
+      "extract": "text",
+      "clean": [
+        { "regex": "\\s*\\[.*$", "replace": "" },
+        { "trim": true }
+      ]
+    },
+    "url": {
+      "via": "css",
+      "select": "a",
+      "extract": { "attr": "href" }
+    },
+    "nextPage": {
+      "via": "css",
+      "select": "link[rel='next']",
+      "extract": { "attr": "href" }
+    },
+    "maxPages": 20
+  },
+  "content": {
+    "value": {
+      "via": "css",
+      "select": ".readChapterAppendBody",
+      "extract": "html",
+      "clean": [
+        { "trim": true }
+      ]
+    }
+  },
+  "samples": [
+    {
+      "bookUrl": "/book/1262260513468563671.html",
+      "expect": {
+        "name": "万相之王",
+        "minChapters": 1800,
+        "minContentChars": 500
+      }
+    }
+  ]
+}

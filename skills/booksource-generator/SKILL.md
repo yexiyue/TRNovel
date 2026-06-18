@@ -17,7 +17,8 @@ description: >-
 格式是**结构化**的(没有紧凑字符串 DSL):每个字段是一条「规则」——一次 CSS/JSONPath/正则抽取,或组合子(firstOf/concat/literal/template)。
 
 - 精确字段与规则语法 → 读 `references/book-source.schema.json`
-- 一份完整可运行的真实示例 → 读 `references/example-bilixs.v2.json`
+- 一份完整可运行的真实示例 → 读 `references/example-bilixs.v2.json`(MacCMS 系静态站,含 `fetch` 动态入口)
+- 另一份真实示例(番茄小说网页版,SPA + 签名接口 + 渲染型取页) → 读 `references/example-fanqie.v2.json`
 - 逐能力的探站/逆向战术、curl 探测配方、字符集与反爬细节 → 读 `references/reverse-engineering.md`
 
 边做边查这三个文件,不要凭记忆硬编规则语法。
@@ -62,11 +63,20 @@ cargo run -- import /path/to/<站点>.v2.json
 
 每条规则的 `select` 是 **self-or-descendant** 语义;HTML 默认 `via: "css"`。下面是从真实站点(MXCMS/MacCMS 系等)总结的高命中套路,细节见 `references/reverse-engineering.md`。
 
-- **bookInfo(书详情)**:**先找 `og:` meta**——`<meta property="og:novel:book_name">`、`og:novel:author`、`og:novel:read_url`(常是 tocUrl)、`og:image`(封面)、`og:description`。用 `{"via":"css","select":"[property=\"og:novel:book_name\"]","extract":{"attr":"content"}}`。比靠页面可见元素稳得多。
+- **bookInfo(书详情)**:**先找 `og:` meta**——`<meta property="og:novel:book_name">`、`og:novel:author`、`og:novel:read_url`(常是 tocUrl)、`og:image`(封面)、`og:description`。用 `{"via":"css","select":"[property=\"og:novel:book_name\"]","extract":{"attr":"content"}}`。比靠页面可见元素稳得多。**`wordCount`**(字数)通常不在 `og:` meta 里,需从页面可见元素提取(如 `span.tag-link` 含 "878.7 万字");MacCMS 系站点的字数常在书详情页的辅助信息区。
 - **toc(目录 + 分卷)**:目录页里**卷标题**(如 `第一卷`)和**章节链接**通常是兄弟节点。用一个 `list` 选择器**同时选中两者并保持文档顺序**(如 `.box > h2.module-title, .box a.module-row-text`);再用 `isVolume` 规则判定是否卷(对卷节点非空、对章节为空,例如选 `h2`);`name`/`url` 用 `firstOf` 兼容两种节点。引擎据 `isVolume` 切分「卷→章」。**常见坑**:目录开头常有 N 条「最新章节」预览(倒序、与正文区重复),用兄弟选择器(如 `#list dl dt:has(a[href*="txt_"]) ~ dd a`)只取「正文」标记之后的章节,避免重复/倒序。
 - **content(正文)**:找正文容器(`.article-content`/`#content`/`.read-content` 等),`extract: "html"` 会把标签转成换行后清理;分页正文用 `nextPage` + `maxPages`。**若正文夹大量私有区/豆腐字符(`U+E000`–`U+F8FF`,显示为豆腐 □)→ 是字体反爬,见下「字体反爬」。**
 - **search(搜索)**:从首页 `<form>` 找 action 与 input name(如 `searchkey`/`wd`)。`request.url` 用模板 `{{base}}/search.html?searchkey={{key}}`;`list` 选结果条目容器(**注意区分真正的结果区与推荐位**——它们可能用不同 class);`item` 里**必须含 `bookUrl`**(指向书详情)。POST 搜索用 `method:"POST"` + `body` 模板。
-- **explore(浏览)**:`categories` 列分类(title + url 模板,常含 `{{page}}`);`list`/`item` 同 search。浏览是搜索被反爬挡住时的**降级入口**,尽量做好。**SPA 书库站**(分类列表由签名接口拉、无静态分类页):在 `explore` **块级**加 `render:true` + `interceptApi`(各分类共享),`list`/`item` 改 `via:"json"` 对齐被拦截 API。取页**单页**:`{{page}}` 映射 URL(**从 1 起**、由 URL 模板对齐站点 API 页码基数,引擎不内置偏移),交互翻页由阅读器递增 `page` 驱动(列表不加 `nextPage`)。详见 references/reverse-engineering.md「渲染 explore」。
+- **explore(浏览)**:两阶段结构——`entries` 生成可选入口,`page` 用选中入口的变量取书。
+  - **`entries`**:入口源数组,两种变体:
+    - `static`:硬编码入口列表 `[{title, vars?}]`。`vars` 是取页变量(字面量),与 `base`/`page`/`pageSize` 合并后驱动 `page`。
+    - `fetch`:从远端页面动态抓取入口 `{request, list, item}`。`request` 取入口数据页,`list` 选数组,`item` 提取 `title`(Rule) + `vars`(`{name: Rule}`)。可选 `forEach` 按多组变量重复请求。
+    - **优先用 `fetch` 动态提取分类入口**（从首页导航/API 获取），而非 `static` 硬编码。这样站点新增分类时不用手动更新书源。仅当站点无可用分类入口时才用 `static`。
+    - 两种可混用,按声明顺序合并。
+  - **`page`**:共享列表页规格 `{request, list, item}`——`request.url` 用入口变量 + `{{page}}` 模板生成取页 URL;`list`/`item` 同 search。
+  - **`fetch` 入口的坑**:vars 里的 Rule 对「当前数据项」求值。`dom_query` 解析 HTML 片段时会包 `<html><body>`,**省略 `select` 时 `:root` 指向 `<html>` 而非目标元素**。提取 href 等属性时**必须显式写 `select`**(如 `"select": "a"`)匹配目标元素自身。
+  - **过滤非目标入口**:`list` 选择器应尽量精确(如 `.nav-menu-items a[href*='lastupdate']` 而非 `a`),避免匹配到无关链接导致 `vars` 提取失败、拼出错误 URL。
+  - SPA 书库站(分类列表由签名接口拉、无静态分类页):在 `page.request` 上加 `render:true` + `interceptApi`,`list`/`item` 改 `via:"json"` 对齐被拦截 API。取页**单页**:`{{page}}` 映射 URL(**从 1 起**、由 URL 模板对齐站点 API 页码基数,引擎不内置偏移),交互翻页由阅读器递增 `page` 驱动(列表不加 `nextPage`)。详见 references/reverse-engineering.md「渲染 explore」。
 
 `{{base}}` = 站点根、`{{key}}` = 搜索词、`{{page}}`/`{{pageSize}}` = 分页。相对 URL 引擎会自动补全,**抽取 href 时保留相对路径即可**。
 

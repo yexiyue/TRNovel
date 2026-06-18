@@ -145,29 +145,54 @@ sed -e 's/<[^>]*>/ /g' /tmp/page.html | tr -s ' \n' ' \n' | grep -v '^ *$' | hea
 ### explore(浏览)
 ```json
 "explore": {
-  "categories": [ { "title": "玄幻", "url": { "template": "{{base}}/sort/1_{{page}}.html" } } ],
-  "list": { "via": "css", "select": ".module-item" },
-  "item": { "bookUrl": {…}, "name": {…} }
+  "entries": [
+    { "static": [
+      { "title": "玄幻", "vars": { "category": "1" } },
+      { "title": "都市", "vars": { "category": "2" } }
+    ] }
+  ],
+  "page": {
+    "request": { "url": "{{base}}/sort/{{category}}_{{page}}.html" },
+    "list": { "via": "css", "select": ".module-item" },
+    "item": { "bookUrl": {…}, "name": {…} }
+  }
 }
 ```
+两阶段结构:`entries` 生成可选入口(静态或动态),`page` 用入口变量取书。
+
+**入口源两种变体**:
+- `static`:硬编码 `[{title, vars?}]`。`vars` 是取页变量(字面量),与 `base`/`page`/`pageSize` 合并后驱动 `page`。
+- `fetch`:从远端页面动态抓取 `{request, list, item}`。`list` 选数组,`item` 提取 `title`(Rule) + `vars`(`{name: Rule}`)。可选 `forEach` 按多组变量重复请求。**优先用 `fetch`**，站点新增分类时不用手动更新书源。
+
+**`fetch` 入口的坑**:
+- vars 里的 Rule 对「当前数据项」求值。`dom_query` 解析 HTML 片段时会包 `<html><body>`,**省略 `select` 时 `:root` 指向 `<html>` 而非目标元素**。提取 href 等属性时**必须显式写 `select`**(如 `"select": "a"`)匹配目标元素自身。
+- `list` 选择器应尽量精确(如 `.nav-menu-items a[href*='lastupdate']` 而非 `a`),避免匹配到无关链接导致 `vars` 提取失败、拼出错误 URL。
+
 浏览是搜索被反爬时的降级入口,优先做稳。
 
-**渲染 explore(SPA 书库站)**:`render`/`interceptApi`/`readyFor` 是 **explore 块级**字段(各分类共享),不是写在分类里。SPA 书库(无静态分类页、列表由签名接口拉取,典型:番茄书库)这样配:
+**渲染 explore(SPA 书库站)**:`render`/`interceptApi`/`readyFor` 是 **`page.request`** 上的字段(各分类共享)。SPA 书库(无静态分类页、列表由签名接口拉取,典型:番茄书库)这样配:
 ```json
 "explore": {
-  "categories": [
-    { "title": "书库·最热", "url": { "template": "{{base}}/library/all/page_{{page}}?sort=hottest" } },
-    { "title": "书库·最新", "url": { "template": "{{base}}/library/all/page_{{page}}?sort=newest" } }
+  "entries": [
+    { "static": [
+      { "title": "书库·最热", "vars": { "sort": "hottest" } },
+      { "title": "书库·最新", "vars": { "sort": "newest" } }
+    ] }
   ],
-  "render": true,
-  "interceptApi": "book_list/v0",
-  "list": { "via": "json", "select": "$.data.book_list[*]" },
-  "item": {
-    "bookUrl": { "concat": [ { "literal": "https://站点/page/" }, { "via": "json", "select": "$.book_id" } ] },
-    "name":   { "via": "json", "select": "$.book_name" },
-    "author": { "via": "json", "select": "$.author" },
-    "cover":  { "via": "json", "select": "$.thumb_url" },
-    "kind":   { "via": "json", "select": "$.category" }
+  "page": {
+    "request": {
+      "url": "{{base}}/library/all/page_{{page}}?sort={{sort}}",
+      "render": true,
+      "interceptApi": "book_list/v0"
+    },
+    "list": { "via": "json", "select": "$.data.book_list[*]" },
+    "item": {
+      "bookUrl": { "concat": [ { "literal": "https://站点/page/" }, { "via": "json", "select": "$.book_id" } ] },
+      "name":   { "via": "json", "select": "$.book_name" },
+      "author": { "via": "json", "select": "$.author" },
+      "cover":  { "via": "json", "select": "$.thumb_url" },
+      "kind":   { "via": "json", "select": "$.category" }
+    }
   }
 }
 ```
@@ -194,7 +219,7 @@ sed -e 's/<[^>]*>/ /g' /tmp/page.html | tr -s ' \n' ' \n' | grep -v '^ *$' | hea
    - 正文/搜索是 **token 门控的 JSON 接口**(需先有某 cookie):把下发该 cookie 的辅助端点(如 `https://站点/user/hm.html`)加进 `http.warmup`,引擎的 cookie_store 会跨请求保留,再用 `via:"json"` 解接口。
 4. **接受降级**。挑战自适应,有时需用户在弹出浏览器里点一下 Turnstile;阅读链路通常开放,搜索 ✗ 不影响读书,引导用浏览即可。
 
-**渲染型取页(render-fetcher,SPA / 签名接口站)**:若**结果由站点 JS 异步渲染 / 签名接口动态拉取**(如 SPA + ByteDance `sec_sdk`/CryptoJS 签名的 `/api/*`,无静态路径返回内容,典型:番茄网页搜索),标 `render: true` 让受控浏览器**跑站点自身 JS**(签名由真浏览器+真 SPA 完成,我们从不复刻签名),再二选一取结果。**作用位置**:`search` 写在 `search.request`(per-request);`explore` 写在 **`explore` 块级**(`render`/`interceptApi`/`readyFor` 与 `categories`/`list`/`item` 平级,各分类共享,见上「渲染 explore」)。两个取法:
+**渲染型取页(render-fetcher,SPA / 签名接口站)**:若**结果由站点 JS 异步渲染 / 签名接口动态拉取**(如 SPA + ByteDance `sec_sdk`/CryptoJS 签名的 `/api/*`,无静态路径返回内容,典型:番茄网页搜索),标 `render: true` 让受控浏览器**跑站点自身 JS**(签名由真浏览器+真 SPA 完成,我们从不复刻签名),再二选一取结果。**作用位置**:`search` 写在 `search.request`(per-request);`explore` 写在 **`explore.page.request`** 上(`render`/`interceptApi`/`readyFor` 与 `entries`/`page` 平级,各分类共享,见上「渲染 explore」)。两个取法:
 - `interceptApi: "<URL 子串>"` —— CDP 拦截匹配的**签名 API 响应体**(交 `via:"json"` 规则)。用于「结果只在签名接口、DOM 无关键字段(如 book_id)」的站。
 - `readyFor: "<CSS 选择器>"` —— 等该选择器渲染出现后取**渲染后 DOM**(交 CSS 规则)。用于「DOM 里有完整数据」的 SPA。
 
