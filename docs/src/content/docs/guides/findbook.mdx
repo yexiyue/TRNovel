@@ -1,59 +1,47 @@
 ---
-title: 本地书籍
-lastUpdated: 2025-10-29
+title: 本地小说
+lastUpdated: 2026-06-18
 sidebar:
     order: 3
 ---
 
-import { Steps, Tabs, TabItem } from "@astrojs/starlight/components";
+import { Steps, Tabs, TabItem, Aside } from "@astrojs/starlight/components";
 
-本文将介绍如何使用 TRNovel 查找和阅读本地书籍。
+本文介绍如何用 TRNovel 查找并打开本地 `.txt` 小说。
 
-## 基础使用
+## 启动与主页
+
+打开终端,运行 `trnovel`(包管理器安装时也可用简写 `trn`)即可进入主页。主页有四个入口:**本地小说、网络小说、历史记录、主题设置**,用 `↑/↓`(或 `j/k`)选择,回车进入。
+
+![主页](../../../assets/guides/home.gif)
+
+<Aside type="tip">主页任意位置按 `i` 都能呼出当前页面的快捷键面板,不用记键位。</Aside>
+
+## 打开本地小说
+
+选择「本地小说」后,TRNovel 会扫描**当前所在目录**及其子目录下的所有 `.txt` 文件,以文件树呈现:目录可展开/折叠,回车打开选中的书即进入阅读。
+
+![本地选书](../../../assets/guides/local-select.gif)
 
 <Steps>
 
-1. 打开终端，运行以下命令启动 TRNovel：
-    <Tabs>
-        <TabItem value="default" label="通用命令" icon="terminal">
-            ```bash
-            trnovel
-            ```
-        </TabItem>
-        <TabItem value="short" label="简写命令" icon="terminal">
-            ```bash
-            trn
-            ```
-            :::caution[注意]
-            只有通过包管理器安装 TRNovel 时，才可以使用该缩写命令。
-            :::
-        </TabItem>
-    </Tabs>
-    
-2. 启动后将进入 TRNovel 的交互式界面，在此界面选择"本地书籍"选项。
-    ![home](../../../assets/guides/home.png)
-    按回车键确认选择。
-    
-3. 选择"本地书籍"后，TRNovel 会自动扫描当前执行目录及其子目录下的所有 `.txt` 文件。
-    ![file-tree](../../../assets/guides/file-tree.png)
-    
-4. 在扫描结果中选择想要阅读的书籍，按回车键确认即可开始阅读。
-    ![read](../../../assets/guides/read.png)
+1. 在文件树里用 `↑/↓`(或 `j/k`)移动,回车展开/折叠目录。
+
+2. 选中一本 `.txt`,回车进入阅读界面(左侧目录 + 右侧正文)。自动识别 UTF-8 / GBK 编码,并按「第…章」切分章节。
+
 </Steps>
 
-## 进阶使用
+## 指定扫描目录
 
-如需扫描指定目录下的书籍，可以在进入"本地书籍"页面后，按下快捷键 `s`，然后输入目标目录路径并按回车确认。
+不想切到书库目录再启动?在本地小说页按 `s` 聚焦顶部路径框,输入任意目录路径后回车,即时切换扫描范围(该路径会存为历史,方便下次快速访问)。
 
-![local-path](../../../assets/guides/local-path.gif)
+![按路径扫描](../../../assets/guides/local-path.gif)
 
-:::note[提示]
-通过路径查找书籍时，系统会保存该路径为历史记录，方便下次快速访问。
-:::
+也可以在启动时用 `-l` 直接指定:
 
-:::tip[技巧]
-您也可以在启动 TRNovel 时，通过命令行参数直接指定扫描目录，例如：
 ```bash
-trnovel -l /path/to/your/books
+trn -l /path/to/your/books     # 扫描指定目录
+trn -q                         # 跳过选择,直接续读上次的位置
 ```
-:::
+
+<Aside type="note">本地小说按**字节偏移**记录章节位置以加速翻页;若文件在两次阅读之间被改动,旧的偏移可能失效,重新打开即可。</Aside>

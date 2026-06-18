@@ -1,7 +1,7 @@
 ---
-// 首页自定义 Hero:左文案 + 安装命令,右真实截图装进终端窗口框
-import { Image } from "astro:assets";
-import readImg from "../../assets/guides/read.png";
+// 首页自定义 Hero:左文案 + 安装命令,右真实录屏(VHS GIF)装进终端窗口框。
+// 用原生 <img>(而非 astro:assets <Image>)以保留 GIF 动画。
+import readGif from "../../assets/guides/read.gif";
 
 const base = "/TRNovel";
 ---
@@ -30,7 +30,7 @@ const base = "/TRNovel";
 			<span class="title">trn</span>
 		</div>
 		<div class="crop">
-			<Image src={readImg} alt="TRNovel 阅读界面截图" loading="eager" />
+			<img src={readGif.src} width={readGif.width} height={readGif.height} alt="TRNovel 阅读界面演示" loading="eager" />
 		</div>
 	</figure>
 </section>
@@ -226,17 +226,15 @@ const base = "/TRNovel";
 		color: #8b949e;
 	}
 
-	/* 截图带 VS Code 上下边条,按比例裁掉(margin 百分比相对宽度) */
 	.crop {
 		overflow: hidden;
+		background: #1e1e2e;
 	}
 
 	.crop img {
 		display: block;
 		width: 100%;
 		height: auto;
-		margin-top: -2.9%;
-		margin-bottom: -2.3%;
 	}
 
 	@media (prefers-reduced-motion: no-preference) {

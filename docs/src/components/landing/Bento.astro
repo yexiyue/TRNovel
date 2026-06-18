@@ -1,8 +1,8 @@
 ---
-// 特性 bento:7 项内容 = 7 格,混合尺寸;1 格渐变底 + 2 格真实截图保证视觉多样性
-import { Image } from "astro:assets";
-import homeImg from "../../assets/guides/home.png";
-import tocImg from "../../assets/guides/select-chapter.png";
+// 特性 bento:7 项内容 = 7 格,混合尺寸;1 格渐变底 + 2 格真实录屏(VHS GIF)保证视觉多样性。
+// 用原生 <img>(而非 astro:assets <Image>)以保留 GIF 动画。
+import homeGif from "../../assets/guides/home.gif";
+import localGif from "../../assets/guides/local-select.gif";
 ---
 
 <div class="tn-bento">
@@ -20,7 +20,7 @@ import tocImg from "../../assets/guides/select-chapter.png";
 	</div>
 	<div class="cell shot">
 		<div class="crop">
-			<Image src={homeImg} alt="TRNovel 主页界面" />
+			<img src={homeGif.src} width={homeGif.width} height={homeGif.height} alt="TRNovel 主页界面" loading="lazy" />
 		</div>
 		<div class="meta">
 			<h3>本地 + 网络双源</h3>
@@ -29,7 +29,7 @@ import tocImg from "../../assets/guides/select-chapter.png";
 	</div>
 	<div class="cell shot">
 		<div class="crop">
-			<Image src={tocImg} alt="TRNovel 分卷目录树" />
+			<img src={localGif.src} width={localGif.width} height={localGif.height} alt="TRNovel 本地选书与目录树" loading="lazy" />
 		</div>
 		<div class="meta">
 			<h3>智能分卷目录</h3>
@@ -128,18 +128,16 @@ import tocImg from "../../assets/guides/select-chapter.png";
 		overflow: hidden;
 	}
 
-	/* 截图带 VS Code 上下边条,按比例裁掉(margin 百分比相对宽度) */
 	.cell.shot .crop {
 		overflow: hidden;
 		border-bottom: 1px solid var(--tn-border);
+		background: #1e1e2e;
 	}
 
 	.cell.shot img {
 		display: block;
 		width: 100%;
 		height: auto;
-		margin-top: -2.9%;
-		margin-bottom: -2.3%;
 	}
 
 	.cell.shot .meta {
@@ -175,7 +173,6 @@ import tocImg from "../../assets/guides/select-chapter.png";
 		color: var(--tn-accent);
 	}
 
-	/* 进入视口时轻微上浮,仅在支持 scroll-driven animation 的浏览器生效 */
 	@supports (animation-timeline: view()) {
 		@media (prefers-reduced-motion: no-preference) {
 			.cell {

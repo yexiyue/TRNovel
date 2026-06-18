@@ -1,16 +1,16 @@
 ---
-// 截图画廊:横向 scroll-snap,真实界面截图 + 一行功能性说明
-import { Image } from "astro:assets";
-import homeImg from "../../assets/guides/home.png";
-import readImg from "../../assets/guides/read.png";
-import tocImg from "../../assets/guides/select-chapter.png";
-import shortcutsImg from "../../assets/guides/shortcuts.png";
+// 演示画廊:横向 scroll-snap,真实界面录屏(VHS GIF)+ 一行功能性说明。
+// 用原生 <img>(而非 astro:assets <Image>)以保留 GIF 动画,不被 sharp 处理成静帧。
+import readGif from "../../assets/guides/read.gif";
+import networkGif from "../../assets/guides/network-read.gif";
+import themeGif from "../../assets/guides/theme.gif";
+import loginGif from "../../assets/guides/login.gif";
 
 const shots = [
-	{ img: readImg, title: "沉浸式阅读", desc: "正文分页流畅，主题颜色可配置。" },
-	{ img: homeImg, title: "清爽主页", desc: "本地、网络、历史三个入口一目了然。" },
-	{ img: tocImg, title: "可折叠分卷目录", desc: "「卷、章」层级清晰，跳转不迷路。" },
-	{ img: shortcutsImg, title: "快捷键面板", desc: "随时呼出，所有操作有迹可循。" },
+	{ img: readGif, title: "沉浸式阅读", desc: "正文分页流畅，目录随时跳转，主题颜色可配置。" },
+	{ img: networkGif, title: "网络小说在线读", desc: "分类浏览、详情、阅读一气呵成。" },
+	{ img: themeGif, title: "主题随心配", desc: "一组主题色驱动全局配色，预设或 HEX 任选。" },
+	{ img: loginGif, title: "需登录的书源", desc: "表单 / 浏览器登录，登录态加密保存自动复用。" },
 ];
 ---
 
@@ -19,7 +19,7 @@ const shots = [
 		shots.map((s) => (
 			<figure>
 				<div class="crop">
-					<Image src={s.img} alt={s.title} />
+					<img src={s.img.src} width={s.img.width} height={s.img.height} alt={s.title} loading="lazy" />
 				</div>
 				<figcaption>
 					<strong>{s.title}</strong>
@@ -47,20 +47,17 @@ const shots = [
 		scroll-snap-align: start;
 	}
 
-	/* 截图带 VS Code 上下边条,按比例裁掉(margin 百分比相对宽度) */
 	.crop {
 		overflow: hidden;
 		border: 1px solid var(--tn-border);
 		border-radius: 12px;
-		background: #0d1117;
+		background: #1e1e2e;
 	}
 
 	.crop img {
 		display: block;
 		width: 100%;
 		height: auto;
-		margin-top: -2.9%;
-		margin-bottom: -2.3%;
 	}
 
 	figcaption {
