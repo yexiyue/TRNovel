@@ -15,12 +15,18 @@ Env TERM "xterm-256color"
 Env COLORTERM "truecolor"
 Env HOME "/tmp/trn-demo-home"
 
+# 屏蔽运行期 stderr(书源浏览器池子进程清理偶尔把 kill 提示泄漏进 TUI)+ 清屏
+Hide
+Type "exec 2>/dev/null"  Enter
+Type "clear"  Enter
+Show
+
 Type "trn -n"  Enter
 Sleep 1800ms
 
 # 选「番茄小说(网页)」进入,加载书库入口书籍
 Enter
-Sleep 5000ms
+Sleep 6000ms
 Screenshot "/tmp/verify-nr-1books.png"
 
 # Tab 打开分类弹窗,选一个分类
@@ -30,18 +36,18 @@ Screenshot "/tmp/verify-nr-2cats.png"
 Down  Sleep 600ms
 Down  Sleep 600ms
 Enter
-Sleep 4500ms
+Sleep 5500ms
 Screenshot "/tmp/verify-nr-3list.png"
 
 # 选一本书进入详情
 Down  Sleep 500ms
 Enter
-Sleep 4500ms
+Sleep 5500ms
 Screenshot "/tmp/verify-nr-4detail.png"
 
 # 进入阅读
 Enter
-Sleep 5000ms
+Sleep 6000ms
 Screenshot "/tmp/verify-nr-5read.png"
 
 # 翻页

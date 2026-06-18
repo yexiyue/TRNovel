@@ -23,7 +23,7 @@
     <a href="https://yexiyue.github.io/TRNovel/reference/anti-scraping">反爬与浏览器辅助</a>
   </p>
 
-  <img src="docs/public/preview-read.png" alt="TRNovel 阅读界面" width="860">
+  <img src="docs/src/assets/guides/read.gif" alt="TRNovel 阅读演示" width="860">
 </div>
 
 ## TRNovel 是什么
