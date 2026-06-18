@@ -1,8 +1,48 @@
-## [0.13.0] - 2026-06-10
+## [0.13.1] - 2026-06-18
+
+### 🚀 Features
+
+- *(parse-book-source)* Explore 渲染取页通道(SPA 浏览/分类列表)
+- *(booksource)* Render 常驻浏览器池(进程级单例)+ 修 Edge 首次运行模态卡死解挑战
+- *(booksource)* Render 双源(API+DOM)+ explore/search 精确总页数(render-dual-source)
+- *(booksource)* Explore/search 翻页边界 has_more,到头停翻(list-has-more)
+- *(booksource)* Search 点击驱动翻页 pageBy.click + 渲染结果缓存(search-click-pagination)
+- *(booksource)* Explore 动态入口 + 共享 ListPageSpec(dynamic-explore-entries)
+- *(booksource)* 浏览器 profile 跨进程锁 + 崩溃恢复 + Ctrl+C 统一收尾
+- 迁移 UI 到 ratatui-kit 0.7(事件系统 + 组件薄适配层 + 全局 Atom)
+
+### 🐛 Bug Fixes
+
+- *(ui)* Find_book 翻页避免每帧 spawn explore(render 狂闪)
+- *(booksource)* 修复 CF 解挑战死循环 + 落地 dev-workflow 基础设施
+- *(booksource)* 番茄 explore 书库书名/作者字体解码(新增 explore fontMap)
+- 修复 VHS 录制实测暴露的运行期 bug
+
+### 🚜 Refactor
+
+- *(parse-book-source)* 按功能域聚合模块并拆分巨型文件
+
+### 📚 Documentation
+
+- *(openspec)* Propose browser-pool 与 list-has-more
+- *(openspec)* 新增 render-dual-source change(render 双源暴露 + 精确总页数)
+- Dynamic explor entries
+- *(openspec)* 两个迁移 change 提案 + 知识库 gotcha
+- 用 VHS 录屏重写使用文档,新增登录/反爬,落地页换动图
+
+### ⚙️ Miscellaneous Tasks
+
+- *(openspec)* 归档已完成的 5 个 change
+- Ratatui-kit 依赖切回 crates.io 0.7.1(两处上游修复已发版)
+## [trnovel-v0.13.0] - 2026-06-10
 
 ### 🚀 Features
 
 - 依赖整栈升级(ratatui 0.30)+ render-fetcher 接通番茄网页搜索
+
+### ⚙️ Miscellaneous Tasks
+
+- Release
 ## [trnovel-v0.12.0] - 2026-06-10
 
 ### 🚀 Features
