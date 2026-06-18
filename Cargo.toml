@@ -27,7 +27,7 @@ crossterm = { version = "0.29.0", features = ["event-stream"] }
 encoding_rs = { version = "0.8.35", features = ["serde"] }
 fancy-regex = "0.18"
 md5 = "0.8.0"
-parse-book-source = { path = "crates/parse-book-source", version = "0.6.0", features = [
+parse-book-source = { path = "crates/parse-book-source", version = "0.7.0", features = [
     "browser",
     "js",
     "js-host",
