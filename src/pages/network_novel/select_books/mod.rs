@@ -17,7 +17,7 @@ use std::hash::Hash;
 mod find_book;
 use find_book::*;
 
-#[derive(Debug, Clone, Hash)]
+#[derive(Debug, Clone, Hash, PartialEq)]
 pub struct ExploreListItem(pub ExploreEntry);
 
 impl From<ExploreListItem> for ListItem<'_> {
@@ -29,7 +29,6 @@ impl From<ExploreListItem> for ListItem<'_> {
 #[component]
 pub fn SelectBooks(mut hooks: Hooks) -> impl Into<AnyElement<'static>> {
     let mut info_modal_open = hooks.use_state(|| false);
-    let is_inputting = *hooks.use_context::<State<bool>>();
     let book_source = hooks.use_route_state::<BookSource>();
     let mut explores = hooks.use_state(std::vec::Vec::new);
     let theme = hooks.use_theme_config();
@@ -55,20 +54,23 @@ pub fn SelectBooks(mut hooks: Hooks) -> impl Into<AnyElement<'static>> {
         Ok::<Engine, Errors>(engine)
     });
 
-    hooks.use_events(move |event| {
-        if let Event::Key(key) = event
-            && key.kind == KeyEventKind::Press
-            && !is_inputting.get()
-        {
-            match key.code {
-                KeyCode::Tab => {
-                    is_explore_open.set(!is_explore_open.get());
-                }
-                KeyCode::Char('i') | KeyCode::Char('I') => {
-                    info_modal_open.set(!info_modal_open.get());
-                }
-                _ => {}
+    hooks.use_event_handler(EventScope::Current, EventPriority::Normal, move |event| {
+        let Event::Key(key) = event else {
+            return EventResult::Ignored;
+        };
+        if key.kind != KeyEventKind::Press {
+            return EventResult::Ignored;
+        }
+        match key.code {
+            KeyCode::Tab => {
+                is_explore_open.set(!is_explore_open.get());
+                EventResult::Consumed
             }
+            KeyCode::Char('i') | KeyCode::Char('I') => {
+                info_modal_open.set(!info_modal_open.get());
+                EventResult::Consumed
+            }
+            _ => EventResult::Ignored,
         }
     });
 
@@ -112,6 +114,10 @@ pub fn SelectBooks(mut hooks: Hooks) -> impl Into<AnyElement<'static>> {
             height: Constraint::Percentage(70),
             style: Style::default().dim(),
             open: is_explore_open.get(),
+            // 非阻塞浮层:关闭键 Tab 由本页 root handler 处理(toggle is_explore_open);弹窗内 Select
+            // 在 Modal 子树层。背景 FindBooks 已用 `!is_explore_open` 门控,故非阻塞不引入冲突。
+            // 默认 blocks_lower=true 会截断 root → Tab 关不掉抽屉。
+            blocks_lower: false,
         ) {
             View(
                 margin: Margin::new(1,1),

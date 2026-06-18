@@ -1,92 +1,104 @@
 ---
 title: 网络小说
-lastUpdated: 2025-10-29
+lastUpdated: 2026-06-18
 sidebar:
     order: 5
 ---
 
-import { Steps } from "@astrojs/starlight/components";
+import { Steps, Tabs, TabItem, Aside } from "@astrojs/starlight/components";
+
+网络小说通过**书源**(一份描述如何抓取某个站点的 JSON 配置)获取内容。主页选择「网络小说」或运行 `trn -n` 进入。书源结构与制作详见[书源参考](/TRNovel/book-source/intro/)。
 
 ## 书源管理
 
-书源是一个 JSON 配置文件，用于获取网络小说内容。有关书源的详细信息，请参考[书源](/TRNovel/book-source/intro/)。
+首次进入若没有任何书源,会停在**导入模式**;已有书源时进入**仅选择模式**,按 `Tab` 在两种模式间切换。
 
-### 添加书源
+![书源管理](../../../assets/guides/network-source.gif)
+
+### 导入书源
+
 <Steps>
-1. 进入网络小说页面
 
-    您可以在主页选择“网络小说”，或者通过命令行 `trnovel -n` 进入网络小说页面。
-    ![network-novel](../../../assets/guides/network/01.png)
+1. 按 `s` 聚焦地址框,输入书源地址 —— 支持 `http` / `https` URL,也支持本地 `file` 路径。下面是一个可直接导入的测试书源:
 
-    :::note
-    首次进入网络小说页面时，如果没有书源，系统会提示您添加书源。再次进入网络小说页面时，可以通过按 `Tab` 键进入添加书源模式。
-    :::
-    
-2. 添加书源
-
-    下面提供了测试书源，您可以直接复制粘贴使用：
     ```
     https://yexiyue.github.io/TRNovel/test.json
     ```
-    
-    操作流程:
-    1. 按 `s` 输入书源 URL 地址或者文件路径
-    2. 按回车键确认
-    3. 等待书源解析完成
-    4. 按上下键选择书源，按空格键选中书源
-    5. 按回车键完成添加
-    6. 按 `Tab` 键返回列表模式
 
-    添加书源示例：
-    ![network-add-source](../../../assets/guides/network/02.gif)
+2. 回车解析,稍候列出该来源里的书源。
+
+3. 用 `↑/↓` 移动、`空格` 勾选要导入的书源(可多选),回车确认导入。
+
+4. 按 `Tab` 切回仅选择模式,即可看到已导入的书源。
 
 </Steps>
 
+<Aside type="tip">命令行也能导入:`trn import my-source.v2.json`;导入前可先用 `trn doctor my-source.v2.json` 全流程体检书源是否可用。</Aside>
+
 ### 删除书源
 
-删除书源操作流程:
-1. 在书源列表模式下，使用上下方向键选择要删除的书源
-2. 按 `d` 键删除选中的书源，此时会弹出一个确认框
-3. 按 `y` 键确认删除，按 `n` 键取消删除，或者按 `Esc` 键退出确认框。您也可以按左右方向键选择"确认"或"取消"选项，然后按回车键确认。
+在仅选择模式下选中书源,按 `d` 弹确认框:`y` 确认 / `n` / `Esc` 取消,或 `←/→` 选择后回车。
 
-删除书源示例：
-![network-delete-source](../../../assets/guides/network/03.gif)
+## 浏览与阅读
 
-## 搜索小说
+在仅选择模式下选中一个书源回车,进入该书源的书籍浏览页。
 
-### 频道
-频道是书源提供的小说分类列表，您可以通过频道浏览不同类型的小说。
-在书源列表模式下，选中一个书源，按回车键进入该书源的频道列表模式。
+![在线浏览与阅读](../../../assets/guides/network-read.gif)
 
-切换频道操作流程:
-1. 按 `Tab` 键切换频道列表模式
-2. 使用上下方向键选择频道
-3. 按回车键进入选中的频道
+<Steps>
 
-频道示例：
-![network-channel](../../../assets/guides/network/04.gif)
+1. **切换分类**:按 `Tab` 打开分类弹窗,书源提供的频道 / 榜单都在这里,`↑/↓` 选择,回车进入。
 
-:::note[浏览书籍列表]
-您可以按上下方向键浏览书籍列表，按左右方向键翻页。
-由于是通过书源获取的书籍列表，可能会出现内容重复的情况，请根据需要选择，避免盲目翻页。
-:::
+2. **翻页浏览**:`↑/↓`(或 `j/k`)在当前页移动,`←/→`(或 `h/l`)上一页 / 下一页。
 
-### 搜索
-搜索操作流程:
-1. 按 `s` 输入小说关键字
-2. 按回车键开始搜索
+3. **进入详情**:选中一本书回车进入详情页,可见作者、分类、字数、最新章节与简介。
 
-搜索示例：
-![network-search](../../../assets/guides/network/05.gif)
+4. **开始阅读**:在详情页回车进入阅读,操作与[本地阅读](/TRNovel/guides/read/)完全一致。
 
-:::note[返回频道列表]
-您可以清空输入框，然后按回车键返回频道列表。或者在输入模式下按 `Esc` 键会自动清空输入框并返回频道列表。
-:::
+</Steps>
 
-## 书籍详情
-选中一个书籍，按回车键进入书籍详情模式。
-书籍详情页面显示书籍的详细信息，包括作者、简介等。
-再次按回车键进入阅读模式，操作方式与本地书籍阅读模式相同。
+<Aside type="note">书籍列表来自书源实时抓取,不同分类 / 页之间可能出现重复,按需选择即可,不必盲目翻页。</Aside>
 
-详情示例：
-![network-detail](../../../assets/guides/network/06.gif)
+## 搜索
+
+在浏览页按 `s` 输入关键字回车即可搜索;清空输入框回车(或输入态按 `Esc`)返回分类浏览。
+
+<Aside type="caution">部分站点的搜索接口有反爬限制(如需 Cloudflare 浏览器验证),触发时见[反爬与浏览器辅助](/TRNovel/reference/anti-scraping/)。搜索不可用时,改用**分类浏览**同样能发现书籍。完整搜索演示见仓库 `docs/tapes/network-search.tape`(真机录制)。</Aside>
+
+## 书源登录
+
+番茄等部分站点的完整内容需要**登录**。当书源配置了登录信息(`loginUrl` 或 `loginUi`)时,在仅选择模式下选中该书源,按 `L` 进入登录页。TRNovel 支持两种登录方式:
+
+### 表单登录
+
+书源用 `loginUi` 声明一个登录表单(账号 / 密码等字段)。按 `L` 进入后填写即可:`↑/↓` 或 `Tab` 切换字段,输入凭据,`Enter` 提交登录,`Esc` 返回。
+
+![书源登录表单](../../../assets/guides/login.gif)
+
+对应的书源配置形如:
+
+```json
+{
+  "loginUrl": "@js: /* 登录脚本,返回登录头/cookie */",
+  "loginUi": [
+    { "name": "账号", "type": "text" },
+    { "name": "密码", "type": "password" },
+    { "name": "记住登录", "type": "toggle" }
+  ]
+}
+```
+
+字段 `type` 可为 `text` / `password` / `select` / `toggle`。
+
+### 浏览器登录(如番茄)
+
+当 `loginUrl` 是一个普通网页地址(没有 `loginUi` 表单)时为浏览器登录:按 `L` 进入后回车打开系统浏览器,在真实页面里完成登录,再回到终端按 `Enter` 完成,TRNovel 会自动提取 cookie / token。
+
+```json
+{
+  "loginUrl": "https://fanqienovel.com/",
+  "enabledCookieJar": true
+}
+```
+
+<Aside type="note">登录态(cookie / token)经**机器绑定的 AES 加密**保存在 `~/.novel/source-state/`,之后请求自动复用并在过期后自动清理,无需重复登录。完整的番茄浏览器登录演示见仓库 `docs/tapes/login-fanqie.tape`(需系统已装 Chrome / Edge,真机录制)。</Aside>

@@ -16,7 +16,10 @@ pub struct SettingItemProps {
 }
 
 #[component]
-pub fn SettingItem(props: &mut SettingItemProps, hooks: Hooks) -> impl Into<AnyElement<'static>> {
+pub fn SettingItem(
+    props: &mut SettingItemProps,
+    mut hooks: Hooks,
+) -> impl Into<AnyElement<'static>> {
     let theme = hooks.use_theme_config();
 
     let mut top_title = Line::from(props.top_title.clone());
@@ -43,7 +46,7 @@ pub fn SettingItem(props: &mut SettingItemProps, hooks: Hooks) -> impl Into<AnyE
             theme.basic.border
         }
     ) {
-        #(&mut props.children)
+        { std::mem::take(&mut props.children) }
     })
 }
 
@@ -56,20 +59,26 @@ pub fn SpeedSetting(
     let tts_config = *hooks.use_context::<State<TTSConfig>>();
     let is_editing = props.is_editing;
 
-    hooks.use_events(move |event| {
-        if let Event::Key(key) = event
-            && key.kind == KeyEventKind::Press
-            && is_editing
-        {
-            match key.code {
-                KeyCode::Left | KeyCode::Char('h') => {
-                    tts_config.write().decrease_speed();
-                }
-                KeyCode::Right | KeyCode::Char('l') => {
-                    tts_config.write().increase_speed();
-                }
-                _ => {}
+    hooks.use_event_handler(EventScope::Current, EventPriority::Normal, move |event| {
+        let Event::Key(key) = event else {
+            return EventResult::Ignored;
+        };
+        if key.kind != KeyEventKind::Press {
+            return EventResult::Ignored;
+        }
+        if !is_editing {
+            return EventResult::Ignored;
+        }
+        match key.code {
+            KeyCode::Left | KeyCode::Char('h') => {
+                tts_config.write().decrease_speed();
+                EventResult::Consumed
             }
+            KeyCode::Right | KeyCode::Char('l') => {
+                tts_config.write().increase_speed();
+                EventResult::Consumed
+            }
+            _ => EventResult::Ignored,
         }
     });
 
@@ -77,8 +86,8 @@ pub fn SpeedSetting(
         is_editing: props.is_editing,
     ) {
         View(flex_direction:Direction::Horizontal,justify_content:Flex::SpaceBetween) {
-            $Line::from("播放速度:").style(theme.basic.text)
-            $Line::from(format!("{}x", tts_config.read().speed)).style(theme.basic.text)
+            widget(Line::from("播放速度:").style(theme.basic.text))
+            widget(Line::from(format!("{}x", tts_config.read().speed)).style(theme.basic.text))
         }
     })
 }
@@ -92,20 +101,26 @@ pub fn VolumeSetting(
     let tts_config = *hooks.use_context::<State<TTSConfig>>();
     let is_editing = props.is_editing;
 
-    hooks.use_events(move |event| {
-        if let Event::Key(key) = event
-            && key.kind == KeyEventKind::Press
-            && is_editing
-        {
-            match key.code {
-                KeyCode::Left | KeyCode::Char('h') => {
-                    tts_config.write().decrease_volume();
-                }
-                KeyCode::Right | KeyCode::Char('l') => {
-                    tts_config.write().increase_volume();
-                }
-                _ => {}
+    hooks.use_event_handler(EventScope::Current, EventPriority::Normal, move |event| {
+        let Event::Key(key) = event else {
+            return EventResult::Ignored;
+        };
+        if key.kind != KeyEventKind::Press {
+            return EventResult::Ignored;
+        }
+        if !is_editing {
+            return EventResult::Ignored;
+        }
+        match key.code {
+            KeyCode::Left | KeyCode::Char('h') => {
+                tts_config.write().decrease_volume();
+                EventResult::Consumed
             }
+            KeyCode::Right | KeyCode::Char('l') => {
+                tts_config.write().increase_volume();
+                EventResult::Consumed
+            }
+            _ => EventResult::Ignored,
         }
     });
 
@@ -113,8 +128,8 @@ pub fn VolumeSetting(
         is_editing: props.is_editing,
     ) {
         View(flex_direction:Direction::Horizontal,justify_content:Flex::SpaceBetween) {
-            $Line::from("音量:").style(theme.basic.text)
-            $Line::from(format!("{}x", tts_config.read().volume)).style(theme.basic.text)
+            widget(Line::from("音量:").style(theme.basic.text))
+            widget(Line::from(format!("{}x", tts_config.read().volume)).style(theme.basic.text))
         }
     })
 }
@@ -128,20 +143,26 @@ pub fn AutoPlaySetting(
     let tts_config = *hooks.use_context::<State<TTSConfig>>();
     let is_editing = props.is_editing;
 
-    hooks.use_events(move |event| {
-        if let Event::Key(key) = event
-            && key.kind == KeyEventKind::Press
-            && is_editing
-        {
-            match key.code {
-                KeyCode::Left | KeyCode::Char('h') => {
-                    tts_config.write().auto_play = false;
-                }
-                KeyCode::Right | KeyCode::Char('l') => {
-                    tts_config.write().auto_play = true;
-                }
-                _ => {}
+    hooks.use_event_handler(EventScope::Current, EventPriority::Normal, move |event| {
+        let Event::Key(key) = event else {
+            return EventResult::Ignored;
+        };
+        if key.kind != KeyEventKind::Press {
+            return EventResult::Ignored;
+        }
+        if !is_editing {
+            return EventResult::Ignored;
+        }
+        match key.code {
+            KeyCode::Left | KeyCode::Char('h') => {
+                tts_config.write().auto_play = false;
+                EventResult::Consumed
             }
+            KeyCode::Right | KeyCode::Char('l') => {
+                tts_config.write().auto_play = true;
+                EventResult::Consumed
+            }
+            _ => EventResult::Ignored,
         }
     });
 
@@ -149,8 +170,8 @@ pub fn AutoPlaySetting(
         is_editing: props.is_editing,
     ) {
         View(flex_direction:Direction::Horizontal,justify_content:Flex::SpaceBetween) {
-            $Line::from("自动播放:").style(theme.basic.text)
-            $Line::from(format!("{}", tts_config.read().auto_play)).style(theme.basic.text)
+            widget(Line::from("自动播放:").style(theme.basic.text))
+            widget(Line::from(format!("{}", tts_config.read().auto_play)).style(theme.basic.text))
         }
     })
 }

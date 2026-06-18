@@ -11,7 +11,6 @@ repository = "https://github.com/yexiyue/parse-book-source"
 [dependencies]
 anyhow.workspace = true
 dirs.workspace = true
-futures.workspace = true
 kokoro-tts = "=0.3.1"
 # kokoro-tts 0.3.1 对 ort 声明宽松的预发布范围;钉死已知多平台可用的 ORT。
 # 不升 rc.12:onnxruntime 1.24 改用 xcframework 砍了 Intel Mac、且 linux 预编译要 glibc 2.38+,
@@ -24,6 +23,8 @@ reqwest = { version = "0.13", default-features = false, features = [
     "rustls",
     "cookies",
 ] }
+# rodio 暂留 0.21.x:0.22 是音频 API 重构(OutputStreamBuilder / Sink::connect_new /
+# SamplesBuffer·Zero 签名变更),需配合音频实测单独迁移,勿盲目升级。
 rodio = { version = "0.21.1", default-features = false, features = [
     "playback",
     "wav",

@@ -67,7 +67,7 @@ pub struct ShortcutInfoModalProps {
 #[component]
 pub fn ShortcutInfoModal(
     props: &ShortcutInfoModalProps,
-    hooks: Hooks,
+    mut hooks: Hooks,
 ) -> impl Into<AnyElement<'static>> {
     let theme = hooks.use_theme_config();
     let widths = [Constraint::Fill(1), Constraint::Fill(1)];
@@ -109,14 +109,18 @@ pub fn ShortcutInfoModal(
         width:Constraint::Percentage(60),
         height:Constraint::Percentage(50),
         open:props.open,
+        // 非阻塞浮层:本组件不自带 close handler,关闭键 i/Esc 由各页面 root 层 handler 处理。
+        // 若用默认 blocks_lower=true 会截断 root 层 → 帮助浮层一开就再也关不掉(全应用键盘卡死)。
+        // 各页已用 `is_editing: !info_modal_open` 门控背景列表,故非阻塞不会引入背景误响应。
+        blocks_lower: false,
         style:Style::new().dim(),
     ){
         ScrollView(margin:Margin::new(1,1)){
             View(height:Constraint::Length(key_height+3)){
-                $key_table
+                widget(key_table)
             }
             View(height:Constraint::Length(global_height+3)){
-                $global_table
+                widget(global_table)
             }
         }
     })

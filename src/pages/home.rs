@@ -25,53 +25,60 @@ pub fn Home(mut hooks: Hooks) -> impl Into<AnyElement<'static>> {
 
     hooks.use_terminal_size();
 
-    hooks.use_events(move |event| {
-        if let Event::Key(key) = event
-            && key.kind == KeyEventKind::Press
-        {
-            if info_modal_open.get() {
-                match key.code {
-                    KeyCode::Char('i') | KeyCode::Char('I') => {
-                        info_modal_open.set(false);
-                    }
-                    _ => {}
+    hooks.use_event_handler(EventScope::Current, EventPriority::Normal, move |event| {
+        let Event::Key(key) = event else {
+            return EventResult::Ignored;
+        };
+        if key.kind != KeyEventKind::Press {
+            return EventResult::Ignored;
+        }
+        if info_modal_open.get() {
+            match key.code {
+                KeyCode::Char('i') | KeyCode::Char('I') => {
+                    info_modal_open.set(false);
+                    EventResult::Consumed
                 }
-            } else {
-                match key.code {
-                    KeyCode::Char('j') | KeyCode::Down => {
-                        state.write().select_next();
-                    }
-                    KeyCode::Char('k') | KeyCode::Up => {
-                        state.write().select_previous();
-                    }
-                    KeyCode::Char('i') | KeyCode::Char('I') => {
-                        info_modal_open.set(true);
-                    }
-                    KeyCode::Enter => {
-                        if let Some(index) = state.read().selected() {
-                            match index {
-                                0 => {
-                                    if let Some(path) = &local_path {
-                                        navigate.push_with_state("/select-file", path.clone());
-                                    } else {
-                                        navigate.push("/select-file");
-                                    }
+                _ => EventResult::Ignored,
+            }
+        } else {
+            match key.code {
+                KeyCode::Char('j') | KeyCode::Down => {
+                    state.write().select_next();
+                    EventResult::Consumed
+                }
+                KeyCode::Char('k') | KeyCode::Up => {
+                    state.write().select_previous();
+                    EventResult::Consumed
+                }
+                KeyCode::Char('i') | KeyCode::Char('I') => {
+                    info_modal_open.set(true);
+                    EventResult::Consumed
+                }
+                KeyCode::Enter => {
+                    if let Some(index) = state.read().selected() {
+                        match index {
+                            0 => {
+                                if let Some(path) = &local_path {
+                                    navigate.push_with_state("/select-file", path.clone());
+                                } else {
+                                    navigate.push("/select-file");
                                 }
-                                1 => {
-                                    navigate.push("/book-source");
-                                }
-                                2 => {
-                                    navigate.push("/select-history");
-                                }
-                                3 => {
-                                    navigate.push("/theme-setting");
-                                }
-                                _ => {}
                             }
+                            1 => {
+                                navigate.push("/book-source");
+                            }
+                            2 => {
+                                navigate.push("/select-history");
+                            }
+                            3 => {
+                                navigate.push("/theme-setting");
+                            }
+                            _ => {}
                         }
                     }
-                    _ => {}
+                    EventResult::Consumed
                 }
+                _ => EventResult::Ignored,
             }
         }
     });
@@ -102,15 +109,15 @@ pub fn Home(mut hooks: Hooks) -> impl Into<AnyElement<'static>> {
             View(
                 height:Constraint::Length(5)
             ){
-                $big_txt
+                widget(big_txt)
             }
             View(
                 height:Constraint::Length(2)
             ){
-                $info_txt
+                widget(info_txt)
             }
             View(height:Constraint::Length(4)){
-                $(list,state)
+                stateful(list,state)
             }
             ShortcutInfoModal(
                 key_shortcut_info:KeyShortcutInfo::new(vec![

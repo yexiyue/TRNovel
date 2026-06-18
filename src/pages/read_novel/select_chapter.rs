@@ -53,7 +53,6 @@ pub fn SelectChapter(
 ) -> impl Into<AnyElement<'static>> {
     let mut filter_text = hooks.use_state(String::default);
     let theme = hooks.use_theme_config();
-    let is_inputting = *hooks.use_context::<State<bool>>();
 
     // 树状态：首次渲染时定位到当前章节并展开其所属卷。
     let state = {
@@ -88,36 +87,40 @@ pub fn SelectChapter(
 
     let mut on_select = props.on_select.take();
 
-    hooks.use_events(move |event| {
-        if let Event::Key(key) = event
-            && key.kind == KeyEventKind::Press
-            && is_editing
-            && !is_inputting.get()
-        {
-            match key.code {
-                KeyCode::Char('h') | KeyCode::Left => {
-                    state.write().key_left();
-                }
-                KeyCode::Char('j') | KeyCode::Down => {
-                    state.write().key_down();
-                }
-                KeyCode::Char('k') | KeyCode::Up => {
-                    state.write().key_up();
-                }
-                KeyCode::Char('l') | KeyCode::Right | KeyCode::Enter => {
-                    let selected = state.read().selected().last().cloned();
-                    match selected {
-                        // 选中章节叶子 → 沿用既有「按扁平索引设置当前章节」逻辑
-                        Some(TocId::Chapter(idx)) => on_select(idx),
-                        // 卷节点 → 展开/收起
-                        Some(TocId::Volume(_)) => {
-                            state.write().toggle_selected();
-                        }
-                        None => {}
-                    }
-                }
-                _ => {}
+    hooks.use_event_handler(EventScope::Current, EventPriority::Normal, move |event| {
+        let Event::Key(key) = event else {
+            return EventResult::Ignored;
+        };
+        if key.kind != KeyEventKind::Press || !is_editing {
+            return EventResult::Ignored;
+        }
+        match key.code {
+            KeyCode::Char('h') | KeyCode::Left => {
+                state.write().key_left();
+                EventResult::Consumed
             }
+            KeyCode::Char('j') | KeyCode::Down => {
+                state.write().key_down();
+                EventResult::Consumed
+            }
+            KeyCode::Char('k') | KeyCode::Up => {
+                state.write().key_up();
+                EventResult::Consumed
+            }
+            KeyCode::Char('l') | KeyCode::Right | KeyCode::Enter => {
+                let selected = state.read().selected().last().cloned();
+                match selected {
+                    // 选中章节叶子 → 沿用既有「按扁平索引设置当前章节」逻辑
+                    Some(TocId::Chapter(idx)) => on_select(idx),
+                    // 卷节点 → 展开/收起
+                    Some(TocId::Volume(_)) => {
+                        state.write().toggle_selected();
+                    }
+                    None => {}
+                }
+                EventResult::Consumed
+            }
+            _ => EventResult::Ignored,
         }
     });
 
@@ -153,8 +156,8 @@ pub fn SelectChapter(
             },
             is_editing: is_editing,
         )
-        #(if is_empty {
-            element!(Border(
+        if is_empty {
+            Border(
                 top_title: Some(Line::from("目录").style(theme.basic.border_title).centered()),
                 border_style: theme.basic.border,
             ){
@@ -166,17 +169,17 @@ pub fn SelectChapter(
                         wrap: true,
                     )
                 }
-            }).into_any()
+            }
         } else {
-            element!(TreeSelect<TocId>(
+            TreeSelect<TocId>(
                 style: theme.basic.text,
                 highlight_style: theme.selected,
                 state: state,
                 items: items.clone(),
                 scrollbar: Scrollbar::default(),
                 block: border,
-            )).into_any()
-        })
+            )
+        }
     })
 }
 

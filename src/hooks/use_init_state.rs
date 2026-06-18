@@ -3,6 +3,11 @@ use ratatui_kit::{Hooks, State, UseEffect, UseFuture, UseState};
 use std::sync::Arc;
 use tokio::sync::Notify;
 
+/// 异步加载状态 hook(带 **200ms loading 防抖**)。
+///
+/// 注意:**不要**改用框架 0.7 内置的 `use_async_state` 替代——后者立刻 `loading.set(true)`,而本 hook
+/// 刻意用 `Notify` + `tokio::spawn` 把 loading 延迟 200ms 才显示,以消除快速加载时的 spinner 频闪
+/// (见 `dev-notes/knowledge/tui-ratatui-kit.md` 的「狂闪 bug」)。这 200ms 防抖是与内置版的唯一差异、刻意保留。
 pub trait UseInitState {
     fn use_init_state<T, E, F>(
         &mut self,
@@ -22,7 +27,7 @@ pub trait UseInitState {
         T: Send + Sync + Unpin,
         E: Send + Sync + Unpin,
         F: Future<Output = Result<T, E>> + Send + 'static,
-        D: std::hash::Hash;
+        D: PartialEq + Unpin + 'static;
 }
 
 impl UseInitState for Hooks<'_, '_> {
@@ -78,7 +83,7 @@ impl UseInitState for Hooks<'_, '_> {
         T: Send + Sync + Unpin,
         E: Send + Sync + Unpin,
         F: Future<Output = Result<T, E>> + Send + 'static,
-        D: std::hash::Hash,
+        D: PartialEq + Unpin + 'static,
     {
         let mut loading = self.use_state(|| false);
         let state = self.use_state(|| None::<T>);

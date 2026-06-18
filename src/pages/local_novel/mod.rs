@@ -17,7 +17,6 @@ pub fn SelectFile(mut hooks: Hooks) -> impl Into<AnyElement<'static>> {
     let dir_path = hooks.try_use_route_state::<PathBuf>();
     let mut navigate = hooks.use_navigate();
     let theme = hooks.use_theme_config();
-    let is_inputting = *hooks.use_context::<State<bool>>();
     let mut path = hooks.use_state(|| dir_path.map(|p| (*p).clone()));
     let mut info_modal_open = hooks.use_state(|| false);
     let history = *hooks.use_context::<State<Option<History>>>();
@@ -38,17 +37,19 @@ pub fn SelectFile(mut hooks: Hooks) -> impl Into<AnyElement<'static>> {
         .map(|i| i.into_tree_item())
         .unwrap_or_default();
 
-    hooks.use_events(move |event| {
-        if let Event::Key(key) = event
-            && key.kind == KeyEventKind::Press
-            && !is_inputting.get()
-        {
-            match key.code {
-                KeyCode::Char('i') | KeyCode::Char('I') => {
-                    info_modal_open.set(!info_modal_open.get());
-                }
-                _ => {}
+    hooks.use_event_handler(EventScope::Current, EventPriority::Normal, move |event| {
+        let Event::Key(key) = event else {
+            return EventResult::Ignored;
+        };
+        if key.kind != KeyEventKind::Press {
+            return EventResult::Ignored;
+        }
+        match key.code {
+            KeyCode::Char('i') | KeyCode::Char('I') => {
+                info_modal_open.set(!info_modal_open.get());
+                EventResult::Consumed
             }
+            _ => EventResult::Ignored,
         }
     });
 
@@ -87,7 +88,7 @@ pub fn SelectFile(mut hooks: Hooks) -> impl Into<AnyElement<'static>> {
                 },
             )
             FileSelect(
-                is_editing: !is_inputting.get() && !info_modal_open.get(),
+                is_editing: !info_modal_open.get(),
                 top_title: Line::from("本地小说".to_string()).style(theme.basic.border_title).centered(),
                 items: tree_items,
                 on_select: move |item:PathBuf| {

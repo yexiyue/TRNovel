@@ -26,7 +26,7 @@ pub fn TTSManager(props: &TTSManagerProps, mut hooks: Hooks) -> impl Into<AnyEle
     let checkpoint_model = hooks.use_state(CheckpointModel::default);
     let voices_data = hooks.use_state(VoicesData::default);
 
-    let mut novel_tts = *hooks.use_context::<State<Option<NovelTTS>>>();
+    let mut novel_tts = hooks.use_atom(&crate::state::NOVEL_TTS);
     let is_editing = props.is_editing;
 
     hooks.use_async_effect(
@@ -55,21 +55,26 @@ pub fn TTSManager(props: &TTSManagerProps, mut hooks: Hooks) -> impl Into<AnyEle
     let mut index = hooks.use_state(|| 0usize);
     let is_open = props.open;
 
-    hooks.use_events(move |event| {
-        if let Event::Key(key) = event
-            && key.kind == KeyEventKind::Press
-            && is_open
-            && is_editing
-        {
-            match key.code {
-                KeyCode::Char('j') | KeyCode::Down => {
-                    index.set((index.get() + 1).min(5));
-                }
-                KeyCode::Char('k') | KeyCode::Up => {
-                    index.set(index.get().saturating_sub(1));
-                }
-                _ => {}
+    hooks.use_event_handler(EventScope::Current, EventPriority::Normal, move |event| {
+        let Event::Key(key) = event else {
+            return EventResult::Ignored;
+        };
+        if key.kind != KeyEventKind::Press {
+            return EventResult::Ignored;
+        }
+        if !is_open || !is_editing {
+            return EventResult::Ignored;
+        }
+        match key.code {
+            KeyCode::Char('j') | KeyCode::Down => {
+                index.set((index.get() + 1).min(5));
+                EventResult::Consumed
             }
+            KeyCode::Char('k') | KeyCode::Up => {
+                index.set(index.get().saturating_sub(1));
+                EventResult::Consumed
+            }
+            _ => EventResult::Ignored,
         }
     });
 
@@ -77,6 +82,11 @@ pub fn TTSManager(props: &TTSManagerProps, mut hooks: Hooks) -> impl Into<AnyEle
         width: Constraint::Percentage(80),
         height: Constraint::Percentage(80),
         open: is_open,
+        // 非阻塞浮层:本面板的 j/k(本组件 root handler)、T/Tab/i(父 ReadNovel root handler)都需在
+        // TTS 开启时仍可用;子设置项的 h/l/Enter 在 Modal 子树层。背景 ReadContent 已用 `is_scroll =
+        // !is_tts_open` 门控、TTS 开时不抢键,故非阻塞不引入冲突。默认 blocks_lower=true 会截断 root →
+        // j/k 失灵、T 关不掉 TTS。
+        blocks_lower: false,
         margin: Margin::new(1, 1),
         style:Style::default().dim(),
     ) {

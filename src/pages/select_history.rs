@@ -124,23 +124,27 @@ pub fn SelectHistory(mut hooks: Hooks) -> impl Into<AnyElement<'static>> {
         .map(|h| h.histories.clone())
         .unwrap_or_default();
 
-    hooks.use_events(move |event| {
-        if let Event::Key(key) = event
-            && key.kind == KeyEventKind::Press
-        {
-            match key.code {
-                KeyCode::Char('i') | KeyCode::Char('I') => {
-                    info_modal_open.set(!info_modal_open.get());
-                }
-                KeyCode::Char('d') | KeyCode::Char('D') => {
-                    if state.read().selected.is_some() && !delete_modal_open.get() {
-                        delete_modal_open.set(true);
-                    } else {
-                        delete_modal_open.set(false);
-                    }
-                }
-                _ => {}
+    hooks.use_event_handler(EventScope::Current, EventPriority::Normal, move |event| {
+        let Event::Key(key) = event else {
+            return EventResult::Ignored;
+        };
+        if key.kind != KeyEventKind::Press {
+            return EventResult::Ignored;
+        }
+        match key.code {
+            KeyCode::Char('i') | KeyCode::Char('I') => {
+                info_modal_open.set(!info_modal_open.get());
+                EventResult::Consumed
             }
+            KeyCode::Char('d') | KeyCode::Char('D') => {
+                // 仅负责「打开」删除确认;关闭交给 ConfirmModal 自身(n/N/Esc)。原 else 分支
+                // (delete_modal 已开时再按 d 置 false)不可达——ConfirmModal 开时其独占层已截断本 root handler。
+                if state.read().selected.is_some() {
+                    delete_modal_open.set(true);
+                }
+                EventResult::Consumed
+            }
+            _ => EventResult::Ignored,
         }
     });
 

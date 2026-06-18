@@ -48,4 +48,20 @@ Cargo workspace 的模块组织、feature 门控、构建/发布、平台坑。`
 
 **相关文件**：`crates/parse-book-source/src/engine/mod.rs`
 
+### `ort` 是「假死依赖」——版本钉死,代码零引用但不可删
+
+`crates/novel-tts/Cargo.toml` 的 `ort = "=2.0.0-rc.10"` 在 novel-tts src 里**零 `use`/`ort::` 引用**——它不是直接用的,而是**钉死 kokoro-tts 传递依赖 ort 的版本**（kokoro-tts 声明宽松预发布范围,rc.12 砍 Intel Mac/要 glibc 2.38+）。`cargo-machete` 等死依赖工具会把它误报为 unused 并建议删除,**删了会让 ort 解析到坏版本、发布炸**。审计死依赖时这类「纯版本钉死 dep」要人工豁免。
+
+**相关文件**：`crates/novel-tts/Cargo.toml`（注释已说明）
+
+### 死依赖清理（change upgrade-ratatui-kit-07 随手）
+
+手动审计（grep 每个直接依赖的下划线名在对应 src）清掉:trnovel 的 `tui-scrollview`（框架自带 ScrollView,项目从未直接 use）、`rodio`/`tokio-util`（仅 novel-tts 用,trnovel 自己声明的是死的）;novel-tts 的 `futures`（零引用）。`tui-scrollview`/`tui-big-text` 同时升到最新（0.6.7/0.8.7);**`tui-big-text` 0.8.7 补了 `&BigText: Widget`**,免去为 `widget(big_txt)` 自写 WidgetRef 适配层。
+
+### ratatui-kit 0.7.1 的两处自修(已发版、已切回 crates.io)
+
+迁移期在框架仓修了两个 0.7 的坑并**已发布到 crates.io**(`ratatui-kit-macros` 0.6.1 + `ratatui-kit` 0.7.1,均带 trybuild 测试 `tests/ui/pass/{macro_call_child,widget_by_value}.rs`);TRNovel 依赖已从临时 path 切回 `ratatui-kit = { version = "0.7.1", features = ["full"] }`:
+1. **element! 子节点位接纳宏调用**(`ratatui-kit-macros/src/element.rs::parse_children` 加 `is_macro_call`):`element!(...)`/`vec![...]` 在 children 块 / 一等控制流分支体内当 `{expr}` embed 解析,原误报 `expected identifier`(`Comp(..){ element!(..) }` 把 `{}` 当 children 时最坑)。
+2. **widget() 收按值 widget**(`adapter/widget.rs` 约束 `for<'a> &'a T: Widget` → `T: Widget + Clone` 按值克隆渲染;`text.rs` 的 `TextParagraph` 同步改按值):`BigText` 等只实现按值 `Widget` 的部件可直接 `widget(...)`。**取舍**:只实现按引用 `impl Widget for &T` 的部件(如 ratatui-widgets 的 `Shadow`)在 0.7.1 起不再被 `widget()` 接纳。
+
 <!-- 随开发补充:新 feature 门控约定、CI matrix 变更等 -->

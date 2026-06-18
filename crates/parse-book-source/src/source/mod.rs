@@ -303,6 +303,44 @@ mod tests {
     }
 
     #[test]
+    fn from_value_many_expands_named_font_map_in_array() {
+        // 回归(对应 BookSourceCache::load 修复):外部生成 / 手改的书源缓存,数组里仍是
+        // `{"fontMap":"名"}` 字符串引用,必须经 from_value_many 逐源展开才能反序列化。
+        let one = r#"{
+            "schema":"trnovel-booksource/v2","name":"t","url":"https://e.com",
+            "fontMaps": { "fm": { "E001": "一" } },
+            "bookInfo": { "name": {"via":"css","select":"h1"} },
+            "toc": { "list": {"via":"css","select":"a"}, "name": {"via":"css","select":"a"},
+                     "url": {"via":"css","select":"a","extract":{"attr":"href"}} },
+            "content": { "value": {"via":"css","select":".c","extract":"html",
+                         "clean":[{"fontMap":"fm"}]} }
+        }"#;
+        let array: serde_json::Value = serde_json::from_str(&format!("[{one}]")).unwrap();
+
+        // 旧缓存路径(裸反序列化)在命名 fontMap 字符串引用上失败 —— 正是本次修复的 bug。
+        assert!(
+            serde_json::from_value::<Vec<BookSource>>(array.clone()).is_err(),
+            "裸反序列化应在命名 fontMap 字符串引用上失败"
+        );
+
+        // 新缓存路径(from_value_many)逐源展开后成功。
+        let sources = BookSource::from_value_many(array).expect("应展开命名 fontMap 并解析");
+        assert_eq!(sources.len(), 1);
+        let Rule::Leaf(l) = &sources[0].content.value else {
+            panic!("content.value 应为叶子")
+        };
+        assert_eq!(
+            l.clean[0]
+                .font_map
+                .as_ref()
+                .expect("命名 fontMap 应展开为内联表")
+                .get("E001")
+                .map(String::as_str),
+            Some("一")
+        );
+    }
+
+    #[test]
     fn toc_name_is_firstof_with_two_leaves() {
         let bs = BookSource::from_json(BILIXS_V2).unwrap();
         match &bs.toc.name {

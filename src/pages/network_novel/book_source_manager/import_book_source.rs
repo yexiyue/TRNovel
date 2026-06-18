@@ -92,7 +92,6 @@ pub fn ImportBookSource(
     let selected = hooks.use_state(HashSet::<usize>::default);
     let mut book_source_url = hooks.use_state(String::new);
     let is_editing = props.is_editing;
-    let is_inputting = *hooks.use_context::<State<bool>>();
     let theme = hooks.use_theme_config();
 
     let book_source_cache = *hooks.use_context::<State<Option<BookSourceCache>>>();
@@ -138,7 +137,7 @@ pub fn ImportBookSource(
         )
         MultiListSelect<BookSource>(
             state: selected,
-            is_editing: !is_inputting.get() && is_editing,
+            is_editing: is_editing,
             empty_message: "暂无数据",
             loading: loading.get(),
             top_title: Line::from("选择要导入的书源 (空格选择, 回车确认)").style(
@@ -161,6 +160,10 @@ pub fn ImportBookSource(
                         book_source_cache.add_book_source(item);
                     }
                 }
+                // 导入成功后清空地址框与选中集:否则地址框仍留着上次的 URL/路径(光标在末尾),
+                // 再按 s 输入下一个书源会拼接到旧地址后面变成非法地址,导致连续导入失败。
+                selected.write().clear();
+                book_source_url.set(String::new());
             }
         )
         WarningModal(

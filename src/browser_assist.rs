@@ -12,14 +12,14 @@
 //! 弹一次,用户决定后所有等待者复用同一决定。
 
 use std::sync::atomic::AtomicBool;
-use std::sync::{Arc, Mutex, OnceLock};
+use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use async_trait::async_trait;
 use parse_book_source::{
     AuthDecision, BookSource, BrowserFetcher, BrowserOptions, BrowserUi, Engine, FetchMode,
 };
-use ratatui_kit::prelude::State;
+use ratatui_kit::Atom;
 use tokio::time::sleep;
 
 /// 待用户处理的浏览器交互(由全局上下文 `State<Option<BrowserPrompt>>` 承载,模态组件消费)。
@@ -82,23 +82,20 @@ pub fn set_always_allowed(on: bool) -> std::io::Result<()> {
     Ok(())
 }
 
-// ───────────────────────── 全局 UI 句柄(避免到处穿参)─────────────────────────
+// ───────────────────────── 全局浏览器提示原子 + UI 回调 ─────────────────────────
 
-static BROWSER_UI: OnceLock<Arc<dyn BrowserUi>> = OnceLock::new();
+/// 待用户处理的浏览器交互(进程级原子):`build_engine` / `TuiBrowserUi` 写入,
+/// 模态组件 `use_atom(&BROWSER_PROMPT)` 订阅消费。取代旧的「OnceLock 持 State 句柄」桥——
+/// `Atom` 本是 static 全局可达,非 UI 后端代码直接读写,无需从 UI 侧穿参登记。
+pub static BROWSER_PROMPT: Atom<Option<BrowserPrompt>> = Atom::new(|| None);
 
-/// App 启动时调用一次:把全局提示状态登记为浏览器 UI 回调,供 [`build_engine`] 取用。
-pub fn init_browser_ui(state: State<Option<BrowserPrompt>>) {
-    let _ = BROWSER_UI.set(Arc::new(TuiBrowserUi { state }));
-}
-
+/// 浏览器 UI 回调(无状态:直接读写全局 [`BROWSER_PROMPT`]),供 [`build_engine`] 注入。
 fn browser_ui() -> Option<Arc<dyn BrowserUi>> {
-    BROWSER_UI.get().cloned()
+    Some(Arc::new(TuiBrowserUi))
 }
 
-/// 基于全局提示状态的 [`BrowserUi`] 实现:把交互投递到 TUI 模态,以轮询等待用户决定。
-struct TuiBrowserUi {
-    state: State<Option<BrowserPrompt>>,
-}
+/// 基于全局 [`BROWSER_PROMPT`] 原子的 [`BrowserUi`] 实现:把交互投递到 TUI 模态,轮询等待用户决定。
+struct TuiBrowserUi;
 
 #[async_trait]
 impl BrowserUi for TuiBrowserUi {
@@ -112,11 +109,12 @@ impl BrowserUi for TuiBrowserUi {
             if let Some(d) = cached_decision() {
                 return d;
             }
-            // 仅当当前无弹窗时弹一次(并发/取消重启都不会叠加抖动)。
+            // 仅当当前无弹窗时弹一次(写守卫跨 check+set,并发/取消重启都不会叠加抖动)。
             {
-                let mut st = self.state.write();
-                if st.is_none() {
-                    *st = Some(BrowserPrompt::Authorize {
+                let st = BROWSER_PROMPT.state();
+                let mut guard = st.write();
+                if guard.is_none() {
+                    *guard = Some(BrowserPrompt::Authorize {
                         source_name: source_name.to_string(),
                     });
                 }
@@ -126,24 +124,24 @@ impl BrowserUi for TuiBrowserUi {
     }
 
     fn prompt_click(&self, url: &str, cancel: Arc<AtomicBool>) {
-        *self.state.write() = Some(BrowserPrompt::Click {
+        BROWSER_PROMPT.set(Some(BrowserPrompt::Click {
             url: url.to_string(),
             cancel,
-        });
+        }));
     }
 
     fn notice(&self, message: &str) {
-        *self.state.write() = Some(BrowserPrompt::Notice {
+        BROWSER_PROMPT.set(Some(BrowserPrompt::Notice {
             message: message.to_string(),
-        });
+        }));
     }
 
     fn done(&self) {
         if !matches!(
-            self.state.read().as_ref(),
+            BROWSER_PROMPT.state().read().as_ref(),
             Some(BrowserPrompt::Notice { .. })
         ) {
-            *self.state.write() = None;
+            BROWSER_PROMPT.set(None);
         }
     }
 }

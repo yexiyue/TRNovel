@@ -32,7 +32,6 @@ where
     let mut content = hooks.use_state(String::default);
     let mut is_read_mode = hooks.use_state(|| false);
     let mut is_tts_open = hooks.use_state(|| false);
-    let is_inputting = *hooks.use_context::<State<bool>>();
     let (width, height) = hooks.use_terminal_size();
 
     let mut content_loading = hooks.use_state(|| false);
@@ -127,23 +126,35 @@ where
         current_chapter.get(),
     );
 
-    hooks.use_events(move |event| {
-        if let Event::Key(key) = event
-            && key.kind == KeyEventKind::Press
-            && !is_inputting.get()
-        {
-            match key.code {
-                KeyCode::Tab => {
-                    is_read_mode.set(!is_read_mode.get());
-                }
-                KeyCode::Char('i') | KeyCode::Char('I') => {
-                    info_modal_open.set(!info_modal_open.get());
-                }
-                KeyCode::Char('t') | KeyCode::Char('T') if !info_modal_open.get() => {
-                    is_tts_open.set(!is_tts_open.get());
-                }
-                _ => {}
+    hooks.use_event_handler(EventScope::Current, EventPriority::Normal, move |event| {
+        let Event::Key(key) = event else {
+            return EventResult::Ignored;
+        };
+        if key.kind != KeyEventKind::Press {
+            return EventResult::Ignored;
+        }
+        match key.code {
+            KeyCode::Tab => {
+                is_read_mode.set(!is_read_mode.get());
+                EventResult::Consumed
             }
+            KeyCode::Char('i') | KeyCode::Char('I') => {
+                info_modal_open.set(!info_modal_open.get());
+                EventResult::Consumed
+            }
+            KeyCode::Char('t') | KeyCode::Char('T') if !info_modal_open.get() => {
+                // 听书设置面板(TTSManager)只在阅读模式(is_read_mode)渲染。若在章节选择模式
+                // 按 t,直接切到阅读模式并打开,避免「翻转 is_tts_open 却无 UI」的死输入,以及
+                // 之后 Tab 进阅读模式时面板意外已开的状态错位。
+                if is_read_mode.get() {
+                    is_tts_open.set(!is_tts_open.get());
+                } else {
+                    is_read_mode.set(true);
+                    is_tts_open.set(true);
+                }
+                EventResult::Consumed
+            }
+            _ => EventResult::Ignored,
         }
     });
 
@@ -164,7 +175,7 @@ where
         .unwrap_or_default();
 
     element!(Fragment {
-        #(if is_read_mode.get() {
+        { if is_read_mode.get() {
             element!(View{
                 ReadContent(
                     is_scroll: !is_tts_open.get() && !info_modal_open.get(),
@@ -289,7 +300,7 @@ where
                     open: info_modal_open.get(),
                 )
             })
-        })
+        } }
         WarningModal(
             tip: format!("加载失败:{:?}", error.read().as_ref()),
             is_error: error.read().is_some(),

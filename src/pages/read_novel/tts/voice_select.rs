@@ -43,20 +43,26 @@ pub fn VoiceSelect(props: &SettingItemProps, mut hooks: Hooks) -> impl Into<AnyE
         current_voice,
     );
 
-    hooks.use_events(move |event| {
-        if let Event::Key(key) = event
-            && key.kind == KeyEventKind::Press
-            && is_editing
-        {
-            match key.code {
-                KeyCode::Left | KeyCode::Char('h') => {
-                    current_voice.set(prev);
-                }
-                KeyCode::Right | KeyCode::Char('l') => {
-                    current_voice.set(next);
-                }
-                _ => {}
+    hooks.use_event_handler(EventScope::Current, EventPriority::Normal, move |event| {
+        let Event::Key(key) = event else {
+            return EventResult::Ignored;
+        };
+        if key.kind != KeyEventKind::Press {
+            return EventResult::Ignored;
+        }
+        if !is_editing {
+            return EventResult::Ignored;
+        }
+        match key.code {
+            KeyCode::Left | KeyCode::Char('h') => {
+                current_voice.set(prev);
+                EventResult::Consumed
             }
+            KeyCode::Right | KeyCode::Char('l') => {
+                current_voice.set(next);
+                EventResult::Consumed
+            }
+            _ => EventResult::Ignored,
         }
     });
 
@@ -73,23 +79,23 @@ pub fn VoiceSelect(props: &SettingItemProps, mut hooks: Hooks) -> impl Into<AnyE
     ) {
         View(flex_direction: Direction::Horizontal, gap:1){
             View(width:Constraint::Length(18)) {
-                $Line::from("选择声音: ".to_string()).style(theme.basic.text)
+                widget(Line::from("选择声音: ".to_string()).style(theme.basic.text))
             }
             View(flex_direction: Direction::Horizontal, gap:1,justify_content:Flex::Center) {
                 View(width:Constraint::Length(8)) {
-                    $Line::from("<").style(theme.basic.text).dim().centered()
+                    widget(Line::from("<").style(theme.basic.text).dim().centered())
                 }
                 View(width:Constraint::Length(8)) {
-                    $Line::from(prev.to_string()).style(theme.basic.text).dim().centered()
+                    widget(Line::from(prev.to_string()).style(theme.basic.text).dim().centered())
                 }
                 View(width:Constraint::Length(8)) {
-                    $Line::from(current.to_string()).style(theme.basic.text).bold().centered()
+                    widget(Line::from(current.to_string()).style(theme.basic.text).bold().centered())
                 }
                 View(width:Constraint::Length(8)) {
-                    $Line::from(next.to_string()).style(theme.basic.text).dim().centered()
+                    widget(Line::from(next.to_string()).style(theme.basic.text).dim().centered())
                 }
                 View(width:Constraint::Length(8)) {
-                    $Line::from(">").style(theme.basic.text).dim().centered()
+                    widget(Line::from(">").style(theme.basic.text).dim().centered())
                 }
             }
         }

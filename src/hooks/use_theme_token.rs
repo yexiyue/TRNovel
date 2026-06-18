@@ -1,31 +1,14 @@
-use crate::ThemeConfig;
-use ratatui_kit::{Hooks, State, UseContext};
-
-// pub trait UseThemeToken {
-//     fn use_theme_token(&self) -> Ref<'_, ThemeConfig>;
-// }
-
-// impl UseThemeToken for Hooks<'_, '_> {
-//     fn use_theme_token(&self) -> Ref<'_, ThemeConfig> {
-//         Ref::map(self.use_context::<State<ThemeConfig>>(), |s| {
-//              这里的transmute使用是安全的，因为：
-//              1. s.read() 返回的是一个 ReadGuard<'_, ThemeConfig>
-//              2. ReadGuard 实现了 Deref<Target = ThemeConfig>，所以 s.read().deref() 返回 &ThemeConfig
-//              3. transmute::<&ThemeConfig, &ThemeConfig> 在类型层面是完全相同的转换
-//              4. 这实际上是一个 noop 操作，只是为了满足 Ref::map 的类型要求
-//             unsafe { std::mem::transmute::<&ThemeConfig, &ThemeConfig>(&s.read()) }
-//         })
-//     }
-// }
+use crate::{ThemeConfig, state::THEME};
+use ratatui_kit::{Hooks, UseAtom};
 
 pub trait UseThemeConfig {
-    fn use_theme_config(&self) -> ThemeConfig;
+    fn use_theme_config(&mut self) -> ThemeConfig;
 }
 
 impl UseThemeConfig for Hooks<'_, '_> {
-    fn use_theme_config(&self) -> ThemeConfig {
-        self.try_use_context::<State<ThemeConfig>>()
-            .map(|s| s.read().clone())
-            .unwrap_or_default()
+    /// 订阅全局 `THEME` 原子并返回当前主题快照。订阅使读它的组件在主题变更时重渲染。
+    /// 因 `use_atom` 是注册 waker 的 hook,本方法取 `&mut self`(故调用方需 `mut hooks`)。
+    fn use_theme_config(&mut self) -> ThemeConfig {
+        self.use_atom(&THEME).read().clone()
     }
 }

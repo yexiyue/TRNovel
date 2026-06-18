@@ -38,7 +38,7 @@ pub fn Loading(props: &LoadingProps, mut hooks: Hooks) -> impl Into<AnyElement<'
                 border_style:theme.loading_modal.border,
             ){
                 View(height:Constraint::Length(1)){
-                    $throbber
+                    widget(throbber)
                 }
             }
         }

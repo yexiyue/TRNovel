@@ -77,18 +77,21 @@ pub fn BookDetail(mut hooks: Hooks) -> impl Into<AnyElement<'static>> {
         Ok::<NetworkNovel, Errors>(novel)
     });
 
-    hooks.use_events(move |event| {
-        if let Event::Key(key) = event
-            && key.kind == KeyEventKind::Press
-        {
-            match key.code {
-                KeyCode::Char('l') | KeyCode::Right | KeyCode::Enter => {
-                    if let Some(novel) = book_source_parser.read().clone() {
-                        navigate.push_with_state("/network-novel", novel);
-                    }
+    hooks.use_event_handler(EventScope::Current, EventPriority::Normal, move |event| {
+        let Event::Key(key) = event else {
+            return EventResult::Ignored;
+        };
+        if key.kind != KeyEventKind::Press {
+            return EventResult::Ignored;
+        }
+        match key.code {
+            KeyCode::Char('l') | KeyCode::Right | KeyCode::Enter => {
+                if let Some(novel) = book_source_parser.read().clone() {
+                    navigate.push_with_state("/network-novel", novel);
                 }
-                _ => {}
+                EventResult::Consumed
             }
+            _ => EventResult::Ignored,
         }
     });
 
@@ -140,7 +143,7 @@ pub fn BookDetail(mut hooks: Hooks) -> impl Into<AnyElement<'static>> {
         top_title: Line::from("小说详情").centered().style(theme.basic.border_title),
         border_style: theme.basic.border,
     ){
-        #(if loading.get(){
+        {if loading.get(){
             element!(Loading(tip: "加载中...")).into_any()
         }else{
             element!(ScrollView(
@@ -163,7 +166,7 @@ pub fn BookDetail(mut hooks: Hooks) -> impl Into<AnyElement<'static>> {
                     )
                 }
             }).into_any()
-        })
+        }}
         WarningModal(
             // 用 Display(非 Debug)展示:登录态失效会清晰提示「登录态已失效,请重新登录」(9.3)。
             tip: error.read().as_ref().map(|e| e.to_string()).unwrap_or_default(),
