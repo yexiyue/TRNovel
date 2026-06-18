@@ -143,7 +143,15 @@ where
                 EventResult::Consumed
             }
             KeyCode::Char('t') | KeyCode::Char('T') if !info_modal_open.get() => {
-                is_tts_open.set(!is_tts_open.get());
+                // 听书设置面板(TTSManager)只在阅读模式(is_read_mode)渲染。若在章节选择模式
+                // 按 t,直接切到阅读模式并打开,避免「翻转 is_tts_open 却无 UI」的死输入,以及
+                // 之后 Tab 进阅读模式时面板意外已开的状态错位。
+                if is_read_mode.get() {
+                    is_tts_open.set(!is_tts_open.get());
+                } else {
+                    is_read_mode.set(true);
+                    is_tts_open.set(true);
+                }
                 EventResult::Consumed
             }
             _ => EventResult::Ignored,

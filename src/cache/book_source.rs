@@ -26,7 +26,24 @@ impl BookSourceCache {
 
     pub fn load() -> Result<Self> {
         match File::open(Self::get_cache_file_path()?) {
-            Ok(file) => Ok(serde_json::from_reader(file)?),
+            Ok(file) => {
+                // 缓存结构为 {"book_sources": [<BookSource>...]}。不能直接反序列化:裸 serde
+                // 会跳过命名 fontMap 的展开(把 `"fontMap":"名"` 字符串引用当 BTreeMap 解析而
+                // 失败,报 "untagged enum Rule" 不匹配),导致外部生成/手改的 v2 缓存加载失败。
+                // 改走 BookSource::from_value_many(与 from_path / trn import 一致),逐源展开后
+                // 再反序列化,保证有效 v2 源能 round-trip 进缓存。
+                let value: serde_json::Value = serde_json::from_reader(file)?;
+                let sources_value = match value {
+                    serde_json::Value::Object(mut map) => map
+                        .remove("book_sources")
+                        .unwrap_or_else(|| serde_json::Value::Array(vec![])),
+                    // 容错:允许缓存文件本身就是一个书源数组。
+                    other => other,
+                };
+                let book_sources = BookSource::from_value_many(sources_value)
+                    .map_err(parse_book_source::BookSourceError::from)?;
+                Ok(BookSourceCache { book_sources })
+            }
             Err(_) => Ok(Default::default()),
         }
     }

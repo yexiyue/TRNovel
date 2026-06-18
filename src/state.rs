@@ -5,7 +5,7 @@
 //!
 //! 带 `Drop::save` 兜底存档的缓存(History / BookSourceCache / TTSConfig)**不**放这里——
 //! Rust 的 `static` 析构永不运行,atom 化会丢退出兜底存档,仍由 `App` `use_state` 持有。
-//! 浏览器验证提示 atom 见 [`crate::browser_assist::BROWSER_PROMPT`](与其消费方就近放置)。
+//! 浏览器验证提示 atom 见 [`crate::browser_assist::BROWSER_PROMPT`],与其消费方就近放置。
 
 use novel_tts::NovelTTS;
 use ratatui_kit::Atom;

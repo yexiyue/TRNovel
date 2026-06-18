@@ -160,6 +160,10 @@ pub fn ImportBookSource(
                         book_source_cache.add_book_source(item);
                     }
                 }
+                // 导入成功后清空地址框与选中集:否则地址框仍留着上次的 URL/路径(光标在末尾),
+                // 再按 s 输入下一个书源会拼接到旧地址后面变成非法地址,导致连续导入失败。
+                selected.write().clear();
+                book_source_url.set(String::new());
             }
         )
         WarningModal(

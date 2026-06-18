@@ -41,8 +41,7 @@ pub fn select_all(via: Via, content: &str, select: &str) -> Result<Vec<String>, 
             Ok(sel.nodes().iter().map(|n| n.html().to_string()).collect())
         }
         Via::Json => {
-            let value: Value =
-                serde_json::from_str(content).map_err(|e| EvalError::Json(e.to_string()))?;
+            let value: Value = parse_json_content(content)?;
             let matched = value
                 .query(select)
                 .map_err(|e| EvalError::JsonPath(e.to_string()))?;
@@ -127,13 +126,25 @@ fn decode_entities(s: &str) -> String {
 
 // ───────────────────────── JSON(jsonpath-rust 1.x)─────────────────────────
 
+/// 把上下文解析为 JSON。**空响应**(常见于被反爬拦截 / 网络故障 / 触发风控时返回空体)
+/// 给出明确提示,而非把 serde 的「EOF while parsing a value at line 1 column 0」原样透出,
+/// 让用户能区分「站点没返回内容」与「规则取错了字段」。
+fn parse_json_content(content: &str) -> Result<Value, EvalError> {
+    if content.trim().is_empty() {
+        return Err(EvalError::Json(
+            "响应体为空(疑似被反爬拦截或网络故障)".to_string(),
+        ));
+    }
+    serde_json::from_str(content).map_err(|e| EvalError::Json(e.to_string()))
+}
+
 fn json_extract(
     content: &str,
     select: Option<&str>,
     index: Option<i64>,
     ex: &Extract,
 ) -> Result<String, EvalError> {
-    let value: Value = serde_json::from_str(content).map_err(|e| EvalError::Json(e.to_string()))?;
+    let value: Value = parse_json_content(content)?;
     let path = select.unwrap_or("$");
     let matched = value
         .query(path)
@@ -192,5 +203,45 @@ pub(crate) fn resolve_index(index: Option<i64>, len: usize) -> usize {
             let from_end = (-i) as usize;
             len.saturating_sub(from_end)
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::source::ExtractOp;
+
+    #[test]
+    fn empty_json_response_gives_friendly_error() {
+        // 回归:空响应(被反爬拦截/网络故障返回空体)应给「响应体为空」提示,
+        // 而非透出 serde 的 "EOF while parsing a value at line 1 column 0"。
+        for content in ["", "   ", "\n\t "] {
+            let msg = select_all(Via::Json, content, "$.a")
+                .unwrap_err()
+                .to_string();
+            assert!(msg.contains("响应体为空"), "应提示响应为空,实际: {msg}");
+            assert!(!msg.contains("EOF"), "不应透出 serde EOF: {msg}");
+        }
+        // extract 路径同样覆盖。
+        let ex = Extract::Op(ExtractOp::Text);
+        let msg = extract(Via::Json, "", Some("$.a"), None, &ex)
+            .unwrap_err()
+            .to_string();
+        assert!(
+            msg.contains("响应体为空"),
+            "extract 空响应也应友好提示: {msg}"
+        );
+    }
+
+    #[test]
+    fn nonempty_invalid_json_still_errors_normally() {
+        // 非空但非法 JSON 仍按原样报错,不被误判为「空响应」。
+        let msg = select_all(Via::Json, "{not json", "$.a")
+            .unwrap_err()
+            .to_string();
+        assert!(
+            !msg.contains("响应体为空"),
+            "非空非法 JSON 不应判为空: {msg}"
+        );
     }
 }
