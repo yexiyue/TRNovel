@@ -24,7 +24,7 @@ export default defineConfig({
               label: '文档', href: '/TRNovel/guides/intro/'
             },
             {
-              label: "ratatui-kit", href: "https://yexiyue.github.io/ratatui-kit-website/"
+              label: "ratatui-kit", href: "https://yexiyue.github.io/ratatui-kit/"
             }
           ]
         }),
