@@ -112,3 +112,5 @@ Rust 1.85 or newer is required for edition 2024. Linux builds require `libasound
 Use Conventional Commit style with scopes, such as `feat(booksource): ...`, `fix(booksource): ...`, and `docs(openspec): ...`. Keep messages imperative and scoped to the changed subsystem.
 
 PRs should include the problem, solution, related issue or OpenSpec change, test commands run, and screenshots or terminal captures for UI/docs changes. Mention schema, cache, migration, or persisted-state impacts explicitly.
+
+@RTK.md
