@@ -1,4 +1,4 @@
-use crate::hooks::{UseScrollbar, UseThemeConfig};
+use crate::{hooks::UseScrollbar, theme::AppChromeTheme};
 use crossterm::event::{Event, KeyCode, KeyEventKind};
 use ratatui::{
     layout::{Alignment, Constraint},
@@ -57,11 +57,11 @@ where
         props.default_value,
     );
 
-    let theme = hooks.use_theme_config();
+    let theme = hooks.use_component_theme::<AppChromeTheme>();
     let is_empty = props.items.is_empty();
 
     let mut list = List::new(props.items.clone())
-        .style(theme.basic.text)
+        .style(theme.text)
         .highlight_style(theme.selected);
 
     if let Some(highlight_symbol) = props.highlight_symbol {
@@ -107,7 +107,7 @@ where
             Border(
                 top_title: props.top_title.clone(),
                 bottom_title: props.bottom_title.clone(),
-                border_style: theme.basic.border,
+                border_style: theme.border,
             ){
                 Center(
                     height:Constraint::Length(5),
@@ -116,7 +116,7 @@ where
                     Text(
                         text: props.empty_message.clone(),
                         alignment: Alignment::Center,
-                        style: theme.colors.warning_color,
+                        style: theme.empty,
                         wrap: true,
                     )
                 }
@@ -125,7 +125,7 @@ where
     }
 
     element!(Border(
-        border_style: theme.basic.border,
+        border_style: theme.border,
         top_title:props.top_title.clone(),
         bottom_title:props.bottom_title.clone()
     ){

@@ -2,7 +2,8 @@ use crate::components::modal::shortcut_info_modal::ShortcutInfoModal;
 use crate::{
     components::{WarningModal, select::Select},
     errors::Errors,
-    hooks::{UseInitState, UseThemeConfig},
+    hooks::UseInitState,
+    theme::AppChromeTheme,
 };
 use crossterm::event::{Event, KeyCode, KeyEventKind};
 use parse_book_source::{BookSource, Engine, ExploreEntry};
@@ -31,7 +32,7 @@ pub fn SelectBooks(mut hooks: Hooks) -> impl Into<AnyElement<'static>> {
     let mut info_modal_open = hooks.use_state(|| false);
     let book_source = hooks.use_route_state::<BookSource>();
     let mut explores = hooks.use_state(std::vec::Vec::new);
-    let theme = hooks.use_theme_config();
+    let theme = hooks.use_component_theme::<AppChromeTheme>();
 
     let list_state = hooks.use_state(ListState::default);
     let mut is_explore_open = hooks.use_state(|| false);
@@ -129,7 +130,7 @@ pub fn SelectBooks(mut hooks: Hooks) -> impl Into<AnyElement<'static>> {
                         current_explore.set(Some(item.clone()));
                         is_explore_open.set(false);
                     },
-                    top_title: Line::from("选择分类").style(theme.basic.border_title).centered(),
+                    top_title: Line::from("选择分类").style(theme.title).centered(),
                     is_editing: is_explore_open.get(),
                     empty_message: "暂无分类".to_string(),
                 )

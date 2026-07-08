@@ -7,7 +7,7 @@ use ratatui::{
 use ratatui_kit::prelude::*;
 use tui_tree_widget::{TreeItem, TreeState};
 
-use crate::{components::search_input::SearchInput, hooks::UseThemeConfig, novel::VolumeMarker};
+use crate::{components::search_input::SearchInput, novel::VolumeMarker, theme::AppChromeTheme};
 
 /// 章节项：`(标题, 扁平章节索引)`。扁平索引同时是它在章节列表中的位置。
 #[derive(Default, Clone)]
@@ -52,7 +52,7 @@ pub fn SelectChapter(
     mut hooks: Hooks,
 ) -> impl Into<AnyElement<'static>> {
     let mut filter_text = hooks.use_state(String::default);
-    let theme = hooks.use_theme_config();
+    let theme = hooks.use_component_theme::<AppChromeTheme>();
 
     // 树状态：首次渲染时定位到当前章节并展开其所属卷。
     let state = {
@@ -125,12 +125,8 @@ pub fn SelectChapter(
     });
 
     let border = Block::bordered()
-        .border_style(theme.basic.border)
-        .title_top(
-            Line::from("目录")
-                .style(theme.basic.border_title)
-                .centered(),
-        );
+        .border_style(theme.border)
+        .title_top(Line::from("目录").style(theme.title).centered());
 
     element!(View {
         SearchInput(
@@ -158,21 +154,21 @@ pub fn SelectChapter(
         )
         if is_empty {
             Border(
-                top_title: Some(Line::from("目录").style(theme.basic.border_title).centered()),
-                border_style: theme.basic.border,
+                top_title: Some(Line::from("目录").style(theme.title).centered()),
+                border_style: theme.border,
             ){
                 Center(height: Constraint::Length(5), width: Constraint::Percentage(50)){
                     Text(
                         text: if filter_text.read().is_empty() { "暂无章节".to_owned() } else { "无匹配章节".to_owned() },
                         alignment: Alignment::Center,
-                        style: theme.colors.warning_color,
+                        style: theme.empty,
                         wrap: true,
                     )
                 }
             }
         } else {
             TreeSelect<TocId>(
-                style: theme.basic.text,
+                style: theme.text,
                 highlight_style: theme.selected,
                 state: state,
                 items: items.clone(),
@@ -188,7 +184,7 @@ fn build_items(
     chapters: &[ChapterName],
     volumes: &[VolumeMarker],
     filter: &str,
-    theme: &crate::ThemeConfig,
+    theme: &AppChromeTheme,
 ) -> Vec<TreeItem<'static, TocId>> {
     let leaf = |c: &ChapterName| TreeItem::new_leaf(TocId::Chapter(c.1), c.0.clone());
 
@@ -225,7 +221,7 @@ fn build_items(
             .map(|nv| nv.first_chapter_index.min(len))
             .unwrap_or(len);
         let children: Vec<_> = chapters[start..end].iter().map(leaf).collect();
-        let title = Line::from(v.title.clone()).style(theme.basic.border_title);
+        let title = Line::from(v.title.clone()).style(theme.title);
         if let Ok(node) = TreeItem::new(TocId::Volume(vi), title, children) {
             items.push(node);
         }

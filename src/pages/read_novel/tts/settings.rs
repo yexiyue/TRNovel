@@ -1,4 +1,4 @@
-use crate::{TTSConfig, hooks::UseThemeConfig};
+use crate::{TTSConfig, theme::AppChromeTheme};
 use crossterm::event::{Event, KeyCode, KeyEventKind};
 use ratatui::{
     layout::{Direction, Flex},
@@ -16,11 +16,8 @@ pub struct SettingItemProps {
 }
 
 #[component]
-pub fn SettingItem(
-    props: &mut SettingItemProps,
-    mut hooks: Hooks,
-) -> impl Into<AnyElement<'static>> {
-    let theme = hooks.use_theme_config();
+pub fn SettingItem(props: &mut SettingItemProps, hooks: Hooks) -> impl Into<AnyElement<'static>> {
+    let theme = hooks.use_component_theme::<AppChromeTheme>();
 
     let mut top_title = Line::from(props.top_title.clone());
     let mut bottom_title = Line::from(props.bottom_title.clone());
@@ -31,9 +28,9 @@ pub fn SettingItem(
     }
 
     let border_style = if props.is_editing {
-        theme.basic.border.patch(theme.highlight)
+        theme.border.patch(theme.highlight)
     } else {
-        theme.basic.border
+        theme.border
     };
 
     element!(Border(
@@ -41,9 +38,9 @@ pub fn SettingItem(
         border_style: border_style,
         bottom_title: bottom_title,
         style: if props.is_editing {
-            theme.basic.border.not_dim()
+            theme.border.not_dim()
         } else {
-            theme.basic.border
+            theme.border
         }
     ) {
         { std::mem::take(&mut props.children) }
@@ -55,7 +52,7 @@ pub fn SpeedSetting(
     props: &mut SettingItemProps,
     mut hooks: Hooks,
 ) -> impl Into<AnyElement<'static>> {
-    let theme = hooks.use_theme_config();
+    let theme = hooks.use_component_theme::<AppChromeTheme>();
     let tts_config = *hooks.use_context::<State<TTSConfig>>();
     let is_editing = props.is_editing;
 
@@ -86,8 +83,8 @@ pub fn SpeedSetting(
         is_editing: props.is_editing,
     ) {
         View(flex_direction:Direction::Horizontal,justify_content:Flex::SpaceBetween) {
-            widget(Line::from("播放速度:").style(theme.basic.text))
-            widget(Line::from(format!("{}x", tts_config.read().speed)).style(theme.basic.text))
+            widget(Line::from("播放速度:").style(theme.text))
+            widget(Line::from(format!("{}x", tts_config.read().speed)).style(theme.text))
         }
     })
 }
@@ -97,7 +94,7 @@ pub fn VolumeSetting(
     props: &mut SettingItemProps,
     mut hooks: Hooks,
 ) -> impl Into<AnyElement<'static>> {
-    let theme = hooks.use_theme_config();
+    let theme = hooks.use_component_theme::<AppChromeTheme>();
     let tts_config = *hooks.use_context::<State<TTSConfig>>();
     let is_editing = props.is_editing;
 
@@ -128,8 +125,8 @@ pub fn VolumeSetting(
         is_editing: props.is_editing,
     ) {
         View(flex_direction:Direction::Horizontal,justify_content:Flex::SpaceBetween) {
-            widget(Line::from("音量:").style(theme.basic.text))
-            widget(Line::from(format!("{}x", tts_config.read().volume)).style(theme.basic.text))
+            widget(Line::from("音量:").style(theme.text))
+            widget(Line::from(format!("{}x", tts_config.read().volume)).style(theme.text))
         }
     })
 }
@@ -139,7 +136,7 @@ pub fn AutoPlaySetting(
     props: &mut SettingItemProps,
     mut hooks: Hooks,
 ) -> impl Into<AnyElement<'static>> {
-    let theme = hooks.use_theme_config();
+    let theme = hooks.use_component_theme::<AppChromeTheme>();
     let tts_config = *hooks.use_context::<State<TTSConfig>>();
     let is_editing = props.is_editing;
 
@@ -170,8 +167,8 @@ pub fn AutoPlaySetting(
         is_editing: props.is_editing,
     ) {
         View(flex_direction:Direction::Horizontal,justify_content:Flex::SpaceBetween) {
-            widget(Line::from("自动播放:").style(theme.basic.text))
-            widget(Line::from(format!("{}", tts_config.read().auto_play)).style(theme.basic.text))
+            widget(Line::from("自动播放:").style(theme.text))
+            widget(Line::from(format!("{}", tts_config.read().auto_play)).style(theme.text))
         }
     })
 }

@@ -87,17 +87,52 @@ children 透传:`{ &mut props.children }` 会因生命周期 `'1 must outlive 's
 - **deps 约束变了**:`use_effect`/`use_async_effect`/`use_effect_state` 的 deps 从 `D: Hash` 改为 **`D: PartialEq + Unpin + 'static`**（按相等比较 + 跨帧存储）。自定义包装 hook（`use_init_state`/`use_debounce_effect`）与做 deps 的类型（如 `ExploreListItem`）都要补 `PartialEq`。deps 里别写 `&x.clone()`（临时值借用),直接传 owned。
 - **`SendBlock` 已移除**:0.7 `Component: Any + Unpin`（砍了 Send+Sync bounds）。手写 Component 里 `pub block: SendBlock` → `pub block: Option<Block<'static>>`,调用点 `block: some_block` 由宏自动 `Some`。
 - **`widget(expr)` 要 `for<'a> &'a T: Widget`**（按引用渲染 + Clone + Unpin）。只实现按值 `Widget` 的第三方 widget 会报 `&T: Widget not satisfied`。**首选升级该 widget crate**:`tui-big-text` 0.8.4→0.8.7 即补了 `&BigText: Widget`,`widget(big_txt)` 直接可用,无需自写 `impl Widget for &Wrapper` 适配层。
-- **模态/选择/搜索内置组件**:框架 0.7 的 `ConfirmModal`/`AlertModal`/`SearchInput` 自带独占输入层,项目自定义同名组件改「薄主题适配层」（保留项目名作 wrapper,内读 `UseThemeConfig` 映射 `theme.*`→Style 后委托内置）;`Select`/`ListView`/`TreeSelect`/`MultiSelect` 的滚动条/loading/虚拟化内置缺,保留项目渲染只迁内部事件。
+- **模态/选择/搜索内置组件**:框架 0.7 的 `ConfirmModal`/`AlertModal`/`SearchInput` 自带独占输入层。当时项目自定义同名组件改成「薄主题适配层」;0.10 主题重构后不再用旧 `UseThemeConfig`,应改读内置组件主题或项目 `ComponentTheme`。`Select`/`ListView`/`TreeSelect`/`MultiSelect` 的滚动条/loading/虚拟化内置缺,保留项目渲染只迁内部事件。
 
 ### 全局 store → Atom（change `global-state-to-atom`）
 
 ambient 单例(主题 / TTS 模型句柄 / 浏览器提示)从「`App` `use_state` + 深嵌套 `ContextProvider` 链 + 后代 `use_context`」改为 module-level `static Atom`:
 
-- 声明:`pub static THEME: Atom<ThemeConfig> = Atom::new(ThemeConfig::default);`(`Atom::new(fn() -> T)` 是 **const fn**,可作 static;无捕获闭包 `|| None` 也行)。`Atom<T>` 要 `T: Send+Sync`,`use_atom` 另要 `Unpin`。
+- 声明方式:`pub static FOO: Atom<FooConfig> = Atom::new(FooConfig::default);`(`Atom::new(fn() -> T)` 是 **const fn**,可作 static;无捕获闭包 `|| None` 也行)。`Atom<T>` 要 `T: Send+Sync`,`use_atom` 另要 `Unpin`。旧版示例里的 `THEME: Atom<ThemeConfig>` 已被 0.10 主题重构替换为 `APPEARANCE` / `READER_DISPLAY`。
 - 组件内订阅:`hooks.use_atom(&THEME)` 返回 `AtomState<T>`(Copy 句柄,API 同 `State`)。
 - **组件外/后端直接读写**:`THEME.set(v)` / `THEME.get()`(`Atom::set/get` 取 `&self`,无需 hooks)——这把 `browser_assist` 那套「OnceLock 持 UI State 句柄给 build_engine」的桥**整个删掉**:`BROWSER_PROMPT` 是 static 全局可达,`TuiBrowserUi` 退化成无状态单元结构体直接读写它。
-- **坑:`use_atom` 是 `&mut self`**(注册 waker 的 hook)。把它包进 `&self` 的辅助方法(如 `UseThemeConfig::use_theme_config`)会强制该方法变 `&mut self`,**波及所有非 mut hooks 的调用点**(`fn Foo(.., hooks: Hooks)` → `mut hooks`)。本次波及 confirm/search_input/shortcut_info_modal/SettingItem 4 处。
+- **坑:`use_atom` 是 `&mut self`**(注册 waker 的 hook)。把它包进 `&self` 的辅助方法会强制该方法变 `&mut self`,**波及所有非 mut hooks 的调用点**(`fn Foo(.., hooks: Hooks)` → `mut hooks`)。旧 `UseThemeConfig::use_theme_config` 就踩过这个坑,当前主题代码不再保留该 helper。
 - **不 atom 化带 Drop 存档的缓存**:`History`/`BookSourceCache`/`TTSConfig` 有 `impl Drop { save() }`,而 `static` 析构永不运行 → 仍由 `App` `use_state` 持有(provider 链从 6 缩到 3)。
 - `BrowserPrompt::Click` 的 `Arc<AtomicBool>` 取消信号:atom 替换写入会 drop 旧 `Click`,但引擎侧持有 `Arc` 克隆保活,`cancel.load()` 不悬挂。
 
 **相关 change**:`openspec/changes/upgrade-ratatui-kit-07`、`global-state-to-atom`（均已实施 + CI 全绿,design.md 有完整决策）。
+
+## 0.7.1 → 0.10.1 迁移实战
+
+### ScrollView 与主题化组件 prop 变化
+
+`ratatui-kit` 0.10.1 引入主题化组件 API 后,若干 props 与类型名相对 0.7.1 有破坏性变化。
+
+**正确做法**：
+- `ScrollView` 滚动条配置改为 `scrollbars: Scrollbars { ... }`；旧的 `scroll_bars: ScrollBars { ... }` 不再存在。
+- `ScrollView` 是否响应内置键鼠滚动用 `active: bool`；旧的 `disabled` 字段不再存在,语义要反过来写成 `active: is_editing`。
+- `Border` / `Text` 等主题化组件的 `style` / `border_style` 是 `Option<Style>` 覆盖主题,不能再传裸 `Color`。空态文本优先用项目语义槽 `theme.empty` 这类 `Style`。
+
+**不要做**：
+- 不要把裸 `Color` 直接传给 `Text(style: ...)`；需要用 `Style::new().fg(...)`。当前主题重构后,优先使用 `AppChromeTheme` / `ReaderTheme` 这类项目 `ComponentTheme` 的语义槽。
+
+**相关文件**：`Cargo.toml`、`src/pages/network_novel/book_detail.rs`、`src/pages/read_novel/tts/mod.rs`、`src/components/select.rs`
+
+### 0.10 主题系统接入（change `refactor-theme-system`）
+
+`ratatui-kit` 0.10 的主题系统以 `PaletteProvider` 为根，组件通过内置主题、`use_palette()` 或自定义 `ComponentTheme` 被动读取当前 palette。TRNovel 不再维护旧的 `ThemeConfig` 六色派生树，也不再通过 `UseThemeConfig` 把项目样式传给所有组件。
+
+**正确做法**：
+- `App` 订阅 `APPEARANCE: Atom<AppearanceConfig>`，每帧从 `theme_slug + BackgroundMode` 派生 `Palette`，并用 `PaletteProvider` 包裹 router/provider 子树和启动错误弹窗。
+- `Palette.bg` 只是颜色值，不会自动填满终端背景；根背景层需要显式设置 `Style::new().bg(palette.bg)`。当前 `App` 用 no-border `Border` 包裹 router/provider 子树和启动错误弹窗。当 `BackgroundMode::Terminal` 时，`ratatui-kit-themes::terminal_background` 会把背景转成终端背景，同时保留文本、边框、高亮和语义色。
+- 项目级外观槽放在 `src/theme/mod.rs` 的小型 `ComponentTheme` 中：通用 chrome 用 `AppChromeTheme`，阅读正文用 `ReaderTheme`。不要重新创建一个覆盖全项目的大 `AppTheme`。
+- 页面或组件需要主题时直接 `hooks.use_component_theme::<AppChromeTheme>()` / `hooks.use_component_theme::<ReaderTheme>()`；只有确实需要原始色板时才用 `hooks.use_palette()`。
+- 命名主题来自 `ratatui-kit-themes::ThemeName::all()`；展示用 `display_name()`，持久化用 `slug()`。新配置写入 `~/.novel/appearance.json`，旧 `~/.novel/theme.json` 不读取、不迁移。
+- 阅读标题显示是行为偏好，不属于主题。`v` 键切换写 `READER_DISPLAY: Atom<ReaderDisplayConfig>` 与 `~/.novel/reader-display.json`。
+
+**不要做**：
+- 不要恢复 `ThemeConfig` / `ThemeColors` / `UseThemeConfig` 兼容层；这会让新旧两套主题系统并存。
+- 不要在 list item 等领域渲染结构体里携带旧主题快照。若自定义 `WidgetRef` 需要样式，只携带小型 `ComponentTheme` 或显式 `Style`。
+- 不要把 `show_title`、阅读行为或其他偏好塞进 `AppearanceConfig`；外观配置只保存命名主题与背景策略。
+
+**相关文件**：`src/cache/setting.rs`、`src/state.rs`、`src/app/mod.rs`、`src/theme/mod.rs`、`src/pages/theme_setting/mod.rs`

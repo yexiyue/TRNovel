@@ -6,7 +6,7 @@
 //! 从解挑战的异步任务里写入,本组件 `use_atom` 订阅消费并把用户选择回送。
 
 use crate::browser_assist::BrowserPrompt;
-use crate::hooks::UseThemeConfig;
+use crate::theme::AppChromeTheme;
 use crossterm::event::{Event, KeyCode, KeyEventKind};
 use parse_book_source::AuthDecision;
 use ratatui::{
@@ -16,14 +16,14 @@ use ratatui::{
 };
 use ratatui_kit::{
     AnyElement, AtomState, EventPriority, EventResult, EventScope, Hooks, UseAtom, UseEventHandler,
-    UseInputLayer, component, element,
+    UseInputLayer, UseTheme, component, element,
     prelude::{Border, Modal, Text, View},
 };
 use std::sync::atomic::Ordering;
 
 #[component]
 pub fn BrowserPromptModal(mut hooks: Hooks) -> impl Into<AnyElement<'static>> {
-    let theme = hooks.use_theme_config();
+    let theme = hooks.use_component_theme::<AppChromeTheme>();
     let state = hooks.use_atom(&crate::browser_assist::BROWSER_PROMPT);
     let open = state.read().is_some();
     // handler 须与下方 Modal 同处一个独占输入层:Modal open 时自开 blocks_lower 层会截断 root 层,
@@ -100,13 +100,13 @@ pub fn BrowserPromptModal(mut hooks: Hooks) -> impl Into<AnyElement<'static>> {
         style: Style::default().dim()
     ){
         Border(
-            border_style: theme.warning_modal.border,
-            top_title: Some(Line::from(title).style(theme.warning_modal.border_title).centered())
+            border_style: theme.title,
+            top_title: Some(Line::from(title).style(theme.title).centered())
         ){
             View(margin: Margin::new(2, 2)){
                 Text(
                     text: content,
-                    style: theme.warning_modal.text,
+                    style: theme.text,
                     alignment: Alignment::Center,
                 )
             }

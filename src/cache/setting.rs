@@ -1,150 +1,139 @@
 use crate::Result;
 use crate::utils::novel_catch_dir;
-use ratatui::style::{Color, Style};
+use ratatui_kit::Palette;
+use ratatui_kit_themes::{IntoKitPalette, ThemeName, terminal_background};
 use serde::{Deserialize, Serialize};
-use std::fs::File;
+use std::{fs::File, io::ErrorKind, path::PathBuf};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct ThemeConfig {
-    pub colors: ThemeColors,
-
-    pub logo: Style,
-    pub highlight: Style,
-    pub selected: Style,
-    pub empty: Style,
-    pub detail_info: Style,
-
-    pub basic: BasicSetting,
-    pub loading_modal: BasicSetting,
-    pub warning_modal: BasicSetting,
-    pub error_modal: BasicSetting,
-    pub search: SearchSetting,
-    pub novel: NovelSetting,
+pub struct AppearanceConfig {
+    pub theme_slug: String,
+    pub background: BackgroundMode,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct ThemeColors {
-    pub text_color: Color,
-    pub primary_color: Color,
-    pub warning_color: Color,
-    pub error_color: Color,
-    pub success_color: Color,
-    pub info_color: Color,
+pub enum BackgroundMode {
+    Theme,
+    Terminal,
 }
 
-impl ThemeConfig {
+impl AppearanceConfig {
+    const DEFAULT_THEME: ThemeName = ThemeName::TokyoNight;
+
+    pub fn path() -> Result<PathBuf> {
+        Ok(novel_catch_dir()?.join("appearance.json"))
+    }
+
+    pub fn load() -> Result<Self> {
+        match File::open(Self::path()?) {
+            Ok(file) => Ok(serde_json::from_reader(file).unwrap_or_default()),
+            Err(error) if error.kind() == ErrorKind::NotFound => Ok(Self::default()),
+            Err(error) => Err(error.into()),
+        }
+    }
+
     pub fn save(&self) -> Result<()> {
-        let path = novel_catch_dir()?.join("theme.json");
-        let file = File::create(path)?;
+        let file = File::create(Self::path()?)?;
         serde_json::to_writer_pretty(file, self)?;
         Ok(())
     }
 
-    pub fn from_colors(colors: ThemeColors) -> Self {
-        let ThemeColors {
-            text_color,
-            primary_color,
-            warning_color,
-            error_color,
-            success_color,
-            info_color,
-        } = colors;
+    pub fn theme_name(&self) -> ThemeName {
+        ThemeName::all()
+            .iter()
+            .copied()
+            .find(|name| name.slug() == self.theme_slug)
+            .unwrap_or(Self::DEFAULT_THEME)
+    }
 
-        let basic = BasicSetting {
-            text: Style::new().fg(text_color),
-            border: Style::new().dim(),
-            border_info: Style::new().dim().fg(info_color),
-            border_title: Style::new().fg(primary_color).not_dim(),
-            ..Default::default()
-        };
-        Self {
-            colors,
-            detail_info: Style::new().fg(warning_color).bold(),
-            logo: Style::new().fg(success_color),
-            selected: Style::new().fg(success_color),
-            highlight: Style::new().fg(primary_color),
-            empty: Style::new().fg(warning_color).bold(),
-            search: SearchSetting {
-                success_border: Style::new().fg(success_color).dim(),
-                success_border_info: Style::new().fg(success_color).not_dim(),
-                error_border: Style::new().fg(error_color).dim(),
-                error_border_info: Style::new().fg(error_color).not_dim(),
-                placeholder: Style::new().fg(text_color).dark_gray(),
-                text: Style::new().fg(text_color),
-            },
-            loading_modal: BasicSetting {
-                border: basic.border.fg(primary_color),
-                text: Style::new().fg(primary_color),
-                ..Default::default()
-            },
-            warning_modal: BasicSetting {
-                border: basic.border.fg(warning_color),
-                text: Style::new().fg(warning_color),
-                ..Default::default()
-            },
-            error_modal: BasicSetting {
-                border: basic.border.fg(error_color),
-                text: Style::new().fg(error_color),
-                ..Default::default()
-            },
-            novel: NovelSetting {
-                content: Style::new().fg(text_color),
-                chapter: basic.border_title,
-                page: basic.border_info,
-                progress: basic.border_info,
-                border: basic.border,
-                show_title: true,
-            },
-            basic,
+    pub fn palette(&self) -> Palette {
+        let palette = self.theme_name().into_kit_palette();
+        match self.background {
+            BackgroundMode::Theme => palette,
+            BackgroundMode::Terminal => terminal_background(palette),
         }
     }
 }
 
-impl Default for ThemeConfig {
+impl Default for AppearanceConfig {
     fn default() -> Self {
-        let colors = ThemeColors {
-            text_color: Color::default(),
-            primary_color: Color::LightBlue,
-            warning_color: Color::LightYellow,
-            error_color: Color::LightRed,
-            success_color: Color::LightGreen,
-            info_color: Color::Gray,
-        };
-        Self::from_colors(colors)
+        Self {
+            theme_slug: Self::DEFAULT_THEME.slug().to_string(),
+            background: BackgroundMode::Terminal,
+        }
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, Default)]
-pub struct BasicSetting {
-    pub text: Style,
-    pub border: Style,
-    pub border_title: Style,
-    pub border_info: Style,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, Default)]
-pub struct SearchSetting {
-    pub success_border: Style,
-    pub success_border_info: Style,
-    pub error_border: Style,
-    pub error_border_info: Style,
-    pub placeholder: Style,
-    pub text: Style,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, Default)]
-pub struct NovelSetting {
-    pub chapter: Style,
-    pub page: Style,
-    pub content: Style,
-    pub progress: Style,
-    pub border: Style,
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ReaderDisplayConfig {
     #[serde(default = "default_show_title")]
     pub show_title: bool,
 }
 
+impl ReaderDisplayConfig {
+    pub fn path() -> Result<PathBuf> {
+        Ok(novel_catch_dir()?.join("reader-display.json"))
+    }
+
+    pub fn load() -> Result<Self> {
+        match File::open(Self::path()?) {
+            Ok(file) => Ok(serde_json::from_reader(file).unwrap_or_default()),
+            Err(error) if error.kind() == ErrorKind::NotFound => Ok(Self::default()),
+            Err(error) => Err(error.into()),
+        }
+    }
+
+    pub fn save(&self) -> Result<()> {
+        let file = File::create(Self::path()?)?;
+        serde_json::to_writer_pretty(file, self)?;
+        Ok(())
+    }
+}
+
+impl Default for ReaderDisplayConfig {
+    fn default() -> Self {
+        Self {
+            show_title: default_show_title(),
+        }
+    }
+}
+
 fn default_show_title() -> bool {
     true
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use ratatui::style::Color;
+
+    #[test]
+    fn unknown_theme_slug_falls_back_to_default_theme() {
+        let config = AppearanceConfig {
+            theme_slug: "missing-theme".to_string(),
+            background: BackgroundMode::Terminal,
+        };
+
+        assert_eq!(config.theme_name(), AppearanceConfig::DEFAULT_THEME);
+    }
+
+    #[test]
+    fn terminal_background_resets_only_background_layers() {
+        let config = AppearanceConfig {
+            theme_slug: ThemeName::Dracula.slug().to_string(),
+            background: BackgroundMode::Terminal,
+        };
+
+        let palette = config.palette();
+        let themed = ThemeName::Dracula.into_kit_palette();
+
+        assert_eq!(palette.bg, Color::Reset);
+        assert_eq!(palette.surface, Color::Reset);
+        assert_eq!(palette.overlay, Color::Reset);
+        assert_eq!(palette.accent, themed.accent);
+        assert_eq!(palette.fg, themed.fg);
+    }
 }

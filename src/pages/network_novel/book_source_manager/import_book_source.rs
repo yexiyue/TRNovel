@@ -1,8 +1,8 @@
 use crate::{
-    ThemeConfig,
     book_source::BookSourceCache,
     components::{WarningModal, multi_list_select::MultiListSelect, search_input::SearchInput},
-    hooks::{UseInitState, UseThemeConfig},
+    hooks::UseInitState,
+    theme::AppChromeTheme,
 };
 
 use parse_book_source::BookSource;
@@ -19,7 +19,7 @@ struct ListItem {
     pub book_source: BookSource,
     pub selected: bool,
     pub height_light: bool,
-    pub theme: ThemeConfig,
+    pub theme: AppChromeTheme,
 }
 
 impl WidgetRef for ListItem {
@@ -42,11 +42,11 @@ impl WidgetRef for ListItem {
         block.render(area, buf);
 
         let text_style = if self.selected {
-            self.theme.basic.text.patch(self.theme.selected)
+            self.theme.text.patch(self.theme.selected)
         } else if self.height_light {
-            self.theme.basic.text.patch(self.theme.highlight)
+            self.theme.text.patch(self.theme.highlight)
         } else {
-            self.theme.basic.text
+            self.theme.text
         };
 
         let [top, bottom] =
@@ -62,12 +62,12 @@ impl WidgetRef for ListItem {
             .render(top, buf);
 
         Line::from(format!("网址: {}", self.book_source.url))
-            .style(self.theme.basic.text.patch(text_style))
+            .style(self.theme.text.patch(text_style))
             .left_aligned()
             .render(bottom_left, buf);
 
         Line::from(format!("分组: {}", self.book_source.group))
-            .style(self.theme.basic.border_info.patch(text_style))
+            .style(self.theme.meta_label.patch(text_style))
             .right_aligned()
             .render(bottom_right, buf);
 
@@ -92,7 +92,7 @@ pub fn ImportBookSource(
     let selected = hooks.use_state(HashSet::<usize>::default);
     let mut book_source_url = hooks.use_state(String::new);
     let is_editing = props.is_editing;
-    let theme = hooks.use_theme_config();
+    let theme = hooks.use_component_theme::<AppChromeTheme>();
 
     let book_source_cache = *hooks.use_context::<State<Option<BookSourceCache>>>();
 
@@ -141,7 +141,7 @@ pub fn ImportBookSource(
             empty_message: "暂无数据",
             loading: loading.get(),
             top_title: Line::from("选择要导入的书源 (空格选择, 回车确认)").style(
-               theme.basic.border_title
+               theme.title
             ).centered(),
             loading_tip:"解析中...".to_string(),
             items: book_source.read().clone().unwrap_or_default(),
@@ -151,7 +151,7 @@ pub fn ImportBookSource(
                     book_source: book_source[ctx.index].clone(),
                     selected: selected.read().contains(&ctx.index),
                     height_light: ctx.is_selected,
-                    theme: theme.clone(),
+                    theme,
                 }.into(),4)
             },
             on_select: move|items:Vec<BookSource>|{

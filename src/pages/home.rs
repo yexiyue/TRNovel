@@ -1,7 +1,7 @@
 use crate::{
     History,
     components::{KeyShortcutInfo, ShortcutInfoModal},
-    hooks::UseThemeConfig,
+    theme::AppChromeTheme,
 };
 use crossterm::event::{Event, KeyCode, KeyEventKind};
 use ratatui::{
@@ -19,7 +19,7 @@ pub fn Home(mut hooks: Hooks) -> impl Into<AnyElement<'static>> {
     let history = hooks.use_context::<State<Option<History>>>();
     let local_path = history.read().as_ref().and_then(|h| h.local_path.clone());
 
-    let theme = hooks.use_theme_config();
+    let theme = hooks.use_component_theme::<AppChromeTheme>();
 
     let mut navigate = hooks.use_navigate();
 
@@ -92,7 +92,7 @@ pub fn Home(mut hooks: Hooks) -> impl Into<AnyElement<'static>> {
 
     let info_txt = Paragraph::new(vec!["终端小说阅读器 (Terminal reader for novel)".into()])
         .wrap(Wrap { trim: true })
-        .style(theme.basic.text)
+        .style(theme.text)
         .centered();
 
     let list = List::new(vec![
@@ -101,7 +101,7 @@ pub fn Home(mut hooks: Hooks) -> impl Into<AnyElement<'static>> {
         Line::from("历史记录").centered(),
         Line::from("主题设置").centered(),
     ])
-    .style(theme.basic.text)
+    .style(theme.text)
     .highlight_style(theme.selected);
 
     element!(

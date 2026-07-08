@@ -10,7 +10,7 @@ use ratatui::{
 };
 use ratatui_kit::prelude::*;
 mod settings;
-use crate::hooks::UseThemeConfig;
+use crate::theme::AppChromeTheme;
 pub use settings::*;
 mod voice_select;
 pub use voice_select::*;
@@ -50,7 +50,7 @@ pub fn TTSManager(props: &TTSManagerProps, mut hooks: Hooks) -> impl Into<AnyEle
         ),
     );
 
-    let theme = hooks.use_theme_config();
+    let theme = hooks.use_component_theme::<AppChromeTheme>();
 
     let mut index = hooks.use_state(|| 0usize);
     let is_open = props.open;
@@ -92,8 +92,8 @@ pub fn TTSManager(props: &TTSManagerProps, mut hooks: Hooks) -> impl Into<AnyEle
     ) {
         View(margin:Margin::new(1,1)){
             ScrollView(
-                block: Block::bordered().border_style(theme.basic.border.not_dim()).title_top(Line::from("听书设置").centered()),
-                disabled: !is_editing,
+                block: Block::bordered().border_style(theme.border.not_dim()).title_top(Line::from("听书设置").centered().style(theme.title)),
+                active: is_editing,
             ){
                 View(height:Constraint::Length(3)){
                     DownloadProgress::<CheckpointModel>(..DownloadProgressProps {

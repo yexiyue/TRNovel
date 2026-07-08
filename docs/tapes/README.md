@@ -41,7 +41,7 @@ mkdir -p /tmp/trn-demo-home/books/仙侠
 | `local-select.tape` | local-select.gif | 本地选书:文件树、展开子目录、打开 | 沙箱 |
 | `read.tape` | read.gif | 阅读、方向键翻页、Tab 跳章 | 沙箱 |
 | `shortcuts.tape` | shortcuts.gif | i 唤出快捷键浮层 | 沙箱 |
-| `theme.tape` | theme.gif | 主题色设置 + 取色弹窗 | 沙箱 |
+| `theme.tape` | theme.gif | 命名主题切换 + 背景模式 | 沙箱 |
 | `history.tape` | history.gif | 阅读历史列表 | 沙箱 |
 | `network-source.tape` | network-source.gif | 导入书源(file 路径)+ 浏览源列表 | 沙箱(离线) |
 | `network-read.tape` | network-read.gif | 在线书库 → 分类 → 详情 → 阅读 | 沙箱(联网) |

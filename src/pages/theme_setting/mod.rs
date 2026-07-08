@@ -1,117 +1,108 @@
 use crate::{
-    ThemeConfig,
+    AppearanceConfig, BackgroundMode,
     components::{ConfirmModal, KeyShortcutInfo, ShortcutInfoModal, list_select::ListSelect},
+    theme::AppChromeTheme,
 };
 use crossterm::event::{Event, KeyCode, KeyEventKind};
 use ratatui::{
-    style::Color,
-    text::Line,
-    widgets::{Block, Padding, Widget, WidgetRef},
+    layout::{Constraint, Layout},
+    style::{Modifier, Style},
+    text::{Line, Span},
+    widgets::{Block, Padding, Paragraph, Widget, WidgetRef},
 };
 use ratatui_kit::prelude::*;
-use tui_widget_list::ListBuildContext;
+use ratatui_kit_themes::{IntoKitPalette, ThemeName};
+use tui_widget_list::{ListBuildContext, ListState};
 
-mod select_color;
-use select_color::SelectColor;
-
-#[derive(Debug, Clone)]
-pub struct ListItem {
-    pub name: String,
-    pub color: Color,
-    pub selected: bool,
-    pub theme: ThemeConfig,
+#[derive(Debug, Clone, Copy)]
+struct ThemeListItem {
+    name: ThemeName,
+    selected: bool,
+    current: bool,
+    theme: AppChromeTheme,
 }
 
-impl WidgetRef for ListItem {
+impl Widget for ThemeListItem {
+    fn render(self, area: ratatui::prelude::Rect, buf: &mut ratatui::prelude::Buffer) {
+        self.render_ref(area, buf);
+    }
+}
+
+impl WidgetRef for ThemeListItem {
     fn render_ref(&self, area: ratatui::prelude::Rect, buf: &mut ratatui::prelude::Buffer) {
-        let block = if self.selected {
-            Block::bordered()
-                .title(Line::from(self.name.clone()).style(self.theme.basic.border_title))
-                .padding(Padding::horizontal(0))
-                .style(self.theme.selected)
+        let style = if self.selected {
+            self.theme.selected
+        } else if self.current {
+            self.theme.highlight.add_modifier(Modifier::BOLD)
         } else {
-            Block::bordered()
-                .title(Line::from(self.name.clone()).style(self.theme.basic.border_title))
-                .padding(Padding::horizontal(0))
+            self.theme.text
         };
 
-        let inner_area = block.inner(area);
+        let block = Block::bordered()
+            .padding(Padding::horizontal(1))
+            .border_style(if self.current {
+                self.theme.highlight
+            } else {
+                self.theme.border
+            })
+            .style(if self.selected {
+                self.theme.selected
+            } else {
+                Style::new()
+            });
 
+        let inner = block.inner(area);
         block.render(area, buf);
 
-        let color = Line::from(format!("■ {}", self.color))
-            .centered()
-            .style(self.color);
-        color.render(inner_area, buf);
-    }
-}
+        let palette = self.name.into_kit_palette();
+        let marker = if self.current { "当前" } else { "    " };
+        let title = Line::from(vec![
+            Span::from(marker).style(self.theme.meta_label.patch(style)),
+            Span::from("  "),
+            Span::from(self.name.display_name()).style(style),
+            Span::from("  "),
+            Span::from(self.name.slug()).style(self.theme.meta_label.patch(style)),
+        ]);
 
-// 定义颜色项枚举，避免使用字符串匹配
-#[derive(Debug, Clone, PartialEq)]
-enum ColorItem {
-    Text,
-    Primary,
-    Warning,
-    Error,
-    Success,
-    Info,
-}
+        let swatches = Line::from(vec![
+            Span::from("  ").style(Style::new().bg(palette.accent)),
+            Span::from(" "),
+            Span::from("  ").style(Style::new().bg(palette.selection)),
+            Span::from(" "),
+            Span::from("  ").style(Style::new().bg(palette.success)),
+            Span::from(" "),
+            Span::from("  ").style(Style::new().bg(palette.warning)),
+            Span::from(" "),
+            Span::from("  ").style(Style::new().bg(palette.error)),
+            Span::from(" "),
+            Span::from("  ").style(Style::new().bg(palette.info)),
+        ])
+        .style(style);
 
-impl ColorItem {
-    fn name(&self) -> &'static str {
-        match self {
-            ColorItem::Text => "Text Color",
-            ColorItem::Primary => "Primary Color",
-            ColorItem::Warning => "Warning Color",
-            ColorItem::Error => "Error Color",
-            ColorItem::Success => "Success Color",
-            ColorItem::Info => "Info Color",
-        }
-    }
-
-    fn get_color(&self, theme: &ThemeConfig) -> Color {
-        match self {
-            ColorItem::Text => theme.colors.text_color,
-            ColorItem::Primary => theme.colors.primary_color,
-            ColorItem::Warning => theme.colors.warning_color,
-            ColorItem::Error => theme.colors.error_color,
-            ColorItem::Success => theme.colors.success_color,
-            ColorItem::Info => theme.colors.info_color,
-        }
-    }
-
-    fn set_color(&self, theme: &mut ThemeConfig, color: Color) {
-        match self {
-            ColorItem::Text => theme.colors.text_color = color,
-            ColorItem::Primary => theme.colors.primary_color = color,
-            ColorItem::Warning => theme.colors.warning_color = color,
-            ColorItem::Error => theme.colors.error_color = color,
-            ColorItem::Success => theme.colors.success_color = color,
-            ColorItem::Info => theme.colors.info_color = color,
-        }
-    }
-
-    fn all() -> Vec<ColorItem> {
-        vec![
-            ColorItem::Text,
-            ColorItem::Primary,
-            ColorItem::Warning,
-            ColorItem::Error,
-            ColorItem::Success,
-            ColorItem::Info,
-        ]
+        let [top, bottom] =
+            Layout::vertical([Constraint::Length(1), Constraint::Length(1)]).areas(inner);
+        Paragraph::new(title).render(top, buf);
+        Paragraph::new(swatches).render(bottom, buf);
     }
 }
 
 #[component]
 pub fn ThemeSetting(mut hooks: Hooks) -> impl Into<AnyElement<'static>> {
     let mut info_modal_open = hooks.use_state(|| false);
-    // 主题已迁为全局 atom;用 use_atom 订阅 + 写回(原 ThemeConfig context provider 已删,
-    // 继续 use_context 会运行期 panic)。写入经 THEME 唤醒所有 use_theme_config 订阅者。
-    let theme_config = hooks.use_atom(&crate::state::THEME);
-    let theme = theme_config.read().clone();
-    let mut current = hooks.use_state(|| None::<ColorItem>);
     let mut reset_modal_open = hooks.use_state(|| false);
+    let mut appearance = hooks.use_atom(&crate::state::APPEARANCE);
+    let theme = hooks.use_component_theme::<AppChromeTheme>();
+    let themes = ThemeName::all();
+    let current_theme = appearance.read().theme_name();
+    let selected_index = themes
+        .iter()
+        .position(|name| *name == current_theme)
+        .unwrap_or(0);
+    let list_state = hooks.use_state(move || {
+        let mut state = ListState::default();
+        state.selected = Some(selected_index);
+        state
+    });
 
     hooks.use_event_handler(EventScope::Current, EventPriority::Normal, move |event| {
         let Event::Key(key) = event else {
@@ -121,80 +112,82 @@ pub fn ThemeSetting(mut hooks: Hooks) -> impl Into<AnyElement<'static>> {
             return EventResult::Ignored;
         }
         match key.code {
-            KeyCode::Char('i') | KeyCode::Char('I') if current.read().is_none() => {
+            KeyCode::Char('i') | KeyCode::Char('I') => {
                 info_modal_open.set(!info_modal_open.get());
                 EventResult::Consumed
             }
-            KeyCode::Char('d') | KeyCode::Char('D') if current.read().is_none() => {
-                reset_modal_open.set(!reset_modal_open.get());
+            KeyCode::Char('d') | KeyCode::Char('D') => {
+                reset_modal_open.set(true);
                 EventResult::Consumed
             }
-            KeyCode::Esc if current.read().is_some() => {
-                current.set(None);
+            KeyCode::Char('t') | KeyCode::Char('T') if !reset_modal_open.get() => {
+                let mut next = appearance.read().clone();
+                next.background = match next.background {
+                    BackgroundMode::Theme => BackgroundMode::Terminal,
+                    BackgroundMode::Terminal => BackgroundMode::Theme,
+                };
+                let _ = next.save();
+                appearance.set(next);
                 EventResult::Consumed
             }
             _ => EventResult::Ignored,
         }
     });
 
-    // 使用ColorItem枚举来避免字符串匹配
-    let color_items: Vec<ColorItem> = ColorItem::all();
-
     element!(Fragment{
-        ListSelect<ColorItem>(
-            items: ColorItem::all(),
-            default_value: 0,
-            top_title: Line::from("主题设置").style(theme.basic.border_title).centered(),
+        ListSelect<ThemeName>(
+            items: themes.to_vec(),
+            state: list_state,
+            top_title: Line::from("主题设置").style(theme.title).centered(),
+            bottom_title: Line::from(format!(
+                "当前: {} · 背景: {} · T 切换终端背景",
+                current_theme.display_name(),
+                background_label(appearance.read().background),
+            ))
+            .style(theme.meta_label)
+            .centered(),
             render_item:move|ctx:&ListBuildContext|{
-                let color_item=color_items[ctx.index].clone();
-                let name = color_item.name().to_string();
-                let color = color_item.get_color(&theme);
-
-                (ListItem {
+                let name = themes[ctx.index];
+                (ThemeListItem {
                     name,
-                    color,
                     selected: ctx.is_selected,
-                    theme: theme.clone(),
-                }.into(),3)
+                    current: name == current_theme,
+                    theme,
+                }.into(),4)
             },
-            is_editing: current.read().is_none() && !info_modal_open.get() && !reset_modal_open.get(),
-            on_select: move |item:ColorItem| {
-                current.set(Some(item));
+            is_editing: !info_modal_open.get() && !reset_modal_open.get(),
+            empty_message: "暂无可用主题",
+            on_select: move |name:ThemeName| {
+                let mut next = appearance.read().clone();
+                next.theme_slug = name.slug().to_string();
+                let _ = next.save();
+                appearance.set(next);
             },
         )
-        if let Some(selected_item) = current.read().clone() {
-            SelectColor(
-                color: selected_item.get_color(&theme_config.read().clone()),
-                is_editing: true,
-                on_change: move |color| {
-                    let mut theme = theme_config.read().clone();
-                    selected_item.set_color(&mut theme, color);
-                    let new_theme = ThemeConfig::from_colors(theme.colors);
-                    let _ = new_theme.save();
-                    *theme_config.write() = new_theme;
-                    // 更新current状态以刷新UI
-                    current.set(None);
-                }
-            )
-        } else {
-            ShortcutInfoModal(
-                key_shortcut_info: KeyShortcutInfo::new(vec![
-                    ("选择下一个", "J / ▼"),
-                    ("选择上一个", "K / ▲"),
-                    ("确认选择", "Enter"),
-                    ("重置主题", "D"),
-                ]),
-                open: info_modal_open.get(),
-            )
-        }
+        ShortcutInfoModal(
+            key_shortcut_info: KeyShortcutInfo::new(vec![
+                ("选择下一个", "J / ▼"),
+                ("选择上一个", "K / ▲"),
+                ("应用主题", "Enter"),
+                ("切换终端背景", "T"),
+                ("重置外观", "D"),
+            ]),
+            open: info_modal_open.get(),
+        )
         ConfirmModal(
-            title: "重置主题",
-            content: "是否确定要重置主题？",
+            title: "重置外观",
+            content: "是否重置为默认主题与背景模式？",
             open: reset_modal_open.get(),
             on_confirm: move |_| {
-                let new_theme = ThemeConfig::default();
-                let _ = new_theme.save();
-                *theme_config.write() = new_theme;
+                let next = AppearanceConfig::default();
+                let _ = next.save();
+                appearance.set(next.clone());
+                if let Some(index) = ThemeName::all()
+                    .iter()
+                    .position(|name| *name == next.theme_name())
+                {
+                    list_state.write().selected = Some(index);
+                }
                 reset_modal_open.set(false);
             },
             on_cancel: move |_| {
@@ -202,4 +195,11 @@ pub fn ThemeSetting(mut hooks: Hooks) -> impl Into<AnyElement<'static>> {
             }
         )
     })
+}
+
+fn background_label(mode: BackgroundMode) -> &'static str {
+    match mode {
+        BackgroundMode::Theme => "主题背景",
+        BackgroundMode::Terminal => "终端背景",
+    }
 }

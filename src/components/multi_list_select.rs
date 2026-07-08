@@ -3,7 +3,7 @@ use crate::{
         Loading,
         list_view::{ListView, RenderItem},
     },
-    hooks::UseThemeConfig,
+    theme::AppChromeTheme,
 };
 use crossterm::event::{Event, KeyCode, KeyEventKind};
 use ratatui::{
@@ -59,7 +59,7 @@ pub fn MultiListSelect<T>(
 where
     T: Unpin + Sync + Clone + Send + 'static,
 {
-    let theme = hooks.use_theme_config();
+    let theme = hooks.use_component_theme::<AppChromeTheme>();
     let state = hooks.use_state(ListState::default);
     let selected = hooks.use_state(HashSet::<usize>::default);
     let selected = props.state.unwrap_or(selected);
@@ -106,7 +106,7 @@ where
         }
     });
 
-    let mut border = Block::bordered().border_style(theme.basic.border);
+    let mut border = Block::bordered().border_style(theme.border);
 
     if let Some(title) = props.top_title.clone() {
         border = border.title_top(title);
@@ -120,7 +120,7 @@ where
             Border(
                 top_title: props.top_title.clone(),
                 bottom_title: props.bottom_title.clone(),
-                border_style: theme.basic.border,
+                border_style: theme.border,
             ){
                 Loading(tip: props.loading_tip.clone())
             }
@@ -133,7 +133,7 @@ where
             Border(
                 top_title: props.top_title.clone(),
                 bottom_title: props.bottom_title.clone(),
-                border_style: theme.basic.border,
+                border_style: theme.border,
             ){
                 Center(
                     height:Constraint::Length(5),
@@ -142,7 +142,7 @@ where
                     Text(
                         text: props.empty_message.clone(),
                         alignment: Alignment::Center,
-                        style: theme.colors.warning_color,
+                        style: theme.empty,
                         wrap: true,
                     )
                 }

@@ -5,7 +5,8 @@ use crate::{
         modal::shortcut_info_modal::ShortcutInfoModal, search_input::SearchInput,
     },
     file_list::NovelFiles,
-    hooks::{UseInitState, UseThemeConfig},
+    hooks::UseInitState,
+    theme::AppChromeTheme,
 };
 use crossterm::event::{Event, KeyCode, KeyEventKind};
 use ratatui::text::Line;
@@ -16,7 +17,7 @@ use std::{env::current_dir, path::PathBuf};
 pub fn SelectFile(mut hooks: Hooks) -> impl Into<AnyElement<'static>> {
     let dir_path = hooks.try_use_route_state::<PathBuf>();
     let mut navigate = hooks.use_navigate();
-    let theme = hooks.use_theme_config();
+    let theme = hooks.use_component_theme::<AppChromeTheme>();
     let mut path = hooks.use_state(|| dir_path.map(|p| (*p).clone()));
     let mut info_modal_open = hooks.use_state(|| false);
     let history = *hooks.use_context::<State<Option<History>>>();
@@ -89,7 +90,7 @@ pub fn SelectFile(mut hooks: Hooks) -> impl Into<AnyElement<'static>> {
             )
             FileSelect(
                 is_editing: !info_modal_open.get(),
-                top_title: Line::from("本地小说".to_string()).style(theme.basic.border_title).centered(),
+                top_title: Line::from("本地小说".to_string()).style(theme.title).centered(),
                 items: tree_items,
                 on_select: move |item:PathBuf| {
                     navigate.push_with_state("/local-novel", item);

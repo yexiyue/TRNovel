@@ -1,9 +1,9 @@
 use crate::{
-    ThemeConfig,
     components::{WarningModal, list_select::ListSelect, search_input::SearchInput},
     errors::Errors,
-    hooks::{UseInitState, UseThemeConfig},
+    hooks::UseInitState,
     pages::network_novel::book_detail::BookDetailState,
+    theme::AppChromeTheme,
 };
 use crossterm::event::{Event, KeyCode, KeyEventKind};
 use parse_book_source::{BookList, BookListItem, Engine};
@@ -24,7 +24,7 @@ pub struct FindBooksProps {
 #[component]
 pub fn FindBooks(props: &FindBooksProps, mut hooks: Hooks) -> impl Into<AnyElement<'static>> {
     let mut filter_text = hooks.use_state(String::default);
-    let theme = hooks.use_theme_config();
+    let theme = hooks.use_component_theme::<AppChromeTheme>();
     let mut page = hooks.use_state(|| 1);
     let page_size = hooks.use_state(|| 20);
     let list_state = hooks.use_state(ListState::default);
@@ -130,7 +130,7 @@ pub fn FindBooks(props: &FindBooksProps, mut hooks: Hooks) -> impl Into<AnyEleme
                 }else{
                     "选择书籍".to_string()
                 }
-            ).style(theme.basic.border_title).centered(),
+            ).style(theme.title).centered(),
             bottom_title: {
                 let books_g = books.read();
                 let count = books_g.as_ref().map(|b| b.items.len()).unwrap_or(0);
@@ -142,9 +142,9 @@ pub fn FindBooks(props: &FindBooksProps, mut hooks: Hooks) -> impl Into<AnyEleme
                     };
                     Line::from(
                         format!("{label}, {}/{}", list_state.read().selected.unwrap_or(0)+1, count)
-                    ).centered().style(theme.basic.border_info)
+                    ).centered().style(theme.meta_label)
                 } else {
-                    Line::from("暂无书籍").centered().style(theme.basic.border_info)
+                    Line::from("暂无书籍").centered().style(theme.meta_label)
                 }
             },
             is_editing: props.is_editing,
@@ -160,7 +160,7 @@ pub fn FindBooks(props: &FindBooksProps, mut hooks: Hooks) -> impl Into<AnyEleme
                 (FindBookItem {
                     book_list_item: list[context.index].clone(),
                     selected: context.is_selected,
-                    theme: theme.clone(),
+                    theme,
                 }.into(),8)
             },
             state: list_state,
@@ -188,7 +188,7 @@ pub fn FindBooks(props: &FindBooksProps, mut hooks: Hooks) -> impl Into<AnyEleme
 pub struct FindBookItem {
     pub book_list_item: BookListItem,
     pub selected: bool,
-    pub theme: ThemeConfig,
+    pub theme: AppChromeTheme,
 }
 
 impl WidgetRef for FindBookItem {
@@ -207,9 +207,9 @@ impl WidgetRef for FindBookItem {
         block.render(area, buf);
 
         let text_style = if self.selected {
-            self.theme.basic.text.patch(self.theme.selected)
+            self.theme.text.patch(self.theme.selected)
         } else {
-            self.theme.basic.text
+            self.theme.text
         };
 
         let mut text = vec![];
@@ -217,7 +217,7 @@ impl WidgetRef for FindBookItem {
         if !item.info.name.is_empty() {
             text.push(
                 Line::from(vec![
-                    Span::from("名称：").style(self.theme.basic.border_info),
+                    Span::from("名称：").style(self.theme.meta_label),
                     Span::from(&item.info.name),
                 ])
                 .style(text_style),
@@ -226,7 +226,7 @@ impl WidgetRef for FindBookItem {
         if !item.info.author.is_empty() {
             text.push(
                 Line::from(vec![
-                    Span::from("作者：").style(self.theme.basic.border_info),
+                    Span::from("作者：").style(self.theme.meta_label),
                     Span::from(&item.info.author),
                 ])
                 .style(text_style),
@@ -236,7 +236,7 @@ impl WidgetRef for FindBookItem {
         if !item.info.kind.is_empty() {
             text.push(
                 Line::from(vec![
-                    Span::from("类型：").style(self.theme.basic.border_info),
+                    Span::from("类型：").style(self.theme.meta_label),
                     Span::from(&item.info.kind),
                 ])
                 .style(text_style),
@@ -246,7 +246,7 @@ impl WidgetRef for FindBookItem {
         if !item.info.last_chapter.is_empty() {
             text.push(
                 Line::from(vec![
-                    Span::from("最新章节：").style(self.theme.basic.border_info),
+                    Span::from("最新章节：").style(self.theme.meta_label),
                     Span::from(&item.info.last_chapter),
                 ])
                 .style(text_style),
@@ -256,7 +256,7 @@ impl WidgetRef for FindBookItem {
         if !item.info.word_count.is_empty() {
             text.push(
                 Line::from(vec![
-                    Span::from("字数：").style(self.theme.basic.border_info),
+                    Span::from("字数：").style(self.theme.meta_label),
                     Span::from(&item.info.word_count),
                 ])
                 .style(text_style),
@@ -266,7 +266,7 @@ impl WidgetRef for FindBookItem {
         if !item.info.intro.is_empty() {
             text.push(
                 Line::from(vec![
-                    Span::from("简介：").style(self.theme.basic.border_info),
+                    Span::from("简介：").style(self.theme.meta_label),
                     Span::from(&item.info.intro),
                 ])
                 .style(text_style),

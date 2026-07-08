@@ -7,11 +7,11 @@ use ratatui::{
     widgets::{Block, Row, Table},
 };
 use ratatui_kit::{
-    AnyElement, Hooks, Props, component, element,
+    AnyElement, Hooks, Props, UseTheme, component, element,
     prelude::{Modal, ScrollView, View},
 };
 
-use crate::hooks::UseThemeConfig;
+use crate::theme::AppChromeTheme;
 
 #[derive(Debug, Clone, Default)]
 pub struct KeyShortcutInfo(pub Vec<(String, String)>);
@@ -67,9 +67,9 @@ pub struct ShortcutInfoModalProps {
 #[component]
 pub fn ShortcutInfoModal(
     props: &ShortcutInfoModalProps,
-    mut hooks: Hooks,
+    hooks: Hooks,
 ) -> impl Into<AnyElement<'static>> {
-    let theme = hooks.use_theme_config();
+    let theme = hooks.use_component_theme::<AppChromeTheme>();
     let widths = [Constraint::Fill(1), Constraint::Fill(1)];
 
     let header = Row::new(vec!["描述", "快捷键"]).style(theme.highlight);
@@ -77,13 +77,12 @@ pub fn ShortcutInfoModal(
     let key_table = Table::new(props.key_shortcut_info.rows(), widths)
         .header(header.clone())
         .block(
-            Block::bordered().style(theme.basic.border).not_dim().title(
-                Line::from("当前页")
-                    .centered()
-                    .style(theme.basic.border_title),
-            ),
+            Block::bordered()
+                .style(theme.border)
+                .not_dim()
+                .title(Line::from("当前页").centered().style(theme.title)),
         )
-        .style(theme.basic.text);
+        .style(theme.text);
 
     let global_shortcut_info = KeyShortcutInfo::new(vec![
         ("退出程序", "Q / Ctrl + C"),
@@ -95,11 +94,10 @@ pub fn ShortcutInfoModal(
     let global_table = Table::new(global_shortcut_info.rows(), widths)
         .header(header)
         .block(
-            Block::bordered().style(theme.basic.border).not_dim().title(
-                Line::from("全局")
-                    .centered()
-                    .style(theme.basic.border_title),
-            ),
+            Block::bordered()
+                .style(theme.border)
+                .not_dim()
+                .title(Line::from("全局").centered().style(theme.title)),
         );
 
     let global_height = global_shortcut_info.0.len() as u16;

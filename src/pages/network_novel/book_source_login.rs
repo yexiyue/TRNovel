@@ -19,14 +19,15 @@ use tui_input::{Input, backend::crossterm::EventHandler};
 use crate::{
     components::{Loading, WarningModal},
     errors::Errors,
-    hooks::{UseInitState, UseThemeConfig},
+    hooks::UseInitState,
     login::{browser_login, is_script_login, login_info_json, script_login},
+    theme::AppChromeTheme,
 };
 
 #[component]
 pub fn BookSourceLogin(mut hooks: Hooks) -> impl Into<AnyElement<'static>> {
     let source = (*hooks.use_route_state::<BookSource>()).clone();
-    let theme = hooks.use_theme_config();
+    let theme = hooks.use_component_theme::<AppChromeTheme>();
     let mut navigate = hooks.use_navigate();
     // 登录页是独占全屏表单:开一个 blocks_lower 输入层,本页独占输入并自动截断 Layout 的全局键
     // (q/g/b),取代旧的全局 `is_inputting` 标志;离页卸载后该层下一帧自动消失。
@@ -185,13 +186,13 @@ pub fn BookSourceLogin(mut hooks: Hooks) -> impl Into<AnyElement<'static>> {
         };
         let cursor = if i == active_idx { "▏" } else { "" };
         let label_style = if i == active_idx {
-            theme.detail_info.bold()
+            theme.meta_label.bold()
         } else {
-            theme.detail_info
+            theme.meta_label
         };
         lines.push(Line::from(vec![
             Span::from(format!("{}: ", row.name)).style(label_style),
-            Span::from(format!("{shown}{cursor}")).style(theme.basic.text),
+            Span::from(format!("{shown}{cursor}")).style(theme.text),
         ]));
         lines.push(Line::from(""));
     }
@@ -201,13 +202,13 @@ pub fn BookSourceLogin(mut hooks: Hooks) -> impl Into<AnyElement<'static>> {
         } else {
             "此书源为浏览器登录。按 Enter 打开系统浏览器,在真实页面登录后回到此处按 Enter 完成。"
         };
-        lines.push(Line::from(tip).style(theme.basic.text));
+        lines.push(Line::from(tip).style(theme.text));
     }
     if misconfigured {
         // loginUi-only 配置错误:明确告知,Enter 已被拦截(避免引导用户填一个会被丢弃的表单)。
         lines.push(
             Line::from("书源配置错误:仅配置 loginUi 而无登录脚本/loginUrl,无法执行登录。")
-                .style(theme.basic.text.bold()),
+                .style(theme.text.bold()),
         );
     }
 
@@ -226,15 +227,15 @@ pub fn BookSourceLogin(mut hooks: Hooks) -> impl Into<AnyElement<'static>> {
     let body = Paragraph::new(lines);
 
     element!(Border(
-        top_title: Line::from(format!("书源登录 · {}", source.name)).centered().style(theme.basic.border_title),
-        border_style: theme.basic.border,
+        top_title: Line::from(format!("书源登录 · {}", source.name)).centered().style(theme.title),
+        border_style: theme.border,
     ){
         View(margin: Margin::new(2, 1), flex_direction: ratatui::layout::Direction::Vertical){
             View(height: Constraint::Fill(1)){
-                Text(text: body, style: theme.basic.text)
+                Text(text: body, style: theme.text)
             }
             View(height: Constraint::Length(1)){
-                Text(text: Paragraph::new(Line::from(hint).style(theme.basic.border_info)))
+                Text(text: Paragraph::new(Line::from(hint).style(theme.meta_label)))
             }
         }
         {if loading.get() {

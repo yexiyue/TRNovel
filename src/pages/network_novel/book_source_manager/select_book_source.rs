@@ -2,7 +2,6 @@ use crossterm::event::{Event, KeyCode, KeyEventKind};
 use parse_book_source::BookSource;
 use ratatui::{
     layout::{Constraint, Layout},
-    style::Style,
     text::{Line, Span},
     widgets::{Block, Padding, Widget, WidgetRef},
 };
@@ -10,10 +9,9 @@ use ratatui_kit::prelude::*;
 use tui_widget_list::{ListBuildContext, ListState};
 
 use crate::{
-    ThemeConfig,
     book_source::BookSourceCache,
     components::{ConfirmModal, list_select::ListSelect},
-    hooks::UseThemeConfig,
+    theme::AppChromeTheme,
 };
 
 pub struct BookSourceListItem {
@@ -21,7 +19,7 @@ pub struct BookSourceListItem {
     pub selected: bool,
     /// 该书源是否已登录(per-source 状态存有有效 cookie/loginHeader)。
     pub logged_in: bool,
-    pub theme: ThemeConfig,
+    pub theme: AppChromeTheme,
 }
 
 impl WidgetRef for BookSourceListItem {
@@ -37,9 +35,9 @@ impl WidgetRef for BookSourceListItem {
         };
 
         let text_style = if self.selected {
-            self.theme.basic.text.patch(self.theme.selected)
+            self.theme.text.patch(self.theme.selected)
         } else {
-            self.theme.basic.text
+            self.theme.text
         };
 
         let inner_area = block.inner(area);
@@ -57,23 +55,23 @@ impl WidgetRef for BookSourceListItem {
         if self.logged_in {
             name_spans.push(Span::styled(
                 "  ● 已登录",
-                text_style.patch(Style::new().fg(self.theme.colors.success_color)),
+                text_style.patch(self.theme.success),
             ));
         } else if item.has_login() {
             name_spans.push(Span::styled(
                 "  可登录(L)",
-                self.theme.basic.border_info.patch(text_style),
+                self.theme.meta_label.patch(text_style),
             ));
         }
         Line::from(name_spans).centered().render(top, buf);
 
         Line::from(format!("网址: {}", item.url))
-            .style(self.theme.basic.text.patch(text_style))
+            .style(self.theme.text.patch(text_style))
             .left_aligned()
             .render(bottom_left, buf);
 
         Line::from(format!("分组: {}", item.group))
-            .style(self.theme.basic.border_info.patch(text_style))
+            .style(self.theme.meta_label.patch(text_style))
             .right_aligned()
             .render(bottom_right, buf);
     }
@@ -91,7 +89,7 @@ pub fn SelectBookSource(
 ) -> impl Into<AnyElement<'static>> {
     let book_source_cache = *hooks.use_context::<State<Option<BookSourceCache>>>();
     let mut navigate = hooks.use_navigate();
-    let theme = hooks.use_theme_config();
+    let theme = hooks.use_component_theme::<AppChromeTheme>();
     // 默认选中第 0 项:ListState::default() 的 selected 为 None,会导致刚进页面(未按 j/k 前)
     // 没有任何选中项,Enter/L/D 全部静默无反应。给个初始选中,既有可见光标也让快捷键即时可用。
     let state = hooks.use_state(|| {
@@ -162,9 +160,8 @@ pub fn SelectBookSource(
             },
             is_editing: !delete_modal_open.get() && props.is_editing,
             empty_message: "暂无书源，请先导入书源",
-            top_title: Line::from("选择书源 (回车确认)").style(theme.basic.border_title).centered(),
+            top_title: Line::from("选择书源 (回车确认)").style(theme.title).centered(),
             render_item:{
-                let theme=theme.clone();
                 let logged_in=logged_in.clone();
                 move |context: &ListBuildContext| {
                     let item = &book_sources[context.index];
@@ -172,7 +169,7 @@ pub fn SelectBookSource(
                         book_source: item.clone(),
                         selected: context.is_selected,
                         logged_in: logged_in.get(context.index).copied().unwrap_or(false),
-                        theme: theme.clone(),
+                        theme,
                     }.into(), 5)
                 }
             }

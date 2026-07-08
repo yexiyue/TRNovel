@@ -3853,9 +3853,9 @@ dependencies = [
 
 [[package]]
 name = "ratatui-kit"
-version = "0.7.1"
+version = "0.10.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "60b4a9c30a6f2156e0e2dc1882b0f7b68b7513e4a98ac25bdf6a80fbd0148c51"
+checksum = "79b6c203b51110baeba6550ea9bc8ec9d844986732c42904a440b6b62e3ce0ad"
 dependencies = [
  "any_key",
  "crossterm 0.29.0",
@@ -3864,22 +3864,34 @@ dependencies = [
  "ratatui",
  "ratatui-kit-macros",
  "regex",
+ "serde",
  "textwrap",
  "tui-input",
  "tui-tree-widget",
  "tui-widget-list",
+ "unicode-width",
 ]
 
 [[package]]
 name = "ratatui-kit-macros"
-version = "0.6.1"
+version = "0.6.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "4a511f2edcdb49972b88d32aca5a8385cce30e64694e0a906008dbc1763a9f79"
+checksum = "15870959686b9cac5a9fb004311bdf1e5c157d53f0856162d3e774b06810b642"
 dependencies = [
  "proc-macro2",
  "quote",
  "syn 2.0.117",
  "uuid",
+]
+
+[[package]]
+name = "ratatui-kit-themes"
+version = "0.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "977c0f68947c3c83035822db1b14746b67808bc88dc248ed1715b2f890763145"
+dependencies = [
+ "ratatui-kit",
+ "ratatui-themes",
 ]
 
 [[package]]
@@ -3911,6 +3923,15 @@ checksum = "386b8ff8f74ed749509391c56d549761a2fcdb408e1f42e467286bcb7dac8967"
 dependencies = [
  "ratatui-core",
  "termwiz",
+]
+
+[[package]]
+name = "ratatui-themes"
+version = "0.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "cd1a71b2897e290f5e18ba55138074b4ceb1a765ba0d7219e55fef5459497d5f"
+dependencies = [
+ "ratatui",
 ]
 
 [[package]]
@@ -5221,6 +5242,7 @@ dependencies = [
  "parse-book-source",
  "ratatui",
  "ratatui-kit",
+ "ratatui-kit-themes",
  "regex",
  "reqwest",
  "serde",

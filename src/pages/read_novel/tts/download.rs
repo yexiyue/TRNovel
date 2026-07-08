@@ -1,4 +1,4 @@
-use crate::{hooks::UseThemeConfig, pages::read_novel::SettingItem, utils::format_bytes};
+use crate::{pages::read_novel::SettingItem, theme::AppChromeTheme, utils::format_bytes};
 use crossterm::event::{Event, KeyCode, KeyEventKind};
 use novel_tts::NovelTTSError;
 use ratatui::{text::Line, widgets::Gauge};
@@ -24,7 +24,7 @@ where
     T: DerefMut<Target = novel_tts::download::Download> + Sync + Send + 'static,
 {
     let state = props.state;
-    let theme = hooks.use_theme_config();
+    let theme = hooks.use_component_theme::<AppChromeTheme>();
     let mut downloading = hooks.use_state(|| false);
     let is_downloaded = state.read().is_downloaded();
     let mut progress = hooks.use_state(|| (0usize, 0usize));
@@ -86,7 +86,7 @@ where
         })
     } else if let Some(err) = &*error.read() {
         element!(Fragment{
-            widget(Line::from(format!("下载失败, 按Enter重新开始下载, Error:{}",err)).style(theme.colors.error_color))
+            widget(Line::from(format!("下载失败, 按Enter重新开始下载, Error:{}",err)).style(theme.error))
         })
     } else if !downloading.get() {
         element!(Fragment{

@@ -12,8 +12,9 @@ use crate::{
     book_source::BookSourceCache,
     components::{Loading, WarningModal},
     errors::Errors,
-    hooks::{UseInitState, UseThemeConfig},
+    hooks::UseInitState,
     novel::network_novel::NetworkNovel,
+    theme::AppChromeTheme,
 };
 
 #[derive(Debug, Clone)]
@@ -47,7 +48,7 @@ pub fn BookDetail(mut hooks: Hooks) -> impl Into<AnyElement<'static>> {
 
     let mut book_info = hooks.use_state(|| None::<BookInfo>);
     let size = hooks.use_previous_size();
-    let theme = hooks.use_theme_config();
+    let theme = hooks.use_component_theme::<AppChromeTheme>();
     let mut navigate = hooks.use_navigate();
 
     let (book_source_parser, loading, error) = hooks.use_init_state(async move {
@@ -98,25 +99,25 @@ pub fn BookDetail(mut hooks: Hooks) -> impl Into<AnyElement<'static>> {
     let book_info = book_info.read().clone().unwrap_or_default();
 
     let title = vec![
-        Span::from("名称：").style(theme.detail_info),
-        Span::from(book_info.name.clone()).style(theme.basic.text),
+        Span::from("名称：").style(theme.meta_label),
+        Span::from(book_info.name.clone()).style(theme.text),
     ];
     let author = vec![
-        Span::from("作者：").style(theme.detail_info),
-        Span::from(book_info.author.clone()).style(theme.basic.text),
+        Span::from("作者：").style(theme.meta_label),
+        Span::from(book_info.author.clone()).style(theme.text),
     ];
     let kind = vec![
-        Span::from("类型：").style(theme.detail_info),
-        Span::from(book_info.kind.clone()).style(theme.basic.text),
+        Span::from("类型：").style(theme.meta_label),
+        Span::from(book_info.kind.clone()).style(theme.text),
     ];
     let word_count = vec![
-        Span::from("字数：").style(theme.detail_info),
-        Span::from(book_info.word_count.clone()).style(theme.basic.text),
+        Span::from("字数：").style(theme.meta_label),
+        Span::from(book_info.word_count.clone()).style(theme.text),
     ];
 
     let last_chapter = vec![
-        Span::from("最新章节：").style(theme.detail_info),
-        Span::from(book_info.last_chapter.clone()).style(theme.basic.text),
+        Span::from("最新章节：").style(theme.meta_label),
+        Span::from(book_info.last_chapter.clone()).style(theme.text),
     ];
 
     let text = vec![
@@ -134,21 +135,21 @@ pub fn BookDetail(mut hooks: Hooks) -> impl Into<AnyElement<'static>> {
     let paragraph = Paragraph::new(text).wrap(Wrap { trim: true });
 
     let intro = Paragraph::new(vec![
-        Line::from("简介：").style(theme.detail_info),
+        Line::from("简介：").style(theme.meta_label),
         Line::from(book_info.intro),
     ])
     .wrap(Wrap { trim: true });
 
     element!(Border(
-        top_title: Line::from("小说详情").centered().style(theme.basic.border_title),
-        border_style: theme.basic.border,
+        top_title: Line::from("小说详情").centered().style(theme.title),
+        border_style: theme.border,
     ){
         {if loading.get(){
             element!(Loading(tip: "加载中...")).into_any()
         }else{
             element!(ScrollView(
                 gap:1,
-                scroll_bars:ScrollBars{
+                scrollbars: Scrollbars {
                     vertical_scrollbar_visibility: ScrollbarVisibility::Always,
                     ..Default::default()
                 }
@@ -156,13 +157,13 @@ pub fn BookDetail(mut hooks: Hooks) -> impl Into<AnyElement<'static>> {
                 View(height:Constraint::Length(paragraph.line_count(size.width.saturating_sub(4)) as u16), margin: Margin::new(1,0)){
                     Text(
                         text: paragraph,
-                        style: theme.basic.text,
+                        style: theme.text,
                     )
                 }
                 View(height:Constraint::Length(intro.line_count(size.width.saturating_sub(4)) as u16),margin: Margin::new(1,0)){
                     Text(
                         text: intro,
-                        style: theme.basic.text,
+                        style: theme.text,
                     )
                 }
             }).into_any()

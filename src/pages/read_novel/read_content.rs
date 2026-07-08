@@ -1,4 +1,4 @@
-use crate::{TTSConfig, components::Loading, hooks::UseScrollbar};
+use crate::{TTSConfig, components::Loading, hooks::UseScrollbar, theme::ReaderTheme};
 use crossterm::event::{Event, KeyCode, KeyEventKind};
 use novel_tts::utils::TextSegment;
 use ratatui::{
@@ -8,7 +8,7 @@ use ratatui::{
     widgets::Paragraph,
 };
 use ratatui_kit::prelude::*;
-use std::{ops::Not, time::Duration};
+use std::time::Duration;
 
 #[derive(Default, Props)]
 pub struct ReadContentProps {
@@ -29,10 +29,8 @@ pub fn ReadContent(
     props: &mut ReadContentProps,
     mut hooks: Hooks,
 ) -> impl Into<AnyElement<'static>> {
-    // 主题 / TTS 模型句柄已迁为全局 atom(state.rs);此处用 use_atom 订阅(原 use_context 的
-    // ThemeConfig/NovelTTS provider 已删,继续 use_context 会运行期 panic)。tts_config 仍走 context。
-    let theme_config = hooks.use_atom(&crate::state::THEME);
-    let theme = theme_config.read().clone();
+    let theme = hooks.use_component_theme::<ReaderTheme>();
+    let mut reader_display = hooks.use_atom(&crate::state::READER_DISPLAY);
     let mut is_listening = hooks.use_state(|| false);
     let mut highlight_range = hooks.use_state(|| None::<TextSegment>);
     let tts_config = *hooks.use_context::<State<TTSConfig>>();
@@ -160,7 +158,7 @@ pub fn ReadContent(
                     &props.content,
                     segment,
                     (props.width as usize).saturating_sub(2),
-                    Style::from(theme.colors.success_color),
+                    theme.tts_highlight,
                 ))
             } else {
                 Paragraph::new(textwrap::fill(
@@ -175,6 +173,7 @@ pub fn ReadContent(
             highlight_range.read().clone(),
             props.content.clone(),
             props.width,
+            theme.tts_highlight,
         ),
     );
 
@@ -296,22 +295,26 @@ pub fn ReadContent(
                 EventResult::Consumed
             }
             KeyCode::Char('v') => {
-                theme_config.write().novel.show_title = theme.novel.show_title.not();
-                let _ = theme_config.write().save();
+                let mut display = *reader_display.read();
+                display.show_title = !display.show_title;
+                let _ = display.save();
+                reader_display.set(display);
                 EventResult::Consumed
             }
             _ => EventResult::Ignored,
         }
     });
 
+    let show_title = reader_display.read().show_title;
+
     element!(Border(
-        border_style: theme.basic.border,
-        top_title: if theme.novel.show_title {
-            Some(Line::from(props.chapter_name.to_string()).style(theme.novel.chapter).centered())
+        border_style: theme.border,
+        top_title: if show_title {
+            Some(Line::from(props.chapter_name.to_string()).style(theme.chapter).centered())
         }else{
             None
         },
-        bottom_title: if theme.novel.show_title {
+        bottom_title: if show_title {
            Some((if is_listening.get(){
                 Line::from(
                     format!(
@@ -320,10 +323,10 @@ pub fn ReadContent(
                         tts_config.read().volume,
                     )
                 )
-                .style(theme.novel.page)
+                .style(theme.footer)
             }else{
-                Line::from("按 p 播放/暂停").style(theme.novel.page)
-            }).style(theme.novel.page).centered())
+                Line::from("按 p 播放/暂停").style(theme.footer)
+            }).style(theme.footer).centered())
         }else{
             None
         },
@@ -333,7 +336,7 @@ pub fn ReadContent(
         }else{
             element!(Text(
                 text: paragraph,
-                style:theme.basic.text,
+                style:theme.content,
                 scroll: (current_line as u16,0))
             ).into_any()
         } }
@@ -343,8 +346,8 @@ pub fn ReadContent(
             height: Constraint::Length(1),
             margin: Margin::new(1,0),
         ){
-            widget(Line::from(format!("{current_line}/{line_count} 行")).style(theme.novel.page))
-            widget(Line::from(format!("{:.2}% {}",props.chapter_percent, current_time.read().clone())).style(theme.novel.progress).right_aligned())
+            widget(Line::from(format!("{current_line}/{line_count} 行")).style(theme.footer))
+            widget(Line::from(format!("{:.2}% {}",props.chapter_percent, current_time.read().clone())).style(theme.progress).right_aligned())
         }
     })
 }

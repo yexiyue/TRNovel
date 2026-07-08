@@ -3,7 +3,8 @@ use std::time::Duration;
 use super::settings::{SettingItem, SettingItemProps};
 use crate::{
     TTSConfig, Voices,
-    hooks::{DebounceOptions, UseDebounceEffect, UseThemeConfig},
+    hooks::{DebounceOptions, UseDebounceEffect},
+    theme::AppChromeTheme,
 };
 use crossterm::event::{Event, KeyCode, KeyEventKind};
 use ratatui::{
@@ -17,7 +18,7 @@ use strum::IntoEnumIterator;
 #[component]
 pub fn VoiceSelect(props: &SettingItemProps, mut hooks: Hooks) -> impl Into<AnyElement<'static>> {
     let tts_config = *hooks.use_context::<State<TTSConfig>>();
-    let theme = hooks.use_theme_config();
+    let theme = hooks.use_component_theme::<AppChromeTheme>();
     let mut current_voice = hooks.use_state(|| tts_config.read().voice);
 
     let is_editing = props.is_editing;
@@ -79,23 +80,23 @@ pub fn VoiceSelect(props: &SettingItemProps, mut hooks: Hooks) -> impl Into<AnyE
     ) {
         View(flex_direction: Direction::Horizontal, gap:1){
             View(width:Constraint::Length(18)) {
-                widget(Line::from("选择声音: ".to_string()).style(theme.basic.text))
+                    widget(Line::from("选择声音: ".to_string()).style(theme.text))
             }
             View(flex_direction: Direction::Horizontal, gap:1,justify_content:Flex::Center) {
                 View(width:Constraint::Length(8)) {
-                    widget(Line::from("<").style(theme.basic.text).dim().centered())
+                    widget(Line::from("<").style(theme.text).dim().centered())
                 }
                 View(width:Constraint::Length(8)) {
-                    widget(Line::from(prev.to_string()).style(theme.basic.text).dim().centered())
+                    widget(Line::from(prev.to_string()).style(theme.text).dim().centered())
                 }
                 View(width:Constraint::Length(8)) {
-                    widget(Line::from(current.to_string()).style(theme.basic.text).bold().centered())
+                    widget(Line::from(current.to_string()).style(theme.text).bold().centered())
                 }
                 View(width:Constraint::Length(8)) {
-                    widget(Line::from(next.to_string()).style(theme.basic.text).dim().centered())
+                    widget(Line::from(next.to_string()).style(theme.text).dim().centered())
                 }
                 View(width:Constraint::Length(8)) {
-                    widget(Line::from(">").style(theme.basic.text).dim().centered())
+                    widget(Line::from(">").style(theme.text).dim().centered())
                 }
             }
         }

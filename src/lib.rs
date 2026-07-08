@@ -20,6 +20,7 @@ pub mod login;
 pub mod novel;
 pub mod pages;
 pub mod state;
+pub mod theme;
 pub mod utils;
 
 pub use cache::*;

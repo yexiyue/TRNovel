@@ -1,10 +1,10 @@
 use std::path::PathBuf;
 
 use crate::{
-    History, HistoryItem, ThemeConfig,
+    History, HistoryItem,
     components::{ConfirmModal, KeyShortcutInfo, ShortcutInfoModal, list_select::ListSelect},
-    hooks::UseThemeConfig,
     pages::network_novel::book_detail::BookDetailState,
+    theme::AppChromeTheme,
 };
 use crossterm::event::{Event, KeyCode, KeyEventKind};
 use ratatui::{
@@ -18,7 +18,7 @@ use tui_widget_list::{ListBuildContext, ListState};
 pub struct ListItem {
     pub history: HistoryItem,
     pub selected: bool,
-    pub theme: ThemeConfig,
+    pub theme: AppChromeTheme,
 }
 
 impl Widget for ListItem {
@@ -46,9 +46,9 @@ impl WidgetRef for ListItem {
                 .areas(bottom);
 
         let text_color = if self.selected {
-            self.theme.basic.text.patch(self.theme.selected)
+            self.theme.text.patch(self.theme.selected)
         } else {
-            self.theme.basic.text
+            self.theme.text
         };
 
         match &self.history {
@@ -61,7 +61,7 @@ impl WidgetRef for ListItem {
                 .render(top, buf);
 
                 Span::from("本地小说")
-                    .style(self.theme.basic.border_info.patch(text_color))
+                    .style(self.theme.meta_label.patch(text_color))
                     .render(bottom_left, buf);
 
                 Text::from(format!(
@@ -69,7 +69,7 @@ impl WidgetRef for ListItem {
                     item.percent,
                     item.last_read_at.format("%Y-%m-%d %H:%M:%S")
                 ))
-                .style(self.theme.basic.border_info.patch(text_color))
+                .style(self.theme.meta_label.patch(text_color))
                 .right_aligned()
                 .render(bottom_right, buf);
             }
@@ -82,7 +82,7 @@ impl WidgetRef for ListItem {
                 .render(top, buf);
 
                 Span::from(format!("书源：{}", item.book_source))
-                    .style(self.theme.basic.border_info.patch(text_color))
+                    .style(self.theme.meta_label.patch(text_color))
                     .render(bottom_left, buf);
 
                 Text::from(format!(
@@ -90,7 +90,7 @@ impl WidgetRef for ListItem {
                     item.percent,
                     item.last_read_at.format("%Y-%m-%d %H:%M:%S")
                 ))
-                .style(self.theme.basic.border_info.patch(text_color))
+                .style(self.theme.meta_label.patch(text_color))
                 .right_aligned()
                 .render(bottom_right, buf);
             }
@@ -100,7 +100,7 @@ impl WidgetRef for ListItem {
 
 #[component]
 pub fn SelectHistory(mut hooks: Hooks) -> impl Into<AnyElement<'static>> {
-    let theme = hooks.use_theme_config();
+    let theme = hooks.use_component_theme::<AppChromeTheme>();
     let history = hooks.use_context::<State<Option<History>>>();
 
     let mut navigate = hooks.use_navigate();
@@ -153,23 +153,22 @@ pub fn SelectHistory(mut hooks: Hooks) -> impl Into<AnyElement<'static>> {
             state: state,
             is_editing: !delete_modal_open.get() && !info_modal_open.get(),
             items: histories.clone(),
-            top_title: Line::from("历史记录").centered().style(theme.basic.border_title),
+            top_title: Line::from("历史记录").centered().style(theme.title),
             bottom_title: Line::from(
                 format!(
                     "{}/{} 条",
                     state.read().selected.unwrap_or(0)+1,
                     histories.len())
                 )
-                .style(theme.basic.border_info.not_dim()),
+                .style(theme.meta_label.not_dim()),
             render_item: {
-                let theme=theme.clone();
                 move |context:&ListBuildContext| {
                     let (_, item) = &histories[context.index];
                     (
                         ListItem {
                             history: item.clone(),
                             selected: context.is_selected,
-                            theme: theme.clone(),
+                            theme,
                         }.into(),
                         5,
                     )

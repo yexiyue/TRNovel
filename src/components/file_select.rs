@@ -8,7 +8,7 @@ use ratatui_kit::prelude::*;
 use std::path::PathBuf;
 use tui_tree_widget::{TreeItem, TreeState};
 
-use crate::hooks::UseThemeConfig;
+use crate::theme::AppChromeTheme;
 
 #[derive(Default, Props)]
 pub struct FileSelectProps {
@@ -24,7 +24,7 @@ pub struct FileSelectProps {
 #[component]
 pub fn FileSelect(props: &mut FileSelectProps, mut hooks: Hooks) -> impl Into<AnyElement<'static>> {
     let state = hooks.use_state(TreeState::default);
-    let theme = hooks.use_theme_config();
+    let theme = hooks.use_component_theme::<AppChromeTheme>();
 
     let is_empty = props.items.is_empty();
 
@@ -67,7 +67,7 @@ pub fn FileSelect(props: &mut FileSelectProps, mut hooks: Hooks) -> impl Into<An
         }
     });
 
-    let mut border = Block::bordered().border_style(theme.basic.border);
+    let mut border = Block::bordered().border_style(theme.border);
 
     if let Some(title) = props.top_title.clone() {
         border = border.title_top(title);
@@ -81,7 +81,7 @@ pub fn FileSelect(props: &mut FileSelectProps, mut hooks: Hooks) -> impl Into<An
             Border(
                 top_title: props.top_title.clone(),
                 bottom_title: props.bottom_title.clone(),
-                border_style: theme.basic.border,
+                border_style: theme.border,
             ){
                 Center(
                     height:Constraint::Length(5),
@@ -90,7 +90,7 @@ pub fn FileSelect(props: &mut FileSelectProps, mut hooks: Hooks) -> impl Into<An
                     Text(
                         text: props.empty_message.clone(),
                         alignment: Alignment::Center,
-                        style: theme.colors.warning_color,
+                        style: theme.empty,
                         wrap: true,
                     )
                 }
@@ -100,7 +100,7 @@ pub fn FileSelect(props: &mut FileSelectProps, mut hooks: Hooks) -> impl Into<An
     }
 
     element!(TreeSelect<PathBuf>(
-        style: theme.basic.text,
+        style: theme.text,
         highlight_style: theme.selected,
         state: state,
         items: props.items.clone(),

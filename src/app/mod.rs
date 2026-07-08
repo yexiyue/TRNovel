@@ -1,15 +1,17 @@
-use std::{fs::File, sync::Arc, time::Duration};
+use std::{sync::Arc, time::Duration};
 
 use futures::FutureExt;
+use ratatui::{style::Style, widgets::Borders};
 use ratatui_kit::{
-    AnyElement, Context, Hooks, Props, UseFuture, UseState, UseTerminalSize, component, element,
-    prelude::{ContextProvider, Fragment, RouteState, RouterProvider},
+    AnyElement, Context, Hooks, Props, UseAtom, UseFuture, UseState, UseTerminalSize, component,
+    element,
+    prelude::{Border, ContextProvider, Fragment, PaletteProvider, RouteState, RouterProvider},
     routes,
 };
 use tokio::sync::Notify;
 
 use crate::{
-    History, TRNovel, TTSConfig,
+    AppearanceConfig, History, ReaderDisplayConfig, TRNovel, TTSConfig,
     book_source::BookSourceCache,
     components::{Loading, WarningModal},
     errors::Errors,
@@ -25,7 +27,6 @@ use crate::{
         select_history::SelectHistory,
         theme_setting::ThemeSetting,
     },
-    utils::novel_catch_dir,
 };
 mod layout;
 use layout::Layout;
@@ -68,11 +69,8 @@ pub fn App(props: &AppProps, mut hooks: Hooks) -> impl Into<AnyElement<'static>>
             let tts_config_cache = TTSConfig::load()?;
             tts_config.set(tts_config_cache);
 
-            let path = novel_catch_dir()?.join("theme.json");
-
-            if let Ok(file) = File::open(path) {
-                crate::state::THEME.set(serde_json::from_reader(file).unwrap_or_default());
-            }
+            crate::state::APPEARANCE.set(AppearanceConfig::load()?);
+            crate::state::READER_DISPLAY.set(ReaderDisplayConfig::load()?);
 
             Ok::<(), Errors>(())
         })() {
@@ -104,12 +102,21 @@ pub fn App(props: &AppProps, mut hooks: Hooks) -> impl Into<AnyElement<'static>>
         }
     );
 
+    let appearance = hooks.use_atom(&crate::state::APPEARANCE);
+    let palette = appearance.read().palette();
+
     if error.read().is_some() {
-        element!(WarningModal(
-            tip: error.read().clone().unwrap_or_default(),
-            is_error: error.read().is_some(),
-            open: true,
-        ))
+        element!(
+            PaletteProvider(palette: palette){
+                Border(style: Style::new().bg(palette.bg), borders: Borders::NONE){
+                    WarningModal(
+                        tip: error.read().clone().unwrap_or_default(),
+                        is_error: error.read().is_some(),
+                        open: true,
+                    )
+                }
+            }
+        )
         .into_any()
     } else {
         element!(Fragment{
@@ -117,14 +124,18 @@ pub fn App(props: &AppProps, mut hooks: Hooks) -> impl Into<AnyElement<'static>>
                 element!(Loading(tip:"加载缓存中...")).into_any()
             } else {
                 element!(
-                    ContextProvider(value:Context::owned(history_state)){
-                        ContextProvider(value:Context::owned(book_sources_catch_state)){
-                            ContextProvider(value:Context::owned(tts_config)){
-                                RouterProvider(
-                                    routes: routes,
-                                    index_path: "/home",
-                                    state: RouteState::new(props.trnovel.clone())
-                                )
+                    PaletteProvider(palette: palette){
+                        Border(style: Style::new().bg(palette.bg), borders: Borders::NONE){
+                            ContextProvider(value:Context::owned(history_state)){
+                                ContextProvider(value:Context::owned(book_sources_catch_state)){
+                                    ContextProvider(value:Context::owned(tts_config)){
+                                        RouterProvider(
+                                            routes: routes,
+                                            index_path: "/home",
+                                            state: RouteState::new(props.trnovel.clone())
+                                        )
+                                    }
+                                }
                             }
                         }
                     }
