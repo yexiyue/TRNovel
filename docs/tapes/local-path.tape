@@ -13,6 +13,7 @@ Set TypingSpeed 55ms
 
 Env TERM "xterm-256color"
 Env COLORTERM "truecolor"
+Env NO_COLOR ""
 Env HOME "/tmp/trn-demo-home"
 
 Type "trn -l /tmp/trn-demo-home/books"  Enter

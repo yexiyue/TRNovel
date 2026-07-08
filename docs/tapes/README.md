@@ -1,14 +1,18 @@
 # 文档演示录制(VHS tapes)
 
 本目录下的 `.tape` 文件用 [charmbracelet/vhs](https://github.com/charmbracelet/vhs) 把 TRNovel 的
-终端界面录成 GIF,作为文档资源(输出到 `../src/assets/guides/`)。所有 GIF 均由这些 tape 生成,
-**改了界面只需重跑对应 tape 即可刷新文档配图**。
+终端界面录成 GIF,作为文档资源(输出到 `../src/assets/guides/`)。关键帧截图也在 tape 里用
+VHS 内置 `Screenshot` 命令生成,不用再从 GIF/视频里二次抽帧。所有演示素材均由这些 tape 生成,
+**改了界面只需重跑对应 tape 即可刷新文档配图与验收截图**。
 
 ## 依赖
 
 ```bash
-brew install vhs ttyd ffmpeg
+brew install vhs
 ```
+
+Homebrew 会带上 VHS 录制所需的 `ttyd` / `ffmpeg` 运行时依赖;这里不再单独使用
+`ffmpeg` 做截图抽帧。
 
 ## 录制
 
@@ -19,6 +23,22 @@ for t in *.tape; do vhs "$t"; done   # 全部(真机项见下)
 ```
 
 所有 tape 统一规格:`1280×800 · FontSize 20 · Catppuccin Mocha`。
+
+所有 tape 都显式设置:
+
+```text
+Env TERM "xterm-256color"
+Env COLORTERM "truecolor"
+Env NO_COLOR ""
+```
+
+Codex / CI shell 里可能带 `TERM=dumb` 或 `NO_COLOR=1`,会让 ratatui/crossterm 抑制样式码,
+导致录出来只有近似黑白的终端画面。重录素材前先用 VHS `Screenshot` 检查关键帧是否有高亮色、
+边框色与主题背景。
+
+每个稳定沙箱 tape 会在关键节点执行 `Screenshot "/tmp/verify-*.png"`。这些截图用于录制后快速验收
+画面是否进入预期状态;需要保留到仓库或文章素材时,把截图路径改成 `../src/assets/guides/<name>.png`
+即可,不要再用 `ffmpeg` 从 GIF 抽帧。
 
 ## 演示环境(隔离,不污染真实 ~/.novel)
 

@@ -12,6 +12,7 @@ Set TypingSpeed 60ms
 
 Env TERM "xterm-256color"
 Env COLORTERM "truecolor"
+Env NO_COLOR ""
 Env HOME "/tmp/trn-demo-home"
 
 Type "trn"  Enter
@@ -25,17 +26,20 @@ Enter
 Sleep 1200ms
 Screenshot "/tmp/verify-theme-1.png"
 
-# 选中某个主题色项,回车进入取色
-Down  Sleep 600ms
-Enter
-Sleep 1000ms
-Screenshot "/tmp/verify-theme-2.png"
-
-# 在预设色里挑一个,回车确认
+# 浏览命名主题并应用一个新主题
 Down  Sleep 500ms
 Down  Sleep 500ms
-Right Sleep 500ms
 Enter
 Sleep 1200ms
+Screenshot "/tmp/verify-theme-2.png"
+
+# 切换背景模式,展示终端背景 / 主题背景差异
+Type "T"
+Sleep 1000ms
 Screenshot "/tmp/verify-theme-3.png"
+
+# 打开重置确认弹窗,展示新主题系统的恢复默认入口
+Type "D"
+Sleep 1000ms
+Screenshot "/tmp/verify-theme-4.png"
 Sleep 500ms

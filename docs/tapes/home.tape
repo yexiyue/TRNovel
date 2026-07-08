@@ -14,6 +14,7 @@ Set TypingSpeed 60ms
 
 Env TERM "xterm-256color"
 Env COLORTERM "truecolor"
+Env NO_COLOR ""
 Env HOME "/tmp/trn-demo-home"
 
 # 进入测试书库目录后启动,主页「本地书籍」即扫描此处

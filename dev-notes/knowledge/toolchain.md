@@ -42,6 +42,12 @@ Cargo workspace 的模块组织、feature 门控、构建/发布、平台坑。`
 
 `lefthook.yaml` pre-commit：test → `clippy --fix --allow-dirty`（自动 stage 修复）→ `cargo fmt` → `cargo doc`。发布走 `./release.sh`（cargo-release + git-cliff，tag `<crate>-v<version>`）+ cargo-dist（`trnovel-v*` tag 触发）。
 
+### VHS 录制要显式清 NO_COLOR
+
+Codex / CI shell 可能带 `TERM=dumb` 或 `NO_COLOR=1`，会让 ratatui/crossterm 抑制样式码，录出来的 GIF 接近黑白。所有 `docs/tapes/*.tape` 都要在 `Env TERM "xterm-256color"` 与 `Env COLORTERM "truecolor"` 后补 `Env NO_COLOR ""`，并用 VHS 内置 `Screenshot` 验证关键帧颜色。
+
+**相关文件**：`docs/tapes/README.md`、`docs/tapes/*.tape`
+
 ### 改引擎公开 API 后要单独 cargo build 验 Send
 
 子 crate 的 lib test **测不出** `tokio::spawn` 上下文的 `Send` 约束。改了会被主程序 spawn 调用的引擎公开 API（如 `Engine::explore`/`search`）后，CI 四件套之外还要 `cargo build` 主程序 trnovel——曾因 `explore`/`search` 的 Future 变 `!Send`（async closure 参数）导致主程序编译失败、`cargo run` 跑不起来。

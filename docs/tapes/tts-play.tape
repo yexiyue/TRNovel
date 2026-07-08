@@ -18,6 +18,7 @@ Set TypingSpeed 60ms
 
 Env TERM "xterm-256color"
 Env COLORTERM "truecolor"
+Env NO_COLOR ""
 
 # 用一本本地小说(换成你自己的路径),或先 trn -q 续读
 Type "trn -l ~/books"  Enter

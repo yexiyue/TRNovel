@@ -14,6 +14,7 @@ Set TypingSpeed 55ms
 
 Env TERM "xterm-256color"
 Env COLORTERM "truecolor"
+Env NO_COLOR ""
 Env HOME "/tmp/trn-demo-home"
 
 # 进入网络小说;书源为空时直接是「导入模式」

@@ -21,6 +21,7 @@ Set TypingSpeed 60ms
 
 Env TERM "xterm-256color"
 Env COLORTERM "truecolor"
+Env NO_COLOR ""
 
 Type "trn -n"  Enter
 Sleep 4s

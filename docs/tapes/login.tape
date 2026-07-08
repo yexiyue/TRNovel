@@ -14,6 +14,7 @@ Set TypingSpeed 70ms
 
 Env TERM "xterm-256color"
 Env COLORTERM "truecolor"
+Env NO_COLOR ""
 Env HOME "/tmp/trn-demo-home"
 
 Type "trn -n"  Enter

@@ -18,6 +18,7 @@ Set TypingSpeed 60ms
 
 Env TERM "xterm-256color"
 Env COLORTERM "truecolor"
+Env NO_COLOR ""
 
 # 用你真实的 ~/.novel 书源;如需隔离可解除下一行注释指向演示 HOME
 # Env HOME "/tmp/trn-demo-home"

@@ -13,6 +13,7 @@ Set TypingSpeed 60ms
 
 Env TERM "xterm-256color"
 Env COLORTERM "truecolor"
+Env NO_COLOR ""
 Env HOME "/tmp/trn-demo-home"
 
 # 屏蔽运行期 stderr(书源浏览器池子进程清理偶尔把 kill 提示泄漏进 TUI)+ 清屏
@@ -26,7 +27,7 @@ Sleep 1800ms
 
 # 选「番茄小说(网页)」进入,加载书库入口书籍
 Enter
-Sleep 6000ms
+Sleep 9000ms
 Screenshot "/tmp/verify-nr-1books.png"
 
 # Tab 打开分类弹窗,选一个分类
