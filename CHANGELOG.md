@@ -1,4 +1,21 @@
-## [0.13.1] - 2026-06-18
+## [0.13.2] - 2026-07-08
+
+### 🚀 Features
+
+- *(tui)* Refactor theme system
+
+### 📚 Documentation
+
+- README 改用阅读演示 GIF + 重录 network-read(屏蔽 stderr 噪声)
+- *(booksource)* Update generator references
+- Add rtk command guidance
+- *(theme)* 更新主题文档和演示素材
+## [parse-book-source-v0.7.0] - 2026-06-18
+
+### 🐛 Bug Fixes
+
+- *(release)* Parse-book-source 升 0.7.0 并同步 trnovel 依赖
+## [trnovel-v0.13.1] - 2026-06-18
 
 ### 🚀 Features
 
@@ -34,6 +51,7 @@
 
 - *(openspec)* 归档已完成的 5 个 change
 - Ratatui-kit 依赖切回 crates.io 0.7.1(两处上游修复已发版)
+- Release
 ## [trnovel-v0.13.0] - 2026-06-10
 
 ### 🚀 Features
