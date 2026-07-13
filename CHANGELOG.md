@@ -1,4 +1,19 @@
-## [0.13.2] - 2026-07-08
+## [0.14.0] - 2026-07-13
+
+### 🚀 Features
+
+- *(reader)* 章末/章首「再按一次」防误触跳章,并翻回上一章恢复到章末
+
+### 🐛 Bug Fixes
+
+- *(tui)* 修复导入书源按 Enter 卡死与空列表 Enter 越界崩溃
+- *(tui)* 网络选书页引擎初始化期显示「加载中」而非空态
+
+### 📚 Documentation
+
+- 修正 ratatui-kit 官网外链
+- *(dev-notes)* 记录 State 读写死锁、loading 透传、空列表越界、阅读边界交互
+## [trnovel-v0.13.2] - 2026-07-08
 
 ### 🚀 Features
 
@@ -10,6 +25,10 @@
 - *(booksource)* Update generator references
 - Add rtk command guidance
 - *(theme)* 更新主题文档和演示素材
+
+### ⚙️ Miscellaneous Tasks
+
+- Release
 ## [parse-book-source-v0.7.0] - 2026-06-18
 
 ### 🐛 Bug Fixes
