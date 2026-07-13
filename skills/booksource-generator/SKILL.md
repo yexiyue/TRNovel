@@ -111,7 +111,7 @@ cargo run -- import /path/to/<站点>.v2.json
    ```bash
    trn gen-fontmap <字体URL或本地woff2> -o fontmap.json   # 基准字体缺省自动下载 Noto
    ```
-   纯 Rust 字形匹配(woff2 解压 + 渲染字形 + 和常用字比长相),输出 `{码点:真字}`,并列出**低置信字**供人工核对。
+   纯 Rust 字形匹配(woff2 解压 + 渲染字形 + 和常用汉字/数字/字母比长相),输出 `{码点:真字}`,并列出**低置信字**供人工核对。数字 0-9、英文字母也会被混淆进 PUA,候选集已覆盖、能正确还原(旧版工具只有汉字候选,会把「q」等解成形近汉字)。
 2. 把表**内联进正文规则的 clean**:
    ```json
    "content": { "value": { "via": "css", "select": ".content", "extract": "html",

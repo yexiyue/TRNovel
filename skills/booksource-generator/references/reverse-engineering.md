@@ -109,7 +109,7 @@ sed -e 's/<[^>]*>/ /g' /tmp/page.html | tr -s ' \n' ' \n' | grep -v '^ *$' | hea
    ```bash
    trn gen-fontmap <字体URL或本地woff2> -o fontmap.json [-b 基准字体]
    ```
-   纯 Rust:`woff2-patched` 解压 + `swash`(skrifa+zeno)渲染字形 + GB2312 一级 3755 候选 + 余弦相似度匹配。基准字体缺省自动下载 Noto;输出 `{码点:真字}` JSON,并把低置信(可能形近认错)的字单独列出。
+   纯 Rust:`woff2-patched` 解压 + `swash`(skrifa+zeno)渲染字形 + 候选集(GB2312 一级 3755 汉字 **+ 数字 0-9 + 拉丁字母 A-Za-z**)+ 余弦相似度匹配。基准字体缺省自动下载 Noto;输出 `{码点:真字}` JSON,并把低置信(可能形近认错)的字单独列出。
 3. 把表内联进正文 clean(先用 `extract` 取到含 PUA 的文本,再还原):
    ```json
    "content": { "value": { "via":"css", "select":".content", "extract":"html",
@@ -120,6 +120,7 @@ sed -e 's/<[^>]*>/ /g' /tmp/page.html | tr -s ' \n' ' \n' | grep -v '^ *$' | hea
 - 同一站通常**全站一套字体** → 映射固定,生成一次即可复用;站方换字体(woff2 URL 变)才需重跑。
 - 引擎只做 O(1) 查表替换,**不内置任何站点的表**——表是数据,内联进书源。
 - 命令列出的低置信字(形近,如「已/己」「土/士」)值得人工瞄一眼校正。
+- **数字/字母也会被混淆**:反爬字体常把阿拉伯数字、英文字母(正文里的时间「12:21」、书名/正文里的英文)一并画进 PUA。候选集已含 0-9 与 A-Za-z,故这些能正确还原;**若发现数字/英文被解成形近汉字(如「q」→「井」),多半是用了旧版工具或自己缩了候选集**——别往候选里加 ASCII 标点(`-`/`|`/`.` 与汉字笔画形近,反致误配)。
 - 若正文藏在 `<script>` 的 JSON(如 `window.__INITIAL_STATE__`)而非可见 DOM,先用 `via:"regex"` 抽出 JSON 串、再 `via:"json"` 取正文字段,然后 fontMap 还原。
 - 完整原理(从零)与命令实现见博客 `dev-notes/blog/font-anti-scraping-and-fontmap.md`。
 

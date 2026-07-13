@@ -65,8 +65,17 @@ render 的 `interceptApi` 会话**本来就在渲染一张真实页面**，拦 A
 - **生成新字体的 map**：`cargo run -- gen-fontmap "<woff2 URL 或路径>" --out /tmp/x.json`（字形位图相似度匹配,自动下 Noto 基准;纯 Rust 零 C 依赖)。字体 URL 从页面 `@font-face` 的 `src` 取（`document.styleSheets` 里 `r.type===5` 的规则）。低置信（<0.55）项会标注、个别字可能错（与现有 content/search map 同等质量）。
 - **怎么定位用哪套**：渲染该页,`TreeWalker(SHOW_TEXT)` 扫含 PUA（0xE000–0xF8FF）的短文本节点,看 `parentElement.className` 的 `font-xxx`,再比对各 map 解码是否通顺。
 - **稳定性假设**：这些字体哈希在番茄基础设施上**相对稳定**（content/search map 静态内联已长期可用),故 explore map 也静态内联;若哪天轮换导致解码变乱码,重跑 `gen-fontmap` 更新即可。
+- **三套字体的当前 URL**（`https://lf3-awef.bytetos.com/obj/awesome-font/c/<hash>.woff2`,`lf6-` 同源镜像;是静态 CDN、**无需签名**,直接 curl 可下）：content=`dc027189e0ba4cd`(md5 `d15c2b29`)、explore=`e26e946d8b2ccb7`、search=`c207f68a84deae3`。**怎么拿 hash**：content/explore 的 `@font-face` 在 **reader 页 SSR HTML** 里（`grep awesome-font`）；search 是客户端渲染,SSR 无字体,须**渲染搜索页 + 读 `document.styleSheets` 的 FONT_FACE 规则**才拿得到——且 headless 首刷会撞 secsdk **软封锁**(空结果、不注入字体),**reload 一次**即出结果与 `@font-face`（与正文抓取的 reload-once 同一招）。
 
-**相关文件**：`fanqie-web.v2.json`（`fontMaps.{content,search,explore}`）、`src/gen_fontmap.rs`、`dev-notes/blog/font-anti-scraping-and-fontmap.md`
+### fontMap 候选集必须含数字 + 拉丁字母,否则数字/英文被强配成汉字
+
+番茄字体不止混淆汉字,还把**阿拉伯数字 0-9、拉丁字母 A-Za-z**（正文里的时间「12:21」、英文「qq」等）也画进 PUA。`gen-fontmap` 靠字形相似度在候选集里找最像的——**候选集若只有汉字,数字/字母字形会被强行配到形近汉字**（实测 `E4BB` 的「q」被配成「井」→「qq」显示成「井井」;10 个数字同样全错)。三套字体恰好各编码全部 62 个字母数字（0-9 + A-Z + a-z),一个不少。
+
+**正确做法**：候选集 = GB2312 一级字 + `'0'..='9'` + `'A'..='Z'` + `'a'..='z'`（`baseline_candidates()`）。补齐后实测:三套 map 各修复 62 个字母数字条目、**汉字条目零漂移**（300/342 与旧 map 逐字一致)、全部高置信(无 <0.55 告警)。
+
+**不要**：往候选里加 **ASCII 标点**（`-` `|` `.` 等)——与汉字笔画/部件形近（「一」↔`-`、「丨」↔`|`)会把汉字误配成标点;番茄正文标点本就是全角中文标点、不走这套字体,无需覆盖。
+
+**相关文件**：`skills/booksource-generator/references/example-fanqie.v2.json`（`fontMaps.{content,search,explore}`）、`src/gen_fontmap.rs`（`baseline_candidates`）、`dev-notes/blog/font-anti-scraping-and-fontmap.md`
 
 ### explore 是 URL 驱动，search 是点击驱动（已落地 `search-click-pagination`）
 
