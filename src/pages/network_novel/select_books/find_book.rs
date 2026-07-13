@@ -19,6 +19,10 @@ pub struct FindBooksProps {
     pub engine: State<Option<Engine>>,
     pub current_explore: Option<super::ExploreListItem>,
     pub is_editing: bool,
+    /// 引擎/分类入口是否仍在初始化(SelectBooks 的 `use_init_state` loading)。
+    /// 该阶段 engine 为 None、取页会立即返回空列表,若不显式透传 loading,列表区会错误地
+    /// 显示「暂无书籍」空态,让用户误以为书源不可用。故与本组件取页 loading 取或。
+    pub engine_loading: bool,
 }
 
 #[component]
@@ -149,7 +153,8 @@ pub fn FindBooks(props: &FindBooksProps, mut hooks: Hooks) -> impl Into<AnyEleme
             },
             is_editing: props.is_editing,
             empty_message: "暂无书籍，请切换频道，或者搜索",
-            loading: loading.get(),
+            // 引擎初始化期(engine_loading)也算加载中,否则那几秒会错显空态「暂无书籍」。
+            loading: loading.get() || props.engine_loading,
             loading_tip: if filter_text.read().is_empty() {
                 "加载中..."
             } else {

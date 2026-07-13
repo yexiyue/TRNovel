@@ -39,7 +39,7 @@ pub fn SelectBooks(mut hooks: Hooks) -> impl Into<AnyElement<'static>> {
 
     let mut current_explore = hooks.use_state(|| None::<ExploreListItem>);
 
-    let (book_source_engine, _, error) = hooks.use_init_state(async move {
+    let (book_source_engine, engine_loading, error) = hooks.use_init_state(async move {
         let engine = crate::browser_assist::build_engine((*book_source).clone())?;
         // 预热会话 cookie(若书源配置了 http.warmup)。
         engine.warmup().await;
@@ -91,6 +91,9 @@ pub fn SelectBooks(mut hooks: Hooks) -> impl Into<AnyElement<'static>> {
                 engine: book_source_engine,
                 current_explore: current_explore.read().clone(),
                 is_editing: !is_explore_open.get() && !info_modal_open.get(),
+                // 透传引擎初始化 loading:build_engine + warmup + explore_entries 期间(render 源可达数秒)
+                // 让列表区显示「加载中...」,而非误显空态「暂无书籍」。
+                engine_loading: engine_loading.get(),
             }
         )
         WarningModal(
