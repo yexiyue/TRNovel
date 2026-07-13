@@ -39,6 +39,50 @@ hooks.use_effect_state(
 
 **相关文件**：`src/pages/network_novel/select_books/find_book.rs`（修复 commit `6ff4999`）、`src/hooks/use_init_state.rs`（use_effect_state 实现:内部用 `use_async_effect(async{ init_f.await }, deps)`,200ms loading 防抖）
 
+## State 读写（generational-box RwLock）
+
+### 读 guard 存活期间写同一个 State = 死锁（不是 panic），表现为 TUI「卡死」
+
+`State<T> = ReactiveHandle<T>`,底层是 `generational-box` 的 **`SyncStorage`（parking_lot `RwLock`）**。`state.read()` 返回持有读锁的 guard;`state.write()` 内部走 generational-box 的 `try_write`——但**该 `try_write` 名不副实、在 SyncStorage 上是阻塞的**（`sync.rs:302` → `Self::write` → `get_split_mut` → `sync.rs:121` 直接 `RwLock::write()`,无 try_）。它**只在「值已 drop/失效」时返回 Err,从不在「已被借用」时返回 Err**。因此 `reactive_handle.rs` 里 `write()` 末尾的 `.expect("...already borrowed")` **永远不会触发**——同线程「读 guard 未释放 + 写同一 State」不是 panic,而是 **parking_lot RwLock 永久阻塞**。渲染主循环 `dispatch` 是同步调用（`render/tree.rs`),一旦在事件 handler 里死锁,**整个 TUI 卡死**。（真正非阻塞、借用冲突返 Err 的路径只在 `UnsyncStorage`/RefCell,框架用的是 SyncStorage,用不到。）
+
+**最隐蔽的触发形态：`read()` 临时量作为回调实参**。Rust 临时量作用域规则:`callback(state.read().iter()....collect())` 里 `state.read()` 的 guard **存活到整条语句结束（分号处）**,即在 `callback(...)` 执行期间读锁仍持有;若该 `callback` 内部写同一个 `state` → 死锁。`.collect()` 完成**不会**提前释放它。同理 `if let Some(x) = state.read().f { … state.write() … }` / `match state.read().x { … }`——scrutinee 的读 guard 存活到整个块结束。
+
+**正确做法（先收集释放读锁,再调回调）**:
+```rust
+// ✓ 两条语句:内层块结束即 drop 读 guard,on_select 执行时不持任何 guard
+let items: Vec<T> = { let g = state.read(); g.iter().map(|&i| data[i].clone()).collect() };
+on_select(items);
+```
+框架内置 `MultiSelect` 正是这么写的（`let chosen = selected_items(&items, &selected.read()); on_select(chosen);`）——可直接对照。
+
+**不要做**:
+```rust
+// ✗ 读 guard 跨 on_select 存活;若 on_select 内 state.write() 同一 State → 死锁卡死
+on_select(state.read().iter().map(|&i| data[i].clone()).collect());
+```
+
+**判别**:不同 State「读一个写另一个」安全（如读 `state` 写 `selected`);只有「同一个 State 读 guard 存活期间写它自己」才死锁。排查 TUI 按某键后卡死(非崩溃/无 panic 输出)时,优先怀疑此类自借用。全仓扫描确认（2026-07）当前仅 `MultiListSelect` 一处曾中招,已修。
+
+**相关文件**：`src/components/multi_list_select.rs`（Enter 分支修复:收集释放读锁再调 on_select）、`src/pages/network_novel/book_source_manager/import_book_source.rs`（on_select 内 `selected.write().clear()`）、`generational-box` `sync.rs`（`try_write`→阻塞 `write`）、`ratatui-kit` `reactive_handle.rs`（`write().expect()` 永不触发）
+
+### 子组件依赖父级 async 初始化的资源时，要把父级 loading 透传下去，否则错显空态
+
+页面用 `use_init_state` 异步构建引擎/资源（`build_engine`+`warmup`+`explore_entries`,render 源可达数秒）,期间该资源为 `None`。若子组件（`FindBooks`）在资源为 None 时「立即返回空列表、loading=false」,列表区会渲染**空态文案**（「暂无书籍」）,让用户误以为**书源不可用**。父级若把 `use_init_state` 的 loading 标志丢弃（`let (engine, _, error) = …`）,这段就完全无加载提示。
+
+**正确做法**:父级保留 init loading 并透传进子组件,子组件 `loading: own_loading || parent_init_loading`。`use_init_state` 的 loading 已带 200ms 防抖,不会闪。
+
+**相关文件**：`src/pages/network_novel/select_books/mod.rs`（透传 `engine_loading`）、`src/pages/network_novel/select_books/find_book.rs`（`FindBooksProps.engine_loading` + `loading: loading.get() || props.engine_loading`）
+
+### 列表组件 Enter 取项用 `data.get(i)` 而非裸 `data[i]`：强制初始选中 + 空列表 = 越界 panic 崩溃
+
+`ListSelect`/`MultiListSelect` 等列表组件为让快捷键即时可用,常给 `ListState.selected` 一个**强制初始值 `Some(0)`**(如 `SelectBookSource`、`SelectChapter`)。但列表**为空时**该选中仍是 `Some(0)`,Enter handler 若写裸 `data[selected]` → `index out of bounds: len is 0 but index is 0` → **整个 TUI panic 崩溃退出**(VHS 端到端实测:无书源时按 Tab 进只选模式再 Enter,或把书源删到空后 Enter,都会崩)。`FileSelect` 则相反——**初始无选中**(`None`),不先按 j/k 落光标,Enter 静默无效。
+
+**正确做法**:
+- Enter 取项一律走 `.get()`:`if let Some(item) = data.get(path) { on_select(item.clone()) }`;多选 `filter_map(|&i| data.get(i).cloned())`。
+- 「强制 Some(0) 让快捷键即时可用」与「空列表」必须同时考虑:给了初始选中就要在取用处防越界。
+
+**相关文件**：`src/components/list_select.rs`、`src/components/multi_list_select.rs`
+
 ## 键位
 
 ### 没有中央 keymap，每个页面自己 match KeyCode
@@ -46,6 +90,14 @@ hooks.use_effect_state(
 全项目没有统一键位表;每个页面/组件在自己的 `use_events` 闭包里 match `KeyCode`（vim 风格 j/k/h/l、Tab、Enter）。`is_inputting` context 在 `SearchInput` 聚焦时 gate 页面快捷键,页面必须检查它避免双重处理。快捷键帮助浮层在 `src/components/modal/shortcut_info_modal.rs`。
 
 **相关文件**：`src/app/layout.rs`（少数 app 级键）、各 page 的 `use_events`
+
+### 阅读页章末/章首「再按一次」防误触跳章 + 翻回位置恢复
+
+阅读正文滚到章末(`current_line == line_count`)再按 ↓,旧行为**直接翻下一章**(网络小说还要重拉正文、丢失位置),读者读到最后一行没看完手滑就跳章。现改为**边界二次确认**:到章末/章首的**首次** ↓/↑ 只「武装」并在底部状态栏居中提示(`● 已到本章末尾 · 再按 ↓ 进入下一章` / `● 已到本章开头 · 再按 ↑ 返回上一章`,accent+bold),**连续第二次**才真正翻章;任何滚动/翻页/显式 ←→ 翻章键都解除武装。用一个 `enum Edge { None, Prev, Next }` 的 `use_state` 管理,`edge.get()` 是 Copy(读 guard 即时释放,不触发前述死锁)。显式 `→/L`、`←/H` 保持**立即翻章**(不走二次确认),给想快速跳的用户留快路。
+
+配套:`on_prev(is_scroll_top)` 之前 `is_scroll_top=true` 分支直接 return(顶部 ↑ 根本不翻上一章),现启用并按来源恢复位置——**顶部 ↑ 翻回上一章落到章末(`line_percent=1.0`)**(承接向上连读、误触后原路找回位置),显式 `←/H` 落到章首(`0.0`)。
+
+**相关文件**：`src/pages/read_novel/read_content.rs`（`Edge` 状态 + Up/Down 边界逻辑 + 底部提示）、`src/pages/read_novel/mod.rs`（`on_prev` 按 `is_scroll_top` 恢复位置）
 
 ## 0.6 → 0.7 迁移实战（change `upgrade-ratatui-kit-07`）
 
