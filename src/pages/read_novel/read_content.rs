@@ -10,6 +10,16 @@ use ratatui::{
 use ratatui_kit::prelude::*;
 use std::time::Duration;
 
+/// 章节边界的「再按一次」确认态,防止读到章末/章首时误触 ↓/↑ 直接跳章。
+/// 到边界的首次 ↓/↑ 只武装并在底部状态栏提示,连续第二次才真正翻章;
+/// 任何滚动/翻页/显式翻章键都会解除武装。
+#[derive(Clone, Copy, PartialEq)]
+enum Edge {
+    None,
+    Prev,
+    Next,
+}
+
 #[derive(Default, Props)]
 pub struct ReadContentProps {
     pub content: String,
@@ -40,6 +50,8 @@ pub fn ReadContent(
     let mut is_listening_done = hooks.use_state(|| false);
     let mut on_prev = props.on_prev.take();
     let mut on_next = props.on_next.take();
+    // 章末/章首「再按一次」确认态(防误触跳章)。
+    let mut edge = hooks.use_state(|| Edge::None);
 
     // 自动播放下一章节
     if is_listening_done.get() && tts_config.read().auto_play {
@@ -211,8 +223,14 @@ pub fn ReadContent(
                 if current_line > 0 {
                     current_line -= 1;
                     line_percent.set((current_line as f64) / (line_count as f64));
-                } else {
+                    edge.set(Edge::None);
+                } else if edge.get() == Edge::Prev {
+                    // 已在章首且已武装 → 第二次 ↑ 才翻上一章(落到上一章末尾)。
+                    edge.set(Edge::None);
                     on_prev(true);
+                } else {
+                    // 首次到章首:只武装并在底部提示,不翻章(防误触)。
+                    edge.set(Edge::Prev);
                 }
                 EventResult::Consumed
             }
@@ -220,35 +238,47 @@ pub fn ReadContent(
                 if current_line < line_count {
                     current_line += 1;
                     line_percent.set((current_line as f64) / (line_count as f64));
-                } else {
+                    edge.set(Edge::None);
+                } else if edge.get() == Edge::Next {
+                    // 已在章末且已武装 → 第二次 ↓ 才翻下一章。
+                    edge.set(Edge::None);
                     on_next(());
+                } else {
+                    // 首次到章末:只武装并在底部提示,不翻章(防误触)。
+                    edge.set(Edge::Next);
                 }
                 EventResult::Consumed
             }
             KeyCode::Left | KeyCode::Char('h') => {
+                edge.set(Edge::None);
                 on_prev(false);
                 EventResult::Consumed
             }
             KeyCode::Right | KeyCode::Char('l') => {
+                edge.set(Edge::None);
                 on_next(());
                 EventResult::Consumed
             }
             KeyCode::PageUp => {
                 current_line = current_line.saturating_sub(5);
                 line_percent.set((current_line as f64) / (line_count as f64));
+                edge.set(Edge::None);
                 EventResult::Consumed
             }
             KeyCode::PageDown => {
                 current_line = (current_line + 5).min(line_count);
                 line_percent.set((current_line as f64) / (line_count as f64));
+                edge.set(Edge::None);
                 EventResult::Consumed
             }
             KeyCode::Home => {
                 line_percent.set(0.0);
+                edge.set(Edge::None);
                 EventResult::Consumed
             }
             KeyCode::End => {
                 line_percent.set(1.0);
+                edge.set(Edge::None);
                 EventResult::Consumed
             }
             KeyCode::Char('+') => {
@@ -347,6 +377,12 @@ pub fn ReadContent(
             margin: Margin::new(1,0),
         ){
             widget(Line::from(format!("{current_line}/{line_count} 行")).style(theme.footer))
+            // 章末/章首「再按一次」确认提示(仅武装时显示;accent+bold 醒目)。
+            widget(Line::from(match edge.get() {
+                Edge::Next => "● 已到本章末尾 · 再按 ↓ 进入下一章",
+                Edge::Prev => "● 已到本章开头 · 再按 ↑ 返回上一章",
+                Edge::None => "",
+            }).style(theme.chapter).centered())
             widget(Line::from(format!("{:.2}% {}",props.chapter_percent, current_time.read().clone())).style(theme.progress).right_aligned())
         }
     })

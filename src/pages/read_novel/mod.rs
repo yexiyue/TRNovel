@@ -200,24 +200,22 @@ where
                         }
                     },
                     on_prev: move |is_scroll_top| {
-                        if current_chapter.get() == 0 || is_scroll_top {
+                        // 已是第一章:无上一章可翻。
+                        if current_chapter.get() == 0 {
                             return;
                         }
                         let new_chapter = current_chapter.get().saturating_sub(1);
 
                         if let Some(novel) = novel.write().as_mut() {
-
                             if let Err(e) = novel.set_chapter(new_chapter) {
                                 error.write().replace(e);
                                 return;
                             }
                             current_chapter.set(new_chapter);
-                            // if is_scroll_top {
-                            //     line_percent.set(1.0);
-                            // } else {
-                            //     line_percent.set(0.0);
-                            // }
-                            line_percent.set(0.0);
+                            // 顶部 ↑ 翻回上一章(is_scroll_top=true)→ 落到上一章末尾:承接向上连读,
+                            // 也让误触跳到下一章后能原路 ↑ 找回原来读到的位置;
+                            // 显式 ← / H 翻上一章 → 落到章首(0.0)。
+                            line_percent.set(if is_scroll_top { 1.0 } else { 0.0 });
                         }
                     },
                     line_percent: line_percent,
@@ -248,9 +246,9 @@ where
                                 ("播放/暂停", "P"),
                                 ("增大音量", "+"),
                                 ("减小音量", "-"),
-                                ("向上滚动", "↑ / K"),
-                                ("向下滚动", "↓ / J"),
-                                ("上一章", "← / H"),
+                                ("向上滚动(章首连按翻上一章)", "↑ / K"),
+                                ("向下滚动(章末连按翻下一章)", "↓ / J"),
+                                ("上一章(章首)", "← / H"),
                                 ("下一章", "→ / L"),
                                 ("上一页", "PageUp"),
                                 ("下一页", "PageDown"),
