@@ -98,7 +98,23 @@ where
                     EventResult::Consumed
                 }
                 KeyCode::Enter => {
-                    on_select(selected.read().iter().map(|&i| data[i].clone()).collect());
+                    // 先把选中项收进 Vec 并**释放 selected 的读 guard**,再调 on_select。
+                    // 否则 `selected.read()` 作为实参临时量,其读 guard 会存活到整条语句结束——
+                    // 即在 on_select 执行期间仍持读借用;而 on_select 内若写同一个 selected
+                    //(如导入页的 `selected.write().clear()`)→ 同线程「读未释放又写」→
+                    // parking_lot RwLock 死锁(generational-box 的 try_write 名为 try 实为阻塞,
+                    // 不返回 Err 而是永久 block)→ 渲染主循环 dispatch 卡死,整个 TUI 冻结。
+                    // 与框架内置 MultiSelect 的两语句写法一致。
+                    let selected_items: Vec<T> = {
+                        let selected = selected.read();
+                        // data.get(i) 而非裸 data[i]:选中后若 items 缩减(重新解析返回更少项),
+                        // 残留的选中下标会越界 panic;过滤掉失效下标更稳。
+                        selected
+                            .iter()
+                            .filter_map(|&i| data.get(i).cloned())
+                            .collect()
+                    };
+                    on_select(selected_items);
                     EventResult::Consumed
                 }
                 _ => EventResult::Ignored,

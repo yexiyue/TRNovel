@@ -91,9 +91,14 @@ where
                     EventResult::Consumed
                 }
                 KeyCode::Enter => {
+                    // 用 data.get(path) 而非裸 data[path]:列表可能为空但 state.selected 仍是
+                    // 强制的 Some(0)(如空书源列表按 Tab 进只选模式、或书源删到空),
+                    // 裸索引会 index out of bounds panic 直接崩溃退出。
                     let res = state.read().selected;
-                    if let Some(path) = res {
-                        on_select(data[path].clone());
+                    if let Some(path) = res
+                        && let Some(item) = data.get(path)
+                    {
+                        on_select(item.clone());
                     }
                     EventResult::Consumed
                 }
