@@ -58,8 +58,8 @@ async fn try_run(font: &str, out: &Path, base_font: Option<&Path>) -> Result<()>
     }
     eprintln!("加密字体覆盖 {} 个 PUA 码点", pua.len());
 
-    // 4. 渲染候选:GB2312 一级常用字(正文几乎全在其中,避免匹配到生僻字)。
-    let cands = gb2312_level1();
+    // 4. 渲染候选:GB2312 一级常用字 + 阿拉伯数字 + 拉丁字母。
+    let cands = baseline_candidates();
     eprintln!("基准候选字 {} 个,渲染中…", cands.len());
     let mut bctx = ScaleContext::new();
     let mut bscaler = bctx.builder(base).size(SIZE).hint(false).build();
@@ -131,6 +131,24 @@ fn render_norm(scaler: &mut Scaler<'_>, gid: u16) -> Option<Vec<f32>> {
 /// 两个等长向量点积(均已 L2 归一化 → 即余弦相似度)。
 fn dot(a: &[f32], b: &[f32]) -> f32 {
     a.iter().zip(b).map(|(x, y)| x * y).sum()
+}
+
+/// 匹配候选字集:GB2312 一级常用字(3755) + 阿拉伯数字(0-9) + 拉丁字母(A-Za-z)。
+///
+/// 反爬字体不仅混淆汉字,也把**数字、英文字母**画进 PUA(番茄正文里的时间「12:21」、
+/// 书名/正文里的英文「qq」都走同一套字体)。若候选集只有汉字,这些数字/字母字形会被
+/// 强行匹配到形近汉字(实测「1」「q」等被解成「井」等乱码)。补齐这两类候选后,数字
+/// 字形匹配数字、字母字形匹配字母,即可正确还原。
+///
+/// **不加 ASCII 标点**:半角标点(如 `-` `|` `.`)与汉字笔画/部件形近(「一」↔「-」、
+/// 「丨」↔`|`),混进候选反而会把汉字误配成标点;番茄正文标点本就是全角中文标点、不在
+/// 此列,故无需覆盖。
+fn baseline_candidates() -> Vec<char> {
+    let mut out = gb2312_level1();
+    out.extend('0'..='9');
+    out.extend('A'..='Z');
+    out.extend('a'..='z');
+    out
 }
 
 /// GB2312 一级汉字(3755 个,按拼音序)。用 GBK 解码区位生成。
