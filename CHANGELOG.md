@@ -1,4 +1,13 @@
-## [0.14.0] - 2026-07-13
+## [0.14.1] - 2026-07-13
+
+### 🐛 Bug Fixes
+
+- *(fontmap)* 修复番茄字体反爬中数字/英文被误解为汉字
+
+### 📚 Documentation
+
+- *(booksource)* 补充 fontMap 数字/字母候选相关知识与 skill 说明
+## [trnovel-v0.14.0] - 2026-07-13
 
 ### 🚀 Features
 
@@ -13,6 +22,10 @@
 
 - 修正 ratatui-kit 官网外链
 - *(dev-notes)* 记录 State 读写死锁、loading 透传、空列表越界、阅读边界交互
+
+### ⚙️ Miscellaneous Tasks
+
+- Release
 ## [trnovel-v0.13.2] - 2026-07-08
 
 ### 🚀 Features
