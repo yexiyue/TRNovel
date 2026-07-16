@@ -42,7 +42,9 @@ pub fn BookSourceManager(mut hooks: Hooks) -> impl Into<AnyElement<'static>> {
                 EventResult::Consumed
             }
             // 反爬:开/关「浏览器辅助验证」总是允许(读 flag 翻转并持久化)。
-            KeyCode::Char('b') | KeyCode::Char('B') => {
+            // 用 W(Web 浏览器)而非 B:B 是 shell 级后退键(`layout.rs`),同层里页面 Normal
+            // 会先于 shell 的 Low 跑并 Consumed,占用 B 会让本页**彻底无法后退**。
+            KeyCode::Char('w') | KeyCode::Char('W') => {
                 let on = crate::browser_assist::always_allowed();
                 let _ = crate::browser_assist::set_always_allowed(!on);
                 EventResult::Consumed
@@ -65,7 +67,7 @@ pub fn BookSourceManager(mut hooks: Hooks) -> impl Into<AnyElement<'static>> {
                     ("书源登录(需登录的源)", "L"),
                     ("上下移动", "J / K / ↑ / ↓"),
                     ("选择书源", "Enter"),
-                    ("浏览器辅助验证 开/关", "B"),
+                    ("浏览器辅助验证 开/关", "W"),
                 ],
                 open: info_modal_open.get(),
             )
@@ -87,7 +89,7 @@ pub fn BookSourceManager(mut hooks: Hooks) -> impl Into<AnyElement<'static>> {
                     ("选择/取消条目", "空格"),
                     ("确认导入/选择", "Enter"),
                     ("上下移动", "J / K / ↑ / ↓"),
-                    ("浏览器辅助验证 开/关", "B"),
+                    ("浏览器辅助验证 开/关", "W"),
                 ],
                 open: info_modal_open.get(),
             )

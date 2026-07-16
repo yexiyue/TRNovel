@@ -54,22 +54,22 @@ pub fn SelectChapter(
     let mut filter_text = hooks.use_state(String::default);
     let theme = hooks.use_component_theme::<AppChromeTheme>();
 
-    // 树状态：首次渲染时定位到当前章节并展开其所属卷。
-    let state = {
-        let dv = props.default_value;
-        let volumes = props.volumes.clone();
-        hooks.use_state(move || {
-            let mut st = TreeState::<TocId>::default();
-            if let Some(idx) = dv {
-                if let Some(vi) = locate_volume(idx, &volumes) {
-                    st.open(vec![TocId::Volume(vi)]);
-                    st.select(vec![TocId::Volume(vi), TocId::Chapter(idx)]);
-                } else {
-                    st.select(vec![TocId::Chapter(idx)]);
-                }
-            }
-            st
-        })
+    // 树状态只持有展开/光标;「定位到当前章节」交给 TreeSelect 的 `default_selection`。
+    let state = hooks.use_state(TreeState::<TocId>::default);
+
+    // 当前章节的树路径(有卷则 `[卷, 章]`,无卷则 `[章]`)。
+    //
+    // **必须传给 TreeSelect**:它内部的 `sync_default_tree_selection` 在 `default_selection`
+    // 变化时 `select()` + 展开祖先卷,而不传时该 prop 默认为**空路径**,会在挂载帧把选中**清空**
+    // (空路径 = 清除选中)。组件树是「父先子后」更新,故此前在 `use_state` 里种下的选中总被子组件抹掉。
+    // 交给它还顺带解决了时序:章节异步加载完成后 `default_value` 由 0 变为真实章号,
+    // 路径随之变化触发重新定位 —— `use_state` 初始化闭包只跑一次,做不到这点。
+    let default_selection: Vec<TocId> = match props.default_value {
+        Some(idx) => match locate_volume(idx, &props.volumes) {
+            Some(vi) => vec![TocId::Volume(vi), TocId::Chapter(idx)],
+            None => vec![TocId::Chapter(idx)],
+        },
+        None => vec![],
     };
 
     let is_editing = props.is_editing;
@@ -171,6 +171,7 @@ pub fn SelectChapter(
                 style: theme.text,
                 highlight_style: theme.selected,
                 state: state,
+                default_selection: default_selection,
                 items: items.clone(),
                 scrollbar: Scrollbar::default(),
                 block: border,

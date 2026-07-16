@@ -13,11 +13,16 @@ use std::time::Duration;
 /// 章节边界的「再按一次」确认态,防止读到章末/章首时误触 ↓/↑ 直接跳章。
 /// 到边界的首次 ↓/↑ 只武装并在底部状态栏提示,连续第二次才真正翻章;
 /// 任何滚动/翻页/显式翻章键都会解除武装。
+///
+/// `AtFirst`/`AtLast` 是**全书边界**(无上/下一章可翻):只提示、不武装,再按也不翻章
+/// —— 否则会承诺一个不存在的章节,而第二次按下只能静默 no-op。
 #[derive(Clone, Copy, PartialEq)]
 enum Edge {
     None,
     Prev,
     Next,
+    AtFirst,
+    AtLast,
 }
 
 #[derive(Default, Props)]
@@ -32,6 +37,10 @@ pub struct ReadContentProps {
     pub chapter_name: String,
     pub chapter_percent: f64,
     pub line_percent: Option<State<f64>>,
+    /// 全书是否还有上一章/下一章。边界提示与「再按一次」武装都要看它,
+    /// 否则会在第一章/最后一章承诺不存在的章节(`on_prev`/`on_next` 那时只会静默 no-op)。
+    pub has_prev: bool,
+    pub has_next: bool,
 }
 
 #[component]
@@ -55,7 +64,14 @@ pub fn ReadContent(
 
     // 自动播放下一章节
     if is_listening_done.get() && tts_config.read().auto_play {
-        on_next(());
+        if props.has_next {
+            on_next(());
+        } else {
+            // 全书最后一章:没有下一章可续播。必须显式复位「播放中」——否则 `on_next` 静默
+            // no-op 使 `content` 不变,以 `content` 为 deps 的清理 effect 不会重跑,
+            // 底部会永久显示「播放中」且 p 键只在 pause/play 间空转、无法重播。
+            is_listening.set(false);
+        }
         is_listening_done.set(false);
     }
 
@@ -211,6 +227,8 @@ pub fn ReadContent(
     hooks.use_scrollbar(line_count, Some(current_line));
 
     let props_content = props.content.clone();
+    let has_prev = props.has_prev;
+    let has_next = props.has_next;
     hooks.use_event_handler(EventScope::Current, EventPriority::Normal, move |event| {
         let Event::Key(key) = event else {
             return EventResult::Ignored;
@@ -224,6 +242,9 @@ pub fn ReadContent(
                     current_line -= 1;
                     line_percent.set((current_line as f64) / (line_count as f64));
                     edge.set(Edge::None);
+                } else if !has_prev {
+                    // 全书第一章的章首:没有上一章可翻,只提示、不武装(再按也不会翻)。
+                    edge.set(Edge::AtFirst);
                 } else if edge.get() == Edge::Prev {
                     // 已在章首且已武装 → 第二次 ↑ 才翻上一章(落到上一章末尾)。
                     edge.set(Edge::None);
@@ -239,6 +260,9 @@ pub fn ReadContent(
                     current_line += 1;
                     line_percent.set((current_line as f64) / (line_count as f64));
                     edge.set(Edge::None);
+                } else if !has_next {
+                    // 全书最后一章的章末:没有下一章可翻,只提示、不武装(再按也不会翻)。
+                    edge.set(Edge::AtLast);
                 } else if edge.get() == Edge::Next {
                     // 已在章末且已武装 → 第二次 ↓ 才翻下一章。
                     edge.set(Edge::None);
@@ -381,6 +405,8 @@ pub fn ReadContent(
             widget(Line::from(match edge.get() {
                 Edge::Next => "● 已到本章末尾 · 再按 ↓ 进入下一章",
                 Edge::Prev => "● 已到本章开头 · 再按 ↑ 返回上一章",
+                Edge::AtLast => "● 已是全书最后一章",
+                Edge::AtFirst => "● 已是第一章",
                 Edge::None => "",
             }).style(theme.chapter).centered())
             widget(Line::from(format!("{:.2}% {}",props.chapter_percent, current_time.read().clone())).style(theme.progress).right_aligned())

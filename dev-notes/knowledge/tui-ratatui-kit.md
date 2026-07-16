@@ -83,7 +83,37 @@ on_select(state.read().iter().map(|&i| data[i].clone()).collect());
 
 **相关文件**：`src/components/list_select.rs`、`src/components/multi_list_select.rs`
 
+### 传了 `state` 的内置组件，也要传它的 `default_*` prop —— 否则挂载帧被空值清空
+
+`TreeSelect` 传了 `state` 却不传 `default_selection`(默认空 `Vec`)时,选中会在**挂载帧被清空**:它内部 `use_effect` 调 `sync_default_tree_selection`,首次同步 `last_default=None != Some(&[])` → 判定「default 变了」→ `select(vec![])`,而**空路径 = 清除选中**。组件树父先子后更新,故这次清除总在父组件 seeding 之后,表现为「`use_state` 里明明 `st.select(...)` 了,挂载后却没有任何高亮」。`open_ancestors(&[])` 是空循环,所以**卷是展开的、偏偏没高亮** —— 这个不对称是该 bug 的特征指纹。
+
+**正确做法**:把「定位」交给组件的 `default_selection`,别在 `use_state` 里手动 select。它的 `use_effect` deps 就是该 prop,**值变化时会重新定位** —— 这顺带解决了异步加载的时序:章节列表 await 完成后 `current_chapter` 由 0 变真实章号,路径随之变化触发重新选中。`use_state` 初始化闭包只跑一次,做不到这点(这正是「首次进入停在第 0 章」的成因)。
+
+**不要做**:`use_state(|| { let mut st = TreeState::default(); st.select(path); st })` —— 既会被子组件清空,又对后到的 props 失聪。
+
+**判别**:选中丢失但节点展开正常 → 查内置组件是否有未传的 `default_*` prop。**排查时别只截屏幕前几行**:widget 只在选中项落在可见窗口外才滚动(`tui-tree-widget` 的 `while ensure_index_in_view >= end`),索引小于一屏高度时高亮就在原位,截前 8 行会误判成「没选中」。
+
+**框架侧已修**(`../ratatui-kit`,0.10.2 之后):`sync_default_tree_selection` 现在跳过「首次同步 + 空 default」,不再误清调用方预设的选中;「从非空显式改回空 = 清除选中」的语义保留。TRNovel 仍应显式传 `default_selection`(它要的就是定位)。
+
+**相关文件**:`src/pages/read_novel/select_chapter.rs`、`ratatui-kit` `components/tree_select.rs`(`sync_default_tree_selection`)
+
 ## 键位
+
+### shell 键 q/g/b 是 Low 优先级 —— 页面占用同名键会让它在该页彻底失效
+
+`layout.rs` 的 shell 键注册为 `EventScope::Current + EventPriority::Low`。同层分发按 **priority 降序**(`High→Normal→Low`,`input/mod.rs` 的 `handlers[b].priority.cmp(&handlers[a].priority)`)且 `Consumed` 早停,故**页面级 `Normal` handler 先跑**。页面一旦占用同一个键并 `Consumed`,该 shell 键在那个页面就**彻底收不到事件**。书源页曾用 `b` 切换浏览器辅助验证,把后退键吃掉了 —— 现已改用 `w`。
+
+**新增页面快捷键时避开 `q`/`g`/`b`**。调换 priority 不是修法:把 shell 改成 `High` 会反向压死所有页面对这些键的合法覆盖。
+
+**相关文件**:`src/app/layout.rs`、`src/pages/network_novel/book_source_manager/mod.rs`
+
+### CLI 子命令导航要一次性,否则后退键被 effect 弹回
+
+`Layout` 用 `use_effect(.., params)` 按 CLI 子命令(`-n`/`-H`/`-l`)首屏导航。deps 是 `params`,而 `/home` 的 route state 就是 `TRNovel` 本身,故按 `b` 从目标页退回 `/home` 会让 params 再次变化 → effect 重跑 → **把用户 push 回原页**,现象与「后退键无效」一模一样。用 `use_state(|| false)` 的一次性标志挡住重复导航。
+
+**判别**:这个坑会与键位冲突**叠加**并互相掩盖 —— 修好键位后 `b` 才第一次真正执行 `go(-1)`,这个 bug 才暴露。验证后退键时用**不带 CLI 参数**启动(`subcommand=None`,effect 不导航)手动进页面,能干净地把两者分开。
+
+**相关文件**:`src/app/layout.rs`
 
 ### 没有中央 keymap，每个页面自己 match KeyCode
 
@@ -97,7 +127,11 @@ on_select(state.read().iter().map(|&i| data[i].clone()).collect());
 
 配套:`on_prev(is_scroll_top)` 之前 `is_scroll_top=true` 分支直接 return(顶部 ↑ 根本不翻上一章),现启用并按来源恢复位置——**顶部 ↑ 翻回上一章落到章末(`line_percent=1.0`)**(承接向上连读、误触后原路找回位置),显式 `←/H` 落到章首(`0.0`)。
 
-**相关文件**：`src/pages/read_novel/read_content.rs`（`Edge` 状态 + Up/Down 边界逻辑 + 底部提示）、`src/pages/read_novel/mod.rs`（`on_prev` 按 `is_scroll_top` 恢复位置）
+**全书边界必须与章内边界分开处理**:`ReadContent` 只知道「章内滚到底/顶」,不知道「全书还有没有下一章」——那信息只在 `ReadNovel` 里。最初漏传,导致最后一章章末仍提示「再按 ↓ 进入下一章」,而第二次按下时 `on_next` 的 `if new_chapter >= chapters.len() { return; }` 静默 no-op:**承诺了不存在的章节 + 提示闪掉 + 零反馈**。现由 `has_prev`/`has_next` props 下传,`Edge` 增加 `AtFirst`/`AtLast` 两态:全书边界**只提示不武装**(「● 已是全书最后一章」/「● 已是第一章」),再按也不翻章、提示保持。
+
+**同族坑 —— TTS 在最后一章的「假播放中」**:自动播放靠 `is_listening_done` 触发 `on_next`。最后一章 `on_next` 静默 no-op → `props.content` 不变 → 以 `content` 为 deps 的清理 effect **不重跑** → `is_listening` 永停 `true`,底部永久显示「播放中」且 `p` 只在 pause/play 间空转、无法重播。故最后一章须显式 `is_listening.set(false)`。**通用教训**:凡「靠 props 变化驱动状态复位」的 effect,在「操作被静默 no-op」的边界都会失效,得手动复位。
+
+**相关文件**：`src/pages/read_novel/read_content.rs`（`Edge` 状态 + `has_prev`/`has_next` + Up/Down 边界逻辑 + 底部提示 + TTS 复位）、`src/pages/read_novel/mod.rs`（`on_prev` 按 `is_scroll_top` 恢复位置、计算并下传 `has_prev`/`has_next`）
 
 ## 0.6 → 0.7 迁移实战（change `upgrade-ratatui-kit-07`）
 

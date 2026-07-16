@@ -174,6 +174,11 @@ where
         .and_then(|n| n.chapter_percent().ok())
         .unwrap_or_default();
 
+    // 全书边界:`on_prev`/`on_next` 在这两端只会静默 return,故下传给 ReadContent,
+    // 让它别在第一章/最后一章提示「再按一次翻章」去承诺不存在的章节。
+    let has_prev = current_chapter.get() > 0;
+    let has_next = current_chapter.get() + 1 < chapters.read().len();
+
     element!(Fragment {
         { if is_read_mode.get() {
             element!(View{
@@ -185,6 +190,8 @@ where
                     chapter_name: chapter_name,
                     chapter_percent: chapter_percent,
                     is_loading: content_loading.get(),
+                    has_prev: has_prev,
+                    has_next: has_next,
                     on_next: move |_| {
                         let new_chapter=current_chapter.get() + 1;
                         if let Some(novel) = novel.write().as_mut() {
