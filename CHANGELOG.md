@@ -1,4 +1,9 @@
-## [0.14.1] - 2026-07-13
+## [0.14.2] - 2026-07-16
+
+### 🐛 Bug Fixes
+
+- *(tui)* 修复书源页后退失效、目录不定位当前章、边界提示越界
+## [trnovel-v0.14.1] - 2026-07-13
 
 ### 🐛 Bug Fixes
 
@@ -7,6 +12,10 @@
 ### 📚 Documentation
 
 - *(booksource)* 补充 fontMap 数字/字母候选相关知识与 skill 说明
+
+### ⚙️ Miscellaneous Tasks
+
+- Release
 ## [trnovel-v0.14.0] - 2026-07-13
 
 ### 🚀 Features
