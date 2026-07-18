@@ -6,13 +6,14 @@
 
 ## What Changes
 
-- 新增 `src/keymap/` 基础设施：按 scope（第一期为 `reader`）定义语义 action 枚举，默认键在代码内声明，用 `crokey` 解析/格式化键位字符串。
-- 新增用户配置文件 `~/.novel/keybindings.toml`（TOML，可写注释；用户只写要覆盖的 action，加载时 merge 到默认之上）。
-- 配置加载做冲突/非法校验：非法键位字符串或同 scope 重复绑定时回退默认键，并通过既有 `WarningModal` 提示，不阻断启动。
-- 新增 `KEYMAP: Atom<Keymap>`（沿用 global-state-to-atom 模式），页面事件闭包从 `match key.code` 改为按 action 查表分发。
+> 键位表的通用基础设施（解析/合并/校验/反查/键名描述/示例导出/hook）上移到 contrib 新 crate **`ratatui-kit-keymap`**（见 ratatui-kit-contrib 仓库 change `add-keymap-crate`），本变更只做 TRNovel 消费端。
+
+- 新增依赖 `ratatui-kit-keymap`（钉版 0.1）；app 内用其 builder 定义 `reader` scope 的 `ReaderAction` 枚举与默认键（含帮助 desc）。
+- 新增用户配置文件 `~/.novel/keybindings.toml`（TOML，可写注释；用户只写要覆盖的 action）：app 负责路径、读取与加载时机，合并与校验由 crate 完成。
+- 校验告警（非法键位/同 scope 冲突/未知 action/整文件损坏）经既有 `WarningModal` 启动后一次性呈现，不阻断启动。
+- 新增 `KEYMAP: Atom<...>`（沿用 global-state-to-atom 模式）分发合并后的 keymap；阅读页事件处理改用 crate 的 `use_keymap_handler` 按 action 分发。
 - 第一期迁移阅读页（`ReadContent` / `ReadNovel` / TTS 面板入口键），其余页面保持硬编码，后续变更逐步铺开。
 - 阅读页快捷键帮助浮层（`shortcut_info_modal`）与底部提示改为从 keymap 动态取键名显示，保证帮助与实际绑定一致。
-- 新增依赖：`crokey`（键位解析/描述）、`toml`（配置反序列化）。
 
 **非目标**（后续变更处理）：shell 键（q/g/b）与列表页迁移、vim 式多键序列（如 `g g`）、docs 站配置文档与 `--export-keymap` 模板导出。
 
@@ -29,8 +30,9 @@
 
 ## Impact
 
-- **新增代码**：`src/keymap/`（action 枚举、Keymap 结构、解析与合并、默认表）。
+- **新增代码**：`src/keymap/`（薄层：`ReaderAction` 枚举、默认表 builder、配置文件加载接线）。
 - **修改代码**：`src/state.rs`（新增 `KEYMAP` Atom）、`src/app/mod.rs`（启动时加载配置 + 校验告警）、`src/pages/read_novel/`（`read_content.rs`、`mod.rs`、`tts/` 入口键）、`src/components/modal/shortcut_info_modal.rs`（阅读页部分动态化）。
-- **依赖**：新增 `crokey`、`toml`（均为纯 Rust 小依赖，无 C 依赖影响）。
+- **依赖**：新增 `ratatui-kit-keymap`（其带来 `crokey`、`toml` 传递依赖，均纯 Rust，无 C 依赖影响）。
 - **持久化**：新增 `~/.novel/keybindings.toml`（用户手编；程序只读，不走 Drop 自动保存模式）。
 - **兼容性**：无配置文件时行为与现状完全一致（默认键即现有键位）；不迁移、不破坏任何既有配置文件。
+- **跨仓库排序**：阻塞于 `ratatui-kit-keymap 0.1.0` 发布（contrib change `add-keymap-crate`）；本变更作为该 crate 首个真实消费者回灌 API 反馈。

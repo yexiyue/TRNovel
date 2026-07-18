@@ -24,31 +24,25 @@
 
 ## Decisions
 
-### D1：键位解析用 `crokey`，不用 `keybinds`/`crossterm-keybind`，也不手写
+### D1：通用层整体上移 contrib 的 `ratatui-kit-keymap`，TRNovel 只做消费端
 
-`crokey`（broot 作者维护，v1.4，~410 万下载）提供 `KeyCombination` 的字符串解析（`"ctrl-u"`、`"pagedown"`）、格式化（帮助显示）、`key!` 编译期宏与 serde 支持，恰好覆盖"解析+描述"两个需求且不绑架构。备选：`keybinds`（rhysd，v0.2）带 action 分发器与按键序列，但年轻且序列属非目标；`crossterm-keybind`（v0.4）derive 全家桶，但极新、全局静态初始化风格与 ratatui-kit hooks 模型不合，且与 ratatui 版本 feature 绑定；手写解析则要自担 `F1`/`space`/修饰键别名等长尾。真正的工作量在 22 个文件的语义化重构，解析层选最小最稳的积木。
+键位解析（crokey 选型：broot 作者维护、v1.4、~410 万下载；备选 `keybinds`/`crossterm-keybind` 的否决理由）、`Keymap<A>` 泛型结构、合并/校验/反查/键名描述/示例导出与 `use_keymap_handler` hook，全部在 contrib 仓库 change `add-keymap-crate` 的 crate 中实现——该能力对所有 ratatui-kit 用户通用，且框架 Extension API 稳定面足以在框架外实现（core 零改动）。TRNovel 侧仅保留宿主决策：action 枚举与默认表、配置文件路径与加载时机、告警呈现、全局分发方式。选型细节与 crate 内部设计见该 change 的 design.md，此处不重复。
 
 ### D2：配置格式用 TOML（`keybindings.toml`），不沿用 JSON
 
-按键配置是用户**手编**的文件，需要注释与示例；`~/.novel/*.json` 那些是程序写的（Drop 自动保存），性质不同。yazi/helix/television 均用 TOML。新增 `toml` 依赖（纯 Rust）。该文件**程序只读**，不走 Drop 保存模式——避免把用户的注释/格式抹掉。
+按键配置是用户**手编**的文件，需要注释与示例；`~/.novel/*.json` 那些是程序写的（Drop 自动保存），性质不同。yazi/helix/television 均用 TOML。`toml` 依赖随 `ratatui-kit-keymap` 的 `toml` feature 传递引入。该文件**程序只读**，不走 Drop 保存模式——避免把用户的注释/格式抹掉；示例配置用 crate 的 `to_toml_example()` 生成。
 
-### D3：action 按 scope 组织，第一期只有 `reader` scope
+### D3：第一期只定义 `reader` scope 的 `ReaderAction`
 
-`Keymap` 结构为 scope → (action → `Vec<KeyCombination>`)。action 枚举按 scope 各自定义（如 `ReaderAction`），避免一个巨型全局枚举；scope 名即 TOML 的表名（`[reader]`）。阅读页 scope 覆盖 `read_novel` 子树当前处理的键：滚动、翻页、显式翻章、Home/End、音量、播放/暂停、标题显隐，以及 `mod.rs` 层的目录/TTS 面板/信息浮层入口键。
+crate 的模型是「一个 `Keymap<A>` 即一个 scope」（每 scope 一个 action 枚举）。TRNovel 第一期只定义 `ReaderAction`（`#[serde(rename_all = "snake_case")]`，变体名即 TOML 键名，是对用户的配置契约），TOML 表名为 `[reader]`。覆盖 `read_novel` 子树当前处理的键：滚动、翻页、显式翻章、Home/End、音量、播放/暂停、标题显隐，以及 `mod.rs` 层的目录/TTS 面板/信息浮层入口键。默认表逐键对照现有 `match KeyCode` 用 builder 声明（含 desc，供帮助渲染与示例导出）。
 
-### D4：合并语义 = 按 action 整条替换（gitui/crossterm-keybind 模式）
+### D4：合并语义与校验由 crate 承担，app 只管加载与呈现
 
-用户写了某 action 就以其键列表**整体替换**默认（写 `page_down = ["ctrl+d"]` 后默认 PageDown 不再生效——用户明确要换键时不留旧键干扰）；没写的 action 保持默认。一个 action 可绑多个键（`Vec`），一个键在同 scope 内只能属于一个 action。
+按 action 整条替换、三类校验回退（非法键位/冲突/未知 action）由 `ratatui-kit-keymap` 实现并返回结构化告警。app 侧职责：文件不存在 → 静默用默认；读文件或 TOML 整体解析失败 → 全部默认 + 告警；crate 返回的告警连同上述文件级问题，启动后经既有 `WarningModal` 一次性呈现（复用 `App` 启动错误路径），**不阻断启动**。
 
-### D5：查表方向为 KeyCombination → Action，加载期构建反查表并校验
+### D5：事件分发用 crate 的 `use_keymap_handler`
 
-加载时把 scope 内所有绑定摊平成 `HashMap<KeyCombination, Action>`；事件闭包里 `KeyEvent` → `KeyCombination::from(key_event)` → 查表得 `Option<Action>` 后 match action，`EventResult` 语义与现状不变（查不到返回 `Ignored`）。校验规则：
-
-- 键位字符串解析失败 → 该 action 回退默认，记一条告警；
-- 同 scope 内两个 action 绑了同一键 → 冲突的**用户覆盖**整条回退默认（默认表自身保证无冲突），记一条告警；
-- 文件不存在 → 静默用默认；文件存在但整体解析失败（TOML 语法错）→ 全部默认 + 告警。
-
-所有告警在启动后经既有 `WarningModal` 一次性呈现（复用 `App` 启动错误路径），**不阻断启动**。
+阅读页事件闭包改为 `use_keymap_handler(scope, priority, keymap, |action, key| ...)`：命中回调按 action match，未命中自动 `Ignored`（事件继续传给 shell 键等其他 handler），`EventResult` 语义与现状不变。
 
 ### D6：`KEYMAP: Atom<Keymap>`，启动加载后只读
 
@@ -68,9 +62,10 @@
 
 ## Migration Plan
 
-1. 基础设施落地（`src/keymap/` + `KEYMAP` Atom + 加载/校验），不改任何页面——可独立合入，零行为变化。
-2. 阅读页迁移到 action 分发 + 帮助/提示动态化，默认表逐键对照现状。
-3. 回滚策略：删除配置文件读取即回到内置默认表；默认表与现状逐键一致，故任一阶段回滚均无行为回归。
+0. **前置**：contrib 侧 `ratatui-kit-keymap 0.1.0` 发布（change `add-keymap-crate`），本变更钉版依赖。
+1. 消费端接线（`src/keymap/` 薄层：`ReaderAction` + 默认表 + 配置加载 + `KEYMAP` Atom），不改任何页面——可独立合入，零行为变化。
+2. 阅读页迁移到 `use_keymap_handler` + 帮助/提示动态化，默认表逐键对照现状。
+3. 回滚策略：删除配置文件读取即回到内置默认表；默认表与现状逐键一致，故任一阶段回滚均无行为回归；crate 出问题锁旧版即可。
 
 ## Open Questions
 
