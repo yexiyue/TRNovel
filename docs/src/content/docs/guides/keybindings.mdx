@@ -1,0 +1,109 @@
+---
+title: 自定义按键
+lastUpdated: 2026-07-18
+sidebar:
+    order: 9
+---
+
+import { Aside } from "@astrojs/starlight/components";
+
+从 **v0.15.0** 起,阅读页的全部快捷键都可以通过配置文件自定义。没有 `PageUp / PageDown / Home / End` 键的笔记本键盘、或者想按自己的肌肉记忆改键,都不再需要改代码。
+
+## 配置文件
+
+在 `~/.novel/` 下新建 `keybindings.toml`,只写想改的条目即可 —— 未写的操作保持默认键位:
+
+```toml
+[reader]
+page_up = "ctrl-u"
+page_down = ["ctrl-d", "space"]   # 一个操作可以绑多个键
+go_top = "g"
+go_bottom = "G"                   # 大写字母 = Shift+g
+```
+
+保存后重新打开 TRNovel 生效。快捷键帮助浮层(`i`)和底部提示会**实时显示自定义后的键位**,不会与实际绑定脱节。
+
+<Aside type="tip">配置写错不会影响使用:出错的条目自动回退默认键位,启动时会弹窗提示具体哪条有问题;按 `ESC` 关闭提示即可继续。</Aside>
+
+## 键位语法
+
+键位字符串的分隔符是 `-`(不是 `+`):
+
+| 写法 | 含义 |
+|------|------|
+| `j`、`p`、`+` | 单个字符键 |
+| `G` 或 `shift-g` | Shift + 字母(单个大写字母即视为 Shift 意图) |
+| `ctrl-d`、`alt-x`、`ctrl-shift-g` | 带修饰键的组合 |
+| `up` / `down` / `left` / `right` | 方向键 |
+| `pageup` / `pagedown` / `home` / `end` | 翻页与首尾键 |
+| `tab`、`esc`、`enter`、`space`、`backspace` | 常用特殊键 |
+| `hyphen`(或 `minus`) | `-` 键本身 |
+| `f1` ~ `f24` | 功能键 |
+
+一个操作可以写单个键(字符串)或多个键(列表);写 `[]` 表示解绑该操作(请谨慎)。
+
+## 可配置的操作(`[reader]` 表)
+
+下面是完整默认配置,可直接复制为模板、按需修改:
+
+```toml
+[reader]
+# 向上滚动(章首连按翻上一章)
+scroll_up = ["Up", "k"]
+
+# 向下滚动(章末连按翻下一章)
+scroll_down = ["Down", "j"]
+
+# 上一章(章首)
+prev_chapter = ["Left", "h"]
+
+# 下一章
+next_chapter = ["Right", "l"]
+
+# 上一页
+page_up = ["PageUp"]
+
+# 下一页
+page_down = ["PageDown"]
+
+# 跳到开头
+go_top = ["Home"]
+
+# 跳到结尾
+go_bottom = ["End"]
+
+# 增大音量
+volume_up = ["+"]
+
+# 减小音量
+volume_down = ["Hyphen"]
+
+# 播放/暂停
+toggle_play = ["p"]
+
+# 隐藏/显示标题
+toggle_title = ["v"]
+
+# 切换章节选择/阅读模式
+toggle_read_mode = ["Tab"]
+
+# 打开/关闭快捷键帮助
+toggle_info = ["i", "Shift-i"]
+
+# 打开/关闭TTS设置
+toggle_tts = ["t", "T"]
+```
+
+## 出错时的行为
+
+配置问题一律**降级为启动告警**,不会让应用起不来:
+
+| 问题 | 行为 |
+|------|------|
+| 某条键位写错(如 `"ctrl-"`) | 该操作回退默认键位,其余条目照常生效 |
+| 值类型不对(如 `toggle_play = 3`) | 该操作回退默认键位 |
+| 两个操作绑了同一个键 | 冲突的自定义条目回退默认 |
+| 操作名拼写错误 | 该条忽略(告警会指出名字) |
+| 整个文件不是合法 TOML | 全部使用默认键位 |
+
+<Aside type="note">目前第一期覆盖**阅读页**按键;书源管理、列表页等其他页面的按键自定义会在后续版本逐步铺开。全局键(`q` 退出、`b` 返回、`g` 主页)暂不可配置。</Aside>
