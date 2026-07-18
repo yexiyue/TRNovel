@@ -1,8 +1,21 @@
-## [0.14.2] - 2026-07-16
+## [0.14.3] - 2026-07-18
+
+### 🐛 Bug Fixes
+
+- *(tui)* PageUp/PageDown 改为整页翻动而非固定 5 行
+
+### 📚 Documentation
+
+- *(openspec)* Configurable-keybindings 变更提案
+## [trnovel-v0.14.2] - 2026-07-16
 
 ### 🐛 Bug Fixes
 
 - *(tui)* 修复书源页后退失效、目录不定位当前章、边界提示越界
+
+### ⚙️ Miscellaneous Tasks
+
+- Release
 ## [trnovel-v0.14.1] - 2026-07-13
 
 ### 🐛 Bug Fixes
