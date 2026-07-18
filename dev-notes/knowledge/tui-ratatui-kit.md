@@ -115,11 +115,22 @@ on_select(state.read().iter().map(|&i| data[i].clone()).collect());
 
 **相关文件**:`src/app/layout.rs`
 
-### 没有中央 keymap，每个页面自己 match KeyCode
+### 键位分层:阅读页走 keymap(可配置),其余页面仍 match KeyCode
 
-全项目没有统一键位表;每个页面/组件在自己的 `use_events` 闭包里 match `KeyCode`（vim 风格 j/k/h/l、Tab、Enter）。`is_inputting` context 在 `SearchInput` 聚焦时 gate 页面快捷键,页面必须检查它避免双重处理。快捷键帮助浮层在 `src/components/modal/shortcut_info_modal.rs`。
+阅读页(`read_novel` 子树)已迁移到 `ratatui-kit-keymap` 的语义 action 分发,键位可经 `~/.novel/keybindings.toml` 的 `[reader]` 表自定义(issue #49);其余页面/组件仍在各自 `use_event_handler` 里 match `KeyCode`,后续变更逐 scope 迁移。快捷键帮助浮层在 `src/components/modal/shortcut_info_modal.rs`。
 
-**相关文件**：`src/app/layout.rs`（少数 app 级键）、各 page 的 `use_events`
+**正确做法**:
+- 阅读页新增快捷键:在 `src/keymap/mod.rs` 的 `ReaderAction` 加变体 + `reader_defaults()` 绑默认键(变体名 snake_case 即用户配置键名,是稳定契约,改名 = 破坏用户配置);事件侧在对应组件的 `use_keymap_handler` 回调里加分支。
+- 键位表经 `KEYMAP: Atom<AppKeymap>` 分发,`hooks.use_atom(&KEYMAP).read().reader.clone()` 每帧取 `Arc`(引用计数,非深拷贝);hook 用 `use_keymap_handler(scope, priority, arc, |action, _key| ...)`,未命中自动 `Ignored` 不拦截 shell 键。
+- 帮助浮层/底部提示的键名一律走 `keymap::display_keys` / `display_first_key`(显示层折叠 `Shift-单字母` 为大写、方向键转箭头),保证显示与实际绑定一致;组件内部自处理的键(TreeSelect 导航、TTS 面板内 h/l)保持硬编码。
+- 迁移前 `'i' | 'I'` 这类大小写双匹配 → 默认表绑 `["i", "I"]`(crate 把大写字母视为 shift 意图,"I" ≡ shift-i);只绑小写会让 Shift+字母 失效。
+- 配置加载在 `App` 启动 init 内(`crate::keymap::load_keymap`),任何问题降级为中文告警接非阻断 `WarningModal`(ESC 关闭),**不得**进入致命 error 路径。
+
+**不要做**:
+- 不要在阅读页组件里重新 match 物理 `KeyCode`——会绕过用户自定义。
+- 不要把页面级 action(ToggleReadMode 等)在 `ReadContent` 里消费:它 `Ignored` 交给 `mod.rs` 的 handler,两处 action 集合不相交。
+
+**相关文件**:`src/keymap/mod.rs`(+tests)、`src/state.rs`(`KEYMAP`)、`src/app/mod.rs`(加载+告警)、`src/pages/read_novel/{mod.rs,read_content.rs}`、`openspec/changes/configurable-keybindings/keybindings.example.toml`(示例配置)、contrib 仓库 `crates/ratatui-kit-keymap`
 
 ### 阅读页章末/章首「再按一次」防误触跳章 + 翻回位置恢复
 

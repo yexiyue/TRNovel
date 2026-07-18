@@ -13,18 +13,18 @@
 系统 SHALL 在启动初始化时读取 `~/.novel/keybindings.toml`（TOML 格式，scope 为表名、action 为键、键位字符串列表为值，键位语法为 crokey 语法），并将用户条目按 action 整条替换合并到默认表之上；未出现在配置中的 action MUST 保持默认键位。该文件对程序 MUST 为只读（程序不写回、不重排、不删注释）。
 
 #### Scenario: 部分覆盖
-- **WHEN** 配置文件仅包含 `[reader]` 下的 `page_down = ["ctrl+d"]`
-- **THEN** 阅读页 `ctrl+d` 触发向下翻页，默认的 PageDown 键不再触发翻页，其余所有 action 保持默认键位
+- **WHEN** 配置文件仅包含 `[reader]` 下的 `page_down = ["ctrl-d"]`
+- **THEN** 阅读页 `ctrl-d` 触发向下翻页，默认的 PageDown 键不再触发翻页，其余所有 action 保持默认键位
 
 #### Scenario: 一个 action 绑定多个键
-- **WHEN** 配置文件写 `page_down = ["ctrl+d", "space"]`
+- **WHEN** 配置文件写 `page_down = ["ctrl-d", "space"]`
 - **THEN** 两个键都触发向下翻页
 
 ### Requirement: 非法配置回退默认并告警
 系统 SHALL 校验用户配置：键位字符串无法解析时该 action 回退默认；同一 scope 内两个 action 绑定同一键时，冲突的用户覆盖整条回退默认；整个文件 TOML 解析失败时全部使用默认表。所有校验问题 MUST 收集为告警并在启动后通过 WarningModal 一次性呈现，MUST NOT 阻断启动或导致 panic。
 
 #### Scenario: 键位字符串非法
-- **WHEN** 配置中某 action 的键位写为无法解析的字符串（如 `"ctrl+"`）
+- **WHEN** 配置中某 action 的键位写为无法解析的字符串（如 `"ctrl-"`）
 - **THEN** 该 action 使用默认键位，启动后弹出告警说明该条目无效，应用正常可用
 
 #### Scenario: 同 scope 键位冲突
