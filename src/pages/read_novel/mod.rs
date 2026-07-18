@@ -1,14 +1,15 @@
 use crate::{
     History,
-    components::{Loading, ShortcutInfoModal, WarningModal},
+    components::{KeyShortcutInfo, Loading, ShortcutInfoModal, WarningModal},
     errors::Errors,
     hooks::UseInitState,
+    keymap::{ReaderAction, display_keys},
     novel::{Novel, VolumeMarker},
 };
-use crossterm::event::{Event, KeyCode, KeyEventKind};
 use futures::FutureExt;
 use ratatui::layout::Direction;
 use ratatui_kit::prelude::*;
+use ratatui_kit_keymap::UseKeymapHandler;
 mod select_chapter;
 pub use select_chapter::*;
 mod read_content;
@@ -126,23 +127,22 @@ where
         current_chapter.get(),
     );
 
-    hooks.use_event_handler(EventScope::Current, EventPriority::Normal, move |event| {
-        let Event::Key(key) = event else {
-            return EventResult::Ignored;
-        };
-        if key.kind != KeyEventKind::Press {
-            return EventResult::Ignored;
-        }
-        match key.code {
-            KeyCode::Tab => {
+    // 页面级 action(模式/浮层切换)在此分发;正文滚动等 action 由 ReadContent 处理。
+    let reader_keymap = hooks.use_atom(&crate::state::KEYMAP).read().reader.clone();
+    hooks.use_keymap_handler(
+        EventScope::Current,
+        EventPriority::Normal,
+        reader_keymap.clone(),
+        move |action, _key| match action {
+            ReaderAction::ToggleReadMode => {
                 is_read_mode.set(!is_read_mode.get());
                 EventResult::Consumed
             }
-            KeyCode::Char('i') | KeyCode::Char('I') => {
+            ReaderAction::ToggleInfo => {
                 info_modal_open.set(!info_modal_open.get());
                 EventResult::Consumed
             }
-            KeyCode::Char('t') | KeyCode::Char('T') if !info_modal_open.get() => {
+            ReaderAction::ToggleTts if !info_modal_open.get() => {
                 // 听书设置面板(TTSManager)只在阅读模式(is_read_mode)渲染。若在章节选择模式
                 // 按 t,直接切到阅读模式并打开,避免「翻转 is_tts_open 却无 UI」的死输入,以及
                 // 之后 Tab 进阅读模式时面板意外已开的状态错位。
@@ -155,8 +155,8 @@ where
                 EventResult::Consumed
             }
             _ => EventResult::Ignored,
-        }
-    });
+        },
+    );
 
     if loading.get() {
         return element!(Loading(tip:"加载小说中...")).into_any();
@@ -232,36 +232,40 @@ where
                     is_editing: is_tts_open.get() && !info_modal_open.get(),
                 )
                 ShortcutInfoModal(
+                    // 阅读页 action 的键名从 keymap 动态取(重绑后帮助随之更新);
+                    // TTS 面板内部键(组件自处理,未迁移)保持硬编码。
                     key_shortcut_info: {
+                        let dk = |label: &str, action| (label.to_string(), display_keys(&reader_keymap, action));
+                        let sk = |label: &str, keys: &str| (label.to_string(), keys.to_string());
                         if is_tts_open.get() {
-                            vec![
-                                ("切换章节选择模式", "Tab"),
-                                ("关闭TTS设置模式", "T"),
-                                ("上一项", "↑ / K"),
-                                ("下一项", "↓ / J"),
-                                ("确认/开始下载", "Enter"),
-                                ("取消下载", "Esc"),
-                                ("减小速度/音量", "← / H"),
-                                ("增大速度/音量", "→ / L"),
-                                ("切换自动播放", "← / →"),
-                            ]
+                            KeyShortcutInfo(vec![
+                                dk("切换章节选择模式", ReaderAction::ToggleReadMode),
+                                dk("关闭TTS设置模式", ReaderAction::ToggleTts),
+                                sk("上一项", "↑ / K"),
+                                sk("下一项", "↓ / J"),
+                                sk("确认/开始下载", "Enter"),
+                                sk("取消下载", "Esc"),
+                                sk("减小速度/音量", "← / H"),
+                                sk("增大速度/音量", "→ / L"),
+                                sk("切换自动播放", "← / →"),
+                            ])
                         } else {
-                            vec![
-                                ("切换章节选择模式", "Tab"),
-                                ("隐藏/显示标题", "V"),
-                                ("打开TTS设置模式", "T"),
-                                ("播放/暂停", "P"),
-                                ("增大音量", "+"),
-                                ("减小音量", "-"),
-                                ("向上滚动(章首连按翻上一章)", "↑ / K"),
-                                ("向下滚动(章末连按翻下一章)", "↓ / J"),
-                                ("上一章(章首)", "← / H"),
-                                ("下一章", "→ / L"),
-                                ("上一页", "PageUp"),
-                                ("下一页", "PageDown"),
-                                ("跳到开头", "Home"),
-                                ("跳到结尾", "End"),
-                            ]
+                            KeyShortcutInfo(vec![
+                                dk("切换章节选择模式", ReaderAction::ToggleReadMode),
+                                dk("隐藏/显示标题", ReaderAction::ToggleTitle),
+                                dk("打开TTS设置模式", ReaderAction::ToggleTts),
+                                dk("播放/暂停", ReaderAction::TogglePlay),
+                                dk("增大音量", ReaderAction::VolumeUp),
+                                dk("减小音量", ReaderAction::VolumeDown),
+                                dk("向上滚动(章首连按翻上一章)", ReaderAction::ScrollUp),
+                                dk("向下滚动(章末连按翻下一章)", ReaderAction::ScrollDown),
+                                dk("上一章(章首)", ReaderAction::PrevChapter),
+                                dk("下一章", ReaderAction::NextChapter),
+                                dk("上一页", ReaderAction::PageUp),
+                                dk("下一页", ReaderAction::PageDown),
+                                dk("跳到开头", ReaderAction::GoTop),
+                                dk("跳到结尾", ReaderAction::GoBottom),
+                            ])
                         }
                     },
                     open: info_modal_open.get(),
@@ -295,13 +299,15 @@ where
                     line_percent: line_percent,
                 )
                 ShortcutInfoModal(
-                    key_shortcut_info: vec![
-                        ("切换阅读模式", "Tab"),
-                        ("选择上一章", "↑ / K"),
-                        ("选择下一章", "↓ / J"),
-                        ("确认选择章节", "Enter"),
-                        ("搜索章节", "S"),
-                    ],
+                    // 目录导航键是 SelectChapter/TreeSelect 内部处理(未迁移),保持硬编码;
+                    // 仅模式切换键动态取。
+                    key_shortcut_info: KeyShortcutInfo(vec![
+                        ("切换阅读模式".to_string(), display_keys(&reader_keymap, ReaderAction::ToggleReadMode)),
+                        ("选择上一章".to_string(), "↑ / K".to_string()),
+                        ("选择下一章".to_string(), "↓ / J".to_string()),
+                        ("确认选择章节".to_string(), "Enter".to_string()),
+                        ("搜索章节".to_string(), "S".to_string()),
+                    ]),
                     open: info_modal_open.get(),
                 )
             })

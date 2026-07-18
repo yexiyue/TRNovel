@@ -46,6 +46,8 @@ pub fn App(props: &AppProps, mut hooks: Hooks) -> impl Into<AnyElement<'static>>
     let book_sources_catch_state = hooks.use_state(|| None::<BookSourceCache>);
     let mut tts_config = hooks.use_state(TTSConfig::default);
     let error = hooks.use_state(|| None::<String>);
+    // keybindings.toml 的合并告警:非致命,启动后一次性弹出、ESC 关闭即消。
+    let keymap_warnings = hooks.use_state(|| None::<String>);
 
     hooks.use_future(async move {
         let notify = Arc::new(Notify::new());
@@ -71,6 +73,13 @@ pub fn App(props: &AppProps, mut hooks: Hooks) -> impl Into<AnyElement<'static>>
 
             crate::state::APPEARANCE.set(AppearanceConfig::load()?);
             crate::state::READER_DISPLAY.set(ReaderDisplayConfig::load()?);
+
+            // 按键配置:任何问题都降级为告警,不进 Err 路径(不阻断启动)。
+            let (keymap, warnings) = crate::keymap::load_keymap();
+            crate::state::KEYMAP.set(keymap);
+            if !warnings.is_empty() {
+                keymap_warnings.write().replace(warnings.join("\n"));
+            }
 
             Ok::<(), Errors>(())
         })() {
@@ -137,6 +146,12 @@ pub fn App(props: &AppProps, mut hooks: Hooks) -> impl Into<AnyElement<'static>>
                                     }
                                 }
                             }
+                            WarningModal(
+                                tip: keymap_warnings.read().clone().unwrap_or_default(),
+                                is_error: false,
+                                open: keymap_warnings.read().is_some(),
+                                on_close: move |_: ()| { keymap_warnings.write().take(); },
+                            )
                         }
                     }
                 ).into_any()

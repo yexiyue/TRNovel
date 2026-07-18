@@ -48,6 +48,7 @@ futures = { workspace = true }
 dirs = { workspace = true }
 ratatui-kit = { version = "0.10.3", features = ["full"] }
 ratatui-kit-themes = "0.1"
+ratatui-kit-keymap = "0.1"
 textwrap = { version = "0.16.2" }
 novel-tts = { path = "crates/novel-tts", version = "0.3.0" }
 strum = { version = "0.28", features = ["derive"] }

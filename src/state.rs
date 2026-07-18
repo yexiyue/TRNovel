@@ -20,3 +20,7 @@ pub static READER_DISPLAY: Atom<ReaderDisplayConfig> = Atom::new(ReaderDisplayCo
 
 /// 已加载的 TTS 模型句柄:阅读页加载后跨页面保留(`None` = 未加载)。
 pub static NOVEL_TTS: Atom<Option<NovelTTS>> = Atom::new(|| None);
+
+/// 全应用键位表:启动时从 `~/.novel/keybindings.toml` 合并(见 `crate::keymap`),
+/// 运行期只读;无配置文件时即内置默认表。
+pub static KEYMAP: Atom<crate::keymap::AppKeymap> = Atom::new(crate::keymap::AppKeymap::default);

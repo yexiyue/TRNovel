@@ -1,5 +1,10 @@
-use crate::{TTSConfig, components::Loading, hooks::UseScrollbar, theme::ReaderTheme};
-use crossterm::event::{Event, KeyCode, KeyEventKind};
+use crate::{
+    TTSConfig,
+    components::Loading,
+    hooks::UseScrollbar,
+    keymap::{ReaderAction, display_first_key},
+    theme::ReaderTheme,
+};
 use novel_tts::utils::TextSegment;
 use ratatui::{
     layout::{Constraint, Direction, Flex, Margin},
@@ -8,6 +13,7 @@ use ratatui::{
     widgets::Paragraph,
 };
 use ratatui_kit::prelude::*;
+use ratatui_kit_keymap::UseKeymapHandler;
 use std::time::Duration;
 
 /// 章节边界的「再按一次」确认态,防止读到章末/章首时误触 ↓/↑ 直接跳章。
@@ -232,135 +238,140 @@ pub fn ReadContent(
     // PageUp/PageDown 翻一整屏。步长须与上方 line_count 的可见高度(height - 3:
     // 上下边框 + 底部状态栏)保持一致;终端过矮时至少滚 1 行。
     let page_lines = (props.height as usize).saturating_sub(3).max(1);
-    hooks.use_event_handler(EventScope::Current, EventPriority::Normal, move |event| {
-        let Event::Key(key) = event else {
-            return EventResult::Ignored;
-        };
-        if key.kind != KeyEventKind::Press || !is_scroll {
-            return EventResult::Ignored;
-        }
-        match key.code {
-            KeyCode::Up | KeyCode::Char('k') => {
-                if current_line > 0 {
-                    current_line -= 1;
-                    line_percent.set((current_line as f64) / (line_count as f64));
-                    edge.set(Edge::None);
-                } else if !has_prev {
-                    // 全书第一章的章首:没有上一章可翻,只提示、不武装(再按也不会翻)。
-                    edge.set(Edge::AtFirst);
-                } else if edge.get() == Edge::Prev {
-                    // 已在章首且已武装 → 第二次 ↑ 才翻上一章(落到上一章末尾)。
-                    edge.set(Edge::None);
-                    on_prev(true);
-                } else {
-                    // 首次到章首:只武装并在底部提示,不翻章(防误触)。
-                    edge.set(Edge::Prev);
-                }
-                EventResult::Consumed
+    // 按语义 action 分发(键位可经 ~/.novel/keybindings.toml 自定义);
+    // 页面级 action(模式/浮层切换)不在本组件处理,Ignored 交给上层。
+    let reader_keymap = hooks.use_atom(&crate::state::KEYMAP).read().reader.clone();
+    hooks.use_keymap_handler(
+        EventScope::Current,
+        EventPriority::Normal,
+        reader_keymap.clone(),
+        move |action, _key| {
+            if !is_scroll {
+                return EventResult::Ignored;
             }
-            KeyCode::Down | KeyCode::Char('j') => {
-                if current_line < line_count {
-                    current_line += 1;
-                    line_percent.set((current_line as f64) / (line_count as f64));
+            match action {
+                ReaderAction::ScrollUp => {
+                    if current_line > 0 {
+                        current_line -= 1;
+                        line_percent.set((current_line as f64) / (line_count as f64));
+                        edge.set(Edge::None);
+                    } else if !has_prev {
+                        // 全书第一章的章首:没有上一章可翻,只提示、不武装(再按也不会翻)。
+                        edge.set(Edge::AtFirst);
+                    } else if edge.get() == Edge::Prev {
+                        // 已在章首且已武装 → 第二次 ↑ 才翻上一章(落到上一章末尾)。
+                        edge.set(Edge::None);
+                        on_prev(true);
+                    } else {
+                        // 首次到章首:只武装并在底部提示,不翻章(防误触)。
+                        edge.set(Edge::Prev);
+                    }
+                    EventResult::Consumed
+                }
+                ReaderAction::ScrollDown => {
+                    if current_line < line_count {
+                        current_line += 1;
+                        line_percent.set((current_line as f64) / (line_count as f64));
+                        edge.set(Edge::None);
+                    } else if !has_next {
+                        // 全书最后一章的章末:没有下一章可翻,只提示、不武装(再按也不会翻)。
+                        edge.set(Edge::AtLast);
+                    } else if edge.get() == Edge::Next {
+                        // 已在章末且已武装 → 第二次 ↓ 才翻下一章。
+                        edge.set(Edge::None);
+                        on_next(());
+                    } else {
+                        // 首次到章末:只武装并在底部提示,不翻章(防误触)。
+                        edge.set(Edge::Next);
+                    }
+                    EventResult::Consumed
+                }
+                ReaderAction::PrevChapter => {
                     edge.set(Edge::None);
-                } else if !has_next {
-                    // 全书最后一章的章末:没有下一章可翻,只提示、不武装(再按也不会翻)。
-                    edge.set(Edge::AtLast);
-                } else if edge.get() == Edge::Next {
-                    // 已在章末且已武装 → 第二次 ↓ 才翻下一章。
+                    on_prev(false);
+                    EventResult::Consumed
+                }
+                ReaderAction::NextChapter => {
                     edge.set(Edge::None);
                     on_next(());
-                } else {
-                    // 首次到章末:只武装并在底部提示,不翻章(防误触)。
-                    edge.set(Edge::Next);
+                    EventResult::Consumed
                 }
-                EventResult::Consumed
-            }
-            KeyCode::Left | KeyCode::Char('h') => {
-                edge.set(Edge::None);
-                on_prev(false);
-                EventResult::Consumed
-            }
-            KeyCode::Right | KeyCode::Char('l') => {
-                edge.set(Edge::None);
-                on_next(());
-                EventResult::Consumed
-            }
-            KeyCode::PageUp => {
-                current_line = current_line.saturating_sub(page_lines);
-                line_percent.set((current_line as f64) / (line_count as f64));
-                edge.set(Edge::None);
-                EventResult::Consumed
-            }
-            KeyCode::PageDown => {
-                current_line = (current_line + page_lines).min(line_count);
-                line_percent.set((current_line as f64) / (line_count as f64));
-                edge.set(Edge::None);
-                EventResult::Consumed
-            }
-            KeyCode::Home => {
-                line_percent.set(0.0);
-                edge.set(Edge::None);
-                EventResult::Consumed
-            }
-            KeyCode::End => {
-                line_percent.set(1.0);
-                edge.set(Edge::None);
-                EventResult::Consumed
-            }
-            KeyCode::Char('+') => {
-                tts_config.write().increase_volume();
-                EventResult::Consumed
-            }
-            KeyCode::Char('-') => {
-                tts_config.write().decrease_volume();
-                EventResult::Consumed
-            }
-            KeyCode::Char('p') => {
-                if let Some(player) = player.read().as_ref() {
-                    if is_listening.get() {
-                        player.pause();
-                        is_listening.set(false);
-                    } else {
-                        player.play();
-                        is_listening.set(true);
-                    }
-                } else if let Some(tts) = novel_tts.read().as_ref() {
-                    let mut chapter = tts.chapter_tts(&props_content);
-                    let (queue_output, mut receiver) =
-                        chapter.stream(tts_config.read().voice.into(), |e| {
-                            eprintln!("{e:?}");
-                        });
-
-                    let texts = chapter.texts.clone();
-                    tokio::spawn(async move {
-                        while let Some(index) = receiver.recv().await {
-                            if let Some(index) = index {
-                                highlight_range.set(Some(texts[index].clone()));
-                            } else {
-                                is_listening_done.set(true);
-                            }
+                ReaderAction::PageUp => {
+                    current_line = current_line.saturating_sub(page_lines);
+                    line_percent.set((current_line as f64) / (line_count as f64));
+                    edge.set(Edge::None);
+                    EventResult::Consumed
+                }
+                ReaderAction::PageDown => {
+                    current_line = (current_line + page_lines).min(line_count);
+                    line_percent.set((current_line as f64) / (line_count as f64));
+                    edge.set(Edge::None);
+                    EventResult::Consumed
+                }
+                ReaderAction::GoTop => {
+                    line_percent.set(0.0);
+                    edge.set(Edge::None);
+                    EventResult::Consumed
+                }
+                ReaderAction::GoBottom => {
+                    line_percent.set(1.0);
+                    edge.set(Edge::None);
+                    EventResult::Consumed
+                }
+                ReaderAction::VolumeUp => {
+                    tts_config.write().increase_volume();
+                    EventResult::Consumed
+                }
+                ReaderAction::VolumeDown => {
+                    tts_config.write().decrease_volume();
+                    EventResult::Consumed
+                }
+                ReaderAction::TogglePlay => {
+                    if let Some(player) = player.read().as_ref() {
+                        if is_listening.get() {
+                            player.pause();
+                            is_listening.set(false);
+                        } else {
+                            player.play();
+                            is_listening.set(true);
                         }
-                    });
-                    let p = tts.player(queue_output);
-                    p.set_speed(tts_config.read().speed);
-                    p.set_volume(tts_config.read().volume);
-                    is_listening.set(true);
-                    player.set(Some(p));
-                    chapter_tts.set(Some(chapter));
+                    } else if let Some(tts) = novel_tts.read().as_ref() {
+                        let mut chapter = tts.chapter_tts(&props_content);
+                        let (queue_output, mut receiver) =
+                            chapter.stream(tts_config.read().voice.into(), |e| {
+                                eprintln!("{e:?}");
+                            });
+
+                        let texts = chapter.texts.clone();
+                        tokio::spawn(async move {
+                            while let Some(index) = receiver.recv().await {
+                                if let Some(index) = index {
+                                    highlight_range.set(Some(texts[index].clone()));
+                                } else {
+                                    is_listening_done.set(true);
+                                }
+                            }
+                        });
+                        let p = tts.player(queue_output);
+                        p.set_speed(tts_config.read().speed);
+                        p.set_volume(tts_config.read().volume);
+                        is_listening.set(true);
+                        player.set(Some(p));
+                        chapter_tts.set(Some(chapter));
+                    }
+                    EventResult::Consumed
                 }
-                EventResult::Consumed
+                ReaderAction::ToggleTitle => {
+                    let mut display = *reader_display.read();
+                    display.show_title = !display.show_title;
+                    let _ = display.save();
+                    reader_display.set(display);
+                    EventResult::Consumed
+                }
+                _ => EventResult::Ignored,
             }
-            KeyCode::Char('v') => {
-                let mut display = *reader_display.read();
-                display.show_title = !display.show_title;
-                let _ = display.save();
-                reader_display.set(display);
-                EventResult::Consumed
-            }
-            _ => EventResult::Ignored,
-        }
-    });
+        },
+    );
 
     let show_title = reader_display.read().show_title;
 
@@ -382,7 +393,10 @@ pub fn ReadContent(
                 )
                 .style(theme.footer)
             }else{
-                Line::from("按 p 播放/暂停").style(theme.footer)
+                Line::from(format!(
+                    "按 {} 播放/暂停",
+                    display_first_key(&reader_keymap, ReaderAction::TogglePlay)
+                )).style(theme.footer)
             }).style(theme.footer).centered())
         }else{
             None
@@ -404,13 +418,20 @@ pub fn ReadContent(
             margin: Margin::new(1,0),
         ){
             widget(Line::from(format!("{current_line}/{line_count} 行")).style(theme.footer))
-            // 章末/章首「再按一次」确认提示(仅武装时显示;accent+bold 醒目)。
+            // 章末/章首「再按一次」确认提示(仅武装时显示;accent+bold 醒目;
+            // 键名从 keymap 动态取,重绑后提示的就是新键)。
             widget(Line::from(match edge.get() {
-                Edge::Next => "● 已到本章末尾 · 再按 ↓ 进入下一章",
-                Edge::Prev => "● 已到本章开头 · 再按 ↑ 返回上一章",
-                Edge::AtLast => "● 已是全书最后一章",
-                Edge::AtFirst => "● 已是第一章",
-                Edge::None => "",
+                Edge::Next => format!(
+                    "● 已到本章末尾 · 再按 {} 进入下一章",
+                    display_first_key(&reader_keymap, ReaderAction::ScrollDown)
+                ),
+                Edge::Prev => format!(
+                    "● 已到本章开头 · 再按 {} 返回上一章",
+                    display_first_key(&reader_keymap, ReaderAction::ScrollUp)
+                ),
+                Edge::AtLast => "● 已是全书最后一章".to_string(),
+                Edge::AtFirst => "● 已是第一章".to_string(),
+                Edge::None => String::new(),
             }).style(theme.chapter).centered())
             widget(Line::from(format!("{:.2}% {}",props.chapter_percent, current_time.read().clone())).style(theme.progress).right_aligned())
         }
