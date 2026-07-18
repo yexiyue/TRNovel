@@ -229,6 +229,9 @@ pub fn ReadContent(
     let props_content = props.content.clone();
     let has_prev = props.has_prev;
     let has_next = props.has_next;
+    // PageUp/PageDown 翻一整屏。步长须与上方 line_count 的可见高度(height - 3:
+    // 上下边框 + 底部状态栏)保持一致;终端过矮时至少滚 1 行。
+    let page_lines = (props.height as usize).saturating_sub(3).max(1);
     hooks.use_event_handler(EventScope::Current, EventPriority::Normal, move |event| {
         let Event::Key(key) = event else {
             return EventResult::Ignored;
@@ -284,13 +287,13 @@ pub fn ReadContent(
                 EventResult::Consumed
             }
             KeyCode::PageUp => {
-                current_line = current_line.saturating_sub(5);
+                current_line = current_line.saturating_sub(page_lines);
                 line_percent.set((current_line as f64) / (line_count as f64));
                 edge.set(Edge::None);
                 EventResult::Consumed
             }
             KeyCode::PageDown => {
-                current_line = (current_line + 5).min(line_count);
+                current_line = (current_line + page_lines).min(line_count);
                 line_percent.set((current_line as f64) / (line_count as f64));
                 edge.set(Edge::None);
                 EventResult::Consumed
