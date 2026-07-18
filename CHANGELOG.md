@@ -1,4 +1,14 @@
-## [0.14.3] - 2026-07-18
+## [0.15.0] - 2026-07-18
+
+### 🚀 Features
+
+- *(tui)* 阅读页按键可通过 keybindings.toml 自定义
+
+### 📚 Documentation
+
+- *(openspec)* Configurable-keybindings 瘦身为 ratatui-kit-keymap 消费端
+- Configurable-keybindings 任务收尾与知识库更新
+## [trnovel-v0.14.3] - 2026-07-18
 
 ### 🐛 Bug Fixes
 
@@ -7,6 +17,10 @@
 ### 📚 Documentation
 
 - *(openspec)* Configurable-keybindings 变更提案
+
+### ⚙️ Miscellaneous Tasks
+
+- Release
 ## [trnovel-v0.14.2] - 2026-07-16
 
 ### 🐛 Bug Fixes
