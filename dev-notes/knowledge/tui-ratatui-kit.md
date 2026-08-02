@@ -142,7 +142,120 @@ on_select(state.read().iter().map(|&i| data[i].clone()).collect());
 
 **同族坑 —— TTS 在最后一章的「假播放中」**:自动播放靠 `is_listening_done` 触发 `on_next`。最后一章 `on_next` 静默 no-op → `props.content` 不变 → 以 `content` 为 deps 的清理 effect **不重跑** → `is_listening` 永停 `true`,底部永久显示「播放中」且 `p` 只在 pause/play 间空转、无法重播。故最后一章须显式 `is_listening.set(false)`。**通用教训**:凡「靠 props 变化驱动状态复位」的 effect,在「操作被静默 no-op」的边界都会失效,得手动复位。
 
-**相关文件**：`src/pages/read_novel/read_content.rs`（`Edge` 状态 + `has_prev`/`has_next` + Up/Down 边界逻辑 + 底部提示 + TTS 复位）、`src/pages/read_novel/mod.rs`（`on_prev` 按 `is_scroll_top` 恢复位置、计算并下传 `has_prev`/`has_next`）
+**相关文件**：`src/pages/read_novel/read_content.rs`（`Edge` 状态 + `has_prev`/`has_next` + 滚动/翻页边界逻辑 + 底部提示 + TTS 复位）、`src/pages/read_novel/mod.rs`（`on_prev` 按 `is_scroll_top` 恢复位置、计算并下传 `has_prev`/`has_next`）
+
+### 阅读正文的滚动坐标系:进度百分比的分母必须是内容总行数
+
+`line_percent` 会**落盘**（`~/.novel/local|network/*.json` 与历史记录）。旧实现把它定义为 `current_line / (total - view)`，分母含视口高度 → 换终端尺寸/字号/窗口大小后同一个百分比指向不同的行，恢复位置系统性偏移；且一个变量同时兼任滚动上限、进度分母与底部「n/m 行」的分母，末尾想留白就必然连带改坏进度语义。现拆成三个各司其职的量（change `reader-paging-preferences`）：
+
+```
+total      = paragraph.line_count(width - 2)     内容总行数,唯一绝对基准
+view       = visible_lines(height)               可见行数(height - 3),只此一处定义
+end_scroll = total - view                        贴底位置 = 章末判定线
+```
+
+**正确做法**：
+- 落盘 `line_percent = current_line / total`；恢复 `current_line = round(percent * total)`,**再钳到 `end_scroll`**。
+- **钳位必须用 `end_scroll` 而不是 `total - 1`**:比例是与视口无关的,换终端尺寸/重排后 `ratio * total` 可能落在贴底位置**之下** → 屏幕停在「最后一屏再往下」,`current_line < end_scroll` 恒假使前向滚动/翻页当场失效、误报章末、连按还跳章。旧实现的值域天然 ⊆ `[0, end_scroll]`,新公式没有这个不变量,要显式钳。
+- **末尾留白是视口局部的视觉状态**,不能当普通比例存:留白量由当时的 `total`/`view` 决定,故 `ScrollTarget::Overscroll { ratio, end_scroll }` 记下产生它的 `end_scroll`,解析时不匹配就退化为贴底;落盘只存比例(重开回到合法位置)。
+- **切章一定要重置** `scroll_target`:`on_next`/`on_prev`/**`on_select`(目录选章)** 三处都要——漏一处就会让新章沿用上一章的比例,短章节里直接落到贴底之下。
+- `use_scrollbar` 的 content_length 传**最大滚动位置**(`end_scroll`)而非 `total`:它内部把两个入参同除以组件高度,传 `total` 会让 position 恒小于 content_len、滑块永远到不了底。
+- 底部行号的分子取**最后可见行** `(current_line + view).min(total)`:读到章末显示 `121/121` 而不是 `104/121`(读完了只报 86%)。
+- **「章末」是意图不是比例,用 `ScrollTarget { Ratio(f64), ChapterEnd }` 而非在 f64 里塞哨兵**：`GoBottom` 与「顶部 ↑ 翻回上一章」发出的是意图,落盘写回的是位置,两者共用一个 `State<f64>` 就只能靠取值区间(`>= 1.0`)区分 —— 那个「用户写回的值必然 < 1.0」的不变量横跨三处表达式,靠注释维持。拆成两个变体后 `resolve(total, end_scroll)` 是唯一解析点,f64 只在持久化边界转换(`from_ratio`/`as_ratio`,`ChapterEnd` 编码为 1.0)。
+- 章末判定用 `current_line >= end_scroll`（最后一行已可见），**不是**「滚动到上限」——两者在末尾留白后不再等价。
+- 底部行号与 `use_scrollbar` 的 content_length 都传 `total`（旧代码传的是 `total - view`，那个数没有阅读含义）。
+
+**末尾留白无需额外的上限常量**：`current_line < end_scroll` 是执行 `+= step` 的前提，故落点上界 `(end_scroll-1)+step ≤ total-1`，天然不越界。多写一个 `max_scroll` 常量反而多一个要维护的不变量。
+
+**破坏性**：分母变更让存量进度一次性前移约 `percent × view` 行（最多约一屏），已确认接受、不做迁移——迁移需要写入时的视口高度，而那从未被记录。
+
+**相关文件**：`src/pages/read_novel/read_content.rs`（`visible_lines` / `percent_of` / memo 特判）、`src/cache/{local_novel,network_novel}.rs`（落盘字段）
+
+### 逐行滚动与整页翻页要合并成同一支,别把边界语义抄两份
+
+`ScrollDown` 与 `PageDown` 的唯一差异是步长，边界行为（全书边界只提示 / 章内边界武装 / 二次确认翻章）必须完全相同。旧代码把它们写成四个独立 match 分支，结果 `PageUp`/`PageDown` 到章首章末只是 `.min()` 停住、**不翻章**——纯用整页翻页读书的用户每到章末都得切去按 `j`（issue #63）。
+
+**正确做法**：`ReaderAction::ScrollDown | ReaderAction::PageDown => { let delta = if action == PageDown { step } else { 1 }; ... }`，边界分支单一实现。加第三种步长（半页）时只需多一个 `delta` 取值。显式 `←/→` 翻章仍走各自分支、立即翻章不武装（快路保留）。
+
+### shell 键 q/g/b 必须排除 Ctrl/Alt —— 否则 Ctrl+B 会被当成「返回」
+
+`layout.rs` 的 shell 键只 match `key.code`,而 `key.code` **不带修饰信息**:`Ctrl+B` 与裸 `b` 对它完全一样 → 阅读页把 `ctrl-b`/`ctrl-f` 绑成翻页后,按 `Ctrl+B` 会直接退回上一路由;`Ctrl+Q` 同理会退出程序。keymap handler 在 `is_scroll == false`(章节选择模式、任一浮层打开)时返回 Ignored,事件就一路落到 root 层的 shell handler。
+
+**正确做法**:handler 开头 `if key.modifiers.intersects(KeyModifiers::CONTROL | KeyModifiers::ALT) { return Ignored }`。**SHIFT 必须放行**——大写字母 `Q`/`G`/`B` 本身就带它。
+
+**相关文件**:`src/app/layout.rs`、`src/keymap/mod.rs`(`ctrl-b`/`ctrl-f` 默认绑定)
+
+### 防抖 effect 在组件卸载时是 **drop 而非 flush**,须用 use_on_drop 兜底
+
+`use_debounce_effect` 底层是 `use_async_effect`,future 存在 hook 里、只靠 `poll_change` 驱动;组件卸载时 `InstantiatedComponent::drop` 只调 `hooks.on_drop()`,**那个还没睡满的 `sleep` 永远不会醒,回调从不执行**。把同步 `save()` 换成防抖后,「改完立刻退出/返回」的改动会静默丢失。
+
+更隐蔽的是**丢了不会自愈**:若用「已落盘值」state 去重且它初始化自进程级 atom,重进页面时该 state 会被那个「已改但未落盘」的内存值初始化,首次比对即相等直接返回 —— 这次改动在本进程内**再也不会**被写盘。
+
+**正确做法**:防抖之外再挂一个 `use_on_drop`,比对后同步补写(卸载路径阻塞一次写盘可接受,`History` 一直如此)。另外「记为已存」要放在**写盘成功之后**——先设后写会把失败的那次永久吞掉,而失败后不推进就能在下次改动时连同重试。
+
+**相关文件**:`src/pages/read_novel/mod.rs`、`src/hooks/use_debounce_effect.rs`
+
+### 阅读偏好的落盘要收敛到单一防抖点
+
+`READER_DISPLAY` atom 有多个写入方（`v` 键、阅读设置面板的每个条目），若各自 `save()` 会出现多套写盘时序，面板里连按 `←/→` 还会每帧写穿磁盘。**统一在 `ReadNovel`（页面级唯一实例）用 `use_debounce_effect(move || { let _ = cfg.read().save(); }, *cfg.read(), DebounceOptions::default())` 落盘**，写入方只改 atom。放页面级而非 `App` 根：该配置只在阅读页被修改，重渲染范围也就止于本子树。
+
+**取值钳位放在配置类型内**（`ReaderDisplayConfig::page_overlap()` 访问器）而非各调用点——手改 JSON 写入的越界值由类型自己兜底。
+
+**相关文件**：`src/cache/setting.rs`、`src/pages/read_novel/mod.rs`、`src/pages/read_novel/settings/mod.rs`
+
+### 设置条目要上提的是「按键协议」,不是边框
+
+`src/components/setting_item.rs` 分两层,新增设置项一律用第二层:
+
+- `SettingItem` —— 纯容器(边框 + 编辑态高亮),供交互特殊的条目用(下载进度的 Enter/Esc、音色选择的列表导航)。
+- `AdjustableSettingItem` —— 容器 + 「←/→ 调整」协议(`label` / `value` / `on_decrease` / `on_increase`),调用方只给数据与两个回调,约 8 行。
+
+曾经全仓有 5 处逐字相同的事件样板(`Event::Key` 解构 → `KeyEventKind::Press` → `if !is_editing { Ignored }` → `Left|h` / `Right|l`),「同层多个条目都收到这些键、只有聚焦者可消费」这条约定被复制 5 份 —— 漏写一处就是一次按键被多个条目同时响应,而开关型条目的取值展示已经开始漂移(`开/关` vs `true/false`)。**会漂移的是行为,不是外观**;将来把面板键位接入 keymap 体系也只需改这一处。
+
+**步进与边界收进配置类型**(同既有 `TTSConfig::increase_speed()`):`ReaderDisplayConfig::increase_page_overlap()` / `page_step(view)`。UI 不该知道上界 —— 那样 `PAGE_OVERLAP_MAX` 才能保持私有。越界的磁盘值在 `load()` 归一,别用「读侧访问器兜底」:那会让脏值永远留在文件里,且字段可写、访问器同名,靠注释约束等于没有约束。
+
+### 阅读页浮层用单一 `Panel` 状态,不是每个面板一个 bool
+
+`enum Panel { None, Tts, ReaderSettings }` + `use_state`。互斥由类型保证,`is_scroll = panel == None && !info_modal_open`,两个入口 arm 合并成一支。用两个 bool 就得在每个入口手写「关掉另一个」,并让 `is_scroll` 退化成三重取反、帮助内容变 if/else-if 链 —— 接线随面板数平方增长,漏改一处是静默的状态错位。`info_modal_open` 保持独立:它叠在面板之上,不是同层互斥项。
+
+其余三条既有约定仍然适用:
+
+- `blocks_lower: false` —— 否则截断 root 层 handler,面板一开就关不掉(入口键在父级 `ReadNovel` 上)。
+- 浮层关闭时**在 hooks 全部注册完之后提前返回** `element!(View).into_any()`:组件每帧重跑,提示行的 `describe()` + `format!` 与整棵子树否则会每帧构建一次,而它绝大多数时间不可见。同理 `ShortcutInfoModal` 的快捷键表(十余次 `describe()` + 字符串拼接)要包在 `if info_modal_open.get()` 里再构建。
+- **UX**:数值型条目把派生值同屏展示(`翻页重叠: 2 行(每页滚动 26 行)`)——用户无法凭「2」想象效果,零成本的可解释性。
+
+**相关文件**：`src/pages/read_novel/settings/mod.rs`、`src/components/setting_item.rs`、`src/pages/read_novel/mod.rs`(`Panel`)
+
+### `ScrollView(active: true)` 会吞掉子树的 j/k/h/l —— 面板做焦点导航必须关掉它
+
+`ScrollView` 以 `EventScope::Current + Normal + hit_test` 在**自己这层**注册 handler,而 `ScrollViewState::handle_event` 对 `Up/Down/Left/Right`、`j/k/h/l`、`PageUp/PageDown`、`Home/End` 是**「match 命中即返回 true」**——`scroll_up()`/`scroll_down()` 是无条件的 `const fn`(`saturating_sub(1)` / `+1`),**不管能不能真的滚都会 `Consumed`**。它又是面板组件的子节点,于是父级的焦点导航永远收不到事件。
+
+症状:听书面板打开后 `j/k/↑/↓` 无法移动焦点(始终停在第一项),`←/→` 调不到速度音量、切不了音色。**内容没超出一屏时照样发生**——因为吞键与能否滚动无关。
+
+**正确做法**(用框架给的「跟随选中项」primitive,而不是关掉滚动能力):
+
+```rust
+let scroll_state = hooks.use_state(ScrollViewState::default);
+// 焦点移动后把选中项滚进视口
+hooks.use_effect(move || scroll_state.write().scroll_to_index(index.get()), index.get());
+element!(ScrollView(active: false, state: scroll_state) { ... })
+```
+
+这样导航键归面板、视口仍会跟随焦点,终端过矮、条目超出一屏时也能看到当前项。
+
+**判别**:同一套 handler 结构在 `Border` 里正常、在 `ScrollView` 里失灵 → 就是它。阅读设置面板(`settings/mod.rs`)用 `Border` 包裹,故一直正常。
+
+**相关文件**:`src/pages/read_novel/tts/mod.rs`、`ratatui-kit` `components/scroll_view/{mod.rs,state.rs}`
+
+### `use_memo`/`use_effect` 的 deps 必须传**值**,传 `State` 句柄等于永不重算
+
+`ReactiveHandle` 的 `PartialEq` 是 `*self.read() == *other.read()`(**按值**比较)。而 deps 里存的旧句柄与本帧句柄**指向同一个 generational-box 槽** —— 比较时两边 deref 出的都是**当前值**,即「当前值跟自己比」,恒等。于是 `use_memo(f, some_state)` 的 deps 永远不变,**memo 永不重算**。
+
+症状极具迷惑性:状态确实变了(debounce 写回磁盘的值是新的),但派生出来的 UI 冻结在首帧,看起来像「按键没生效」。音色选择曾中招——`←/→` 实际改了 `current_voice`、也落了盘,但显示的 `prev/current/next` 永远是首帧那组。
+
+**正确做法**:`use_memo(f, current_voice.get())`;deps 里要放多个就用元组 `(a.get(), b.get())`。**不要**写 `use_memo(f, current_voice)`——它编译得过(`State<T>` 满足 `PartialEq + Unpin + 'static`),但语义是死的。
+
+**相关文件**:`src/pages/read_novel/tts/voice_select.rs`、`ratatui-kit` `reactive_handle.rs`(`impl PartialEq<ReactiveHandle> for ReactiveHandle`)
 
 ## 0.6 → 0.7 迁移实战（change `upgrade-ratatui-kit-07`）
 

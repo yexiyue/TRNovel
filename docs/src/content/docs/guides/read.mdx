@@ -1,6 +1,6 @@
 ---
 title: 阅读小说
-lastUpdated: 2026-06-18
+lastUpdated: 2026-08-02
 sidebar:
     order: 4
 ---
@@ -23,10 +23,12 @@ import { Aside } from "@astrojs/starlight/components";
 
 焦点在右侧正文,沉浸式阅读:
 
-- `↑/↓`(或 `k/j`)向上 / 向下翻页滚动,`PageUp / PageDown` 整页翻动;
+- `↑/↓`(或 `k/j`)向上 / 向下逐行滚动,`PageUp / PageDown`(或 `Ctrl+B / Ctrl+F`)整页翻动;
 - `←/→`(或 `h/l`)切换上一章 / 下一章;
 - `V` 隐藏 / 显示章节标题,`Tab` 返回章节选择模式;
-- `T` 打开[听书设置](/TRNovel/guides/tts/),`P` 播放 / 暂停朗读。
+- `O` 打开阅读设置,`T` 打开[听书设置](/TRNovel/guides/tts/),`P` 播放 / 暂停朗读。
+
+滚动与翻页读到**章末**时不会直接跳章:底部先提示「已到本章末尾」,再按一次才进入下一章,防止最后一行没看完手滑跳走。章首向上同理。
 
 以上按键均可在 `~/.novel/keybindings.toml` 中[自定义](/TRNovel/guides/keybindings/)(v0.15.0+)。
 
@@ -35,6 +37,19 @@ import { Aside } from "@astrojs/starlight/components";
 </Aside>
 
 ![快捷键面板](../../../assets/guides/shortcuts.gif)
+
+## 阅读设置
+
+阅读模式按 `O` 打开阅读设置面板,`↑/↓` 选择条目、`←/→` 调整,改动即时生效并自动保存到 `~/.novel/reader-display.json`:
+
+| 设置项 | 说明 |
+|--------|------|
+| 翻页重叠 | 整页翻动时,保留上一屏末尾的若干行作为新一屏的开头,翻页后不丢失视觉锚点。默认 `2` 行,可调 `0`~`10`;设为 `0` 即整屏平移。面板会同时显示当前终端下每页实际滚动多少行。 |
+| 显示标题 | 章节标题与底部提示的显隐,等同于按 `V`。 |
+
+<Aside type="note">
+开启翻页重叠后,读到章节末尾时正文下方会自然留白——这是为了让每次翻页的滚动距离**完全一致**。逐行滚动(`↑/↓`)不受影响,仍然滚到最后一行贴屏幕底部为止。
+</Aside>
 
 ## 进度与退出
 
