@@ -71,16 +71,49 @@ impl Default for AppearanceConfig {
 pub struct ReaderDisplayConfig {
     #[serde(default = "default_show_title")]
     pub show_title: bool,
+    /// 翻页时与上一屏重叠保留的行数,翻页步长由 [`Self::page_step`] 派生。
+    /// 取值恒在 `0..=PAGE_OVERLAP_MAX`:磁盘脏值在 [`Self::load`] 归一,
+    /// 运行期只经 [`Self::increase_page_overlap`] / [`Self::decrease_page_overlap`] 修改。
+    #[serde(default = "default_page_overlap")]
+    pub page_overlap: u16,
 }
 
 impl ReaderDisplayConfig {
+    /// 翻页重叠行数上限。再大就会把「翻一页」压成「滚几行」,属配置错误而非偏好。
+    const PAGE_OVERLAP_MAX: u16 = 10;
+
     pub fn path() -> Result<PathBuf> {
         Ok(novel_catch_dir()?.join("reader-display.json"))
     }
 
+    /// 给定可见行数下的翻页步长:整屏减去重叠行数。
+    ///
+    /// 步长不落盘,每次按当前视口现算 → 终端尺寸变化后自动跟随;重叠 ≥ 视口时
+    /// (终端极矮)兜底为 1,保证翻页仍能推进。正文与设置面板的「每页滚动 M 行」
+    /// 都调它,不各自抄公式。
+    pub fn page_step(&self, visible_lines: usize) -> usize {
+        visible_lines
+            .saturating_sub(self.page_overlap as usize)
+            .max(1)
+    }
+
+    pub fn increase_page_overlap(&mut self) {
+        self.page_overlap = (self.page_overlap + 1).min(Self::PAGE_OVERLAP_MAX);
+    }
+
+    pub fn decrease_page_overlap(&mut self) {
+        self.page_overlap = self.page_overlap.saturating_sub(1);
+    }
+
     pub fn load() -> Result<Self> {
         match File::open(Self::path()?) {
-            Ok(file) => Ok(serde_json::from_reader(file).unwrap_or_default()),
+            Ok(file) => {
+                let mut config: Self = serde_json::from_reader(file).unwrap_or_default();
+                // 手改 JSON 是唯一能产生越界值的入口,在此归一 → 之后全程直接读字段,
+                // 且下次 save() 写回的也是规范值(读侧兜底会让脏值永远留在磁盘上)。
+                config.page_overlap = config.page_overlap.min(Self::PAGE_OVERLAP_MAX);
+                Ok(config)
+            }
             Err(error) if error.kind() == ErrorKind::NotFound => Ok(Self::default()),
             Err(error) => Err(error.into()),
         }
@@ -97,12 +130,19 @@ impl Default for ReaderDisplayConfig {
     fn default() -> Self {
         Self {
             show_title: default_show_title(),
+            page_overlap: default_page_overlap(),
         }
     }
 }
 
 fn default_show_title() -> bool {
     true
+}
+
+/// 默认保留 2 行重叠:Vim `Ctrl-F`、`less` 等的通行默认,翻页后仍有视觉锚点。
+/// 取 0(整屏平移)是旧行为,想要的用户在阅读设置面板里一眼可调。
+fn default_page_overlap() -> u16 {
+    2
 }
 
 #[cfg(test)]
@@ -118,6 +158,47 @@ mod tests {
         };
 
         assert_eq!(config.theme_name(), AppearanceConfig::DEFAULT_THEME);
+    }
+
+    #[test]
+    fn page_overlap_defaults_to_two() {
+        assert_eq!(ReaderDisplayConfig::default().page_overlap, 2);
+    }
+
+    #[test]
+    fn legacy_config_without_page_overlap_takes_default() {
+        // 旧版本写出的文件只有 showTitle;缺字段走默认,既有字段不受影响。
+        let config: ReaderDisplayConfig = serde_json::from_str(r#"{"showTitle": false}"#).unwrap();
+
+        assert!(!config.show_title);
+        assert_eq!(config.page_overlap, 2);
+    }
+
+    #[test]
+    fn page_overlap_stays_within_range() {
+        let mut config = ReaderDisplayConfig::default();
+
+        for _ in 0..ReaderDisplayConfig::PAGE_OVERLAP_MAX + 5 {
+            config.increase_page_overlap();
+        }
+        assert_eq!(config.page_overlap, ReaderDisplayConfig::PAGE_OVERLAP_MAX);
+
+        for _ in 0..ReaderDisplayConfig::PAGE_OVERLAP_MAX + 5 {
+            config.decrease_page_overlap();
+        }
+        assert_eq!(config.page_overlap, 0);
+    }
+
+    #[test]
+    fn page_step_subtracts_overlap_and_never_stalls() {
+        let mut config = ReaderDisplayConfig::default();
+
+        assert_eq!(config.page_step(30), 28);
+        config.page_overlap = 0;
+        assert_eq!(config.page_step(30), 30);
+        // 终端极矮:重叠吃掉整屏也必须还能推进 1 行。
+        config.page_overlap = ReaderDisplayConfig::PAGE_OVERLAP_MAX;
+        assert_eq!(config.page_step(3), 1);
     }
 
     #[test]

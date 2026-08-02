@@ -23,6 +23,13 @@ fn reader_defaults_build_and_match_legacy_keys() {
         km.action_for(key!(shift - t)),
         Some(ReaderAction::ToggleTts)
     );
+    assert_eq!(
+        km.action_for(key!(o)),
+        Some(ReaderAction::ToggleReaderSettings)
+    );
+    // 整页翻页的 Vim 绑定与物理键并存。
+    assert_eq!(km.action_for(key!(ctrl - f)), Some(ReaderAction::PageDown));
+    assert_eq!(km.action_for(key!(ctrl - b)), Some(ReaderAction::PageUp));
 }
 
 /// 用户覆盖经 [reader] 表合并后生效,未覆盖的 action 不受影响。
@@ -34,7 +41,9 @@ fn reader_override_merges() {
     let warnings = km.merge_toml_table(table);
     assert!(warnings.is_empty());
     assert_eq!(km.action_for(key!(ctrl - d)), Some(ReaderAction::PageDown));
+    // 覆盖是整体替换:该 action 的全部默认键(含 ctrl-f)一并失效。
     assert_eq!(km.action_for(key!(pagedown)), None);
+    assert_eq!(km.action_for(key!(ctrl - f)), None);
     assert_eq!(km.action_for(key!(k)), Some(ReaderAction::ScrollUp));
 }
 

@@ -31,6 +31,7 @@ pub enum ReaderAction {
     ToggleReadMode,
     ToggleInfo,
     ToggleTts,
+    ToggleReaderSettings,
 }
 
 /// 全应用键位表。挂 `Arc` 供 `use_keymap_handler` 每帧克隆(引用计数,非深拷贝)。
@@ -59,10 +60,12 @@ fn reader_defaults() -> Keymap<ReaderAction> {
         .desc(ReaderAction::PrevChapter, "上一章(章首)")
         .bind(ReaderAction::NextChapter, ["right", "l"])
         .desc(ReaderAction::NextChapter, "下一章")
-        .bind(ReaderAction::PageUp, ["pageup"])
-        .desc(ReaderAction::PageUp, "上一页")
-        .bind(ReaderAction::PageDown, ["pagedown"])
-        .desc(ReaderAction::PageDown, "下一页")
+        // 物理键放首位:底部提示/帮助只放得下一个键时仍显示 PageUp/PageDown(既有视觉习惯);
+        // ctrl-b/ctrl-f 是 Vim 的整页前后翻,与本 action 语义精确对应(ctrl-d/ctrl-u 是半页,不绑)。
+        .bind(ReaderAction::PageUp, ["pageup", "ctrl-b"])
+        .desc(ReaderAction::PageUp, "上一页(章首连按翻上一章)")
+        .bind(ReaderAction::PageDown, ["pagedown", "ctrl-f"])
+        .desc(ReaderAction::PageDown, "下一页(章末连按翻下一章)")
         .bind(ReaderAction::GoTop, ["home"])
         .desc(ReaderAction::GoTop, "跳到开头")
         .bind(ReaderAction::GoBottom, ["end"])
@@ -81,6 +84,8 @@ fn reader_defaults() -> Keymap<ReaderAction> {
         .desc(ReaderAction::ToggleInfo, "打开/关闭快捷键帮助")
         .bind(ReaderAction::ToggleTts, ["t", "T"])
         .desc(ReaderAction::ToggleTts, "打开/关闭TTS设置")
+        .bind(ReaderAction::ToggleReaderSettings, ["o", "O"])
+        .desc(ReaderAction::ToggleReaderSettings, "打开/关闭阅读设置")
         .build()
 }
 

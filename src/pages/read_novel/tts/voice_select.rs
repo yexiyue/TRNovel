@@ -1,6 +1,6 @@
 use std::time::Duration;
 
-use super::settings::{SettingItem, SettingItemProps};
+use crate::components::{SettingItem, SettingItemProps};
 use crate::{
     TTSConfig, Voices,
     hooks::{DebounceOptions, UseDebounceEffect},

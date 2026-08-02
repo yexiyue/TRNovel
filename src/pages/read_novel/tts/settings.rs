@@ -1,174 +1,52 @@
-use crate::{TTSConfig, theme::AppChromeTheme};
-use crossterm::event::{Event, KeyCode, KeyEventKind};
-use ratatui::{
-    layout::{Direction, Flex},
-    style::Stylize,
-    text::Line,
-};
+//! 听书设置面板的条目。三项都是「标签 + 值 + ←/→ 调整」,按键协议全部走
+//! [`AdjustableSettingItem`],这里只提供数据与两个回调。
+
+use crate::{TTSConfig, components::AdjustableSettingItem};
 use ratatui_kit::prelude::*;
 
 #[derive(Props, Default)]
-pub struct SettingItemProps {
+pub struct TTSSettingProps {
     pub is_editing: bool,
-    pub top_title: String,
-    pub bottom_title: String,
-    pub children: Vec<AnyElement<'static>>,
 }
 
 #[component]
-pub fn SettingItem(props: &mut SettingItemProps, hooks: Hooks) -> impl Into<AnyElement<'static>> {
-    let theme = hooks.use_component_theme::<AppChromeTheme>();
-
-    let mut top_title = Line::from(props.top_title.clone());
-    let mut bottom_title = Line::from(props.bottom_title.clone());
-
-    if props.is_editing {
-        top_title = top_title.not_dim();
-        bottom_title = bottom_title.not_dim();
-    }
-
-    let border_style = if props.is_editing {
-        theme.border.patch(theme.highlight)
-    } else {
-        theme.border
-    };
-
-    element!(Border(
-        top_title: top_title,
-        border_style: border_style,
-        bottom_title: bottom_title,
-        style: if props.is_editing {
-            theme.border.not_dim()
-        } else {
-            theme.border
-        }
-    ) {
-        { std::mem::take(&mut props.children) }
-    })
-}
-
-#[component]
-pub fn SpeedSetting(
-    props: &mut SettingItemProps,
-    mut hooks: Hooks,
-) -> impl Into<AnyElement<'static>> {
-    let theme = hooks.use_component_theme::<AppChromeTheme>();
+pub fn SpeedSetting(props: &TTSSettingProps, hooks: Hooks) -> impl Into<AnyElement<'static>> {
     let tts_config = *hooks.use_context::<State<TTSConfig>>();
-    let is_editing = props.is_editing;
+    let speed = tts_config.read().speed;
 
-    hooks.use_event_handler(EventScope::Current, EventPriority::Normal, move |event| {
-        let Event::Key(key) = event else {
-            return EventResult::Ignored;
-        };
-        if key.kind != KeyEventKind::Press {
-            return EventResult::Ignored;
-        }
-        if !is_editing {
-            return EventResult::Ignored;
-        }
-        match key.code {
-            KeyCode::Left | KeyCode::Char('h') => {
-                tts_config.write().decrease_speed();
-                EventResult::Consumed
-            }
-            KeyCode::Right | KeyCode::Char('l') => {
-                tts_config.write().increase_speed();
-                EventResult::Consumed
-            }
-            _ => EventResult::Ignored,
-        }
-    });
-
-    element!(SettingItem(
+    element!(AdjustableSettingItem(
         is_editing: props.is_editing,
-    ) {
-        View(flex_direction:Direction::Horizontal,justify_content:Flex::SpaceBetween) {
-            widget(Line::from("播放速度:").style(theme.text))
-            widget(Line::from(format!("{}x", tts_config.read().speed)).style(theme.text))
-        }
-    })
+        label: "播放速度:".to_string(),
+        value: format!("{speed}x"),
+        on_decrease: move |_| tts_config.write().decrease_speed(),
+        on_increase: move |_| tts_config.write().increase_speed(),
+    ))
 }
 
 #[component]
-pub fn VolumeSetting(
-    props: &mut SettingItemProps,
-    mut hooks: Hooks,
-) -> impl Into<AnyElement<'static>> {
-    let theme = hooks.use_component_theme::<AppChromeTheme>();
+pub fn VolumeSetting(props: &TTSSettingProps, hooks: Hooks) -> impl Into<AnyElement<'static>> {
     let tts_config = *hooks.use_context::<State<TTSConfig>>();
-    let is_editing = props.is_editing;
+    let volume = tts_config.read().volume;
 
-    hooks.use_event_handler(EventScope::Current, EventPriority::Normal, move |event| {
-        let Event::Key(key) = event else {
-            return EventResult::Ignored;
-        };
-        if key.kind != KeyEventKind::Press {
-            return EventResult::Ignored;
-        }
-        if !is_editing {
-            return EventResult::Ignored;
-        }
-        match key.code {
-            KeyCode::Left | KeyCode::Char('h') => {
-                tts_config.write().decrease_volume();
-                EventResult::Consumed
-            }
-            KeyCode::Right | KeyCode::Char('l') => {
-                tts_config.write().increase_volume();
-                EventResult::Consumed
-            }
-            _ => EventResult::Ignored,
-        }
-    });
-
-    element!(SettingItem(
+    element!(AdjustableSettingItem(
         is_editing: props.is_editing,
-    ) {
-        View(flex_direction:Direction::Horizontal,justify_content:Flex::SpaceBetween) {
-            widget(Line::from("音量:").style(theme.text))
-            widget(Line::from(format!("{}x", tts_config.read().volume)).style(theme.text))
-        }
-    })
+        label: "音量:".to_string(),
+        value: format!("{volume}x"),
+        on_decrease: move |_| tts_config.write().decrease_volume(),
+        on_increase: move |_| tts_config.write().increase_volume(),
+    ))
 }
 
 #[component]
-pub fn AutoPlaySetting(
-    props: &mut SettingItemProps,
-    mut hooks: Hooks,
-) -> impl Into<AnyElement<'static>> {
-    let theme = hooks.use_component_theme::<AppChromeTheme>();
+pub fn AutoPlaySetting(props: &TTSSettingProps, hooks: Hooks) -> impl Into<AnyElement<'static>> {
     let tts_config = *hooks.use_context::<State<TTSConfig>>();
-    let is_editing = props.is_editing;
+    let auto_play = tts_config.read().auto_play;
 
-    hooks.use_event_handler(EventScope::Current, EventPriority::Normal, move |event| {
-        let Event::Key(key) = event else {
-            return EventResult::Ignored;
-        };
-        if key.kind != KeyEventKind::Press {
-            return EventResult::Ignored;
-        }
-        if !is_editing {
-            return EventResult::Ignored;
-        }
-        match key.code {
-            KeyCode::Left | KeyCode::Char('h') => {
-                tts_config.write().auto_play = false;
-                EventResult::Consumed
-            }
-            KeyCode::Right | KeyCode::Char('l') => {
-                tts_config.write().auto_play = true;
-                EventResult::Consumed
-            }
-            _ => EventResult::Ignored,
-        }
-    });
-
-    element!(SettingItem(
+    element!(AdjustableSettingItem(
         is_editing: props.is_editing,
-    ) {
-        View(flex_direction:Direction::Horizontal,justify_content:Flex::SpaceBetween) {
-            widget(Line::from("自动播放:").style(theme.text))
-            widget(Line::from(format!("{}", tts_config.read().auto_play)).style(theme.text))
-        }
-    })
+        label: "自动播放:".to_string(),
+        value: auto_play.to_string(),
+        on_decrease: move |_| tts_config.write().auto_play = false,
+        on_increase: move |_| tts_config.write().auto_play = true,
+    ))
 }

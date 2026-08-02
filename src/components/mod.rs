@@ -8,3 +8,5 @@ pub mod list_view;
 pub mod multi_list_select;
 pub mod search_input;
 pub mod select;
+pub mod setting_item;
+pub use setting_item::*;

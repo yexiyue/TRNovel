@@ -1,4 +1,4 @@
-use crate::{pages::read_novel::SettingItem, theme::AppChromeTheme, utils::format_bytes};
+use crate::{components::SettingItem, theme::AppChromeTheme, utils::format_bytes};
 use crossterm::event::{Event, KeyCode, KeyEventKind};
 use novel_tts::NovelTTSError;
 use ratatui::{text::Line, widgets::Gauge};

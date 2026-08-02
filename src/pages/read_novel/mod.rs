@@ -2,7 +2,7 @@ use crate::{
     History,
     components::{KeyShortcutInfo, Loading, ShortcutInfoModal, WarningModal},
     errors::Errors,
-    hooks::UseInitState,
+    hooks::{DebounceOptions, UseDebounceEffect, UseInitState},
     keymap::{ReaderAction, display_keys},
     novel::{Novel, VolumeMarker},
 };
@@ -17,8 +17,19 @@ pub use read_content::*;
 use std::sync::Arc;
 use tokio::sync::Notify;
 use tokio::time::{Duration, sleep};
+mod settings;
+pub use settings::*;
 mod tts;
 pub use tts::*;
+
+/// 阅读页当前打开的设置浮层。两个面板都是同尺寸 `Modal` 且都监听 ←/→,
+/// 同时打开会叠加渲染并争抢按键,故用一个状态表达「至多一个」。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Panel {
+    None,
+    Tts,
+    ReaderSettings,
+}
 
 #[component]
 pub fn ReadNovel<T>(mut hooks: Hooks) -> impl Into<AnyElement<'static>>
@@ -32,12 +43,14 @@ where
     let mut current_chapter = hooks.use_state(|| 0usize);
     let mut content = hooks.use_state(String::default);
     let mut is_read_mode = hooks.use_state(|| false);
-    let mut is_tts_open = hooks.use_state(|| false);
+    // 同层浮层用单一状态而非每个面板一个 bool:互斥由类型保证,不可能同时开两个,
+    // 也不必在每个入口手写「关掉另一个」。信息浮层是叠在面板之上的层,保持独立。
+    let mut panel = hooks.use_state(|| Panel::None);
     let (width, height) = hooks.use_terminal_size();
 
     let mut content_loading = hooks.use_state(|| false);
     let mut info_modal_open = hooks.use_state(|| false);
-    let mut line_percent = hooks.use_state(|| 0.0);
+    let mut scroll_target = hooks.use_state(ScrollTarget::default);
 
     let (novel, loading, error) = hooks.use_init_state(async move {
         let args = route_state.as_ref().clone();
@@ -63,7 +76,8 @@ where
             content_loading.set(true);
             content.set(res.get_content().await?);
             content_loading.set(false);
-            line_percent.set(res.line_percent);
+            // 落盘的是单个 f64,进内存转成语义化的滚动目标(1.0 即「章末」的编码)。
+            scroll_target.set(ScrollTarget::from_ratio(res.line_percent));
 
             Ok::<T, Errors>(res)
         })
@@ -76,7 +90,7 @@ where
 
         move || {
             if let Some(novel) = novel.as_mut() {
-                novel.line_percent = line_percent.get();
+                novel.line_percent = scroll_target.get().as_ratio();
                 novel.current_chapter = current_chapter.get();
 
                 if let Some(history) = history.as_mut() {
@@ -127,6 +141,43 @@ where
         current_chapter.get(),
     );
 
+    // 阅读偏好的唯一落盘点:设置面板与 v 键都只改 READER_DISPLAY atom,由这里防抖写盘。
+    // 放页面级(而非 App 根)是因为该配置只在阅读页被修改,重渲染范围也就止于本子树。
+    let reader_display = hooks.use_atom(&crate::state::READER_DISPLAY);
+    // 记住已在盘上的值:防抖 effect 挂载帧必然触发一次,不比对就会在每次进阅读页时
+    // 把刚 load 进来的配置原样写回一遍。
+    let saved_display = hooks.use_state(|| crate::state::READER_DISPLAY.get());
+    hooks.use_debounce_effect(
+        move || {
+            let current = *reader_display.read();
+            if current == saved_display.get() {
+                return;
+            }
+            // 同步 IO 若跑在渲染循环的任务上会卡住整个 UI(慢盘/网络盘尤其明显),
+            // 配置是 Copy,挪进阻塞线程池的捕获成本为零。
+            // 写盘失败(磁盘满/无权限)不打断阅读,只是不推进 saved_display —— 下次改动会连同
+            // 这次一起重试;先设已存再写会把失败的那次永久吞掉。
+            let mut saved_display = saved_display;
+            tokio::task::spawn_blocking(move || {
+                if current.save().is_ok() {
+                    saved_display.set(current);
+                }
+            });
+        },
+        *reader_display.read(),
+        DebounceOptions::default(),
+    );
+    // 卸载兜底:防抖 effect 的 future 存在 hook 里,组件卸载时是被 **drop 而非 flush** 的——
+    // 没睡满 500ms 的那次改动永远不会落盘。而 READER_DISPLAY 是进程级 atom,重进阅读页时
+    // `saved_display` 会用「已改但未落盘」的内存值初始化,首次比对即相等直接返回,这次改动
+    // 在本进程内再也不会被写盘。故在此同步补一次(卸载路径阻塞一次写盘可接受,History 同样如此)。
+    hooks.use_on_drop(move || {
+        let current = *reader_display.read();
+        if current != saved_display.get() {
+            let _ = current.save();
+        }
+    });
+
     // 页面级 action(模式/浮层切换)在此分发;正文滚动等 action 由 ReadContent 处理。
     let reader_keymap = hooks.use_atom(&crate::state::KEYMAP).read().reader.clone();
     hooks.use_keymap_handler(
@@ -142,15 +193,26 @@ where
                 info_modal_open.set(!info_modal_open.get());
                 EventResult::Consumed
             }
-            ReaderAction::ToggleTts if !info_modal_open.get() => {
-                // 听书设置面板(TTSManager)只在阅读模式(is_read_mode)渲染。若在章节选择模式
-                // 按 t,直接切到阅读模式并打开,避免「翻转 is_tts_open 却无 UI」的死输入,以及
-                // 之后 Tab 进阅读模式时面板意外已开的状态错位。
+            ReaderAction::ToggleTts | ReaderAction::ToggleReaderSettings
+                if !info_modal_open.get() =>
+            {
+                let target = if action == ReaderAction::ToggleTts {
+                    Panel::Tts
+                } else {
+                    Panel::ReaderSettings
+                };
+                // 面板只在阅读模式(is_read_mode)渲染。若在章节选择模式按下入口键,直接切到
+                // 阅读模式并打开,避免「状态翻转了却无 UI」的死输入,以及之后 Tab 进阅读模式时
+                // 面板意外已开的状态错位。
                 if is_read_mode.get() {
-                    is_tts_open.set(!is_tts_open.get());
+                    panel.set(if panel.get() == target {
+                        Panel::None
+                    } else {
+                        target
+                    });
                 } else {
                     is_read_mode.set(true);
-                    is_tts_open.set(true);
+                    panel.set(target);
                 }
                 EventResult::Consumed
             }
@@ -183,7 +245,7 @@ where
         { if is_read_mode.get() {
             element!(View{
                 ReadContent(
-                    is_scroll: !is_tts_open.get() && !info_modal_open.get(),
+                    is_scroll: panel.get() == Panel::None && !info_modal_open.get(),
                     width: width,
                     height: height,
                     content: content.read().clone(),
@@ -203,7 +265,7 @@ where
                                 return;
                             }
                             current_chapter.set(new_chapter);
-                            line_percent.set(0.0);
+                            scroll_target.set(ScrollTarget::Ratio(0.0));
                         }
                     },
                     on_prev: move |is_scroll_top| {
@@ -221,23 +283,35 @@ where
                             current_chapter.set(new_chapter);
                             // 顶部 ↑ 翻回上一章(is_scroll_top=true)→ 落到上一章末尾:承接向上连读,
                             // 也让误触跳到下一章后能原路 ↑ 找回原来读到的位置;
-                            // 显式 ← / H 翻上一章 → 落到章首(0.0)。
-                            line_percent.set(if is_scroll_top { 1.0 } else { 0.0 });
+                            // 显式 ← / H 翻上一章 → 落到章首。
+                            scroll_target.set(if is_scroll_top {
+                                ScrollTarget::ChapterEnd
+                            } else {
+                                ScrollTarget::Ratio(0.0)
+                            });
                         }
                     },
-                    line_percent: line_percent,
+                    scroll_target: scroll_target,
                 )
                 TTSManager(
-                    open: is_tts_open.get(),
-                    is_editing: is_tts_open.get() && !info_modal_open.get(),
+                    open: panel.get() == Panel::Tts,
+                    is_editing: panel.get() == Panel::Tts && !info_modal_open.get(),
+                )
+                ReaderSettingsModal(
+                    open: panel.get() == Panel::ReaderSettings,
+                    is_editing: panel.get() == Panel::ReaderSettings && !info_modal_open.get(),
                 )
                 ShortcutInfoModal(
                     // 阅读页 action 的键名从 keymap 动态取(重绑后帮助随之更新);
-                    // TTS 面板内部键(组件自处理,未迁移)保持硬编码。
-                    key_shortcut_info: {
+                    // TTS/阅读设置面板内部键(组件自处理,未迁移)保持硬编码。
+                    // 整张表只在浮层打开时构建 —— 它含十余次 `describe()` + 字符串拼接,
+                    // 挂在 props 上会每帧求值一次,而绝大多数时间浮层是关着的。
+                    key_shortcut_info: if !info_modal_open.get() {
+                        KeyShortcutInfo::default()
+                    } else {
                         let dk = |label: &str, action| (label.to_string(), display_keys(&reader_keymap, action));
                         let sk = |label: &str, keys: &str| (label.to_string(), keys.to_string());
-                        if is_tts_open.get() {
+                        if panel.get() == Panel::Tts {
                             KeyShortcutInfo(vec![
                                 dk("切换章节选择模式", ReaderAction::ToggleReadMode),
                                 dk("关闭TTS设置模式", ReaderAction::ToggleTts),
@@ -249,10 +323,20 @@ where
                                 sk("增大速度/音量", "→ / L"),
                                 sk("切换自动播放", "← / →"),
                             ])
+                        } else if panel.get() == Panel::ReaderSettings {
+                            KeyShortcutInfo(vec![
+                                dk("切换章节选择模式", ReaderAction::ToggleReadMode),
+                                dk("关闭阅读设置", ReaderAction::ToggleReaderSettings),
+                                sk("上一项", "↑ / K"),
+                                sk("下一项", "↓ / J"),
+                                sk("调小/关闭", "← / H"),
+                                sk("调大/开启", "→ / L"),
+                            ])
                         } else {
                             KeyShortcutInfo(vec![
                                 dk("切换章节选择模式", ReaderAction::ToggleReadMode),
                                 dk("隐藏/显示标题", ReaderAction::ToggleTitle),
+                                dk("打开阅读设置", ReaderAction::ToggleReaderSettings),
                                 dk("打开TTS设置模式", ReaderAction::ToggleTts),
                                 dk("播放/暂停", ReaderAction::TogglePlay),
                                 dk("增大音量", ReaderAction::VolumeUp),
@@ -285,6 +369,9 @@ where
                                 return;
                             }
                             current_chapter.set(index);
+                            // 与 on_next/on_prev 一样必须重置:否则新章沿用上一章的进度比例,
+                            // 短章节里会直接落到「贴底之下」,前向键失效并误报章末。
+                            scroll_target.set(ScrollTarget::Ratio(0.0));
                             is_read_mode.set(true);
                         };
                     },
@@ -296,18 +383,22 @@ where
                     width: width / 2,
                     height: height,
                     is_loading: content_loading.get(),
-                    line_percent: line_percent,
+                    scroll_target: scroll_target,
                 )
                 ShortcutInfoModal(
                     // 目录导航键是 SelectChapter/TreeSelect 内部处理(未迁移),保持硬编码;
-                    // 仅模式切换键动态取。
-                    key_shortcut_info: KeyShortcutInfo(vec![
-                        ("切换阅读模式".to_string(), display_keys(&reader_keymap, ReaderAction::ToggleReadMode)),
-                        ("选择上一章".to_string(), "↑ / K".to_string()),
-                        ("选择下一章".to_string(), "↓ / J".to_string()),
-                        ("确认选择章节".to_string(), "Enter".to_string()),
-                        ("搜索章节".to_string(), "S".to_string()),
-                    ]),
+                    // 仅模式切换键动态取。同上:只在浮层打开时构建。
+                    key_shortcut_info: if !info_modal_open.get() {
+                        KeyShortcutInfo::default()
+                    } else {
+                        KeyShortcutInfo(vec![
+                            ("切换阅读模式".to_string(), display_keys(&reader_keymap, ReaderAction::ToggleReadMode)),
+                            ("选择上一章".to_string(), "↑ / K".to_string()),
+                            ("选择下一章".to_string(), "↓ / J".to_string()),
+                            ("确认选择章节".to_string(), "Enter".to_string()),
+                            ("搜索章节".to_string(), "S".to_string()),
+                        ])
+                    },
                     open: info_modal_open.get(),
                 )
             })
