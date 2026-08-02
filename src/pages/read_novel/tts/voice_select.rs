@@ -41,7 +41,10 @@ pub fn VoiceSelect(props: &SettingItemProps, mut hooks: Hooks) -> impl Into<AnyE
             };
             (data[prev], data[index], data[next])
         },
-        current_voice,
+        // 必须传值而不是 State 句柄:`ReactiveHandle` 的 PartialEq 是「解引用后比值」,
+        // 而 deps 里存的句柄与当前句柄指向同一个槽 —— 那是当前值跟自己比,恒等,
+        // memo 永不重算,prev/current/next 会冻结在首帧(表现为按 ←/→ 音色显示不动)。
+        current_voice.get(),
     );
 
     hooks.use_event_handler(EventScope::Current, EventPriority::Normal, move |event| {

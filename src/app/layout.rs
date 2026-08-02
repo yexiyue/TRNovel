@@ -2,7 +2,7 @@ use crate::{
     Commands, History, HistoryItem, TRNovel, components::BrowserPromptModal,
     pages::network_novel::book_detail::BookDetailState,
 };
-use crossterm::event::{Event, KeyCode, KeyEventKind};
+use crossterm::event::{Event, KeyCode, KeyEventKind, KeyModifiers};
 use ratatui_kit::{
     AnyElement, EventPriority, EventResult, EventScope, Hooks, State, UseContext, UseEffect,
     UseEventHandler, UseExit, UseRouter, UseState, component, element,
@@ -79,6 +79,15 @@ pub fn Layout(mut hooks: Hooks) -> impl Into<AnyElement<'static>> {
             return EventResult::Ignored;
         };
         if key.kind != KeyEventKind::Press {
+            return EventResult::Ignored;
+        }
+        // shell 键只认**裸键**:`key.code` 不带修饰信息,只 match 它会让 Ctrl+B 被当成 b
+        // (退回上一页)、Ctrl+Q 被当成 q(退出程序)——阅读页把 Ctrl+B/Ctrl+F 绑成翻页后
+        // 这条会天天踩到。SHIFT 必须放行:大写字母(Q/G/B)本身就带它。
+        if key
+            .modifiers
+            .intersects(KeyModifiers::CONTROL | KeyModifiers::ALT)
+        {
             return EventResult::Ignored;
         }
         match key.code {
