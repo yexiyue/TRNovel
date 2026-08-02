@@ -1,4 +1,18 @@
-## [0.15.0] - 2026-07-18
+## [0.16.0] - 2026-08-02
+
+### 🚀 Features
+
+- *(tui)* [**breaking**] 阅读页翻页重叠、末尾留白与阅读设置面板 (#63)
+
+### 🐛 Bug Fixes
+
+- *(tui)* 听书面板导航失效、音色显示冻结与 shell 键误吃修饰键
+
+### 📚 Documentation
+
+- 归档 configurable-keybindings 变更并新增按键自定义文档页
+- Reader-paging-preferences 变更提案与知识库更新
+## [trnovel-v0.15.0] - 2026-07-18
 
 ### 🚀 Features
 
@@ -8,6 +22,10 @@
 
 - *(openspec)* Configurable-keybindings 瘦身为 ratatui-kit-keymap 消费端
 - Configurable-keybindings 任务收尾与知识库更新
+
+### ⚙️ Miscellaneous Tasks
+
+- Release
 ## [trnovel-v0.14.3] - 2026-07-18
 
 ### 🐛 Bug Fixes
