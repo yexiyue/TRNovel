@@ -48,4 +48,4 @@
 - [x] 7.7 重构后 VHS 全量复验（翻页步长/末尾留白/章末武装/面板调整/TTS 面板渲染均与重构前一致）
 - [x] 7.8 `/code-review` 三角度正确性审查（滚动坐标系 / 状态持久化 / 事件等价性）并修复：`Ratio` 解析钳到 `end_scroll` + 新增 `Overscroll` 变体承载视口局部留白、`on_select` 补重置、滚动条 content_length 改回 `end_scroll`、行号分子改最后可见行、防抖落盘加 `use_on_drop` 兜底与失败重试、shell 键排除 Ctrl/Alt（`ctrl-b` 曾被当成「返回」）、`scroll_to_index` deps 补终端高度
 - [x] 7.9 补 5 项坐标系不变量单测（视口下限、比例往返不撞 `ChapterEnd`、跨视口钳位、留白仅存活于本视口、空内容安全）
-- [ ] 7.10 回复 issue #63（待发布后进行）
+- [x] 7.10 回复 issue #63：v0.16.0 已发布并在 issue 下说明「阅读设置」面板与末尾留白行为，提出者确认后关闭

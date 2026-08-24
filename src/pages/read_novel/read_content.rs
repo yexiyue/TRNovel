@@ -252,6 +252,10 @@ pub fn ReadContent(
         tts_config.read().voice,
     );
 
+    // 先取成值再进闭包:memo 的 deps 必须是值,传 atom 句柄比较的是「当前值跟自己比」,
+    // 恒等 → 切换开关后排版会冻结在首帧。
+    let paragraph_spacing = reader_display.read().paragraph_spacing;
+
     let paragraph = hooks.use_memo(
         || {
             // 包成 TextParagraph(Send + Sync):0.30 起 owned Paragraph 内含 Block 而非 Send,
@@ -265,11 +269,13 @@ pub fn ReadContent(
                     segment,
                     (props.width as usize).saturating_sub(2),
                     theme.tts_highlight,
+                    paragraph_spacing,
                 ))
             } else {
                 Paragraph::new(wrap_content(
                     &props.content,
                     (props.width as usize).saturating_sub(2),
+                    paragraph_spacing,
                 ))
             };
             TextParagraph::from(paragraph)
@@ -280,6 +286,7 @@ pub fn ReadContent(
             props.content.clone(),
             props.width,
             theme.tts_highlight,
+            paragraph_spacing,
         ),
     );
 
@@ -531,6 +538,7 @@ pub fn highlight(
     segment: &TextSegment,
     width: usize,
     highlight_style: Style,
+    spacing: bool,
 ) -> Vec<Line<'static>> {
     let pattern: String = regex::escape(&segment.text);
     let regex = regex::Regex::new(&pattern).unwrap();
@@ -560,23 +568,25 @@ pub fn highlight(
                 &marked,
                 width,
                 marked.contains('\u{001E}').then_some(highlight_style),
+                spacing,
             );
             offset += raw_line.len();
         }
         lines
     } else {
-        wrap_content(text, width)
+        wrap_content(text, width, spacing)
     }
 }
 
-/// 按原始文本行排版正文,每个逻辑段落之间保留一个终端空行。
+/// 按原始文本行排版正文,`spacing` 决定逻辑段落之间是否补一个终端空行。
 ///
 /// 小说正文通常以换行分隔段落,而不是以空行分隔。若直接对整章调用
-/// `textwrap::fill`,这些段落会首尾相接,阅读时视觉上过于紧凑。
-fn wrap_content(text: &str, width: usize) -> Vec<Line<'static>> {
+/// `textwrap::fill`,这些段落会首尾相接,阅读时视觉上过于紧凑;但补空行会让
+/// 总行数近乎翻倍,小屏下并非人人都要 —— 故由阅读偏好开关控制。
+fn wrap_content(text: &str, width: usize, spacing: bool) -> Vec<Line<'static>> {
     let mut lines = Vec::new();
     for line in text.lines() {
-        append_wrapped_line(&mut lines, line, width, None);
+        append_wrapped_line(&mut lines, line, width, None, spacing);
     }
     lines
 }
@@ -586,17 +596,23 @@ fn append_wrapped_line(
     line: &str,
     width: usize,
     highlight_style: Option<Style>,
+    spacing: bool,
 ) {
     let line = line.trim_end_matches('\r');
-    if line.trim().is_empty() {
-        if !lines.is_empty() && !lines.last().is_some_and(|line| line.spans.is_empty()) {
-            lines.push(Line::default());
-        }
-        return;
+    let is_blank = line.trim().is_empty();
+
+    // 两类空行合并在一处判断:原文自带的空行**始终**保留(作者用它分隔场景,
+    // 开关管的是「自动补」而不是「过滤原文」),段落间的空行则只在开关开启时补。
+    // 两种情况都不叠加到已有空行之上,避免出现连续两个空行。
+    if (is_blank || spacing)
+        && !lines.is_empty()
+        && !lines.last().is_some_and(|line| line.spans.is_empty())
+    {
+        lines.push(Line::default());
     }
 
-    if !lines.is_empty() && !lines.last().is_some_and(|line| line.spans.is_empty()) {
-        lines.push(Line::default());
+    if is_blank {
+        return;
     }
 
     let wrapped = textwrap::fill(line, width);
@@ -640,6 +656,78 @@ fn highlight_text(text: &str, highlight_style: Style) -> Vec<Line<'static>> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// 取每行的纯文本,便于断言排版结果。
+    fn texts(lines: &[Line<'static>]) -> Vec<String> {
+        lines
+            .iter()
+            .map(|line| {
+                line.spans
+                    .iter()
+                    .map(|span| span.content.as_ref())
+                    .collect::<String>()
+            })
+            .collect()
+    }
+
+    /// 开关是排版的唯一分歧点:同一段正文,开则段间有空行,关则首尾相接。
+    #[test]
+    fn paragraph_spacing_toggles_blank_lines_between_paragraphs() {
+        let text = "第一段。\n第二段。\n第三段。";
+
+        assert_eq!(
+            texts(&wrap_content(text, 40, false)),
+            ["第一段。", "第二段。", "第三段。"]
+        );
+        assert_eq!(
+            texts(&wrap_content(text, 40, true)),
+            ["第一段。", "", "第二段。", "", "第三段。"]
+        );
+    }
+
+    /// 开关管的是「自动补」,不是「过滤原文」:作者用来分隔场景的空行两种模式下都得留着,
+    /// 且开启时不能和自动补的空行叠成两行。
+    #[test]
+    fn blank_lines_in_source_survive_both_modes_without_doubling() {
+        let text = "上一场景。\n\n下一场景。";
+
+        assert_eq!(
+            texts(&wrap_content(text, 40, false)),
+            ["上一场景。", "", "下一场景。"]
+        );
+        assert_eq!(
+            texts(&wrap_content(text, 40, true)),
+            ["上一场景。", "", "下一场景。"]
+        );
+    }
+
+    /// 正文不以空行开头 —— 首段前面没有「上一段」,补空行等于白白吃掉一行。
+    #[test]
+    fn no_leading_blank_line() {
+        for spacing in [false, true] {
+            let lines = wrap_content("开篇。\n次段。", 40, spacing);
+            assert!(
+                !lines[0].spans.is_empty(),
+                "spacing={spacing} 首行不该是空行"
+            );
+        }
+    }
+
+    /// 连续多个空行折叠成一个,否则原文里的大段留白会把一屏顶满。
+    #[test]
+    fn consecutive_blank_lines_collapse() {
+        assert_eq!(
+            texts(&wrap_content("甲。\n\n\n\n乙。", 40, true)),
+            ["甲。", "", "乙。"]
+        );
+    }
+
+    /// 空内容不该产出任何行(章节为空时 total=0,坐标系另有兜底)。
+    #[test]
+    fn empty_content_yields_no_lines() {
+        assert!(wrap_content("", 40, true).is_empty());
+        assert!(wrap_content("", 40, false).is_empty());
+    }
 
     /// 视口尺寸的换算只此一处,极矮终端下也必须 ≥ 1(否则翻页步长会退化为 0、翻不动)。
     #[test]

@@ -76,6 +76,11 @@ pub struct ReaderDisplayConfig {
     /// 运行期只经 [`Self::increase_page_overlap`] / [`Self::decrease_page_overlap`] 修改。
     #[serde(default = "default_page_overlap")]
     pub page_overlap: u16,
+    /// 是否在逻辑段落之间补一个空行。小说正文多以单换行分段,不补则段落首尾相接、
+    /// 读起来发闷;但补了会让总行数近乎翻倍,小屏用户一屏能看的正文明显变少 ——
+    /// 众口难调,交给用户在阅读设置面板里切。
+    #[serde(default = "default_paragraph_spacing")]
+    pub paragraph_spacing: bool,
 }
 
 impl ReaderDisplayConfig {
@@ -131,12 +136,20 @@ impl Default for ReaderDisplayConfig {
         Self {
             show_title: default_show_title(),
             page_overlap: default_page_overlap(),
+            paragraph_spacing: default_paragraph_spacing(),
         }
     }
 }
 
 fn default_show_title() -> bool {
     true
+}
+
+/// 默认关闭:补空行会让正文总行数近乎翻倍,一屏能看的内容少近一半 —— 这对
+/// 「一屏多看几行」的终端读者是明显的退步,不该替所有人做主。想要宽松排版的
+/// 用户在阅读设置面板里一眼可开。
+fn default_paragraph_spacing() -> bool {
+    false
 }
 
 /// 默认保留 2 行重叠:Vim `Ctrl-F`、`less` 等的通行默认,翻页后仍有视觉锚点。
@@ -172,6 +185,17 @@ mod tests {
 
         assert!(!config.show_title);
         assert_eq!(config.page_overlap, 2);
+        assert!(!config.paragraph_spacing);
+    }
+
+    #[test]
+    fn paragraph_spacing_defaults_to_off_and_round_trips() {
+        assert!(!ReaderDisplayConfig::default().paragraph_spacing);
+
+        // 显式开启必须能被读回来,不能被 default 压回关。
+        let config: ReaderDisplayConfig =
+            serde_json::from_str(r#"{"paragraphSpacing": true}"#).unwrap();
+        assert!(config.paragraph_spacing);
     }
 
     #[test]
