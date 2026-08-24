@@ -1,4 +1,23 @@
-## [0.16.0] - 2026-08-02
+## [0.17.0] - 2026-08-24
+
+### 🚀 Features
+
+- *(reader)* Add paragraph spacing (#66)
+- *(local-novel)* Add filename search (#67)
+- *(reader)* 段落间距开关 + 本地搜索性能与展开修复 (#69)
+
+### 🚜 Refactor
+
+- *(local-novel,reader)* 修高亮截断与扫描判定不一致,索引真正预计算 (#71)
+
+### 📚 Documentation
+
+- 补录本地搜索与阅读设置素材,刷新过期的本地选书演示 (#70)
+
+### ⚡ Performance
+
+- *(local-novel)* 搜索复用文件索引,不再重复扫盘 (#68)
+## [trnovel-v0.16.0] - 2026-08-02
 
 ### 🚀 Features
 
@@ -12,6 +31,10 @@
 
 - 归档 configurable-keybindings 变更并新增按键自定义文档页
 - Reader-paging-preferences 变更提案与知识库更新
+
+### ⚙️ Miscellaneous Tasks
+
+- Release
 ## [trnovel-v0.15.0] - 2026-07-18
 
 ### 🚀 Features
