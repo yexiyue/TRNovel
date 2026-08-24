@@ -11,6 +11,49 @@ pub enum NovelFiles<'a> {
     FileTree(Vec<TreeItem<'a, PathBuf>>),
 }
 
+#[derive(Debug, Clone, PartialEq)]
+pub struct NovelFileIndex {
+    entries: Vec<NovelFileEntry>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+struct NovelFileEntry {
+    path: PathBuf,
+    name: String,
+    is_directory: bool,
+    children: Vec<NovelFileEntry>,
+}
+
+impl NovelFileIndex {
+    pub fn from_path(path: PathBuf) -> Result<Self> {
+        let path = if path.is_relative() {
+            std::env::current_dir()?.join(path)
+        } else {
+            path
+        };
+
+        if path.is_file() {
+            ensure_supported_file(&path)?;
+            return Ok(Self {
+                entries: vec![NovelFileEntry {
+                    name: path.file_name().unwrap().to_string_lossy().to_string(),
+                    path,
+                    is_directory: false,
+                    children: vec![],
+                }],
+            });
+        }
+
+        Ok(Self {
+            entries: scan_novels(path, &FILE_EXTS)?,
+        })
+    }
+
+    pub fn filter(&self, filter: Option<&str>) -> Result<Vec<TreeItem<'static, PathBuf>>> {
+        filter_entries(&self.entries, filter)
+    }
+}
+
 impl<'a> NovelFiles<'a> {
     pub fn from_path(path: PathBuf) -> Result<NovelFiles<'a>> {
         Self::from_path_with_filter(path, None)
@@ -24,25 +67,15 @@ impl<'a> NovelFiles<'a> {
         };
 
         if path.is_file() {
-            let supported = path
-                .extension()
-                .and_then(|ext| ext.to_str())
-                .and_then(|ext| FILE_EXTS.iter().find(|&&e| e == ext))
-                .is_some();
-            if !supported {
-                return Err(anyhow::anyhow!("不支持的文件类型"));
-            }
+            ensure_supported_file(&path)?;
             if !matches_filter(&path, filter.as_deref()) {
                 return Ok(NovelFiles::FileTree(Vec::new()));
             }
 
             Ok(NovelFiles::File(path))
         } else {
-            Ok(NovelFiles::FileTree(find_novels(
-                path,
-                &FILE_EXTS,
-                filter.as_deref(),
-            )?))
+            let index = NovelFileIndex::from_path(path)?;
+            Ok(NovelFiles::FileTree(index.filter(filter.as_deref())?))
         }
     }
 
@@ -57,11 +90,18 @@ impl<'a> NovelFiles<'a> {
     }
 }
 
-fn find_novels<'a>(
-    path: PathBuf,
-    file_exts: &[&str],
-    filter: Option<&str>,
-) -> Result<Vec<TreeItem<'a, PathBuf>>> {
+fn ensure_supported_file(path: &std::path::Path) -> Result<()> {
+    let supported = path
+        .extension()
+        .and_then(|ext| ext.to_str())
+        .is_some_and(|ext| FILE_EXTS.contains(&ext));
+    if !supported {
+        return Err(anyhow::anyhow!("不支持的文件类型"));
+    }
+    Ok(())
+}
+
+fn scan_novels(path: PathBuf, file_exts: &[&str]) -> Result<Vec<NovelFileEntry>> {
     let mut res = vec![];
 
     let walkdir = WalkDir::new(&path)
@@ -85,28 +125,52 @@ fn find_novels<'a>(
             continue;
         }
         if entity.path().is_dir() {
-            let children = find_novels(entity.clone().into_path(), file_exts, filter)?;
+            let children = scan_novels(entity.clone().into_path(), file_exts)?;
             if children.is_empty() {
                 continue;
             }
-            res.push(TreeItem::new(
-                entity.clone().into_path(),
-                entity.file_name().to_string_lossy().to_string(),
+            res.push(NovelFileEntry {
+                path: entity.clone().into_path(),
+                name: entity.file_name().to_string_lossy().to_string(),
+                is_directory: true,
                 children,
-            )?);
+            });
         } else if entity.path().is_file()
             && file_exts
                 .iter()
                 .any(|&e| e == entity.path().extension().unwrap_or(OsStr::new("")))
-            && matches_filter(entity.path(), filter)
         {
-            res.push(TreeItem::new_leaf(
-                entity.clone().into_path(),
-                entity.file_name().to_string_lossy().to_string(),
-            ));
+            res.push(NovelFileEntry {
+                path: entity.clone().into_path(),
+                name: entity.file_name().to_string_lossy().to_string(),
+                is_directory: false,
+                children: vec![],
+            });
         }
     }
     Ok(res)
+}
+
+fn filter_entries(
+    entries: &[NovelFileEntry],
+    filter: Option<&str>,
+) -> Result<Vec<TreeItem<'static, PathBuf>>> {
+    let mut result = Vec::new();
+    for entry in entries {
+        if entry.is_directory {
+            let children = filter_entries(&entry.children, filter)?;
+            if !children.is_empty() {
+                result.push(TreeItem::new(
+                    entry.path.clone(),
+                    entry.name.clone(),
+                    children,
+                )?);
+            }
+        } else if matches_filter(&entry.path, filter) {
+            result.push(TreeItem::new_leaf(entry.path.clone(), entry.name.clone()));
+        }
+    }
+    Ok(result)
 }
 
 fn matches_filter(path: &std::path::Path, filter: Option<&str>) -> bool {
@@ -125,8 +189,11 @@ fn matches_filter(path: &std::path::Path, filter: Option<&str>) -> bool {
 
 #[cfg(test)]
 mod tests {
-    use super::matches_filter;
-    use std::path::Path;
+    use super::{NovelFileIndex, matches_filter};
+    use std::{
+        fs,
+        path::{Path, PathBuf},
+    };
 
     #[test]
     fn filename_filter_is_case_insensitive_and_ignores_blank_query() {
@@ -136,5 +203,44 @@ mod tests {
         assert!(matches_filter(path, Some("  ")));
         assert!(matches_filter(path, Some("example")));
         assert!(!matches_filter(path, Some("other")));
+    }
+
+    // Given 已扫描出包含多个目录和 TXT 文件的 NovelFileIndex
+    // When 连续使用不同搜索词过滤索引
+    // Then 过滤只读取已有索引，不重新扫描文件系统，并返回正确的文件树
+    #[test]
+    fn filtering_an_index_reuses_scanned_entries() {
+        let root = std::env::temp_dir().join(format!("trnovel-file-index-{}", std::process::id()));
+        let nested = root.join("nested");
+        fs::create_dir_all(&nested).expect("创建测试目录");
+        fs::write(root.join("alpha.txt"), "alpha").expect("创建 alpha");
+        fs::write(root.join("ignored.md"), "ignored").expect("创建 md");
+        fs::write(nested.join("beta.txt"), "beta").expect("创建 beta");
+
+        let index = NovelFileIndex::from_path(root.clone()).expect("建立文件索引");
+        fs::remove_file(root.join("alpha.txt")).expect("删除 alpha");
+        fs::remove_file(nested.join("beta.txt")).expect("删除 beta");
+        let alpha = index.filter(Some("alpha")).expect("过滤 alpha");
+        let beta = index.filter(Some("beta")).expect("过滤 beta");
+
+        assert_eq!(tree_paths(&alpha), vec![root.join("alpha.txt")]);
+        assert_eq!(tree_paths(&beta), vec![nested.join("beta.txt")]);
+
+        fs::remove_dir_all(root).expect("清理测试目录");
+    }
+
+    fn tree_paths(items: &[tui_tree_widget::TreeItem<'static, PathBuf>]) -> Vec<PathBuf> {
+        items
+            .iter()
+            .flat_map(|item| {
+                let mut paths = if item.children().is_empty() {
+                    vec![item.identifier().clone()]
+                } else {
+                    vec![]
+                };
+                paths.extend(tree_paths(item.children()));
+                paths
+            })
+            .collect()
     }
 }

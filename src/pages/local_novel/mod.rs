@@ -4,7 +4,7 @@ use crate::{
         Loading, WarningModal, file_select::FileSelect,
         modal::shortcut_info_modal::ShortcutInfoModal, search_input::SearchInput,
     },
-    file_list::NovelFiles,
+    file_list::NovelFileIndex,
     hooks::UseInitState,
     theme::AppChromeTheme,
 };
@@ -26,28 +26,27 @@ pub fn SelectFile(mut hooks: Hooks) -> impl Into<AnyElement<'static>> {
     let dir_path = path.read().clone().unwrap_or(current_dir().unwrap());
     let filter = filter_text.read().clone();
 
+    // 扫描只跟目录走:搜索词变化不再重新遍历文件系统,而是复用内存索引过滤。
+    // walkdir 递归是同步阻塞 IO,必须走 spawn_blocking —— 用 tokio::spawn 会把它
+    // 压在 async worker 上,大目录扫描期间同 runtime 的网络书源请求和 TTS 下载
+    // 都会被一起拖慢。
     let (data, loading, error) = hooks.use_effect_state(
         {
             let path = dir_path.clone();
-            let filter = filter.clone();
-            // walkdir 递归是同步阻塞 IO,必须走 spawn_blocking:用 tokio::spawn
-            // 会把它压在 async worker 上,大目录扫描期间同 runtime 的网络书源
-            // 请求和 TTS 下载都会被一起拖慢。
-            async move {
-                tokio::task::spawn_blocking(move || {
-                    NovelFiles::from_path_with_filter(path, Some(filter))
-                })
-                .await?
-            }
+            async move { tokio::task::spawn_blocking(move || NovelFileIndex::from_path(path)).await? }
         },
-        (dir_path.clone(), filter.clone()),
+        dir_path.clone(),
     );
 
-    let tree_items = data
-        .read()
-        .clone()
-        .map(|i| i.into_tree_item())
-        .unwrap_or_default();
+    let tree_items = hooks.use_memo(
+        || {
+            data.read()
+                .as_ref()
+                .and_then(|index| index.filter(Some(&filter)).ok())
+                .unwrap_or_default()
+        },
+        (data.read().clone(), filter.clone()),
+    );
 
     hooks.use_event_handler(EventScope::Current, EventPriority::Normal, move |event| {
         let Event::Key(key) = event else {
