@@ -39,7 +39,6 @@ tui-widget-list = "0.15.2"
 tui-big-text = "0.8.7"
 walkdir = "2.5.0"
 anyhow = { workspace = true }
-regex = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 thiserror = { workspace = true }

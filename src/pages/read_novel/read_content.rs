@@ -533,6 +533,18 @@ pub fn ReadContent(
     })
 }
 
+/// 高亮范围的哨兵标记。
+///
+/// `textwrap` 换行会重排文本、原始字节偏移随之失效,所以把范围用字符嵌进文本
+/// 里让它跟着文本走。必须选**正文里不可能出现**的字符 —— 这里用 ASCII 的
+/// 记录分隔符与单元分隔符。
+///
+/// 历史坑:结束标记一度写成 `\u{002E}`,而那就是普通的英文句点 `.` —— 正文里
+/// 一个「3.14」或「Mr.」就会把高亮提前截断。改动这两个常量前先确认新字符不会
+/// 出现在小说正文中。
+const HIGHLIGHT_START: char = '\u{001E}';
+const HIGHLIGHT_END: char = '\u{001F}';
+
 pub fn highlight(
     text: &str,
     segment: &TextSegment,
@@ -540,42 +552,50 @@ pub fn highlight(
     highlight_style: Style,
     spacing: bool,
 ) -> Vec<Line<'static>> {
-    let pattern: String = regex::escape(&segment.text);
-    let regex = regex::Regex::new(&pattern).unwrap();
-    let res = regex.find_at(text, segment.start);
+    // `segment.text` 是 trim 过的,与 `segment.start` 指向的位置可能差几个空白,
+    // 故从 start 起搜一次而不是直接切片。字面量子串搜索就够 —— 原先在这里
+    // 转义并编译一个正则,等于每次高亮推进都在渲染路径上白跑一次正则编译。
+    //
+    // 用 `get()` 而不是索引:换章的瞬间 `highlight_range` 可能还指向上一章的
+    // 偏移,越界或落在非字符边界上都会 panic,而这里是渲染路径,panic 会直接
+    // 掀掉整个 TUI。
+    let found = text.get(segment.start..).and_then(|rest| {
+        rest.find(segment.text.as_str())
+            .map(|offset| segment.start + offset)
+    });
 
-    if let Some(mat) = res {
-        let mut lines = Vec::new();
-        let mut offset = 0;
-        for raw_line in text.split_inclusive('\n') {
-            let line = raw_line.trim_end_matches(['\n', '\r']);
-            let line_end = offset + line.len();
-            let marked = if mat.start() >= offset && mat.end() <= line_end {
-                let start = mat.start() - offset;
-                let end = mat.end() - offset;
-                format!(
-                    "{}\u{001E}{}\u{002E}{}",
-                    &line[..start],
-                    &line[start..end],
-                    &line[end..]
-                )
-            } else {
-                line.to_string()
-            };
+    let Some(start) = found else {
+        return wrap_content(text, width, spacing);
+    };
+    let end = start + segment.text.len();
 
-            append_wrapped_line(
-                &mut lines,
-                &marked,
-                width,
-                marked.contains('\u{001E}').then_some(highlight_style),
-                spacing,
-            );
-            offset += raw_line.len();
-        }
-        lines
-    } else {
-        wrap_content(text, width, spacing)
+    let mut lines = Vec::new();
+    let mut offset = 0;
+    for raw_line in text.split_inclusive('\n') {
+        let line = raw_line.trim_end_matches(['\n', '\r']);
+        let line_end = offset + line.len();
+        // 高亮段整个落在本行内才标记 —— TTS 的分段本就按行切,不会跨行。
+        let marked = if start >= offset && end <= line_end {
+            format!(
+                "{}{HIGHLIGHT_START}{}{HIGHLIGHT_END}{}",
+                &line[..start - offset],
+                &line[start - offset..end - offset],
+                &line[end - offset..]
+            )
+        } else {
+            line.to_string()
+        };
+
+        append_wrapped_line(
+            &mut lines,
+            &marked,
+            width,
+            marked.contains(HIGHLIGHT_START).then_some(highlight_style),
+            spacing,
+        );
+        offset += raw_line.len();
     }
+    lines
 }
 
 /// 按原始文本行排版正文,`spacing` 决定逻辑段落之间是否补一个终端空行。
@@ -623,30 +643,37 @@ fn append_wrapped_line(
     }
 }
 
+/// 把带哨兵标记的文本切成带样式的行。
+///
+/// `in_highlight` 跨行保持:一个高亮段经 `textwrap` 换行后会横跨多个显示行,
+/// 起止标记分别落在首行与末行,中间几行整行都是高亮。
 fn highlight_text(text: &str, highlight_style: Style) -> Vec<Line<'static>> {
     let mut lines = vec![];
-    let mut matched = 0;
+    let mut in_highlight = false;
 
     for line in text.lines() {
         let mut spans = vec![];
-        let mut highlight = line.to_string();
-        if let Some((start, rest)) = line.split_once('\u{001E}') {
-            matched += 1;
-            spans.push(Span::from(start.to_string()));
-            highlight = rest.to_string();
+        let mut rest = line;
+
+        if let Some((before, after)) = line.split_once(HIGHLIGHT_START) {
+            spans.push(Span::from(before.to_string()));
+            rest = after;
+            in_highlight = true;
         }
 
-        if matched > 0 {
-            if let Some((highlight, end)) = &highlight.split_once('\u{002E}') {
-                matched -= 1;
-                spans.push(Span::from(highlight.to_string()).style(highlight_style));
-                spans.push(Span::from(end.to_string()));
-            } else {
-                spans.push(Span::from(highlight).style(highlight_style));
+        if in_highlight {
+            match rest.split_once(HIGHLIGHT_END) {
+                Some((highlighted, after)) => {
+                    in_highlight = false;
+                    spans.push(Span::from(highlighted.to_string()).style(highlight_style));
+                    spans.push(Span::from(after.to_string()));
+                }
+                None => spans.push(Span::from(rest.to_string()).style(highlight_style)),
             }
         } else {
-            spans.push(Span::from(line.to_string()));
+            spans.push(Span::from(rest.to_string()));
         }
+
         lines.push(Line::from(spans));
     }
 
@@ -656,6 +683,82 @@ fn highlight_text(text: &str, highlight_style: Style) -> Vec<Line<'static>> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// 取某一行里带高亮样式的文本。
+    fn highlighted_of(line: &Line<'static>, style: Style) -> String {
+        line.spans
+            .iter()
+            .filter(|span| span.style == style)
+            .map(|span| span.content.as_ref())
+            .collect()
+    }
+
+    fn segment(text: &str, start: usize) -> TextSegment {
+        TextSegment {
+            text: text.to_string(),
+            start,
+            end: start + text.len(),
+        }
+    }
+
+    /// 高亮段里含英文句点时不能被截断。
+    ///
+    /// 回归:结束哨兵一度用 `\u{002E}`,而那就是普通句点 —— 「圆周率是 3.14。」
+    /// 这种句子只会高亮到「3」为止,后半截失色。
+    #[test]
+    fn highlight_survives_ascii_dots_in_the_segment() {
+        let style = Style::default().bold();
+        let text = "圆周率约等于 3.14,记作 Mr. Pi。";
+
+        let lines = highlight(text, &segment(text, 0), 200, style, false);
+
+        assert_eq!(lines.len(), 1);
+        assert_eq!(highlighted_of(&lines[0], style), text);
+    }
+
+    /// 只有 segment 覆盖的那一段被高亮,同行其余部分保持原样。
+    #[test]
+    fn highlight_covers_only_the_segment() {
+        let style = Style::default().bold();
+        let text = "前半句。后半句。";
+        let target = "后半句。";
+        let start = text.find(target).unwrap();
+
+        let lines = highlight(text, &segment(target, start), 200, style, false);
+
+        assert_eq!(highlighted_of(&lines[0], style), target);
+        assert_eq!(texts(&lines), [text]);
+    }
+
+    /// TTS 的 segment 文本是 trim 过的,`start` 却指向 trim 之前的位置 ——
+    /// 所以要从 start 起搜一次,不能拿 start 直接切片。
+    #[test]
+    fn highlight_tolerates_trimmed_segment_offset() {
+        let style = Style::default().bold();
+        let text = "开头。   缩进的一句。";
+        let target = "缩进的一句。";
+        // start 故意指向空白处,模拟 preprocess_text 的 trim 行为。
+        let start = text.find("   ").unwrap();
+
+        let lines = highlight(text, &segment(target, start), 200, style, false);
+
+        assert_eq!(highlighted_of(&lines[0], style), target);
+    }
+
+    /// 换章瞬间 highlight_range 可能还指向上一章的偏移 —— 越界不得 panic,
+    /// 退化成无高亮的正常排版即可(渲染路径上 panic 会掀掉整个 TUI)。
+    #[test]
+    fn highlight_with_stale_offset_falls_back_instead_of_panicking() {
+        let style = Style::default().bold();
+        let text = "短短一句。";
+
+        let out_of_range = highlight(text, &segment("不存在的内容", 9999), 200, style, false);
+        assert_eq!(texts(&out_of_range), [text]);
+
+        // 落在多字节字符中间的偏移同样不能 panic。
+        let mid_char = highlight(text, &segment("一句", 1), 200, style, false);
+        assert_eq!(texts(&mid_char), [text]);
+    }
 
     /// 取每行的纯文本,便于断言排版结果。
     fn texts(lines: &[Line<'static>]) -> Vec<String> {

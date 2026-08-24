@@ -41,16 +41,15 @@ pub fn SelectFile(mut hooks: Hooks) -> impl Into<AnyElement<'static>> {
             dir_path.clone(),
         );
 
-    // deps 必须是 O(1) 的标识:放 `data.read().clone()` 会每帧深拷贝整个索引,
-    // 且 NovelFileIndex derive 了 PartialEq、比较又是一次全树深比较 —— 那等于把
-    // 「每次改搜索词一次 walkdir」换成「每帧两次全树遍历」,比原问题更重。
-    // 索引只在 dir_path 变化时重建,所以「目录 + 扫描是否完成 + 搜索词」三者足以
-    // 覆盖全部重算时机。
+    // deps 只放 O(1) 的标识,不放索引本身:deps 是函数参数、每帧都要求值,把
+    // 索引 clone 进去就等于每帧深拷贝整棵树(再加一次深比较),比它想省掉的
+    // 「每次改词一次 walkdir」更贵。索引只在 dir_path 变化时重建,所以「目录 +
+    // 扫描是否完成 + 搜索词」三者足以覆盖全部重算时机。
     let tree_items = hooks.use_memo(
         || {
             data.read()
                 .as_ref()
-                .map(|index| index.filter(Some(&filter)))
+                .map(|index| index.filter(&filter))
                 .unwrap_or_default()
         },
         (dir_path.clone(), data.read().is_some(), filter.clone()),
