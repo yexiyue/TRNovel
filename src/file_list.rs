@@ -5,12 +5,6 @@ use walkdir::WalkDir;
 
 const FILE_EXTS: [&str; 1] = ["txt"];
 
-#[derive(Debug, Clone)]
-pub enum NovelFiles<'a> {
-    File(PathBuf),
-    FileTree(Vec<TreeItem<'a, PathBuf>>),
-}
-
 #[derive(Debug, Clone, PartialEq)]
 pub struct NovelFileIndex {
     entries: Vec<NovelFileEntry>,
@@ -49,44 +43,9 @@ impl NovelFileIndex {
         })
     }
 
-    pub fn filter(&self, filter: Option<&str>) -> Result<Vec<TreeItem<'static, PathBuf>>> {
+    /// 按文件名筛选出树,复用已扫描的索引 —— 不碰文件系统。
+    pub fn filter(&self, filter: Option<&str>) -> Vec<TreeItem<'static, PathBuf>> {
         filter_entries(&self.entries, filter)
-    }
-}
-
-impl<'a> NovelFiles<'a> {
-    pub fn from_path(path: PathBuf) -> Result<NovelFiles<'a>> {
-        Self::from_path_with_filter(path, None)
-    }
-
-    pub fn from_path_with_filter(path: PathBuf, filter: Option<String>) -> Result<NovelFiles<'a>> {
-        let path = if path.is_relative() {
-            std::env::current_dir()?.join(path)
-        } else {
-            path
-        };
-
-        if path.is_file() {
-            ensure_supported_file(&path)?;
-            if !matches_filter(&path, filter.as_deref()) {
-                return Ok(NovelFiles::FileTree(Vec::new()));
-            }
-
-            Ok(NovelFiles::File(path))
-        } else {
-            let index = NovelFileIndex::from_path(path)?;
-            Ok(NovelFiles::FileTree(index.filter(filter.as_deref())?))
-        }
-    }
-
-    pub fn into_tree_item(self) -> Vec<TreeItem<'a, PathBuf>> {
-        match self {
-            NovelFiles::File(path) => vec![TreeItem::new_leaf(
-                path.clone(),
-                path.file_name().unwrap().to_string_lossy().to_string(),
-            )],
-            NovelFiles::FileTree(items) => items,
-        }
     }
 }
 
@@ -151,26 +110,34 @@ fn scan_novels(path: PathBuf, file_exts: &[&str]) -> Result<Vec<NovelFileEntry>>
     Ok(res)
 }
 
+/// 只在内存索引上过滤,命中文件所在的目录逐层保留,空目录不进结果。
+///
+/// 不返回 `Result`:`TreeItem::new` 仅在同级 identifier 重复时失败,而这里的
+/// identifier 是文件系统路径、同级天然唯一,故该分支实际不可达。真出现了也只
+/// 跳过这一个节点 —— 把错误吞成空列表会让界面显示「没有匹配的小说」,用户会
+/// 误以为是搜索词的问题。
 fn filter_entries(
     entries: &[NovelFileEntry],
     filter: Option<&str>,
-) -> Result<Vec<TreeItem<'static, PathBuf>>> {
+) -> Vec<TreeItem<'static, PathBuf>> {
     let mut result = Vec::new();
     for entry in entries {
         if entry.is_directory {
-            let children = filter_entries(&entry.children, filter)?;
-            if !children.is_empty() {
-                result.push(TreeItem::new(
-                    entry.path.clone(),
-                    entry.name.clone(),
-                    children,
-                )?);
+            let children = filter_entries(&entry.children, filter);
+            if children.is_empty() {
+                continue;
+            }
+            match TreeItem::new(entry.path.clone(), entry.name.clone(), children) {
+                Ok(item) => result.push(item),
+                Err(error) => {
+                    debug_assert!(false, "同级路径重复,索引不变量被破坏: {error}");
+                }
             }
         } else if matches_filter(&entry.path, filter) {
             result.push(TreeItem::new_leaf(entry.path.clone(), entry.name.clone()));
         }
     }
-    Ok(result)
+    result
 }
 
 fn matches_filter(path: &std::path::Path, filter: Option<&str>) -> bool {
@@ -220,13 +187,52 @@ mod tests {
         let index = NovelFileIndex::from_path(root.clone()).expect("建立文件索引");
         fs::remove_file(root.join("alpha.txt")).expect("删除 alpha");
         fs::remove_file(nested.join("beta.txt")).expect("删除 beta");
-        let alpha = index.filter(Some("alpha")).expect("过滤 alpha");
-        let beta = index.filter(Some("beta")).expect("过滤 beta");
+        let alpha = index.filter(Some("alpha"));
+        let beta = index.filter(Some("beta"));
 
         assert_eq!(tree_paths(&alpha), vec![root.join("alpha.txt")]);
         assert_eq!(tree_paths(&beta), vec![nested.join("beta.txt")]);
 
         fs::remove_dir_all(root).expect("清理测试目录");
+    }
+
+    // Given 索引里有一个不含命中文件的子目录
+    // When 用只命中根目录文件的搜索词过滤
+    // Then 该子目录不出现在结果中(空目录会白占一行,还得按一次才知道是空的)
+    #[test]
+    fn directories_without_matches_are_dropped() {
+        let root = std::env::temp_dir().join(format!("trnovel-empty-dir-{}", std::process::id()));
+        let nested = root.join("nested");
+        fs::create_dir_all(&nested).expect("创建测试目录");
+        fs::write(root.join("alpha.txt"), "alpha").expect("创建 alpha");
+        fs::write(nested.join("beta.txt"), "beta").expect("创建 beta");
+
+        let index = NovelFileIndex::from_path(root.clone()).expect("建立文件索引");
+
+        let alpha = index.filter(Some("alpha"));
+        assert_eq!(top_level_names(&alpha), vec!["alpha.txt".to_string()]);
+
+        // 不带搜索词时,含命中文件的目录仍要保留。
+        let all = index.filter(None);
+        assert_eq!(
+            top_level_names(&all),
+            vec!["nested".to_string(), "alpha.txt".to_string()]
+        );
+
+        fs::remove_dir_all(root).expect("清理测试目录");
+    }
+
+    fn top_level_names(items: &[tui_tree_widget::TreeItem<'static, PathBuf>]) -> Vec<String> {
+        items
+            .iter()
+            .map(|item| {
+                item.identifier()
+                    .file_name()
+                    .unwrap()
+                    .to_string_lossy()
+                    .to_string()
+            })
+            .collect()
     }
 
     fn tree_paths(items: &[tui_tree_widget::TreeItem<'static, PathBuf>]) -> Vec<PathBuf> {
