@@ -39,6 +39,51 @@ hooks.use_effect_state(
 
 **相关文件**：`src/pages/network_novel/select_books/find_book.rs`（修复 commit `6ff4999`）、`src/hooks/use_init_state.rs`（use_effect_state 实现:内部用 `use_async_effect(async{ init_f.await }, deps)`,200ms loading 防抖）
 
+### `use_effect` 的闭包**不要求 `'static`**,`use_async_effect` 要求 —— 决定了 effect 能否借用 props
+
+两个签名只差一处,但直接决定「重活是每帧做还是只在 deps 变时做」:
+
+```rust
+fn use_effect<F, D>(&mut self, f: F, deps: D)  where F: FnOnce(),                        // 无 'static
+fn use_async_effect<F, D>(&mut self, f: F, deps: D) where F: Future<Output = ()> + 'static; // 有 'static
+```
+
+`use_effect` 的 `F: FnOnce()` **没有 `'static` 约束**,所以闭包可以直接**借用 `props`**,把递归收集、遍历这类重活写在闭包体内 —— 闭包每帧构造,但**体内代码只在 deps 变化时跑**。改成 `use_async_effect` 就必须把数据 `clone` 进 future(`'static`),而 future 每帧都要构造,等于把重活变成**每帧一次全量拷贝**。
+
+**正确做法**:纯内存的状态同步(重置选中/展开、校正索引)用 `use_effect` + 借用 props;只有真正的 IO/await 才用 `use_async_effect`。
+
+**别为了「不卡 UI」把同步 effect 异步化**:`use_effect` 是**同步执行**的(就在渲染体内、deps 比较后立即调),这保证「渲染出去的那一帧,派生状态必定与本帧数据自洽」。异步化会插入一个「数据已换、状态还没同步」的中间帧 —— `FileSelect` 里那一帧按 Enter 就会打开一个**已经被筛掉**的文件。
+
+**相关文件**:`src/components/file_select.rs`、`ratatui-kit` `hooks/use_effect.rs`
+
+### `use_memo` 省的是「重新计算」,不是「拷贝」—— 它每帧都 clone 返回值
+
+实现是 `hook.memoized_value.clone().expect(...)`,且约束就写着 `T: Clone`。deps 没变时它跳过的只有闭包体,**返回值照样每帧 clone 一份**。所以拿 `use_memo` 去缓存一棵大树/一大段文本,指望「每帧不再拷贝」是无效的 —— 该拷的一次没少。
+
+**正确做法**:`use_memo` 用来避免**昂贵的重新计算**(排版、解析、聚合);要避免的是**每帧拷贝大结构**,只能靠借用(见上条 `use_effect`)或把数据放进 `State`/`Arc` 传句柄。
+
+**相关文件**:`ratatui-kit` `hooks/use_memo.rs`
+
+### 树/列表的「数据变了要重置选中」:deps 用**指纹**,不要收集全部标识符
+
+`use_effect` 的 deps 每帧都要构造并比较。若写成 `collect_identifiers(&props.items)`(递归收集全树 `Vec<PathBuf>`),就是**每帧一次全树递归 + 堆分配**;而组件渲染本身已经 `clone` 过一次整棵树(`TreeSelect` 的 `items` prop 要 owned),等于把开销直接翻倍。
+
+**正确做法**:用 `DefaultHasher` 递归 hash 出一个 `u64` 指纹当 deps —— **只遍历不分配**,比较也退化成整数相等。hash 时要**带上层级结构**(每层先 hash `items.len()` 再递归),否则同名文件换了目录层级会算出同一指纹而漏掉重置。
+
+**为什么必须重置**:筛选后旧选中路径可能已不在树中,`TreeState` 不会自己校正,Enter 取到的仍是旧路径,`path.is_file()` 对「被筛掉但磁盘上还在」的文件照样为真 → **打开一个当前列表里根本看不见的文件**(issue #64)。反过来,只要这个同步 effect 到位,取项处就**不需要**再遍历树做二次校验(那又是一次每帧全树 clone)。
+
+**配套**:筛选态要连带展开命中目录(`expand_all`)。`tui-tree-widget` 的 `TreeState` **没有 `open_all()`**,只有 `open(Vec<Identifier>)`,且要的是**从根到该节点的完整路径**,只传节点自身的 identifier 展不开嵌套目录。否则命中文件埋在折叠的子目录里,搜了等于没搜。
+
+**相关文件**:`src/components/file_select.rs`、`src/pages/local_novel/mod.rs`
+
+### 页面里的同步阻塞 IO 走 `spawn_blocking`,不是 `tokio::spawn`
+
+`use_effect_state` 只负责「把 future 挂到 deps 上 + 200ms loading 防抖」,future 里跑什么它不管。本地小说扫描是 `walkdir` 递归(**同步阻塞**),原先包在 `tokio::spawn(async move { ... })` 里 —— 它确实不占 UI 渲染线程,但会**占住一个 async worker**;大目录扫描期间,同 runtime 上的网络书源请求、TTS 模型下载会被一起拖慢。
+
+**正确做法**:`tokio::task::spawn_blocking(move || 同步函数())`,`.await?` 处理 `JoinError` 的写法不变。
+
+**相关文件**:`src/pages/local_novel/mod.rs`、`src/hooks/use_init_state.rs`
+
 ## State 读写（generational-box RwLock）
 
 ### 读 guard 存活期间写同一个 State = 死锁（不是 panic），表现为 TUI「卡死」
@@ -213,6 +258,24 @@ end_scroll = total - view                        贴底位置 = 章末判定线
 曾经全仓有 5 处逐字相同的事件样板(`Event::Key` 解构 → `KeyEventKind::Press` → `if !is_editing { Ignored }` → `Left|h` / `Right|l`),「同层多个条目都收到这些键、只有聚焦者可消费」这条约定被复制 5 份 —— 漏写一处就是一次按键被多个条目同时响应,而开关型条目的取值展示已经开始漂移(`开/关` vs `true/false`)。**会漂移的是行为,不是外观**;将来把面板键位接入 keymap 体系也只需改这一处。
 
 **步进与边界收进配置类型**(同既有 `TTSConfig::increase_speed()`):`ReaderDisplayConfig::increase_page_overlap()` / `page_step(view)`。UI 不该知道上界 —— 那样 `PAGE_OVERLAP_MAX` 才能保持私有。越界的磁盘值在 `load()` 归一,别用「读侧访问器兜底」:那会让脏值永远留在文件里,且字段可写、访问器同名,靠注释约束等于没有约束。
+
+### 给设置面板加条目:`ITEM_COUNT`、索引判断、**面板高度**三处必须同步
+
+浮层高度是写死的 `Constraint::Length(N)`。只加条目不改高度,新条目会被**静默裁掉** —— 面板照常打开、导航索引也能移到它身上,就是看不见,极易误判成「条目没渲染」。
+
+**正确做法**:让高度从条目数派生,加条目时改一个常量即可:
+
+```rust
+const ITEM_COUNT: usize = 3;
+/// 每个条目 3 行(含边框),外加浮层自身的边框与外边距 4 行。
+const PANEL_HEIGHT: u16 = ITEM_COUNT as u16 * 3 + 4;
+```
+
+**验收**:VHS 截图里数一遍条目数 —— 单测覆盖不到「被裁掉」这种纯布局问题。顺带确认导航键没有串扰调整(`↑/↓` 选择、`←/→` 调整,按 `↓` 走到某项时该项的值 MUST NOT 跟着变)。
+
+**VHS 截图时序坑**:`Screenshot` 后若紧跟下一个按键而不留 `Sleep`,截到的可能是**按键之后**的帧 —— 曾据此误判「值在按右键之前就变了」。断言「操作前」状态的截图,前后都要留 ≥1s。
+
+**相关文件**:`src/pages/read_novel/settings/mod.rs`
 
 ### 阅读页浮层用单一 `Panel` 状态,不是每个面板一个 bool
 
