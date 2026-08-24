@@ -37,21 +37,45 @@ Codex / CI shell 里可能带 `TERM=dumb` 或 `NO_COLOR=1`,会让 ratatui/crosst
 边框色与主题背景。
 
 每个稳定沙箱 tape 会在关键节点执行 `Screenshot "/tmp/verify-*.png"`。这些截图用于录制后快速验收
-画面是否进入预期状态;需要保留到仓库或文章素材时,把截图路径改成 `../src/assets/guides/<name>.png`
-即可,不要再用 `ffmpeg` 从 GIF 抽帧。
+画面是否进入预期状态。**`Screenshot` 后若紧跟下一个按键而不留 `Sleep`,截到的可能是按键之后的帧**
+—— 曾据此误判「值在按右键之前就变了」。断言「操作前」状态的截图,前后都要留 ≥1s。
+
+截图需要保留到仓库或文章素材时,把路径改成 `../src/assets/guides/<name>.png` 即可,
+不要再用 `ffmpeg` 从 GIF 抽帧。
 
 ## 演示环境(隔离,不污染真实 ~/.novel)
 
 沙箱内录制用 `Env HOME "/tmp/trn-demo-home"` 隔离,避免动到真实阅读历史/书源。准备:
 
 ```bash
-mkdir -p /tmp/trn-demo-home/books/仙侠
-# 放入测试小说(原创):星河彼岸.txt(6 章)/ 山中旧事.txt(3 章)/ 仙侠/剑来纪.txt(3 章)
+mkdir -p /tmp/trn-demo-home/books/{仙侠,科幻/深空来信}
+# 放入测试小说(原创),当前 tape 依赖这套结构与顺序:
+#   星河彼岸.txt(6 章,每章多段落 —— 段落间距的效果全靠它)
+#   山中旧事.txt(3 章)
+#   仙侠/剑来纪.txt(3 章)、仙侠/沧海问剑.txt(2 章)   —— 搜「剑」命中两本
+#   科幻/深空来信/信使.txt(2 章)                      —— 搜「信使」命中二级嵌套目录
+# 树的顺序(目录在前、同级按名):仙侠 / 科幻 / 山中旧事.txt / 星河彼岸.txt
+#   —— tape 里的 Down 次数按这个顺序数,增删演示书要同步改按键序列。
 # 预热历史:用 read.tape 等打开几本并 q 退出,即生成 ~/.novel/history.json
 # 网络源:把 fanqie-web.v2.json / test-novels/bilixs.v2.json 拷进去,用 -n 模式 s 导入
 ```
 
+录制前**先清掉沙箱配置**,否则上一次录制留下的阅读偏好(如已开启的段落间距)会带进新素材:
+
+```bash
+rm -rf /tmp/trn-demo-home/.novel
+```
+
 二进制:tape 内用 `trn` 命令,需先把它装到 PATH(`cargo install --path .`,或从 release 安装)。
+**不想覆盖本机已装的版本**,可以装到隔离目录再临时挂到 PATH 上录制:
+
+```bash
+cargo install --path . --root /tmp/trn-demo-bin --locked
+PATH="/tmp/trn-demo-bin/bin:$PATH" vhs local-search.tape
+```
+
+VHS 会继承当前 shell 的环境变量,所以这样挂 PATH 对 tape 文件零侵入(tape 里仍写 `trn`)。
+录之前记得核对 `trn --version` 是不是待发布的那版 —— 用旧版录出来的是旧界面。
 
 ## tape 清单
 
@@ -59,7 +83,9 @@ mkdir -p /tmp/trn-demo-home/books/仙侠
 |------|------|------|----------|
 | `home.tape` | home.gif | 主页四入口 + Logo | 沙箱 |
 | `local-select.tape` | local-select.gif | 本地选书:文件树、展开子目录、打开 | 沙箱 |
+| `local-search.tape` | local-search.gif | 本地选书:`/` 按名称搜索、命中目录自动展开 | 沙箱 |
 | `read.tape` | read.gif | 阅读、方向键翻页、Tab 跳章 | 沙箱 |
+| `reader-settings.tape` | reader-settings.gif | 阅读设置浮层:翻页重叠 / 显示标题 / 段落间距 | 沙箱 |
 | `shortcuts.tape` | shortcuts.gif | i 唤出快捷键浮层 | 沙箱 |
 | `theme.tape` | theme.gif | 命名主题切换 + 背景模式 | 沙箱 |
 | `history.tape` | history.gif | 阅读历史列表 | 沙箱 |
