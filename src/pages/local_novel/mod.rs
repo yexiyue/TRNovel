@@ -31,10 +31,8 @@ pub fn SelectFile(mut hooks: Hooks) -> impl Into<AnyElement<'static>> {
             let path = dir_path.clone();
             let filter = filter.clone();
             async move {
-                tokio::spawn(async move {
-                    NovelFiles::from_path_with_filter(path, Some(filter))
-                })
-                .await?
+                tokio::spawn(async move { NovelFiles::from_path_with_filter(path, Some(filter)) })
+                    .await?
             }
         },
         (dir_path.clone(), filter.clone()),

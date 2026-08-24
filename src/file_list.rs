@@ -16,10 +16,7 @@ impl<'a> NovelFiles<'a> {
         Self::from_path_with_filter(path, None)
     }
 
-    pub fn from_path_with_filter(
-        path: PathBuf,
-        filter: Option<String>,
-    ) -> Result<NovelFiles<'a>> {
+    pub fn from_path_with_filter(path: PathBuf, filter: Option<String>) -> Result<NovelFiles<'a>> {
         let path = if path.is_relative() {
             std::env::current_dir()?.join(path)
         } else {
@@ -118,7 +115,11 @@ fn matches_filter(path: &std::path::Path, filter: Option<&str>) -> bool {
     };
 
     path.file_name()
-        .map(|name| name.to_string_lossy().to_lowercase().contains(&filter.to_lowercase()))
+        .map(|name| {
+            name.to_string_lossy()
+                .to_lowercase()
+                .contains(&filter.to_lowercase())
+        })
         .unwrap_or(false)
 }
 
