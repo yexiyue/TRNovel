@@ -5327,7 +5327,6 @@ dependencies = [
  "ratatui-kit",
  "ratatui-kit-keymap",
  "ratatui-kit-themes",
- "regex",
  "reqwest",
  "serde",
  "serde_json",

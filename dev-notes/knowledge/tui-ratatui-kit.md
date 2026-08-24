@@ -259,6 +259,54 @@ end_scroll = total - view                        贴底位置 = 章末判定线
 
 **步进与边界收进配置类型**(同既有 `TTSConfig::increase_speed()`):`ReaderDisplayConfig::increase_page_overlap()` / `page_step(view)`。UI 不该知道上界 —— 那样 `PAGE_OVERLAP_MAX` 才能保持私有。越界的磁盘值在 `load()` 归一,别用「读侧访问器兜底」:那会让脏值永远留在文件里,且字段可写、访问器同名,靠注释约束等于没有约束。
 
+### TTS 高亮的哨兵字符必须是控制字符 —— `\u{002E}` 就是英文句点
+
+`textwrap` 换行会重排文本、原始字节偏移随之失效,所以高亮范围是用哨兵字符**嵌进文本**里跟着走的(`highlight` 塞标记 → `highlight_text` 按标记切 span)。起始标记一直是 `\u{001E}`(记录分隔符,没问题),**结束标记却写成了 `\u{002E}`** —— 那不是控制字符,就是普通的英文句点 `.`。
+
+于是 `highlight_text` 里的 `split_once('\u{002E}')` 会在正文的第一个句点处提前收尾:朗读到「圆周率约等于 3.14」时,高亮只到「圆周率约等于 3」就断了。中文正文里句号是「。」所以平时不明显,一旦出现数字小数点、英文缩写(`Mr.`)、ASCII 省略号就露馅。
+
+**正确做法**:两个标记都从 C0 控制字符里取(现用 `\u{001E}` / `\u{001F}`,记录/单元分隔符),并**提成命名常量**,别在 `format!` 里写裸转义 —— 裸写时 `001E` 和 `002E` 只差一个字符,肉眼极难发现。改这两个常量前先确认新字符不可能出现在小说正文中。
+
+**验收**:回归测试要断言「高亮段含 ASCII 句点时不被截断」。写完把常量改回 `\u{002E}` 跑一遍,确认测试真的会红 —— 否则锁不住这个 bug。
+
+**相关文件**:`src/pages/read_novel/read_content.rs`(`HIGHLIGHT_START` / `HIGHLIGHT_END`)
+
+### 渲染路径上别编译正则 —— 找一个已知子串用 `str::find` 就够
+
+`highlight` 曾在每次调用时 `regex::escape(&segment.text)` + `Regex::new(...).unwrap()`,只为在正文里定位一个**字面量**子串。它跑在渲染路径上(每次 TTS 高亮推进都会重算),等于每帧白编译一次正则;`.unwrap()` 还是 TUI 里的崩溃点。
+
+不能直接 `&text[segment.start..][..len]` 切片,是因为 `TextSegment.text` 被 `trim()` 过,而 `start` 指向 trim **之前**的位置,两者差着几个空白 —— 这正是当初上正则的原因。但 `str::find` 同样能从 `start` 起搜:
+
+```rust
+let found = text.get(segment.start..).and_then(|rest| {
+    rest.find(segment.text.as_str()).map(|offset| segment.start + offset)
+});
+```
+
+**用 `get()` 而不是索引**:换章的瞬间 `highlight_range` 可能还指向上一章的偏移,越界或落在非字符边界上都会 panic —— 渲染路径上 panic 会直接掀掉整个 TUI。`get()` 越界返回 `None`,退化成无高亮的正常排版。
+
+**相关文件**:`src/pages/read_novel/read_content.rs`(`highlight`)
+
+### 遍历目录一律用 walkdir 缓存的 `file_type()`,不要 `Path::is_dir()`
+
+`Path::is_dir()` / `is_file()` **每次调用都打一次 metadata syscall**,而 walkdir 的 `DirEntry` 已经缓存了类型。更要命的是两者语义不同:`Path::is_dir()` **跟随符号链接**,`DirEntry::file_type()` 不跟随(walkdir 默认 `follow_links(false)`)。
+
+本地书库扫描一度**排序用 `file_type()`、遍历用 `path().is_dir()`** —— 指向目录的软链会被「排序时当文件排在后面、遍历时当目录递归进去」,顺序不符合「目录优先」的约定;而那段排序注释恰恰在讲判定不一致会破坏全序。判定散在两处就迟早会漂移,**取一次 `let is_dir = entry.file_type().is_dir();` 往下传**。
+
+顺带两点:`WalkDir::min_depth(1)` 能直接跳过根目录自身,省掉逐条 `entry.path() == root` 的比较(原写法还 `to_path_buf()` 分配了一次);扩展名比较要用 `eq_ignore_ascii_case`,否则 Windows 上常见的 `.TXT` 扫不进来。
+
+**相关文件**:`src/file_list.rs`(`scan`)
+
+### 「索引」要真的预计算 —— 别把省下的扫盘换成每次过滤的重复分配
+
+`NovelFileIndex` 的意义是「扫一次盘,之后反复过滤」。但过滤一度是 `path.file_name().to_string_lossy().to_lowercase().contains(&filter.to_lowercase())` —— 每个条目两次字符串分配,查询词的 `to_lowercase()` 还对**每个文件**重做一遍,而索引里明明已经存了 `name`。
+
+**正确做法**:索引里存预先算好的 `name_lower`;查询词在过滤入口 `trim().to_lowercase()` **一次**,往下传 `&str`。
+
+**顺带**:`filter(Option<&str>)` 里 `None` 和 `Some("")` 语义完全相同,是冗余表达,收成 `filter(&str)`(空串=不过滤)让调用点和测试都短一截。用 `is_directory: bool` + `children` 表达节点类型同理 —— 换成 `enum EntryKind { File, Directory(Vec<_>) }`,「文件不可能有子节点」就成了类型保证而不是口头约定。
+
+**相关文件**:`src/file_list.rs`
+
 ### 给设置面板加条目:`ITEM_COUNT`、索引判断、**面板高度**三处必须同步
 
 浮层高度是写死的 `Constraint::Length(N)`。只加条目不改高度,新条目会被**静默裁掉** —— 面板照常打开、导航索引也能移到它身上,就是看不见,极易误判成「条目没渲染」。
