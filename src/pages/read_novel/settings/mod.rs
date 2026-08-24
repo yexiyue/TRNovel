@@ -19,8 +19,12 @@ use crate::{
     theme::AppChromeTheme,
 };
 
-/// 面板条目数(索引上界)。新增条目时同步改这里与下方渲染的索引判断。
-const ITEM_COUNT: usize = 2;
+/// 面板条目数(索引上界)。新增条目时同步改这里、下方渲染的索引判断与 `PANEL_HEIGHT`。
+const ITEM_COUNT: usize = 3;
+
+/// 面板高度:每个条目 3 行(含边框),外加浮层自身的边框与外边距 4 行。
+/// 不够高会把最后一个条目裁掉 —— 条目数变了必须跟着改。
+const PANEL_HEIGHT: u16 = ITEM_COUNT as u16 * 3 + 4;
 
 #[derive(Props, Default)]
 pub struct ReaderSettingsModalProps {
@@ -88,10 +92,15 @@ pub fn ReaderSettingsModal(
         config.page_step(visible_lines(height))
     );
     let title_value = if config.show_title { "开" } else { "关" };
+    let spacing_value = if config.paragraph_spacing {
+        "开"
+    } else {
+        "关"
+    };
 
     element!(Modal(
         width:Constraint::Percentage(60),
-        height: Constraint::Length(10),
+        height: Constraint::Length(PANEL_HEIGHT),
         open: is_open,
         // 非阻塞浮层:关闭键(o)与 Tab/i 都在父级 root handler 上,默认 blocks_lower=true
         // 会截断 root → 面板一开就关不掉。背景正文已用 is_scroll 门控,不会重复响应。
@@ -123,6 +132,16 @@ pub fn ReaderSettingsModal(
                         value: title_value.to_string(),
                         on_decrease: move |_| reader_display.write().show_title = false,
                         on_increase: move |_| reader_display.write().show_title = true,
+                    )
+                }
+                View(height: Constraint::Length(3)) {
+                    AdjustableSettingItem(
+                        is_editing: index.get() == 2 && is_editing,
+                        // 关掉后段落首尾相接,一屏正文行数近乎翻倍 —— 小屏用户的诉求。
+                        label: "段落间距:".to_string(),
+                        value: spacing_value.to_string(),
+                        on_decrease: move |_| reader_display.write().paragraph_spacing = false,
+                        on_increase: move |_| reader_display.write().paragraph_spacing = true,
                     )
                 }
             }
