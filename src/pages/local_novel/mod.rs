@@ -30,9 +30,14 @@ pub fn SelectFile(mut hooks: Hooks) -> impl Into<AnyElement<'static>> {
         {
             let path = dir_path.clone();
             let filter = filter.clone();
+            // walkdir 递归是同步阻塞 IO,必须走 spawn_blocking:用 tokio::spawn
+            // 会把它压在 async worker 上,大目录扫描期间同 runtime 的网络书源
+            // 请求和 TTS 下载都会被一起拖慢。
             async move {
-                tokio::spawn(async move { NovelFiles::from_path_with_filter(path, Some(filter)) })
-                    .await?
+                tokio::task::spawn_blocking(move || {
+                    NovelFiles::from_path_with_filter(path, Some(filter))
+                })
+                .await?
             }
         },
         (dir_path.clone(), filter.clone()),
@@ -110,6 +115,8 @@ pub fn SelectFile(mut hooks: Hooks) -> impl Into<AnyElement<'static>> {
             )
             FileSelect(
                 is_editing: !info_modal_open.get(),
+                // 筛选态展开全部目录:命中的文件多半在子目录里,折叠着等于没筛。
+                expand_all: !filter.is_empty(),
                 top_title: Line::from("本地小说".to_string()).style(theme.title).centered(),
                 items: tree_items,
                 on_select: move |item:PathBuf| {
