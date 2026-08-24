@@ -267,7 +267,7 @@ pub fn ReadContent(
                     theme.tts_highlight,
                 ))
             } else {
-                Paragraph::new(wrap_content(
+                Paragraph::new(textwrap::fill(
                     &props.content,
                     (props.width as usize).saturating_sub(2),
                 ))
@@ -537,73 +537,22 @@ pub fn highlight(
     let res = regex.find_at(text, segment.start);
 
     if let Some(mat) = res {
-        let mut lines = Vec::new();
-        let mut offset = 0;
-        for raw_line in text.split_inclusive('\n') {
-            let line = raw_line.trim_end_matches(['\n', '\r']);
-            let line_end = offset + line.len();
-            let marked = if mat.start() >= offset && mat.end() <= line_end {
-                let start = mat.start() - offset;
-                let end = mat.end() - offset;
-                format!(
-                    "{}\u{001E}{}\u{002E}{}",
-                    &line[..start],
-                    &line[start..end],
-                    &line[end..]
-                )
-            } else {
-                line.to_string()
-            };
-
-            append_wrapped_line(
-                &mut lines,
-                &marked,
-                width,
-                marked.contains('\u{001E}').then_some(highlight_style),
-            );
-            offset += raw_line.len();
-        }
-        lines
+        let marked = format!(
+            "{}\u{001E}{}\u{002E}{}",
+            &text[..mat.start()],
+            mat.as_str(),
+            &text[mat.end()..]
+        );
+        let highlighted = textwrap::fill(&marked, width);
+        // let re_mark = Regex::new(r"(?ms)<b>(.*?)</b>").unwrap();
+        // let mat = re_mark.find(&highlighted).unwrap();
+        highlight_text(&highlighted, highlight_style)
     } else {
-        wrap_content(text, width)
-    }
-}
-
-/// 按原始文本行排版正文,每个逻辑段落之间保留一个终端空行。
-///
-/// 小说正文通常以换行分隔段落,而不是以空行分隔。若直接对整章调用
-/// `textwrap::fill`,这些段落会首尾相接,阅读时视觉上过于紧凑。
-fn wrap_content(text: &str, width: usize) -> Vec<Line<'static>> {
-    let mut lines = Vec::new();
-    for line in text.lines() {
-        append_wrapped_line(&mut lines, line, width, None);
-    }
-    lines
-}
-
-fn append_wrapped_line(
-    lines: &mut Vec<Line<'static>>,
-    line: &str,
-    width: usize,
-    highlight_style: Option<Style>,
-) {
-    let line = line.trim_end_matches('\r');
-    if line.trim().is_empty() {
-        if !lines.is_empty() && !lines.last().is_some_and(|line| line.spans.is_empty()) {
-            lines.push(Line::default());
-        }
-        return;
-    }
-
-    if !lines.is_empty() && !lines.last().is_some_and(|line| line.spans.is_empty()) {
-        lines.push(Line::default());
-    }
-
-    let wrapped = textwrap::fill(line, width);
-    if let Some(style) = highlight_style {
-        lines.extend(highlight_text(&wrapped, style));
-    } else {
-        lines.extend(wrapped.lines().map(|line| Line::from(line.to_string())));
+        let texts = textwrap::fill(text, width);
+        texts
+            .lines()
+            .map(|line| Line::from(line.to_string()))
+            .collect::<Vec<_>>()
     }
 }
 
