@@ -27,8 +27,20 @@ pub fn FileSelect(props: &mut FileSelectProps, mut hooks: Hooks) -> impl Into<An
     let theme = hooks.use_component_theme::<AppChromeTheme>();
 
     let is_empty = props.items.is_empty();
+    let item_ids = collect_identifiers(&props.items);
+
+    // 搜索或目录扫描结果变化后,旧选中路径可能已经不在当前树中。
+    // 清空选中和展开状态,避免下一次 Enter 沿用被筛掉的旧文件。
+    hooks.use_effect(
+        move || {
+            state.write().select(Vec::new());
+            state.write().close_all();
+        },
+        item_ids,
+    );
 
     let mut on_select = props.on_select.take();
+    let items = props.items.clone();
 
     hooks.use_event_handler(EventScope::Current, EventPriority::Normal, {
         let is_editing = props.is_editing;
@@ -53,7 +65,7 @@ pub fn FileSelect(props: &mut FileSelectProps, mut hooks: Hooks) -> impl Into<An
                     EventResult::Consumed
                 }
                 KeyCode::Char('l') | KeyCode::Right | KeyCode::Enter => {
-                    let res: Option<PathBuf> = state.read().selected().last().cloned();
+                    let res = selected_visible_path(&state.read(), &items);
                     if let Some(path) = res {
                         state.write().toggle_selected();
                         if path.is_file() {
@@ -108,4 +120,46 @@ pub fn FileSelect(props: &mut FileSelectProps, mut hooks: Hooks) -> impl Into<An
         block: border,
     ))
     .into_any()
+}
+
+fn collect_identifiers(items: &[TreeItem<'static, PathBuf>]) -> Vec<PathBuf> {
+    let mut identifiers = Vec::new();
+    for item in items {
+        identifiers.push(item.identifier().clone());
+        identifiers.extend(collect_identifiers(item.children()));
+    }
+    identifiers
+}
+
+fn selected_visible_path(
+    state: &TreeState<PathBuf>,
+    items: &[TreeItem<'static, PathBuf>],
+) -> Option<PathBuf> {
+    let selected = state.selected().last()?;
+    contains_identifier(items, selected).then(|| selected.clone())
+}
+
+fn contains_identifier(items: &[TreeItem<'static, PathBuf>], target: &PathBuf) -> bool {
+    items
+        .iter()
+        .any(|item| item.identifier() == target || contains_identifier(item.children(), target))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn stale_selection_is_rejected_after_filtering() {
+        let a = PathBuf::from("A.txt");
+        let b = PathBuf::from("B.txt");
+        let items = vec![TreeItem::new_leaf(a.clone(), "A.txt")];
+        let mut state = TreeState::default();
+        state.select(vec![b]);
+
+        assert_eq!(selected_visible_path(&state, &items), None);
+
+        state.select(vec![a.clone()]);
+        assert_eq!(selected_visible_path(&state, &items), Some(a));
+    }
 }
