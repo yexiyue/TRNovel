@@ -19,17 +19,23 @@ pub fn SelectFile(mut hooks: Hooks) -> impl Into<AnyElement<'static>> {
     let mut navigate = hooks.use_navigate();
     let theme = hooks.use_component_theme::<AppChromeTheme>();
     let mut path = hooks.use_state(|| dir_path.map(|p| (*p).clone()));
+    let mut filter_text = hooks.use_state(String::default);
     let mut info_modal_open = hooks.use_state(|| false);
     let history = *hooks.use_context::<State<Option<History>>>();
 
     let dir_path = path.read().clone().unwrap_or(current_dir().unwrap());
+    let filter = filter_text.read().clone();
 
     let (data, loading, error) = hooks.use_effect_state(
         {
             let path = dir_path.clone();
-            async move { tokio::spawn(async move { NovelFiles::from_path(path) }).await? }
+            let filter = filter.clone();
+            async move {
+                tokio::spawn(async move { NovelFiles::from_path_with_filter(path, Some(filter)) })
+                    .await?
+            }
         },
-        dir_path.clone(),
+        (dir_path.clone(), filter.clone()),
     );
 
     let tree_items = data
@@ -88,6 +94,20 @@ pub fn SelectFile(mut hooks: Hooks) -> impl Into<AnyElement<'static>> {
                     }
                 },
             )
+            SearchInput(
+                value: filter.clone(),
+                placeholder: "按/搜索小说名称",
+                activate_key: Some(KeyCode::Char('/')),
+                is_editing: !info_modal_open.get(),
+                clear_on_escape: true,
+                on_submit: move |input: String| {
+                    filter_text.set(input);
+                    true
+                },
+                on_clear: move |_| {
+                    filter_text.set(String::default());
+                },
+            )
             FileSelect(
                 is_editing: !info_modal_open.get(),
                 top_title: Line::from("本地小说".to_string()).style(theme.title).centered(),
@@ -95,7 +115,11 @@ pub fn SelectFile(mut hooks: Hooks) -> impl Into<AnyElement<'static>> {
                 on_select: move |item:PathBuf| {
                     navigate.push_with_state("/local-novel", item);
                 },
-                empty_message: "未搜索到小说文件，请确认路径是否正确，或按s 开始输入路径",
+                empty_message: if filter.is_empty() {
+                    "未搜索到小说文件，请确认路径是否正确，或按s 开始输入路径".to_owned()
+                } else {
+                    "没有匹配的小说，请按/重新搜索，或按Esc清除搜索".to_owned()
+                },
             )
             WarningModal(
                 tip: format!("加载失败:{:?}", error.read().as_ref()),
@@ -109,7 +133,8 @@ pub fn SelectFile(mut hooks: Hooks) -> impl Into<AnyElement<'static>> {
                     ("选择下一个", "J / ▼"),
                     ("选择上一个", "K / ▲"),
                     ("选择小说文件", "Enter"),
-                    ("开始输入路径", "S")
+                    ("开始输入路径", "S"),
+                    ("搜索小说名称", "/")
                 ],
                 open: info_modal_open.get(),
             )
