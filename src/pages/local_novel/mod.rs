@@ -4,7 +4,7 @@ use crate::{
         Loading, WarningModal, file_select::FileSelect,
         modal::shortcut_info_modal::ShortcutInfoModal, search_input::SearchInput,
     },
-    file_list::NovelFiles,
+    file_list::NovelFileIndex,
     hooks::UseInitState,
     theme::AppChromeTheme,
 };
@@ -26,28 +26,35 @@ pub fn SelectFile(mut hooks: Hooks) -> impl Into<AnyElement<'static>> {
     let dir_path = path.read().clone().unwrap_or(current_dir().unwrap());
     let filter = filter_text.read().clone();
 
-    let (data, loading, error) = hooks.use_effect_state(
-        {
-            let path = dir_path.clone();
-            let filter = filter.clone();
-            // walkdir 递归是同步阻塞 IO,必须走 spawn_blocking:用 tokio::spawn
-            // 会把它压在 async worker 上,大目录扫描期间同 runtime 的网络书源
-            // 请求和 TTS 下载都会被一起拖慢。
-            async move {
-                tokio::task::spawn_blocking(move || {
-                    NovelFiles::from_path_with_filter(path, Some(filter))
-                })
-                .await?
-            }
-        },
-        (dir_path.clone(), filter.clone()),
-    );
+    // 扫描只跟目录走:搜索词变化不再重新遍历文件系统,而是复用内存索引过滤。
+    // walkdir 递归是同步阻塞 IO,必须走 spawn_blocking —— 用 tokio::spawn 会把它
+    // 压在 async worker 上,大目录扫描期间同 runtime 的网络书源请求和 TTS 下载
+    // 都会被一起拖慢。
+    let (data, loading, error) =
+        hooks.use_effect_state(
+            {
+                let path = dir_path.clone();
+                async move {
+                    tokio::task::spawn_blocking(move || NovelFileIndex::from_path(path)).await?
+                }
+            },
+            dir_path.clone(),
+        );
 
-    let tree_items = data
-        .read()
-        .clone()
-        .map(|i| i.into_tree_item())
-        .unwrap_or_default();
+    // deps 必须是 O(1) 的标识:放 `data.read().clone()` 会每帧深拷贝整个索引,
+    // 且 NovelFileIndex derive 了 PartialEq、比较又是一次全树深比较 —— 那等于把
+    // 「每次改搜索词一次 walkdir」换成「每帧两次全树遍历」,比原问题更重。
+    // 索引只在 dir_path 变化时重建,所以「目录 + 扫描是否完成 + 搜索词」三者足以
+    // 覆盖全部重算时机。
+    let tree_items = hooks.use_memo(
+        || {
+            data.read()
+                .as_ref()
+                .map(|index| index.filter(Some(&filter)))
+                .unwrap_or_default()
+        },
+        (dir_path.clone(), data.read().is_some(), filter.clone()),
+    );
 
     hooks.use_event_handler(EventScope::Current, EventPriority::Normal, move |event| {
         let Event::Key(key) = event else {
