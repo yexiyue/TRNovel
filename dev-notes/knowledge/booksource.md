@@ -174,3 +174,11 @@ for &arg in HEADFUL_DEFAULT_ARGS { builder = builder.arg(arg); }
 kokoro-tts `0.3.1` 勿升（rc.12 砍 Intel Mac），见 [toolchain.md](toolchain.md)。模型文件（`kokoro-v1.1-zh.onnx`、`voices-v1.1-zh.bin`）自动从 GitHub 下载到 `~/.novel-tts/kokoro/`，HTTP Range 断点续传，`CancellationToken` 取消。
 
 <!-- 随开发补充:新规则 DSL 前缀、新站点接入坑等 -->
+
+### 当前 Kokoro 中文前端：词典与规则，不是上下文模型
+
+已安装 `kokoro-tts 0.3.1` 的 `g2p/v11.rs` 使用 jieba、词组拼音词典、变调与儿化规则；`get_pinyin_fine` 词典未命中时退回逐字 `ToPinyin`。`neural_sandhi` 名称不能证明有神经消歧，它是规则函数。公开 `KokoroTts::synth` 内部调用 G2P，替换前端需要额外音素合成接口或适配实现。
+
+**正确做法**：区分多音字读音、模型韵律与章节分段的影响；更换前端时保持 v1.1 音素与模型词表兼容。新版 crate 的存在不代表中文音质改进，不绕过 toolchain 中的 ort 钉版约束。
+
+**相关文件**：`crates/novel-tts/src/{chapter.rs,utils.rs,model.rs}`、[听书演进计划](../tts-backend-plan.md)（讨论稿，尚未实施）。
