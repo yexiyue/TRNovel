@@ -20,7 +20,7 @@ elif [[ "${DRY_RUN:-false}" != true ]]; then
   [[ "${RELEASE_TAG:-}" == "trnovel-v$version" ]]
 fi
 
-npm publish "$package" --access public --dry-run --ignore-scripts
+npm pack "$package" --dry-run --ignore-scripts
 if [[ "${DRY_RUN:-false}" == true ]]; then
   exit 0
 fi
@@ -32,3 +32,14 @@ if jq -e --arg version "$version" 'if type == "array" then index($version) != nu
   exit 0
 fi
 npm publish "$package" --access public --ignore-scripts
+
+# npm scans uploads before exposing them publicly. Wait instead of re-uploading.
+for attempt in $(seq 1 90); do
+  if published_version=$(npm view "$name@$version" version --prefer-online 2>/dev/null) && [[ "$published_version" == "$version" ]]; then
+    echo "$name@$version is publicly available."
+    exit 0
+  fi
+  sleep 10
+done
+echo "::error::npm accepted the upload, but $name@$version is not public yet. Check npm scan/review status before retrying."
+exit 1
