@@ -1,3 +1,8 @@
+## [0.17.1] - 2026-10-05
+
+### 🚀 Features
+
+- *(release)* Provide aarch64 musl binaries (#73)
 ## [0.17.0] - 2026-08-24
 
 ### 🚀 Features
