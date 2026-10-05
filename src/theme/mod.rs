@@ -53,6 +53,7 @@ pub struct ReaderTheme {
     pub progress: Style,
     pub border: Style,
     pub tts_highlight: Style,
+    pub search_highlight: Style,
 }
 
 impl ComponentTheme for ReaderTheme {
@@ -63,6 +64,7 @@ impl ComponentTheme for ReaderTheme {
             footer: Style::new().fg(palette.fg_dim),
             progress: Style::new().fg(palette.accent),
             border: Style::new().fg(palette.border),
+            search_highlight: Style::new().fg(palette.accent),
             tts_highlight: Style::new()
                 .fg(palette.success)
                 .add_modifier(Modifier::BOLD),

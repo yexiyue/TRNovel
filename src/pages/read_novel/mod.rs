@@ -10,6 +10,7 @@ use futures::FutureExt;
 use ratatui::layout::Direction;
 use ratatui_kit::prelude::*;
 use ratatui_kit_keymap::UseKeymapHandler;
+mod search;
 mod select_chapter;
 pub use select_chapter::*;
 mod read_content;
@@ -43,6 +44,11 @@ where
     let mut current_chapter = hooks.use_state(|| 0usize);
     let mut content = hooks.use_state(String::default);
     let mut is_read_mode = hooks.use_state(|| false);
+    let mut search = hooks.use_state(search::ChapterSearch::default);
+    hooks.use_effect(
+        || search.set(search::ChapterSearch::default()),
+        (current_chapter.get(), is_read_mode.get()),
+    );
     // 同层浮层用单一状态而非每个面板一个 bool:互斥由类型保证,不可能同时开两个,
     // 也不必在每个入口手写「关掉另一个」。信息浮层是叠在面板之上的层,保持独立。
     let mut panel = hooks.use_state(|| Panel::None);
@@ -245,6 +251,7 @@ where
         { if is_read_mode.get() {
             element!(View{
                 ReadContent(
+                    search: search,
                     is_scroll: panel.get() == Panel::None && !info_modal_open.get(),
                     width: width,
                     height: height,
@@ -264,6 +271,7 @@ where
                                 error.write().replace(e);
                                 return;
                             }
+                            content_loading.set(true);
                             current_chapter.set(new_chapter);
                             scroll_target.set(ScrollTarget::Ratio(0.0));
                         }
@@ -280,6 +288,7 @@ where
                                 error.write().replace(e);
                                 return;
                             }
+                            content_loading.set(true);
                             current_chapter.set(new_chapter);
                             // 顶部 ↑ 翻回上一章(is_scroll_top=true)→ 落到上一章末尾:承接向上连读,
                             // 也让误触跳到下一章后能原路 ↑ 找回原来读到的位置;
@@ -334,6 +343,10 @@ where
                             ])
                         } else {
                             KeyShortcutInfo(vec![
+                                dk("搜索当前章节正文", ReaderAction::SearchContent),
+                                dk("下一个正文搜索结果", ReaderAction::NextSearchMatch),
+                                dk("上一个正文搜索结果", ReaderAction::PrevSearchMatch),
+                                dk("清除正文搜索", ReaderAction::ClearContentSearch),
                                 dk("切换章节选择模式", ReaderAction::ToggleReadMode),
                                 dk("隐藏/显示标题", ReaderAction::ToggleTitle),
                                 dk("打开阅读设置", ReaderAction::ToggleReaderSettings),
@@ -368,6 +381,7 @@ where
                                 error.write().replace(e);
                                 return;
                             }
+                            content_loading.set(true);
                             current_chapter.set(index);
                             // 与 on_next/on_prev 一样必须重置:否则新章沿用上一章的进度比例,
                             // 短章节里会直接落到「贴底之下」,前向键失效并误报章末。

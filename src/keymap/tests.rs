@@ -1,6 +1,41 @@
 use super::*;
 use ratatui_kit_keymap::crokey::key;
 
+#[test]
+fn chapter_search_keys_and_overrides_preserve_case() {
+    let mut km = reader_defaults();
+    assert_eq!(km.action_for(key!(s)), Some(ReaderAction::SearchContent));
+    assert_eq!(km.action_for(key!(n)), Some(ReaderAction::NextSearchMatch));
+    assert_eq!(
+        km.action_for(key!(shift - n)),
+        Some(ReaderAction::PrevSearchMatch)
+    );
+    assert_eq!(
+        km.action_for(key!(esc)),
+        Some(ReaderAction::ClearContentSearch)
+    );
+    assert_eq!(display_first_key(&km, ReaderAction::NextSearchMatch), "n");
+    assert_eq!(display_first_key(&km, ReaderAction::PrevSearchMatch), "N");
+    let table = ratatui_kit_keymap::toml::from_str(
+        "search_content = [\"ctrl-s\"]\nnext_search_match = [\"f3\"]\nprev_search_match = [\"shift-f3\"]\nclear_content_search = [\"ctrl-x\"]"
+    ).unwrap();
+    assert!(km.merge_toml_table(table).is_empty());
+    assert_eq!(km.action_for(key!(s)), None);
+    assert_eq!(
+        km.action_for(key!(ctrl - s)),
+        Some(ReaderAction::SearchContent)
+    );
+    assert_eq!(km.action_for(key!(f3)), Some(ReaderAction::NextSearchMatch));
+    assert_eq!(
+        km.action_for(key!(shift - f3)),
+        Some(ReaderAction::PrevSearchMatch)
+    );
+    assert_eq!(
+        km.action_for(key!(ctrl - x)),
+        Some(ReaderAction::ClearContentSearch)
+    );
+}
+
 /// 默认表必须能构建(无冲突、键位全部合法)—— build 内有断言,构建成功即验证。
 #[test]
 fn reader_defaults_build_and_match_legacy_keys() {

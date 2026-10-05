@@ -32,6 +32,10 @@ pub enum ReaderAction {
     ToggleInfo,
     ToggleTts,
     ToggleReaderSettings,
+    SearchContent,
+    NextSearchMatch,
+    PrevSearchMatch,
+    ClearContentSearch,
 }
 
 /// 全应用键位表。挂 `Arc` 供 `use_keymap_handler` 每帧克隆(引用计数,非深拷贝)。
@@ -52,6 +56,14 @@ impl Default for AppKeymap {
 /// 首位,帮助/提示取首键显示时保持「↑ / ↓」的既有视觉习惯)。
 fn reader_defaults() -> Keymap<ReaderAction> {
     Keymap::builder()
+        .bind(ReaderAction::SearchContent, ["s"])
+        .desc(ReaderAction::SearchContent, "搜索当前章节正文")
+        .bind(ReaderAction::NextSearchMatch, ["n"])
+        .desc(ReaderAction::NextSearchMatch, "下一个正文搜索结果")
+        .bind(ReaderAction::PrevSearchMatch, ["N"])
+        .desc(ReaderAction::PrevSearchMatch, "上一个正文搜索结果")
+        .bind(ReaderAction::ClearContentSearch, ["esc"])
+        .desc(ReaderAction::ClearContentSearch, "清除正文搜索")
         .bind(ReaderAction::ScrollUp, ["up", "k"])
         .desc(ReaderAction::ScrollUp, "向上滚动(章首连按翻上一章)")
         .bind(ReaderAction::ScrollDown, ["down", "j"])
@@ -165,7 +177,7 @@ pub fn display_keys(keymap: &Keymap<ReaderAction>, action: ReaderAction) -> Stri
     // 美化后去重:小写 t 与 shift-t 都显示为「T」,双绑定只出现一次(同迁移前)。
     let mut names: Vec<String> = Vec::new();
     for name in keymap.describe(action) {
-        let pretty = prettify(&name);
+        let pretty = prettify_action_key(&name, action);
         if !names.contains(&pretty) {
             names.push(pretty);
         }
@@ -178,8 +190,21 @@ pub fn display_first_key(keymap: &Keymap<ReaderAction>, action: ReaderAction) ->
     keymap
         .describe(action)
         .first()
-        .map(|name| prettify(name))
+        .map(|name| prettify_action_key(name, action))
         .unwrap_or_else(|| "?".to_string())
+}
+
+// Search navigation distinguishes lowercase n from uppercase N.
+fn prettify_action_key(name: &str, action: ReaderAction) -> String {
+    if matches!(
+        action,
+        ReaderAction::NextSearchMatch | ReaderAction::PrevSearchMatch
+    ) && name.chars().count() == 1
+    {
+        name.to_string()
+    } else {
+        prettify(name)
+    }
 }
 
 /// 单个键名的显示美化:沿用迁移前帮助浮层的视觉语言(单字母大写、方向键箭头;

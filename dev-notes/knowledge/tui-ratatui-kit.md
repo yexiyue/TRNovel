@@ -259,7 +259,9 @@ end_scroll = total - view                        贴底位置 = 章末判定线
 
 **步进与边界收进配置类型**(同既有 `TTSConfig::increase_speed()`):`ReaderDisplayConfig::increase_page_overlap()` / `page_step(view)`。UI 不该知道上界 —— 那样 `PAGE_OVERLAP_MAX` 才能保持私有。越界的磁盘值在 `load()` 归一,别用「读侧访问器兜底」:那会让脏值永远留在文件里,且字段可写、访问器同名,靠注释约束等于没有约束。
 
-### TTS 高亮的哨兵字符必须是控制字符 —— `\u{002E}` 就是英文句点
+### 历史 TTS 高亮辅助函数的哨兵字符 —— `\u{002E}` 就是英文句点
+
+正文搜索接入后，阅读组件改用共享的 `ContentLayout` 原文坐标排版；下面描述保留的 `highlight` 辅助函数与历史回归案例。
 
 `textwrap` 换行会重排文本、原始字节偏移随之失效,所以高亮范围是用哨兵字符**嵌进文本**里跟着走的(`highlight` 塞标记 → `highlight_text` 按标记切 span)。起始标记一直是 `\u{001E}`(记录分隔符,没问题),**结束标记却写成了 `\u{002E}`** —— 那不是控制字符,就是普通的英文句点 `.`。
 
@@ -457,3 +459,14 @@ ambient 单例(主题 / TTS 模型句柄 / 浏览器提示)从「`App` `use_stat
 - 不要把 `show_title`、阅读行为或其他偏好塞进 `AppearanceConfig`；外观配置只保存命名主题与背景策略。
 
 **相关文件**：`src/cache/setting.rs`、`src/state.rs`、`src/app/mod.rs`、`src/theme/mod.rs`、`src/pages/theme_setting/mod.rs`
+
+### 正文搜索使用原文坐标与独占输入层
+
+正文搜索先对无样式正文做 `textwrap::wrap`，记录每个显示行对应的原文字节范围，再裁切 spans 添加搜索和 TTS 样式。不要插入高亮标记参与换行：多处命中会改变排版，导航坐标也会失效。排版与匹配集合用 Arc 缓存，搜索修订号驱动导航和样式更新。
+
+**正确做法**：
+- 页面持有搜索状态，以章节索引和阅读模式重置，不能只依赖正文字符串（不同章节可以同文）。
+- 受控单行输入复用框架 Input + tui_input，编辑时注册 blocks_lower 输入层；框架 SearchInput 的 is_editing 是“允许激活”，不是受控打开状态。
+- 结果切换提示必须保留 n/N 的大小写，通用键名大写美化会把二者显示成同一个键。
+
+**相关文件**：`src/pages/read_novel/search/mod.rs`、`src/pages/read_novel/read_content.rs`、`src/keymap/mod.rs`。

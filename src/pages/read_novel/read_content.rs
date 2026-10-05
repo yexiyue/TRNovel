@@ -1,3 +1,4 @@
+use super::search::{ChapterSearch, ContentLayout};
 use crate::{
     TTSConfig,
     components::Loading,
@@ -14,6 +15,7 @@ use ratatui::{
 };
 use ratatui_kit::prelude::*;
 use ratatui_kit_keymap::UseKeymapHandler;
+use std::sync::Arc;
 use std::time::Duration;
 
 /// 章节边界的「再按一次」确认态,防止读到章末/章首时误触 ↓/↑ 直接跳章。
@@ -106,6 +108,7 @@ impl Default for ScrollTarget {
 #[derive(Default, Props)]
 pub struct ReadContentProps {
     pub content: String,
+    pub search: Option<State<ChapterSearch>>,
     pub is_scroll: bool,
     pub is_loading: bool,
     pub width: u16,
@@ -256,37 +259,69 @@ pub fn ReadContent(
     // 恒等 → 切换开关后排版会冻结在首帧。
     let paragraph_spacing = reader_display.read().paragraph_spacing;
 
+    let local_search = hooks.use_state(ChapterSearch::default);
+    let mut search = props.search.unwrap_or(local_search);
+    hooks.use_effect(
+        || {
+            let query = search.read().query.clone();
+            if !query.is_empty() {
+                search.write().submit(&props.content, query);
+            }
+        },
+        props.content.clone(),
+    );
+    let editing = search.read().editing && props.is_scroll && !props.is_loading;
+    let layout = hooks.use_memo(
+        || {
+            Arc::new(ContentLayout::new(
+                &props.content,
+                props.width.saturating_sub(2) as usize,
+                paragraph_spacing,
+            ))
+        },
+        (props.content.clone(), props.width, paragraph_spacing),
+    );
+    let matches = search.read().matches.clone();
+    let selected = search.read().selected;
+    let segment = highlight_range.read().clone();
+    let tts_range = hooks.use_memo(
+        || {
+            segment.as_ref().and_then(|segment| {
+                props
+                    .content
+                    .get(segment.start..)?
+                    .find(&segment.text)
+                    .map(|offset| {
+                        segment.start + offset..segment.start + offset + segment.text.len()
+                    })
+            })
+        },
+        (props.content.clone(), segment.clone()),
+    );
     let paragraph = hooks.use_memo(
         || {
-            // 包成 TextParagraph(Send + Sync):0.30 起 owned Paragraph 内含 Block 而非 Send,
-            // 无法直接存入 use_memo 的状态体系。TextParagraph Deref 到 Paragraph,后续 line_count/
-            // 渲染照常。
-            let paragraph = if let Some(segment) = highlight_range.read().as_ref()
-                && is_listening.get()
-            {
-                Paragraph::new(highlight(
-                    &props.content,
-                    segment,
-                    (props.width as usize).saturating_sub(2),
-                    theme.tts_highlight,
-                    paragraph_spacing,
-                ))
-            } else {
-                Paragraph::new(wrap_content(
-                    &props.content,
-                    (props.width as usize).saturating_sub(2),
-                    paragraph_spacing,
-                ))
-            };
-            TextParagraph::from(paragraph)
+            TextParagraph::from(Paragraph::new(
+                layout.styled(
+                    &matches,
+                    selected,
+                    theme.search_highlight,
+                    tts_range
+                        .as_ref()
+                        .filter(|_| is_listening.get())
+                        .map(|range| (range, theme.tts_highlight)),
+                ),
+            ))
         },
         (
-            is_listening.get(),
-            highlight_range.read().clone(),
             props.content.clone(),
             props.width,
-            theme.tts_highlight,
             paragraph_spacing,
+            search.read().revision,
+            selected,
+            tts_range.clone(),
+            is_listening.get(),
+            theme.search_highlight,
+            theme.tts_highlight,
         ),
     );
 
@@ -301,8 +336,24 @@ pub fn ReadContent(
     // 旧实现只有一个 `line_count`(实为 end_scroll)同时兼任滚动上限、进度分母与行号分母,
     // 分母含视口高度 → 进度随终端尺寸漂移,且末尾无法留白。
     let total = paragraph.line_count(props.width.saturating_sub(2));
-    let view = visible_lines(props.height);
+    let view = visible_lines(props.height.saturating_sub(u16::from(editing)));
     let end_scroll = total.saturating_sub(view);
+
+    hooks.use_effect(
+        || {
+            edge.set(Edge::None);
+            if !editing && let Some(target) = matches.get(selected) {
+                let line = layout.match_line(target).min(end_scroll);
+                scroll_target.set(ScrollTarget::Ratio(line as f64 / total.max(1) as f64));
+            }
+        },
+        (
+            search.read().revision,
+            props.width,
+            paragraph_spacing,
+            props.height,
+        ),
+    );
 
     let mut current_line = hooks.use_memo(
         || scroll_target.get().resolve(total, end_scroll),
@@ -318,6 +369,21 @@ pub fn ReadContent(
     // 滚动条的 content_length 要传**最大滚动位置**而非总行数:`use_scrollbar` 内部把两个
     // 入参同除以组件高度,传 total 会让 position 恒小于 content_len、滑块永远到不了底。
     hooks.use_scrollbar(end_scroll, Some(current_line));
+
+    let can_search = props.is_scroll && !props.is_loading;
+    let layer = hooks.use_input_layer(editing && can_search, true);
+    let input_content = props.content.clone();
+    hooks.use_event_handler(
+        EventScope::Layer(layer),
+        EventPriority::High,
+        move |event| {
+            if !can_search || !search.read().editing {
+                return EventResult::Ignored;
+            }
+            search.write().handle_input(&event, &input_content);
+            EventResult::Consumed
+        },
+    );
 
     let props_content = props.content.clone();
     let has_prev = props.has_prev;
@@ -344,6 +410,23 @@ pub fn ReadContent(
                 _ => 1,
             };
             match action {
+                ReaderAction::SearchContent if can_search => {
+                    let query = search.read().query.clone();
+                    let mut state = search.write();
+                    state.draft = tui_input::Input::new(query);
+                    state.editing = true;
+                    EventResult::Consumed
+                }
+                ReaderAction::NextSearchMatch | ReaderAction::PrevSearchMatch if can_search => {
+                    search
+                        .write()
+                        .advance(action == ReaderAction::PrevSearchMatch);
+                    EventResult::Consumed
+                }
+                ReaderAction::ClearContentSearch if can_search => {
+                    search.set(ChapterSearch::default());
+                    EventResult::Consumed
+                }
                 ReaderAction::ScrollUp | ReaderAction::PageUp => {
                     if current_line > 0 {
                         current_line = current_line.saturating_sub(delta);
@@ -467,6 +550,33 @@ pub fn ReadContent(
         },
     );
 
+    let footer_status = match edge.get() {
+        Edge::Next => format!(
+            "● 已到本章末尾 · 再按 {} 进入下一章",
+            display_first_key(&reader_keymap, ReaderAction::ScrollDown)
+        ),
+        Edge::Prev => format!(
+            "● 已到本章开头 · 再按 {} 返回上一章",
+            display_first_key(&reader_keymap, ReaderAction::ScrollUp)
+        ),
+        Edge::AtLast => "● 已是全书最后一章".to_string(),
+        Edge::AtFirst => "● 已是第一章".to_string(),
+        Edge::None => {
+            let state = search.read();
+            if state.query.is_empty() || props.width < 110 {
+                state.status()
+            } else {
+                format!(
+                    "{} · {} / {} 切换 · {} 清除",
+                    state.status(),
+                    display_first_key(&reader_keymap, ReaderAction::NextSearchMatch),
+                    display_first_key(&reader_keymap, ReaderAction::PrevSearchMatch),
+                    display_first_key(&reader_keymap, ReaderAction::ClearContentSearch)
+                )
+            }
+        }
+    };
+
     let show_title = reader_display.read().show_title;
 
     element!(Border(
@@ -488,8 +598,9 @@ pub fn ReadContent(
                 .style(theme.footer)
             }else{
                 Line::from(format!(
-                    "按 {} 播放/暂停",
-                    display_first_key(&reader_keymap, ReaderAction::TogglePlay)
+                    "按 {} 播放/暂停 · {} 搜索正文",
+                    display_first_key(&reader_keymap, ReaderAction::TogglePlay),
+                    display_first_key(&reader_keymap, ReaderAction::SearchContent)
                 )).style(theme.footer)
             }).style(theme.footer).centered())
         }else{
@@ -505,6 +616,11 @@ pub fn ReadContent(
                 scroll: (current_line as u16,0))
             ).into_any()
         } }
+        { if editing && can_search {
+            element!(View(height: Constraint::Length(1), margin: Margin::new(1,0)) {
+                Input(input: search.read().draft.clone(), placeholder: "搜索本章正文 · Enter 提交 / Esc 取消")
+            }).into_any()
+        } else { element!(View(height: Constraint::Length(0))).into_any() } }
         View(
             flex_direction: Direction::Horizontal,
             justify_content: Flex::SpaceBetween,
@@ -512,23 +628,17 @@ pub fn ReadContent(
             margin: Margin::new(1,0),
         ){
             // 分子取「最后可见行」而非首行:读到章末时显示 200/200 而不是 170/200。
-            widget(Line::from(format!("{}/{} 行", (current_line + view).min(total), total)).style(theme.footer))
+            View(width: Constraint::Length(12)) {
+                widget(Line::from(format!("{}/{} 行", (current_line + view).min(total), total)).style(theme.footer))
+            }
             // 章末/章首「再按一次」确认提示(仅武装时显示;accent+bold 醒目;
             // 键名从 keymap 动态取,重绑后提示的就是新键)。
-            widget(Line::from(match edge.get() {
-                Edge::Next => format!(
-                    "● 已到本章末尾 · 再按 {} 进入下一章",
-                    display_first_key(&reader_keymap, ReaderAction::ScrollDown)
-                ),
-                Edge::Prev => format!(
-                    "● 已到本章开头 · 再按 {} 返回上一章",
-                    display_first_key(&reader_keymap, ReaderAction::ScrollUp)
-                ),
-                Edge::AtLast => "● 已是全书最后一章".to_string(),
-                Edge::AtFirst => "● 已是第一章".to_string(),
-                Edge::None => String::new(),
-            }).style(theme.chapter).centered())
-            widget(Line::from(format!("{:.2}% {}",props.chapter_percent, current_time.read().clone())).style(theme.progress).right_aligned())
+            View(width: Constraint::Fill(1)) {
+                widget(Line::from(footer_status).style(theme.chapter).centered())
+            }
+            View(width: Constraint::Length(13)) {
+                widget(Line::from(format!("{:.2}% {}",props.chapter_percent, current_time.read().clone())).style(theme.progress).right_aligned())
+            }
         }
     })
 }
@@ -603,7 +713,7 @@ pub fn highlight(
 /// 小说正文通常以换行分隔段落,而不是以空行分隔。若直接对整章调用
 /// `textwrap::fill`,这些段落会首尾相接,阅读时视觉上过于紧凑;但补空行会让
 /// 总行数近乎翻倍,小屏下并非人人都要 —— 故由阅读偏好开关控制。
-fn wrap_content(text: &str, width: usize, spacing: bool) -> Vec<Line<'static>> {
+pub(super) fn wrap_content(text: &str, width: usize, spacing: bool) -> Vec<Line<'static>> {
     let mut lines = Vec::new();
     for line in text.lines() {
         append_wrapped_line(&mut lines, line, width, None, spacing);
