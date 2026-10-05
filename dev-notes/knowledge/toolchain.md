@@ -71,3 +71,11 @@ Codex / CI shell 可能带 `TERM=dumb` 或 `NO_COLOR=1`，会让 ratatui/crosste
 2. **widget() 收按值 widget**(`adapter/widget.rs` 约束 `for<'a> &'a T: Widget` → `T: Widget + Clone` 按值克隆渲染;`text.rs` 的 `TextParagraph` 同步改按值):`BigText` 等只实现按值 `Widget` 的部件可直接 `widget(...)`。**取舍**:只实现按引用 `impl Widget for &T` 的部件(如 ratatui-widgets 的 `Shadow`)在 0.7.1 起不再被 `widget()` 接纳。
 
 <!-- 随开发补充:新 feature 门控约定、CI matrix 变更等 -->
+
+### ARM64 musl release artifact
+
+`local-artifacts-jobs = ["./musl"]` extends cargo-dist without hand-editing the generated workflow. The reusable musl workflow builds both application binaries natively in an ARM64 Alpine 3.23 Rust container and uploads `artifacts-build-musl`; the generated host job includes these files in the GitHub Release. It runs on PRs separately because the main dist workflow normally only plans PR releases.
+
+The pinned ort rc.10 requires ONNX Runtime API 1.22. Its GNU prebuilt libraries are incompatible with musl, so the musl build uses Alpine's system ONNX Runtime with `ORT_LIB_LOCATION`, `ORT_PREFER_DYNAMIC_LINK=1`, `ORT_SKIP_DOWNLOAD=1`, and `-C target-feature=-crt-static`. This preserves TTS but requires runtime shared libraries. Do not add this target to dist's ordinary matrix until its build and installer dependency handling supports this setup. The custom archive is currently a manual download rather than an installer-selected platform.
+
+**相关文件**：`.github/workflows/musl.yml`、`.github/scripts/build-musl.sh`、`.github/scripts/smoke-musl.sh`、`Cargo.toml`。

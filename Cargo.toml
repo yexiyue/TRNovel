@@ -96,6 +96,8 @@ inherits = "release"
 cargo-dist-version = "0.32.0"
 # CI backends to support
 ci = "github"
+# Native Alpine build keeps musl-compatible ONNX Runtime/ALSA dependencies.
+local-artifacts-jobs = ["./musl"]
 # The installers to generate for each app
 installers = ["shell", "powershell", "npm", "homebrew"]
 # Target platforms to build apps for (Rust target-triple syntax)
