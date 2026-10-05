@@ -136,6 +136,8 @@ pub struct FetchResponse {
 }
 
 /// 取页抽象。实现者负责发请求 + 按目标站字符集解码为文本。
+// async_trait generates #[must_use] on an already must-use boxed Future.
+#[allow(clippy::double_must_use)]
 #[async_trait]
 pub trait Fetcher: Send + Sync {
     /// 取一个页面的解码后文本。

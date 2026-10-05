@@ -66,6 +66,18 @@ npm i -g @trnovel/trnovel
 brew install yexiyue/tap/trnovel
 ```
 
+### ARM64 musl Linux（Alpine）
+
+GitHub Releases 提供 `trnovel-aarch64-unknown-linux-musl.tar.gz`，内含 `trnovel` / `trn` 和安装说明。
+这是保留 TTS 的动态链接 musl 版本；Alpine 3.23 先安装运行时依赖：
+
+```sh
+apk add --no-cache ca-certificates alsa-lib libstdc++ onnxruntime libssl3 libcrypto3
+```
+
+解压后把两个命令放到 PATH 中。此产物需从 [GitHub Releases](https://github.com/yexiyue/TRNovel/releases) 手动下载，
+目前 shell / npm / Homebrew 安装器不会自动选择它。其他 musl 发行版需要兼容的共享库（ONNX Runtime ≥ 1.22）。
+
 ## 使用
 
 ```bash

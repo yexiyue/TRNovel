@@ -126,6 +126,8 @@ pub enum AuthDecision {
 }
 
 /// 解挑战期间与用户交互的 UI 回调(由 app/TUI 实现;非交互场景可不提供)。
+// async_trait generates #[must_use] on an already must-use boxed Future.
+#[allow(clippy::double_must_use)]
 #[async_trait]
 pub trait BrowserUi: Send + Sync {
     /// 撞挑战、需要打开浏览器前征求用户授权(可 await 用户决定)。
