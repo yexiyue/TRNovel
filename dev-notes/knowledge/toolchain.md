@@ -79,3 +79,11 @@ Codex / CI shell 可能带 `TERM=dumb` 或 `NO_COLOR=1`，会让 ratatui/crosste
 The pinned ort rc.10 requires ONNX Runtime API 1.22. Its GNU prebuilt libraries are incompatible with musl, so the musl build uses Alpine's system ONNX Runtime with `ORT_LIB_LOCATION`, `ORT_PREFER_DYNAMIC_LINK=1`, `ORT_SKIP_DOWNLOAD=1`, and `-C target-feature=-crt-static`. This preserves TTS but requires runtime shared libraries. Do not add this target to dist's ordinary matrix until its build and installer dependency handling supports this setup. The custom archive is currently a manual download rather than an installer-selected platform.
 
 **相关文件**：`.github/workflows/musl.yml`、`.github/scripts/build-musl.sh`、`.github/scripts/smoke-musl.sh`、`Cargo.toml`。
+
+### npm Trusted Publishing
+
+npm publishes through the reusable `publish-npm.yml` workflow with Node 24, npm 11 and `id-token: write`; no `NPM_TOKEN` is passed. Configure two npm GitHub trusted publishers for `yexiyue/TRNovel`: `trnovel-release.yml` (the caller identity used for normal releases) and `publish-npm.yml` (manual recovery from existing release assets). Enable direct `npm publish`; dist-tag management is unnecessary. The manual workflow only publishes on main and checks the package name, repository and version against the requested tag. PRs validate the existing release archive with a dry run, without publishing.
+
+Change cargo-dist metadata and regenerate `trnovel-release.yml`; do not edit the generated file directly. Rerunning an old failed release uses its original workflow, so recover with `Publish npm with OIDC` workflow_dispatch on main instead.
+
+**相关文件**：`Cargo.toml`、`.github/workflows/publish-npm.yml`、`.github/scripts/publish-npm.sh`。
