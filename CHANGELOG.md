@@ -1,19 +1,37 @@
-## [0.17.1] - 2026-10-05
+## [0.17.2] - 2026-10-05
+
+### 🚀 Features
+
+- *(reader)* Add current-chapter content search (#77)
+
+### 🐛 Bug Fixes
+
+- Tolerate npm publication scans and retries (#75)
+
+### 📚 Documentation
+
+- Plan optional TTS backends and standalone role analysis
+
+### ⚙️ Miscellaneous Tasks
+
+- Migrate npm publishing to Trusted Publishing (#74)
+- Remove obsolete examples and repository clutter (#76)
+## [trnovel-v0.17.1] - 2026-10-05
 
 ### 🚀 Features
 
 - *(release)* Provide aarch64 musl binaries (#73)
-## [0.17.0] - 2026-08-24
+
+### ⚙️ Miscellaneous Tasks
+
+- Release
+## [trnovel-v0.17.0] - 2026-08-24
 
 ### 🚀 Features
 
 - *(reader)* Add paragraph spacing (#66)
 - *(local-novel)* Add filename search (#67)
 - *(reader)* 段落间距开关 + 本地搜索性能与展开修复 (#69)
-
-### 🚜 Refactor
-
-- *(local-novel,reader)* 修高亮截断与扫描判定不一致,索引真正预计算 (#71)
 
 ### 📚 Documentation
 
@@ -22,6 +40,14 @@
 ### ⚡ Performance
 
 - *(local-novel)* 搜索复用文件索引,不再重复扫盘 (#68)
+
+### 🚜 Refactor
+
+- *(local-novel,reader)* 修高亮截断与扫描判定不一致,索引真正预计算 (#71)
+
+### ⚙️ Miscellaneous Tasks
+
+- Release
 ## [trnovel-v0.16.0] - 2026-08-02
 
 ### 🚀 Features
@@ -149,10 +175,6 @@
 - *(booksource)* 番茄 explore 书库书名/作者字体解码(新增 explore fontMap)
 - 修复 VHS 录制实测暴露的运行期 bug
 
-### 🚜 Refactor
-
-- *(parse-book-source)* 按功能域聚合模块并拆分巨型文件
-
 ### 📚 Documentation
 
 - *(openspec)* Propose browser-pool 与 list-has-more
@@ -160,6 +182,10 @@
 - Dynamic explor entries
 - *(openspec)* 两个迁移 change 提案 + 知识库 gotcha
 - 用 VHS 录屏重写使用文档,新增登录/反爬,落地页换动图
+
+### 🚜 Refactor
+
+- *(parse-book-source)* 按功能域聚合模块并拆分巨型文件
 
 ### ⚙️ Miscellaneous Tasks
 
@@ -227,15 +253,15 @@
 - *(parse-book-source)* Clean 流水线加入确定性加解密/编码/哈希/繁简 transform
 - *(parse-book-source)* JS 逻辑编排逃生舱(boa,js feature)
 
-### 🚜 Refactor
-
-- *(parse-book-source)* 评审修整(Apollo Rust BP)
-
 ### 📚 Documentation
 
 - *(blog)* 书源引擎设计原理深挖(原理向 + 全 mermaid 图)
 - *(blog)* 图文+代码均衡 + 新增 chromiumoxide/反爬入门篇
 - *(book-source)* 补充 XPath / clean 加解密算子 / JS 逃生舱 用法
+
+### 🚜 Refactor
+
+- *(parse-book-source)* 评审修整(Apollo Rust BP)
 
 ### ⚙️ Miscellaneous Tasks
 
@@ -328,15 +354,6 @@
 
 - *(cd)* 调整Linux环境下的OpenSSL配置和依赖安装
 
-### 💼 Other
-
-- *(cd)* 切换到 cross 工具进行Linux跨平台构建
-- *(Cross.toml)* 更新依赖安装命令
-- *(Cross.toml)* 更新交叉编译依赖安装命令
-- *(Cross.toml)* 添加环境变量传递配置以支持预编译库下载
-- *(cd)* 配置 OpenSSL 环境变量以支持静态链接
-- *(cd)* 调整CI构建流程中的依赖安装和环境配置
-
 ### 🎨 Styling
 
 - Clippy
@@ -349,6 +366,15 @@
 - *(cd)* 更新Linux依赖安装命令
 - *(cd)* 更新linux环境下的openssl依赖配置
 - Release
+
+### 💼 Other
+
+- *(cd)* 切换到 cross 工具进行Linux跨平台构建
+- *(Cross.toml)* 更新依赖安装命令
+- *(Cross.toml)* 更新交叉编译依赖安装命令
+- *(Cross.toml)* 添加环境变量传递配置以支持预编译库下载
+- *(cd)* 配置 OpenSSL 环境变量以支持静态链接
+- *(cd)* 调整CI构建流程中的依赖安装和环境配置
 ## [0.8.2] - 2025-11-13
 
 ### 🐛 Bug Fixes
@@ -529,11 +555,6 @@
 - Publish.yaml
 - Publish.yaml
 
-### 💼 Other
-
-- Update publish.yaml
-- Changelog
-
 ### ⚙️ Miscellaneous Tasks
 
 - Release
@@ -541,6 +562,11 @@
 - Test
 - Test
 - Test
+
+### 💼 Other
+
+- Update publish.yaml
+- Changelog
 ## [0.6.2] - 2025-10-12
 
 ### 🚀 Features
@@ -556,13 +582,13 @@
 
 - 优化整体交互逻辑
 
-### 💼 Other
-
-- Clippy
-
 ### ⚙️ Miscellaneous Tasks
 
 - Release
+
+### 💼 Other
+
+- Clippy
 ## [0.6.0] - 2025-10-12
 
 ### 💼 Other
@@ -601,11 +627,6 @@
 - 删除旧架构
 - 优化章节目录选择
 
-### 💼 Other
-
-- Home page
-- Ci/cd
-
 ### 🎨 Styling
 
 - Clippy
@@ -613,6 +634,11 @@
 ### ⚙️ Miscellaneous Tasks
 
 - Release
+
+### 💼 Other
+
+- Home page
+- Ci/cd
 ## [0.5.4] - 2025-02-05
 
 ### 🐛 Bug Fixes
@@ -662,23 +688,23 @@
 - Add info
 - Update todo
 
+### ⚙️ Miscellaneous Tasks
+
+- Release
+
 ### 💼 Other
 
 - ThemeSetting
 - Fmt
+## [0.4.8] - 2025-01-10
 
 ### ⚙️ Miscellaneous Tasks
 
 - Release
-## [0.4.8] - 2025-01-10
 
 ### 💼 Other
 
 - 按键冲突
-
-### ⚙️ Miscellaneous Tasks
-
-- Release
 ## [0.4.7] - 2025-01-09
 
 ### 🚀 Features
@@ -703,13 +729,13 @@
 
 - 修复章节搜索跳转问题
 
-### 💼 Other
-
-- Release.sh
-
 ### ⚙️ Miscellaneous Tasks
 
 - Release
+
+### 💼 Other
+
+- Release.sh
 ## [0.4.5] - 2025-01-06
 
 ### 🚀 Features
@@ -738,31 +764,31 @@
 
 - 支持html规则
 
+### ⚙️ Miscellaneous Tasks
+
+- Release
+
 ### 💼 Other
 
 - 重构网络小说，支持最新的解析器
+## [0.4.2] - 2024-12-25
 
 ### ⚙️ Miscellaneous Tasks
 
 - Release
-## [0.4.2] - 2024-12-25
 
 ### 💼 Other
 
 - 修改set_list
+## [0.4.1] - 2024-12-25
 
 ### ⚙️ Miscellaneous Tasks
 
 - Release
-## [0.4.1] - 2024-12-25
 
 ### 💼 Other
 
 - 重构read novel，将读取文件放入初始化
-
-### ⚙️ Miscellaneous Tasks
-
-- Release
 ## [0.4.0] - 2024-12-23
 
 ### 🐛 Bug Fixes
@@ -778,13 +804,13 @@
 
 - Quick start
 
-### 💼 Other
-
-- Clippy
-
 ### ⚙️ Miscellaneous Tasks
 
 - Release
+
+### 💼 Other
+
+- Clippy
 ## [0.3.6] - 2024-12-21
 
 ### 🚀 Features
@@ -792,13 +818,13 @@
 - Update release
 - Update release
 
-### 💼 Other
-
-- Clippy
-
 ### ⚙️ Miscellaneous Tasks
 
 - Release
+
+### 💼 Other
+
+- Clippy
 ## [0.3.5] - 2024-12-21
 
 ### 🚀 Features
@@ -810,14 +836,14 @@
 - Release
 ## [0.3.4] - 2024-12-21
 
+### ⚙️ Miscellaneous Tasks
+
+- Release
+
 ### 💼 Other
 
 - 重构本地小说，支持输入路径
 - Clippy
-
-### ⚙️ Miscellaneous Tasks
-
-- Release
 ## [0.3.3] - 2024-12-21
 
 ### 🚀 Features
@@ -862,15 +888,15 @@
 - 优化历史记录UI
 - 移除本地的历史记录
 
+### ⚙️ Miscellaneous Tasks
+
+- Release
+
 ### 💼 Other
 
 - 优化章节选择
 - 修复空书源页面
 - 优化文案
-
-### ⚙️ Miscellaneous Tasks
-
-- Release
 ## [parse-book-source-v0.1.1] - 2024-12-16
 
 ### 🚀 Features
@@ -944,13 +970,13 @@
 - Ci
 - Add README
 
+### 🧪 Testing
+
+- Ci
+
 ### 💼 Other
 
 - 读取历史记录文件异常
 - SelectNovel
 - Fmt
 - Clippy
-
-### 🧪 Testing
-
-- Ci
