@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-package="npm/trnovel-npm-package.tar.gz"
+package="./npm/trnovel-npm-package.tar.gz"
 metadata=$(tar -xOf "$package" package/package.json)
 name=$(jq -r '.name' <<< "$metadata")
 version=$(jq -r '.version' <<< "$metadata")

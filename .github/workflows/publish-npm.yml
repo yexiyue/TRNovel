@@ -41,7 +41,6 @@ jobs:
       - uses: actions/setup-node@v6
         with:
           node-version: '24.x'
-          registry-url: https://registry.npmjs.org
       - name: Install OIDC-capable npm
         run: npm install --global npm@11
       - name: Fetch release workflow artifacts
