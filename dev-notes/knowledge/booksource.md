@@ -2,7 +2,7 @@
 
 ## 概览
 
-`crates/parse-book-source`（Legado 风格书源解析引擎、规则 DSL、反爬/渲染抓取）与 `crates/novel-tts`（Kokoro TTS）的项目特有约束。重点是番茄（fanqienovel.com）这类 SPA + 签名站点的接入路线。
+`crates/parse-book-source`（结构化 v2 书源引擎、规则 AST、反爬/渲染抓取）与 `crates/novel-tts`（Kokoro TTS）的项目特有约束。重点是番茄（fanqienovel.com）这类 SPA + 签名站点的接入路线。
 
 ## 规则引擎
 

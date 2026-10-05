@@ -59,7 +59,6 @@ reqwest = { version = "0.13", default-features = false, features = ["rustls"] }
 
 [workspace]
 members = ["crates/novel-tts", "crates/parse-book-source"]
-exclude = ["crates/parse-book-source/examples/json"]
 
 [workspace.dependencies]
 serde = { version = "1.0.228", features = ["derive"] }
