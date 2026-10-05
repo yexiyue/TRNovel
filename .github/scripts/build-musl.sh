@@ -12,13 +12,17 @@ export ORT_SKIP_DOWNLOAD=1
 export RUSTFLAGS='-C target-feature=-crt-static'
 
 target=aarch64-unknown-linux-musl
-cargo build --locked --profile dist --target "$target" --bins -p trnovel
+# This is a native musl host. Omitting --target applies RUSTFLAGS to build
+# scripts too; ort-sys uses OpenSSL while building its host-side downloader.
+rustc -vV | grep -q "host: $target"
+export CARGO_TARGET_DIR=/work/target/musl-build
+cargo build --locked --profile dist --bins -p trnovel
 
 output=target/musl-distrib
 archive=trnovel-$target
 mkdir -p "$output/$archive"
 for binary in trnovel trn; do
-    source=target/$target/dist/$binary
+    source=target/musl-build/dist/$binary
     readelf -h "$source" | grep -q 'Machine:.*AArch64'
     readelf -l "$source" | grep -q '/lib/ld-musl-aarch64.so.1'
     install -m 755 "$source" "$output/$archive/$binary"

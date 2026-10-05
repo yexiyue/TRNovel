@@ -26,7 +26,7 @@ jobs:
         with:
           path: |
             ~/.cache/trnovel-musl
-            target/aarch64-unknown-linux-musl
+            target/musl-build
           key: musl-alpine3.23-${{ runner.arch }}-${{ hashFiles('Cargo.lock', '.github/scripts/build-musl.sh') }}
           restore-keys: musl-alpine3.23-${{ runner.arch }}-
       - name: Build with Alpine's musl and ONNX Runtime
