@@ -1,39 +1,18 @@
-## Parse Book Source
+# parse-book-source
 
-本仓库是为TRNovle 服务，用于支持解析各种书籍源。兼容部分`阅读`书源。
+TRNovel 的结构化 v2 书源引擎，支持搜索、发现、书籍详情、目录和正文提取，以及 CSS、XPath、JSONPath、正则和原生清洗算子。当前格式为 `trnovel-booksource/v2`，不直接兼容 Legado 书源 JSON。
 
-- [x] 支持解析 Api Json接口
-- [x] 支持解析 网站源
+运行入口是 `Engine`，配置通过 `BookSource::from_json` 加载。使用说明和配置示例见：
 
-**示例**
+- [书源介绍](https://yexiyue.github.io/TRNovel/book-source/intro)
+- [规则语法](https://yexiyue.github.io/TRNovel/book-source/rules)
+- [JSON Schema](book-source.schema.json)
+- [浏览器搜索示例](examples/engine_search_poc.rs)
 
-```rust
-use std::{thread::sleep, time::Duration};
+在仓库根目录生成 Schema：
 
-use parse_book_source::{BookSource, BookSourceParser};
-
-#[tokio::main]
-async fn main() -> anyhow::Result<()> {
-    let book_source = BookSource::from_path(
-        "./test.json",
-    )?[0]
-        .clone();
-    let mut parser = BookSourceParser::new(book_source)?;
-    // let res = parser.search_books("百炼", 1, 2).await?;
-    // println!("{:#?}", res);
-    let explores = parser.get_explores().await?;
-    let res = parser.explore_books(&explores[0].url, 1, 2).await?;
-    println!("{:#?}", res);
-    let book_info = parser.get_book_info(&res[2].book_url).await?;
-    println!("{:#?}", book_info);
-    // sleep(Duration::from_secs(1));
-    let toc = parser.get_chapters(&book_info.toc_url).await?;
-    println!("{:#?}", toc);
-    // sleep(Duration::from_secs(1));
-    // let content = parser.get_content(&toc[1].chapter_url).await?;
-    // println!("{}", toc[1].chapter_url);
-    // println!("{}", content);
-    Ok(())
-}
-
+```bash
+cargo run -p parse-book-source --features schema --example gen_schema
 ```
+
+生成或导入书源后，用 `trn doctor <source.v2.json>` 校验。浏览器相关示例需要 `browser` feature 和系统浏览器。

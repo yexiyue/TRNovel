@@ -13,3 +13,5 @@ espeak-ng-data
 !.claude/skills/dev-workflow/
 **/.obsidian
 .codex
+# Temporary release tools, downloads and CI logs
+/work/
