@@ -7,7 +7,7 @@ It uses dynamic musl linking. It is not a fully static executable. On Alpine
 Linux 3.23, install the runtime libraries first:
 
 ```sh
-apk add --no-cache ca-certificates alsa-lib libstdc++ onnxruntime
+apk add --no-cache ca-certificates alsa-lib libstdc++ onnxruntime libssl3 libcrypto3
 ```
 
 Keep these libraries installed, then put `trnovel` and `trn` in your PATH.

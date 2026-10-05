@@ -3,7 +3,7 @@ set -eu
 
 # Run in the native ARM64 rust:1-alpine3.23 container. ONNX Runtime's
 # upstream prebuilt GNU libraries cannot be linked into a musl executable.
-apk add --no-cache build-base pkgconf alsa-lib-dev onnxruntime-dev binutils
+apk add --no-cache build-base pkgconf alsa-lib-dev onnxruntime-dev openssl-dev binutils
 export ORT_LIB_LOCATION=/usr/lib
 export ORT_PREFER_DYNAMIC_LINK=1
 export ORT_SKIP_DOWNLOAD=1

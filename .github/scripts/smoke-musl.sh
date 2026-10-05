@@ -3,7 +3,7 @@ set -eu
 
 # No compiler or development packages: exercise the shipped archive with
 # exactly the runtime dependencies documented for users.
-apk add --no-cache ca-certificates alsa-lib libstdc++ onnxruntime
+apk add --no-cache ca-certificates alsa-lib libstdc++ onnxruntime libssl3 libcrypto3
 mkdir /tmp/trnovel-musl
 cd /tmp/trnovel-musl
 cp /work/target/musl-distrib/trnovel-aarch64-unknown-linux-musl.tar.gz .
