@@ -45,8 +45,18 @@ fn reader_defaults_build_and_match_legacy_keys() {
     assert_eq!(km.action_for(key!(down)), Some(ReaderAction::ScrollDown));
     assert_eq!(km.action_for(key!(pagedown)), Some(ReaderAction::PageDown));
     assert_eq!(km.action_for(key!(home)), Some(ReaderAction::GoTop));
-    assert_eq!(km.action_for(key!('+')), Some(ReaderAction::VolumeUp));
-    assert_eq!(km.action_for(key!('-')), Some(ReaderAction::VolumeDown));
+    #[cfg(feature = "tts")]
+    {
+        assert_eq!(km.action_for(key!('+')), Some(ReaderAction::VolumeUp));
+        assert_eq!(km.action_for(key!('-')), Some(ReaderAction::VolumeDown));
+    }
+    #[cfg(not(feature = "tts"))]
+    {
+        assert_eq!(km.action_for(key!('+')), None);
+        assert_eq!(km.action_for(key!('-')), None);
+        assert_eq!(km.action_for(key!(t)), None);
+        assert_eq!(km.action_for(key!(shift - t)), None);
+    }
     assert_eq!(km.action_for(key!(tab)), Some(ReaderAction::ToggleReadMode));
     // i/I、t/T 大小写双绑定(I = shift-i)。
     assert_eq!(km.action_for(key!(i)), Some(ReaderAction::ToggleInfo));
@@ -54,6 +64,7 @@ fn reader_defaults_build_and_match_legacy_keys() {
         km.action_for(key!(shift - i)),
         Some(ReaderAction::ToggleInfo)
     );
+    #[cfg(feature = "tts")]
     assert_eq!(
         km.action_for(key!(shift - t)),
         Some(ReaderAction::ToggleTts)
@@ -87,9 +98,15 @@ fn reader_override_merges() {
 fn display_keys_follow_project_style() {
     let mut km = reader_defaults();
     assert_eq!(display_keys(&km, ReaderAction::ScrollUp), "↑ / K");
-    assert_eq!(display_keys(&km, ReaderAction::VolumeDown), "-");
+    assert_eq!(
+        display_keys(&km, ReaderAction::VolumeDown),
+        if cfg!(feature = "tts") { "-" } else { "" }
+    );
     // t 与 shift-t 双绑定折叠为单个「T」(同迁移前帮助显示)。
-    assert_eq!(display_keys(&km, ReaderAction::ToggleTts), "T");
+    assert_eq!(
+        display_keys(&km, ReaderAction::ToggleTts),
+        if cfg!(feature = "tts") { "T" } else { "" }
+    );
     let table: ratatui_kit_keymap::toml::Table =
         ratatui_kit_keymap::toml::from_str("page_down = [\"ctrl-d\"]").unwrap();
     km.merge_toml_table(table);
@@ -101,7 +118,7 @@ fn display_keys_follow_project_style() {
 fn warnings_render_in_chinese() {
     let mut km = reader_defaults();
     let table: ratatui_kit_keymap::toml::Table =
-        ratatui_kit_keymap::toml::from_str("page_down = \"ctrl-\"\ntypo = \"x\"\ntoggle_play = 3")
+        ratatui_kit_keymap::toml::from_str("page_down = \"ctrl-\"\ntypo = \"x\"\ntoggle_title = 3")
             .unwrap();
     let messages: Vec<String> = km
         .merge_toml_table(table)
@@ -114,4 +131,21 @@ fn warnings_render_in_chinese() {
     assert!(messages.iter().any(|m| m.contains("值类型不对")));
     // 全部回退/忽略后默认键完好。
     assert_eq!(km.action_for(key!(pagedown)), Some(ReaderAction::PageDown));
+}
+
+#[cfg(not(feature = "tts"))]
+#[test]
+fn basic_ignores_legacy_listening_overrides_without_changing_data() {
+    let original: ratatui_kit_keymap::toml::Table = ratatui_kit_keymap::toml::from_str(
+        "toggle_play = [\"p\"]\nvolume_up = [\"+\"]\ntoggle_tts = [\"t\"]\npage_down = [\"ctrl-d\"]"
+    ).unwrap();
+    let mut map = reader_defaults();
+    assert!(
+        map.merge_toml_table(active_reader_overrides(original.clone()))
+            .is_empty()
+    );
+    assert!(original.contains_key("toggle_play"));
+    assert_eq!(map.action_for(key!(p)), None);
+    assert_eq!(map.action_for(key!(t)), None);
+    assert_eq!(map.action_for(key!(ctrl - d)), Some(ReaderAction::PageDown));
 }

@@ -2919,15 +2919,44 @@ name = "novel-tts"
 version = "0.3.0"
 dependencies = [
  "anyhow",
+ "clap",
+ "crossterm 0.29.0",
+ "futures",
+ "novel-tts-core",
+ "novel-tts-protocol",
+ "serde_json",
+ "tempfile",
+ "tokio",
+]
+
+[[package]]
+name = "novel-tts-core"
+version = "0.3.0"
+dependencies = [
+ "anyhow",
  "dirs",
  "kokoro-tts",
+ "novel-tts-protocol",
  "ort",
  "regex",
  "reqwest",
  "rodio",
+ "serde",
+ "serde_json",
+ "tempfile",
  "thiserror 2.0.18",
  "tokio",
  "tokio-util",
+]
+
+[[package]]
+name = "novel-tts-protocol"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "serde_json",
+ "sha2",
+ "thiserror 2.0.18",
 ]
 
 [[package]]
@@ -5321,7 +5350,7 @@ dependencies = [
  "fancy-regex 0.18.0",
  "futures",
  "md5",
- "novel-tts",
+ "novel-tts-protocol",
  "parse-book-source",
  "ratatui",
  "ratatui-kit",
@@ -5332,10 +5361,12 @@ dependencies = [
  "serde_json",
  "strum",
  "swash",
+ "tempfile",
  "textwrap",
  "thiserror 2.0.18",
  "throbber-widgets-tui",
  "tokio",
+ "tokio-util",
  "tui-big-text",
  "tui-tree-widget",
  "tui-widget-list",

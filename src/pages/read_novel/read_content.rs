@@ -1,18 +1,17 @@
 use super::search::{ChapterSearch, ContentLayout};
 use crate::{
-    TTSConfig,
     components::Loading,
     hooks::UseScrollbar,
     keymap::{ReaderAction, display_first_key},
     theme::ReaderTheme,
 };
-use novel_tts::utils::TextSegment;
 use ratatui::{
     layout::{Constraint, Direction, Flex, Margin},
-    style::Style,
-    text::{Line, Span},
+    text::Line,
     widgets::Paragraph,
 };
+#[cfg(test)]
+use ratatui::{style::Style, text::Span};
 use ratatui_kit::prelude::*;
 use ratatui_kit_keymap::UseKeymapHandler;
 use std::sync::Arc;
@@ -108,6 +107,8 @@ impl Default for ScrollTarget {
 #[derive(Default, Props)]
 pub struct ReadContentProps {
     pub content: String,
+    pub book_id: String,
+    pub chapter_index: usize,
     pub search: Option<State<ChapterSearch>>,
     pub is_scroll: bool,
     pub is_loading: bool,
@@ -131,129 +132,84 @@ pub fn ReadContent(
 ) -> impl Into<AnyElement<'static>> {
     let theme = hooks.use_component_theme::<ReaderTheme>();
     let mut reader_display = hooks.use_atom(&crate::state::READER_DISPLAY);
-    let mut is_listening = hooks.use_state(|| false);
-    let mut highlight_range = hooks.use_state(|| None::<TextSegment>);
-    let tts_config = *hooks.use_context::<State<TTSConfig>>();
-    let novel_tts = hooks.use_atom(&crate::state::NOVEL_TTS);
-    let mut chapter_tts = hooks.use_state(|| None::<novel_tts::ChapterTTS>);
-    let mut player = hooks.use_state(|| None::<novel_tts::Player>);
-    let mut is_listening_done = hooks.use_state(|| false);
     let mut on_prev = props.on_prev.take();
     let mut on_next = props.on_next.take();
-    // 章末/章首「再按一次」确认态(防误触跳章)。
     let mut edge = hooks.use_state(|| Edge::None);
-
-    // 自动播放下一章节
-    if is_listening_done.get() && tts_config.read().auto_play {
-        if props.has_next {
-            on_next(());
-        } else {
-            // 全书最后一章:没有下一章可续播。必须显式复位「播放中」——否则 `on_next` 静默
-            // no-op 使 `content` 不变,以 `content` 为 deps 的清理 effect 不会重跑,
-            // 底部会永久显示「播放中」且 p 键只在 pause/play 间空转、无法重播。
-            is_listening.set(false);
-        }
-        is_listening_done.set(false);
-    }
-
-    hooks.use_effect(
-        move || {
-            if let Some(player) = player.write().take() {
-                player.sink.stop();
-            }
-            if let Some(chapter_tts) = chapter_tts.write().take() {
-                chapter_tts.cancel();
-            }
-            is_listening.set(false);
-        },
-        props.content.clone(),
-    );
-
-    hooks.use_effect(
+    #[cfg(feature = "tts")]
+    let listening = hooks.use_context::<crate::tts::TtsContext>().clone();
+    #[cfg(feature = "tts")]
+    let request = hooks.use_memo(
         || {
-            if let Some(player) = player.write().as_mut() {
-                player.set_speed(tts_config.read().speed);
-                player.set_volume(tts_config.read().volume);
-            }
+            Arc::new(tts_protocol::StartRequest {
+                source: tts_protocol::SourceId {
+                    namespace: "reader".into(),
+                    book: props.book_id.clone(),
+                    chapter: props.chapter_index.to_string(),
+                },
+                text_hash: tts_protocol::text_hash(&props.content),
+                text: props.content.clone(),
+                resume_byte: None,
+                restore_checkpoint: true,
+            })
         },
-        format!("{}-{}", tts_config.read().speed, tts_config.read().volume),
+        (
+            props.content.clone(),
+            props.book_id.clone(),
+            props.chapter_index,
+        ),
     );
-
-    hooks.use_async_effect(
+    #[cfg(feature = "tts")]
+    let snapshot = listening.snapshot.read().clone();
+    #[cfg(feature = "tts")]
+    let mut seen_terminal = hooks.use_state(|| snapshot.terminal_revision);
+    #[cfg(feature = "tts")]
+    let mut continue_source = hooks.use_state(|| None::<tts_protocol::SourceId>);
+    #[cfg(feature = "tts")]
+    if seen_terminal.get() != snapshot.terminal_revision {
+        seen_terminal.set(snapshot.terminal_revision);
+        if snapshot.should_continue(&request, props.has_next) {
+            let mut next = request.source.clone();
+            next.chapter = (props.chapter_index + 1).to_string();
+            continue_source.set(Some(next));
+            on_next(());
+        }
+    }
+    #[cfg(feature = "tts")]
+    hooks.use_effect(
         {
-            let content = props.content.clone();
-            async move {
-                if let Some(tts) = novel_tts.read().as_ref()
-                    && tts_config.read().auto_play
-                    && chapter_tts.read().is_none()
-                {
-                    let mut chapter = if let Some(chapter_tts) = chapter_tts.read().as_ref() {
-                        chapter_tts.cancel();
-                        chapter_tts.clone()
-                    } else {
-                        tts.chapter_tts(&content)
-                    };
-
-                    let (queue_output, mut receiver) =
-                        chapter.stream(tts_config.read().voice.into(), |e| {
-                            eprintln!("{e:?}");
-                        });
-
-                    let texts = chapter.texts.clone();
-                    tokio::spawn(async move {
-                        while let Some(index) = receiver.recv().await {
-                            if let Some(index) = index {
-                                highlight_range.set(Some(texts[index].clone()));
-                            } else {
-                                is_listening_done.set(true);
-                            }
-                        }
-                    });
-
-                    let p = tts.player(queue_output);
-                    p.set_speed(tts_config.read().speed);
-                    p.set_volume(tts_config.read().volume);
-
-                    is_listening.set(true);
-                    player.set(Some(p));
-                    chapter_tts.set(Some(chapter));
+            let handle = listening.handle.clone();
+            let request = request.clone();
+            let loading = props.is_loading;
+            move || {
+                if loading {
+                    handle.stop();
+                } else {
+                    let play = continue_source.read().as_ref() == Some(&request.source);
+                    continue_source.set(None);
+                    handle.chapter((*request).clone(), play);
                 }
             }
         },
-        (props.content.clone(), novel_tts.read().is_some()),
+        (
+            props.content.clone(),
+            props.book_id.clone(),
+            props.chapter_index,
+            props.is_loading,
+        ),
     );
-
-    hooks.use_async_effect(
-        async move {
-            if let Some(tts) = novel_tts.read().as_ref()
-                && let Some(chapter) = chapter_tts.write().as_mut()
-            {
-                let (queue_output, mut receiver) =
-                    chapter.stream(tts_config.read().voice.into(), |e| {
-                        eprintln!("{e:?}");
-                    });
-
-                let texts = chapter.texts.clone();
-                tokio::spawn(async move {
-                    while let Some(index) = receiver.recv().await {
-                        if let Some(index) = index {
-                            highlight_range.set(Some(texts[index].clone()));
-                        } else {
-                            is_listening_done.set(true);
-                        }
-                    }
-                });
-
-                let p = tts.player(queue_output);
-                p.set_speed(tts_config.read().speed);
-                p.set_volume(tts_config.read().volume);
-
-                is_listening.set(true);
-                player.set(Some(p));
-            }
-        },
-        tts_config.read().voice,
-    );
+    #[cfg(feature = "tts")]
+    hooks.use_on_drop({
+        let handle = listening.handle.clone();
+        move || handle.stop()
+    });
+    #[cfg(feature = "tts")]
+    let is_listening = snapshot.matches(&request)
+        && matches!(
+            snapshot.state,
+            tts_protocol::SessionState::Playing | tts_protocol::SessionState::Generating
+        );
+    #[cfg(not(feature = "tts"))]
+    let is_listening = false;
 
     // 先取成值再进闭包:memo 的 deps 必须是值,传 atom 句柄比较的是「当前值跟自己比」,
     // 恒等 → 切换开关后排版会冻结在首帧。
@@ -283,21 +239,13 @@ pub fn ReadContent(
     );
     let matches = search.read().matches.clone();
     let selected = search.read().selected;
-    let segment = highlight_range.read().clone();
-    let tts_range = hooks.use_memo(
-        || {
-            segment.as_ref().and_then(|segment| {
-                props
-                    .content
-                    .get(segment.start..)?
-                    .find(&segment.text)
-                    .map(|offset| {
-                        segment.start + offset..segment.start + offset + segment.text.len()
-                    })
-            })
-        },
-        (props.content.clone(), segment.clone()),
-    );
+    #[cfg(feature = "tts")]
+    let tts_range = snapshot
+        .range
+        .filter(|range| snapshot.matches(&request) && range.is_valid(&props.content))
+        .map(|range| range.start..range.end);
+    #[cfg(not(feature = "tts"))]
+    let tts_range: Option<std::ops::Range<usize>> = None;
     let paragraph = hooks.use_memo(
         || {
             TextParagraph::from(Paragraph::new(
@@ -307,7 +255,7 @@ pub fn ReadContent(
                     theme.search_highlight,
                     tts_range
                         .as_ref()
-                        .filter(|_| is_listening.get())
+                        .filter(|_| is_listening)
                         .map(|range| (range, theme.tts_highlight)),
                 ),
             ))
@@ -319,7 +267,7 @@ pub fn ReadContent(
             search.read().revision,
             selected,
             tts_range.clone(),
-            is_listening.get(),
+            is_listening,
             theme.search_highlight,
             theme.tts_highlight,
         ),
@@ -385,7 +333,6 @@ pub fn ReadContent(
         },
     );
 
-    let props_content = props.content.clone();
     let has_prev = props.has_prev;
     let has_next = props.has_next;
     // 翻页步长:整屏减去用户配置的重叠行数,让上一屏末尾的若干行留在新一屏开头作视觉锚点
@@ -394,6 +341,8 @@ pub fn ReadContent(
     // 按语义 action 分发(键位可经 ~/.novel/keybindings.toml 自定义);
     // 页面级 action(模式/浮层切换)不在本组件处理,Ignored 交给上层。
     let reader_keymap = hooks.use_atom(&crate::state::KEYMAP).read().reader.clone();
+    #[cfg(feature = "tts")]
+    let playback_request = request.clone();
     hooks.use_keymap_handler(
         EventScope::Current,
         EventPriority::Normal,
@@ -494,47 +443,24 @@ pub fn ReadContent(
                     edge.set(Edge::None);
                     EventResult::Consumed
                 }
-                ReaderAction::VolumeUp => {
-                    tts_config.write().increase_volume();
-                    EventResult::Consumed
-                }
-                ReaderAction::VolumeDown => {
-                    tts_config.write().decrease_volume();
-                    EventResult::Consumed
-                }
-                ReaderAction::TogglePlay => {
-                    if let Some(player) = player.read().as_ref() {
-                        if is_listening.get() {
-                            player.pause();
-                            is_listening.set(false);
+                #[cfg(feature = "tts")]
+                ReaderAction::VolumeUp | ReaderAction::VolumeDown => {
+                    if let Some(config) = listening.snapshot.read().config.as_ref() {
+                        let delta = if action == ReaderAction::VolumeUp {
+                            0.1
                         } else {
-                            player.play();
-                            is_listening.set(true);
-                        }
-                    } else if let Some(tts) = novel_tts.read().as_ref() {
-                        let mut chapter = tts.chapter_tts(&props_content);
-                        let (queue_output, mut receiver) =
-                            chapter.stream(tts_config.read().voice.into(), |e| {
-                                eprintln!("{e:?}");
-                            });
-
-                        let texts = chapter.texts.clone();
-                        tokio::spawn(async move {
-                            while let Some(index) = receiver.recv().await {
-                                if let Some(index) = index {
-                                    highlight_range.set(Some(texts[index].clone()));
-                                } else {
-                                    is_listening_done.set(true);
-                                }
-                            }
+                            -0.1
+                        };
+                        listening.handle.update(tts_protocol::ConfigPatch {
+                            volume: Some((config.volume + delta).clamp(0.0, 10.0)),
+                            ..Default::default()
                         });
-                        let p = tts.player(queue_output);
-                        p.set_speed(tts_config.read().speed);
-                        p.set_volume(tts_config.read().volume);
-                        is_listening.set(true);
-                        player.set(Some(p));
-                        chapter_tts.set(Some(chapter));
                     }
+                    EventResult::Consumed
+                }
+                #[cfg(feature = "tts")]
+                ReaderAction::TogglePlay if can_search => {
+                    listening.handle.toggle((*playback_request).clone());
                     EventResult::Consumed
                 }
                 ReaderAction::ToggleTitle => {
@@ -579,6 +505,32 @@ pub fn ReadContent(
 
     let show_title = reader_display.read().show_title;
 
+    #[cfg(feature = "tts")]
+    let listening_footer = if let Some(error) = &snapshot.error {
+        format!("听书: {error}")
+    } else if is_listening
+        || snapshot.matches(&request) && snapshot.state == tts_protocol::SessionState::Paused
+    {
+        let config = snapshot.config.as_ref();
+        format!(
+            "{:?}: 速度{} / 音量{}",
+            snapshot.state,
+            config.map_or(1.0, |value| value.speed),
+            config.map_or(1.0, |value| value.volume)
+        )
+    } else {
+        format!(
+            "按 {} 播放/暂停 · {} 搜索正文",
+            display_first_key(&reader_keymap, ReaderAction::TogglePlay),
+            display_first_key(&reader_keymap, ReaderAction::SearchContent)
+        )
+    };
+    #[cfg(not(feature = "tts"))]
+    let listening_footer = format!(
+        "按 {} 搜索正文",
+        display_first_key(&reader_keymap, ReaderAction::SearchContent)
+    );
+
     element!(Border(
         border_style: theme.border,
         top_title: if show_title {
@@ -587,22 +539,7 @@ pub fn ReadContent(
             None
         },
         bottom_title: if show_title {
-           Some((if is_listening.get(){
-                Line::from(
-                    format!(
-                        "播放中: 播放速度{} / 音量{}",
-                        tts_config.read().speed,
-                        tts_config.read().volume,
-                    )
-                )
-                .style(theme.footer)
-            }else{
-                Line::from(format!(
-                    "按 {} 播放/暂停 · {} 搜索正文",
-                    display_first_key(&reader_keymap, ReaderAction::TogglePlay),
-                    display_first_key(&reader_keymap, ReaderAction::SearchContent)
-                )).style(theme.footer)
-            }).style(theme.footer).centered())
+           Some(Line::from(listening_footer).style(theme.footer).centered())
         }else{
             None
         },
@@ -652,60 +589,26 @@ pub fn ReadContent(
 /// 历史坑:结束标记一度写成 `\u{002E}`,而那就是普通的英文句点 `.` —— 正文里
 /// 一个「3.14」或「Mr.」就会把高亮提前截断。改动这两个常量前先确认新字符不会
 /// 出现在小说正文中。
+#[cfg(test)]
 const HIGHLIGHT_START: char = '\u{001E}';
+#[cfg(test)]
 const HIGHLIGHT_END: char = '\u{001F}';
 
+#[cfg(test)]
 pub fn highlight(
     text: &str,
-    segment: &TextSegment,
+    range: &std::ops::Range<usize>,
     width: usize,
     highlight_style: Style,
     spacing: bool,
 ) -> Vec<Line<'static>> {
-    // `segment.text` 是 trim 过的,与 `segment.start` 指向的位置可能差几个空白,
-    // 故从 start 起搜一次而不是直接切片。字面量子串搜索就够 —— 原先在这里
-    // 转义并编译一个正则,等于每次高亮推进都在渲染路径上白跑一次正则编译。
-    //
-    // 用 `get()` 而不是索引:换章的瞬间 `highlight_range` 可能还指向上一章的
-    // 偏移,越界或落在非字符边界上都会 panic,而这里是渲染路径,panic 会直接
-    // 掀掉整个 TUI。
-    let found = text.get(segment.start..).and_then(|rest| {
-        rest.find(segment.text.as_str())
-            .map(|offset| segment.start + offset)
-    });
-
-    let Some(start) = found else {
-        return wrap_content(text, width, spacing);
-    };
-    let end = start + segment.text.len();
-
-    let mut lines = Vec::new();
-    let mut offset = 0;
-    for raw_line in text.split_inclusive('\n') {
-        let line = raw_line.trim_end_matches(['\n', '\r']);
-        let line_end = offset + line.len();
-        // 高亮段整个落在本行内才标记 —— TTS 的分段本就按行切,不会跨行。
-        let marked = if start >= offset && end <= line_end {
-            format!(
-                "{}{HIGHLIGHT_START}{}{HIGHLIGHT_END}{}",
-                &line[..start - offset],
-                &line[start - offset..end - offset],
-                &line[end - offset..]
-            )
-        } else {
-            line.to_string()
-        };
-
-        append_wrapped_line(
-            &mut lines,
-            &marked,
-            width,
-            marked.contains(HIGHLIGHT_START).then_some(highlight_style),
-            spacing,
-        );
-        offset += raw_line.len();
-    }
-    lines
+    let valid = text.get(range.clone()).map(|_| range);
+    ContentLayout::new(text, width, spacing).styled(
+        &[],
+        0,
+        Style::default(),
+        valid.map(|range| (range, highlight_style)),
+    )
 }
 
 /// 按原始文本行排版正文,`spacing` 决定逻辑段落之间是否补一个终端空行。
@@ -713,6 +616,7 @@ pub fn highlight(
 /// 小说正文通常以换行分隔段落,而不是以空行分隔。若直接对整章调用
 /// `textwrap::fill`,这些段落会首尾相接,阅读时视觉上过于紧凑;但补空行会让
 /// 总行数近乎翻倍,小屏下并非人人都要 —— 故由阅读偏好开关控制。
+#[cfg(test)]
 pub(super) fn wrap_content(text: &str, width: usize, spacing: bool) -> Vec<Line<'static>> {
     let mut lines = Vec::new();
     for line in text.lines() {
@@ -721,6 +625,7 @@ pub(super) fn wrap_content(text: &str, width: usize, spacing: bool) -> Vec<Line<
     lines
 }
 
+#[cfg(test)]
 fn append_wrapped_line(
     lines: &mut Vec<Line<'static>>,
     line: &str,
@@ -757,6 +662,7 @@ fn append_wrapped_line(
 ///
 /// `in_highlight` 跨行保持:一个高亮段经 `textwrap` 换行后会横跨多个显示行,
 /// 起止标记分别落在首行与末行,中间几行整行都是高亮。
+#[cfg(test)]
 fn highlight_text(text: &str, highlight_style: Style) -> Vec<Line<'static>> {
     let mut lines = vec![];
     let mut in_highlight = false;
@@ -803,12 +709,8 @@ mod tests {
             .collect()
     }
 
-    fn segment(text: &str, start: usize) -> TextSegment {
-        TextSegment {
-            text: text.to_string(),
-            start,
-            end: start + text.len(),
-        }
+    fn segment(text: &str, start: usize) -> std::ops::Range<usize> {
+        start..start + text.len()
     }
 
     /// 高亮段里含英文句点时不能被截断。
@@ -843,12 +745,12 @@ mod tests {
     /// TTS 的 segment 文本是 trim 过的,`start` 却指向 trim 之前的位置 ——
     /// 所以要从 start 起搜一次,不能拿 start 直接切片。
     #[test]
-    fn highlight_tolerates_trimmed_segment_offset() {
+    fn highlight_uses_original_range_after_indentation() {
         let style = Style::default().bold();
         let text = "开头。   缩进的一句。";
         let target = "缩进的一句。";
         // start 故意指向空白处,模拟 preprocess_text 的 trim 行为。
-        let start = text.find("   ").unwrap();
+        let start = text.find(target).unwrap();
 
         let lines = highlight(text, &segment(target, start), 200, style, false);
 

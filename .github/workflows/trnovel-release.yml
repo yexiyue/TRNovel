@@ -127,6 +127,16 @@ jobs:
             curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
             echo "$HOME/.cargo/bin" >> $GITHUB_PATH
           fi
+      - name: "Set up Python for variant builds"
+        uses: "actions/setup-python@v6"
+        with:
+          "python-version": "3.x"
+      - name: "Set up Rust for source workspace"
+        uses: "dtolnay/rust-toolchain@stable"
+      - name: "Provide Python 3 command on Windows"
+        if: "runner.os == 'Windows'"
+        run: "Copy-Item \"$env:pythonLocation/python.exe\" \"$env:pythonLocation/python3.exe\" -Force"
+        shell: "pwsh"
       - name: Install dist
         run: ${{ matrix.install_dist.run }}
       # Get the dist-manifest
@@ -174,12 +184,22 @@ jobs:
       plan: ${{ needs.plan.outputs.val }}
     secrets: inherit
 
+  custom-basic:
+    needs:
+      - plan
+    if: ${{ needs.plan.outputs.publishing == 'true' || fromJson(needs.plan.outputs.val).ci.github.pr_run_mode == 'upload' }}
+    uses: ./.github/workflows/basic.yml
+    with:
+      plan: ${{ needs.plan.outputs.val }}
+    secrets: inherit
+
   # Build and package all the platform-agnostic(ish) things
   build-global-artifacts:
     needs:
       - plan
       - build-local-artifacts
       - custom-musl
+      - custom-basic
     runs-on: "ubuntu-22.04"
     env:
       GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -227,9 +247,10 @@ jobs:
       - plan
       - build-local-artifacts
       - custom-musl
+      - custom-basic
       - build-global-artifacts
     # Only run if we're "publishing", and only if plan, local and global didn't fail (skipped is fine)
-    if: ${{ always() && needs.plan.result == 'success' && needs.plan.outputs.publishing == 'true' && (needs.build-global-artifacts.result == 'skipped' || needs.build-global-artifacts.result == 'success') && (needs.build-local-artifacts.result == 'skipped' || needs.build-local-artifacts.result == 'success') && (needs.custom-musl.result == 'skipped' || needs.custom-musl.result == 'success') }}
+    if: ${{ always() && needs.plan.result == 'success' && needs.plan.outputs.publishing == 'true' && (needs.build-global-artifacts.result == 'skipped' || needs.build-global-artifacts.result == 'success') && (needs.build-local-artifacts.result == 'skipped' || needs.build-local-artifacts.result == 'success') && (needs.custom-musl.result == 'skipped' || needs.custom-musl.result == 'success') && (needs.custom-basic.result == 'skipped' || needs.custom-basic.result == 'success') }}
     env:
       GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
     runs-on: "ubuntu-22.04"
@@ -349,16 +370,30 @@ jobs:
       "contents": "read"
       "id-token": "write"
 
+  custom-publish-basic-homebrew:
+    needs:
+      - plan
+      - host
+    if: ${{ !fromJson(needs.plan.outputs.val).announcement_is_prerelease || fromJson(needs.plan.outputs.val).publish_prereleases }}
+    uses: ./.github/workflows/publish-basic-homebrew.yml
+    with:
+      plan: ${{ needs.plan.outputs.val }}
+    secrets: inherit
+    # publish jobs get escalated permissions
+    permissions:
+      "contents": "read"
+
   announce:
     needs:
       - plan
       - host
       - publish-homebrew-formula
       - custom-publish-npm
+      - custom-publish-basic-homebrew
     # use "always() && ..." to allow us to wait for all publish jobs while
     # still allowing individual publish jobs to skip themselves (for prereleases).
     # "host" however must run to completion, no skipping allowed!
-    if: ${{ always() && needs.host.result == 'success' && (needs.publish-homebrew-formula.result == 'skipped' || needs.publish-homebrew-formula.result == 'success') && (needs.custom-publish-npm.result == 'skipped' || needs.custom-publish-npm.result == 'success') }}
+    if: ${{ always() && needs.host.result == 'success' && (needs.publish-homebrew-formula.result == 'skipped' || needs.publish-homebrew-formula.result == 'success') && (needs.custom-publish-npm.result == 'skipped' || needs.custom-publish-npm.result == 'success') && (needs.custom-publish-basic-homebrew.result == 'skipped' || needs.custom-publish-basic-homebrew.result == 'success') }}
     runs-on: "ubuntu-22.04"
     env:
       GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

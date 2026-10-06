@@ -1,60 +1,74 @@
 ---
 title: 听书模式
-lastUpdated: 2026-06-18
+lastUpdated: 2026-10-06
 sidebar:
     order: 7
     badge:
         text: 新
         variant: success
 ---
-import { Steps, Tabs, TabItem, Aside } from "@astrojs/starlight/components"
 
-听书功能基于 [Kokoro TTS](https://github.com/mzdk100/kokoro) 模型把正文转成语音边读边听,并在朗读时**按句高亮**当前位置。首次使用需要下载模型。
+听书由独立的 `novel-tts` 程序处理。阅读器只提交章节正文、显示播放片段高亮，并按正常完成事件续章。Kokoro 模型和音频设备保留在听书进程中。
+
+## 从源码构建
+
+此次重构的双变体发行与安装渠道仍在验收，可先从 workspace 构建：
+
+```sh
+# 基础阅读版：没有听书面板、播放键位和听书原生依赖
+cargo build -p trnovel --no-default-features
+
+# 听书阅读版及配套程序：两个程序在同一个 target/debug 目录
+cargo build -p trnovel -p novel-tts
+
+# 也可只构建独立文件朗读程序
+cargo build -p novel-tts
+```
+
+阅读器查找 `novel-tts` 的顺序为 `--tts-program <路径>`、阅读器同目录、PATH。明确路径无效时会直接提示；缺少程序不影响普通阅读。
 
 ## 听书设置
 
-在阅读界面切换到**阅读模式**(打开小说后按 `Tab`),再按 `T` 打开听书设置:
+进入小说的阅读模式后按 `T` 打开听书设置。查看设置只启动轻量协议连接，不下载、不加载模型，也不播放。
 
-![听书设置](../../../assets/guides/tts-settings.gif)
+| 选项 | 操作 |
+| --- | --- |
+| 模型准备 | Enter 启用，Esc 取消；缺少资源时下载并显示进度 |
+| 音色 | ←/→ 切换后端提供的音色 ID，如 Zf001 |
+| 播放速度 | ←/→ 调节 0.5..2 倍速 |
+| 音量 | ←/→ 调节 0..10 |
+| 自动续章 | 仅在主动开始的听书正常完成后续章；失败、取消、重启不会自动播放 |
+| 从章首重播 | Enter 明确忽略旧恢复点，从本章开头播放 |
+| 释放资源 | Enter 停播并关闭听书子进程，释放模型和设备 |
 
-设置项:
+↑/↓ 选择条目。听书面板与阅读设置互斥；基础版仍有完整阅读设置。
 
-| 选项 | 说明 |
-|------|------|
-| 检查点模型 | TTS 模型文件状态;未下载时回车开始下载 |
-| 语音数据 | 语音音色数据状态;未下载时回车开始下载 |
-| 选择声音 | `←/→` 切换音色(如 `bf_vale` / `zf_001` …) |
-| 播放速度 | `←/→` 调节倍速 |
-| 音量 | `←/→` 调节音量 |
-| 自动播放 | 进入阅读自动开始,读完自动跳下一章 |
+## 模型准备
 
-操作:`↑/↓` 选择项,回车确认 / 开始下载,`←/→` 调节,`Esc` 取消下载。
+按播放键 `P` 或在准备行按 Enter 才会加载模型，并下载缺少资源。下载可取消、续传；半文件保留，服务器忽略 Range 时重头下载。
 
-## 安装模型
+手动准备也可下载固定文件：
 
-<Tabs>
-  <TabItem label="自动下载(推荐)">
-    在听书设置里分别选中「检查点模型」「语音数据」回车,即自动下载(支持断点续传)。两项都显示已下载即安装成功。
+- [kokoro-v1.1-zh.onnx](https://github.com/mzdk100/kokoro/releases/download/V1.1/kokoro-v1.1-zh.onnx)
+- [voices-v1.1-zh.bin](https://github.com/mzdk100/kokoro/releases/download/V1.1/voices-v1.1-zh.bin)
 
-    <Aside type="note">模型较大(数百 MB),下载与播放需要可用音频设备。完整的下载 + 播放高亮演示见仓库 `docs/tapes/tts-play.tape`(真机录制)。</Aside>
-  </TabItem>
-  <TabItem label="手动下载">
-    <Steps>
-    1. 下载模型:[kokoro-v1.1-zh.onnx](https://github.com/mzdk100/kokoro/releases/download/V1.1/kokoro-v1.1-zh.onnx)
-    2. 下载语音数据:[voices-v1.1-zh.bin](https://github.com/mzdk100/kokoro/releases/download/V1.1/voices-v1.1-zh.bin)
-    3. 放到模型目录 `$HOME/.novel-tts/kokoro`:
-        <Tabs>
-            <TabItem label="macOS">`/Users/{用户名}/.novel-tts/kokoro`</TabItem>
-            <TabItem label="Linux">`/home/{用户名}/.novel-tts/kokoro`</TabItem>
-            <TabItem label="Windows">`C:\Users\{用户名}\.novel-tts\kokoro`</TabItem>
-        </Tabs>
-    4. 打开听书设置,确认两项均显示已下载。
-    </Steps>
-  </TabItem>
-</Tabs>
+放到 `$HOME/.novel-tts/kokoro/`（Windows 为用户目录下 `.novel-tts\kokoro`）。模型较大，实际播放需要可用音频设备。此次迁移保持 Kokoro 0.3.1 和既有 v1.1 模型；只支持片段级高亮，不承诺逐字同步。
 
-## 开始听书
+## 播放与恢复
 
-模型就绪后,在阅读模式按 `P` 播放 / 暂停。朗读时正文会按句高亮跟随,`+` / `-` 调整音量。
+在阅读模式按 `P` 播放/暂停，`+`/`-` 调音量。切章停止旧会话并过滤迟到事件；搜索高亮优先。暂停保留位置，停止保留模型，释放资源关闭程序。只有当前章节正常播放完成才能触发自动续章，最后一章结束后复位。
 
-<Aside type="note">致谢 [mzdk100](https://github.com/mzdk100) 提供的 [`kokoro-tts`](https://github.com/mzdk100/kokoro) crate 与 Kokoro 模型。</Aside>
+恢复点由听书程序保存在 `~/.novel/tts/checkpoints/`。正文 SHA-256、来源和 UTF-8 字节坐标必须匹配；正文变化、损坏数据或未知版本会提示错误，可用面板「从章首重播」主动重置。崩溃后可能重复最近未完成片段，不自动开始播放。
+
+听书配置仍是 `~/.novel/tts_config.json`，旧音量、速度、音色、自动播放字段保留。只有听书程序写配置；界面显示保存成功后的快照。配置损坏或修订冲突时不会覆盖原文件，刷新后再主动修改。
+
+## 独立文件朗读
+
+```sh
+novel-tts book.txt
+novel-tts --restart book.txt
+```
+
+仅支持 UTF-8 文本文件。交互终端中空格暂停/继续，s 停止并退出，q/Esc/Ctrl+C 退出；非交互终端不启用原始模式，正文完成后退出。详细的协议、路径覆盖和退出码见仓库 `crates/novel-tts/README.md`。
+
+回退时阅读器与听书程序成对回退，保留配置、模型和检查点；阅读历史及阅读进度格式未改变。

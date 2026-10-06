@@ -2,34 +2,24 @@
 name = "novel-tts"
 version = "0.3.0"
 edition = "2024"
-description = "Terminal reader for novel"
-authors = ["yexiyue <yexiyue666@qq.com>"]
+rust-version = "1.89"
 license = "MIT"
-keywords = ["Novel", "TTS"]
-repository = "https://github.com/yexiyue/parse-book-source"
+description = "Independent novel listening CLI and JSON Lines worker"
+repository = "https://github.com/yexiyue/TRNovel"
+
+[[bin]]
+name = "novel-tts"
+path = "src/main.rs"
 
 [dependencies]
+tts-core = { package = "novel-tts-core", path = "../novel-tts-core", version = "0.3.0" }
+tts-protocol = { package = "novel-tts-protocol", path = "../novel-tts-protocol", version = "0.1.0" }
 anyhow.workspace = true
-dirs.workspace = true
-kokoro-tts = "=0.3.1"
-# kokoro-tts 0.3.1 对 ort 声明宽松的预发布范围;钉死已知多平台可用的 ORT。
-# 不升 rc.12:onnxruntime 1.24 改用 xcframework 砍了 Intel Mac、且 linux 预编译要 glibc 2.38+,
-# 会导致 x86_64-apple-darwin / x86_64-linux 发布失败。rc.10 全平台(含 Intel Mac)可用。
-ort = "=2.0.0-rc.10"
-regex.workspace = true
-# kokoro-tts = { path = "/Users/yexiyue/rust-project/kokoro" }
-reqwest = { version = "0.13", default-features = false, features = [
-    "json",
-    "rustls",
-    "cookies",
-] }
-# rodio 暂留 0.21.x:0.22 是音频 API 重构(OutputStreamBuilder / Sink::connect_new /
-# SamplesBuffer·Zero 签名变更),需配合音频实测单独迁移,勿盲目升级。
-rodio = { version = "0.21.1", default-features = false, features = [
-    "playback",
-    "wav",
-    "tracing"
-] }
-thiserror.workspace = true
 tokio.workspace = true
-tokio-util.workspace = true
+serde_json.workspace = true
+clap = { version = "4.6", features = ["derive"] }
+crossterm = { version = "0.29.0", features = ["event-stream"] }
+futures.workspace = true
+
+[dev-dependencies]
+tempfile.workspace = true

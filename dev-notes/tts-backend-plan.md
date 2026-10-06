@@ -1,5 +1,7 @@
 # 听书模块与多后端演进计划
 
+> 本文保留最初讨论时的代码现状与方案。当前解耦实现的命名为 `novel-tts-core`（核心）、`novel-tts-protocol`（协议）、`novel-tts`（独立 CLI/协议程序），阅读器模块为 `src/tts.rs`；实施范围以 `openspec/changes/decouple-tts-process/` 为准。
+
 日期：2026-10-05。状态：讨论稿，尚未实施。
 
 本计划基于当前仓库源码、已安装的 `kokoro-tts 0.3.1` 源码及上游部署文档。上游性能数字不代表 TRNovel 实测结果；本次没有下载模型、生成试听音频或验证跨平台推理。正式修改行为前应建立对应 OpenSpec 提案。

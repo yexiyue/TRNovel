@@ -12,7 +12,7 @@ Consult applicable proposals in `openspec/changes/` before changing behavior. Hi
 
 ## Project Layout
 
-TRNovel is a Rust 2024 terminal novel reader. The root application builds `trnovel` and `trn`; the workspace libraries are `crates/parse-book-source` and `crates/novel-tts`. Documentation uses Astro/Starlight in `docs/`.
+TRNovel is a Rust 2024 terminal novel reader. The root application builds `trnovel` and `trn`; the workspace libraries are `crates/parse-book-source`, `crates/novel-tts-core` and `crates/novel-tts-protocol`; `crates/novel-tts` builds the independent `novel-tts` CLI. Documentation uses Astro/Starlight in `docs/`.
 
 Book sources use structured `trnovel-booksource/v2` JSON and `parse_book_source::Engine`; they do not directly accept Legado book-source JSON. Keep source types, JSON Schema and documentation examples in sync.
 
@@ -35,7 +35,7 @@ cargo fmt --all --check
 RUSTDOCFLAGS="-D warnings" cargo doc --no-deps --document-private-items --all-features --workspace --examples
 
 cargo run -p parse-book-source --features schema --example gen_schema
-cargo run -p novel-tts --example basic
+cargo run -p novel-tts-core --example basic
 
 cd docs
 pnpm install
@@ -47,7 +47,7 @@ Tests exist in both the application and library crates, plus `tests/`. Optional 
 
 ## Coding and Build Conventions
 
-Use Rust 2024 idioms and `rustfmt.toml`. Modules use `foo/mod.rs`, functions and variables use snake_case, and types use PascalCase. Keep shared dependencies in `[workspace.dependencies]`. Avoid unrelated parser, UI-state or cache refactors.
+Use Rust 2024 idioms and `rustfmt.toml`. Modules use `foo.rs`, with a same-named directory only when child modules exist, functions and variables use snake_case, and types use PascalCase. Keep shared dependencies in `[workspace.dependencies]`. Avoid unrelated parser, UI-state or cache refactors.
 
 Rust 1.89 or newer is required. Linux builds need ALSA/OpenSSL development libraries and pkg-config. Preserve the pinned ort/kokoro-tts versions and `msvc-crt-static = false`; see toolchain notes before changing native dependencies.
 

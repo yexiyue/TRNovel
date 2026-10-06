@@ -6,7 +6,7 @@ set -eo pipefail
 #   exclude-crate: 本次不升级/不打标签的 crate;不传则进入交互式选择
 # 例:
 #   ./release.sh minor                                  # 交互式选择排除项
-#   ./release.sh 0.13.0 parse-book-source novel-tts     # 非交互,只发 trnovel
+#   ./release.sh 0.13.0 parse-book-source novel-tts-protocol novel-tts-core novel-tts     # 非交互,只发 trnovel
 #
 # 标签 trnovel-v<version> 触发 .github/workflows/trnovel-release.yml(cargo-dist)
 # 出多平台二进制 + npm/homebrew;库 crate 的 <crate>-v* 标签不触发该工作流。
@@ -15,7 +15,7 @@ LEVEL="${1:-patch}"
 if [ "$#" -gt 0 ]; then shift; fi
 echo "版本升级级别: $LEVEL"
 
-ALL_CRATES=(parse-book-source novel-tts trnovel)
+ALL_CRATES=(parse-book-source novel-tts-protocol novel-tts-core novel-tts trnovel)
 EXCLUDE_CRATES=("$@")
 
 # 未通过参数传排除项 → 交互式选择
@@ -40,6 +40,7 @@ done
 echo "排除参数: ${EXCLUDE_ARGS[*]:-（无）}"
 
 cargo release version "$LEVEL" --workspace "${EXCLUDE_ARGS[@]}" --no-confirm --execute
+python3 .github/scripts/sync-dist-version.py
 cargo release hook --no-confirm --execute
 cargo release commit --no-confirm --execute
 cargo release tag --workspace "${EXCLUDE_ARGS[@]}" --execute --no-confirm

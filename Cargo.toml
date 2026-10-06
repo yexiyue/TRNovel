@@ -19,6 +19,10 @@ path = "src/bin/main.rs"
 name = "trn"
 path = "src/bin/trn.rs"
 
+[features]
+default = ["tts"]
+tts = ["dep:tts-protocol", "dep:tokio-util"]
+
 [dependencies]
 async-trait = "0.1"
 chrono = { version = "0.4.44", features = ["serde"] }
@@ -49,7 +53,8 @@ ratatui-kit = { version = "0.10.3", features = ["full"] }
 ratatui-kit-themes = "0.1"
 ratatui-kit-keymap = "0.1"
 textwrap = { version = "0.16.2" }
-novel-tts = { path = "crates/novel-tts", version = "0.3.0" }
+tokio-util = { workspace = true, optional = true }
+tts-protocol = { package = "novel-tts-protocol", path = "crates/novel-tts-protocol", version = "0.1.0", optional = true }
 strum = { version = "0.28", features = ["derive"] }
 swash = "0.2.7"
 zeno = "0.3.3"
@@ -58,7 +63,7 @@ reqwest = { version = "0.13", default-features = false, features = ["rustls"] }
 
 
 [workspace]
-members = ["crates/novel-tts", "crates/parse-book-source"]
+members = ["crates/novel-tts-core", "crates/novel-tts-protocol", "crates/novel-tts", "crates/parse-book-source"]
 
 [workspace.dependencies]
 serde = { version = "1.0.228", features = ["derive"] }
@@ -68,8 +73,11 @@ anyhow = "1.0.102"
 thiserror = "2.0.18"
 tokio = { version = "1.52", features = [
     "fs",
+    "io-util",
+    "io-std",
     "macros",
     "net",
+    "process",
     "rt",
     "rt-multi-thread",
     "signal",
@@ -79,6 +87,8 @@ tokio = { version = "1.52", features = [
 tokio-util = "0.7.18"
 futures = "0.3.32"
 dirs = "6.0.0"
+sha2 = "0.10.9"
+tempfile = "3.27.0"
 
 [profile.release]
 lto = true
@@ -89,38 +99,7 @@ panic = "abort"
 [profile.dist]
 inherits = "release"
 
-# Config for 'dist'
-[workspace.metadata.dist]
-# The preferred dist version to use in CI (Cargo.toml SemVer syntax)
-cargo-dist-version = "0.32.0"
-# CI backends to support
-ci = "github"
-# Native Alpine build keeps musl-compatible ONNX Runtime/ALSA dependencies.
-local-artifacts-jobs = ["./musl"]
-# The installers to generate for each app
-installers = ["shell", "powershell", "npm", "homebrew"]
-# Target platforms to build apps for (Rust target-triple syntax)
-targets = ["aarch64-apple-darwin", "x86_64-apple-darwin", "x86_64-unknown-linux-gnu", "x86_64-pc-windows-msvc"]
-# A namespace to use when publishing this package to the npm registry
-npm-scope = "@trnovel"
-# Only treat tags prefixed with this namespace as dist releases (keeps the
-# workspace library tags like `parse-book-source-v*` from triggering this workflow)
-tag-namespace = "trnovel"
-# Publish npm through OIDC; no long-lived NPM_TOKEN is needed.
-# homebrew needs the `yexiyue/homebrew-tap` repo to exist + a HOMEBREW_TAP_TOKEN secret (PAT with repo scope)
-publish-jobs = ["./publish-npm", "homebrew"]
-github-custom-job-permissions = { "publish-npm" = { contents = "read", id-token = "write" } }
-# Homebrew tap repository that dist publishes the formula to
-tap = "yexiyue/homebrew-tap"
-# Path that installers should place binaries in
-install-path = "CARGO_HOME"
-# Whether to install an updater program
-install-updater = false
-# 动态链接 Windows C 运行时（默认 true=静态）。ort/onnxruntime 预编译库按动态 CRT 编译，
-# 静态链接会导致 __imp_tolower 等符号未解析的 LNK2001 链接错误，故必须设为 false。
-msvc-crt-static = false
+# Distribution variants are configured in dist-workspace.toml and dist.toml.
 
-[workspace.metadata.dist.dependencies.apt]
-libasound2-dev = '*'
-libssl-dev = '*'
-pkg-config = '*'
+[dev-dependencies]
+tempfile.workspace = true

@@ -100,3 +100,16 @@ VHS 会继承当前 shell 的环境变量,所以这样挂 PATH 对 tape 文件�
 
 **真机项**:沙箱缺音频设备 / 无法启动 headful 浏览器 / 部分书源搜索接口受限,这 4 个需在本机录制。
 tape 头部注释了各自前置条件与可调整处(书源名次序、本地路径等)。
+
+## 基础阅读版 UI 回归
+
+`basic-ui.tape` 检查无 TTS 构建的目录/正文切换、阅读设置、帮助、滚动、正文搜索和翻章。沿用上面的隔离演示书库，直接选 `星河彼岸.txt`，不依赖文件树的排序。输出与截图保存在仓库 `target/`，不覆盖文档演示素材。
+
+```bash
+# 从仓库根目录构建；必须使用 package-specific 的无默认 feature 命令。
+cargo build --locked -p trnovel --no-default-features --bins
+cd docs/tapes
+PATH="$(pwd)/../../target/debug:/opt/homebrew/bin:$PATH" vhs basic-ui.tape
+```
+
+检查 `verify-basic-read.png`、`verify-basic-settings.png`、`verify-basic-help.png`：正文边框都应保持整个终端的高度，打开浮层只遮罩正文，不能挤出下半屏空白。帮助中不应出现听书操作；`t/p/+/-` 不应打开听书面板。录制给首次启动留 8 秒，目录进入阅读页后先切到正文再截图。

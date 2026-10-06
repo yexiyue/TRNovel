@@ -29,7 +29,7 @@ concurrency:
 jobs:
   publish:
     runs-on: ubuntu-24.04
-    timeout-minutes: 20
+    timeout-minutes: 35
     if: >-
       github.event_name == 'pull_request' ||
       (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main') ||
@@ -63,6 +63,7 @@ jobs:
           fi
           [[ "$tag" =~ ^trnovel-v[0-9]+\.[0-9]+\.[0-9]+$ ]]
           gh release download "$tag" --pattern trnovel-npm-package.tar.gz --dir npm
+          gh release download "$tag" --pattern trnovel-basic-npm-package.tar.gz --dir npm
       - name: Validate or publish package
         env:
           PLAN: ${{ inputs.plan }}

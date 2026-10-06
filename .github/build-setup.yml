@@ -1,0 +1,11 @@
+- name: Set up Python for variant builds
+  uses: actions/setup-python@v6
+  with:
+    python-version: '3.x'
+- name: Set up Rust for source workspace
+  uses: dtolnay/rust-toolchain@stable
+
+- name: Provide Python 3 command on Windows
+  if: runner.os == 'Windows'
+  shell: pwsh
+  run: Copy-Item "$env:pythonLocation/python.exe" "$env:pythonLocation/python3.exe" -Force

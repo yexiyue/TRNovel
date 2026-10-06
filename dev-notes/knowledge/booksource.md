@@ -2,7 +2,7 @@
 
 ## 概览
 
-`crates/parse-book-source`（结构化 v2 书源引擎、规则 AST、反爬/渲染抓取）与 `crates/novel-tts`（Kokoro TTS）的项目特有约束。重点是番茄（fanqienovel.com）这类 SPA + 签名站点的接入路线。
+`crates/parse-book-source`（结构化 v2 书源引擎、规则 AST、反爬/渲染抓取）与 `crates/novel-tts-core`（Kokoro TTS）的项目特有约束。重点是番茄（fanqienovel.com）这类 SPA + 签名站点的接入路线。
 
 ## 规则引擎
 
@@ -167,7 +167,7 @@ for &arg in HEADFUL_DEFAULT_ARGS { builder = builder.arg(arg); }
 
 **相关文件**：`crates/parse-book-source/src/fetch/browser/fetcher.rs`（`HEADFUL_DEFAULT_ARGS`、`spawn_browser`）
 
-## novel-tts
+## novel-tts-core
 
 ### 模型钉版见 toolchain
 
@@ -181,4 +181,24 @@ kokoro-tts `0.3.1` 勿升（rc.12 砍 Intel Mac），见 [toolchain.md](toolchai
 
 **正确做法**：区分多音字读音、模型韵律与章节分段的影响；更换前端时保持 v1.1 音素与模型词表兼容。新版 crate 的存在不代表中文音质改进，不绕过 toolchain 中的 ort 钉版约束。
 
-**相关文件**：`crates/novel-tts/src/{chapter.rs,utils.rs,model.rs}`、[听书演进计划](../tts-backend-plan.md)（讨论稿，尚未实施）。
+**相关文件**：`crates/novel-tts-core/src/{session.rs,text.rs,models.rs}`、[听书演进计划](../tts-backend-plan.md)（讨论稿，尚未实施）。
+
+### 听书进程边界与保存职责
+
+`novel-tts-core` 的 session/backend/player/text/models/config/checkpoint 为听书核心；`novel-tts` 提供独立 CLI 和协议入口。阅读器只链接 `novel-tts-protocol`，不持有模型或音频设备，也不读写听书配置。Kokoro 在专用推理线程构建/销毁，只用文本与 PCM 通道通信；播放器和会话留在 LocalSet，不再手写 unsafe Send/Sync。
+
+**正确做法**：按实际播放边界发布原文 UTF-8 范围。配置使用旧路径、短文件锁、修订号和原子替换，未知字段保留。独立检查点用来源、正文摘要及字节位置恢复；失败停止并等待用户主动重试。取消会等待不能中断的检查点事务，防止旧会话覆盖新位置。
+
+**坑**：rodio 0.21 的 `Sink::clear()` 会阻塞等待播放结束；停播应 stop 旧 sink，再连接同一 mixer 创建新 sink。CRLF 坐标必须累计原始换行的两个字节，不能固定加一。取消下载必须返回 Cancel，不能报告成功；服务器忽略 Range 时不能追加整文件。
+
+**相关文件**：`crates/novel-tts-core/src/session.rs`、`src/tts.rs`、`dev-notes/tts-baseline.md`。
+
+### 会话状态与音色替换的唯一所有者
+
+`SessionManager` 持有实际播放阶段、暂停标志、未完成原文字节位置和终止状态；协议运行时通过 `status()` 查询，不另存一套播放状态。模型准备状态独立于播放状态，重复准备或取消准备不能把正在播放的会话改成 Idle。配置校验接受完整的后端 Capabilities，核心不硬编码后端名。
+
+音色更新由核心 `update_settings()` 在未完成段的位置替换会话并保留暂停状态；协议 `ConfigChanged` 响应仅在发生替换时携带新 session_id，阅读器采用该 ID。所有已使用的会话 ID 在一个管理器生命周期内禁止重复，避免旧取消事件匹配新会话。关联响应由等待命令的调用方处理一次，不再重复广播进事件流；否则快速连续切换音色会回滚到旧 ID。
+
+阅读器生命周期意图使用有界 watch 通道保留最新意图，释放和取消准备另记代次；普通队列携带代次，停止前排队的播放意图不得重新启动旧章节。命令超时后关闭并回收进程，以免留下已接受但父端未确认的播放。
+
+**相关文件**：`crates/novel-tts/src/{protocol.rs,runtime.rs}`、`crates/novel-tts-core/src/session.rs`、`src/tts/{client.rs,controller.rs}`。

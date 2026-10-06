@@ -48,4 +48,6 @@ jobs:
           path: |
             target/musl-distrib/trnovel-aarch64-unknown-linux-musl.tar.gz
             target/musl-distrib/trnovel-aarch64-unknown-linux-musl.tar.gz.sha256
+            target/musl-distrib/trnovel-basic-aarch64-unknown-linux-musl.tar.gz
+            target/musl-distrib/trnovel-basic-aarch64-unknown-linux-musl.tar.gz.sha256
           if-no-files-found: error

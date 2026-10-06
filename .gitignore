@@ -15,3 +15,12 @@ espeak-ng-data
 .codex
 # Temporary release tools, downloads and CI logs
 /work/
+
+# Generic cargo-dist build outputs (not source crates)
+/trnovel
+/trn
+/novel-tts
+/trnovel.exe
+/trn.exe
+/novel-tts.exe
+/.github/scripts/__pycache__/

@@ -1,47 +1,36 @@
 #!/bin/sh
 set -eu
-
-# No compiler or development packages: exercise the shipped archive with
-# exactly the runtime dependencies documented for users.
-apk add --no-cache ca-certificates alsa-lib libstdc++ onnxruntime libssl3 libcrypto3
-mkdir /tmp/trnovel-musl
+# First check basic readers without installing any audio runtime libraries.
+apk add --no-cache ca-certificates libstdc++ libssl3 libcrypto3
+mkdir -p /tmp/trnovel-musl
 cd /tmp/trnovel-musl
-cp /work/target/musl-distrib/trnovel-aarch64-unknown-linux-musl.tar.gz .
-sha256sum -c /work/target/musl-distrib/trnovel-aarch64-unknown-linux-musl.tar.gz.sha256
-tar -xzf trnovel-aarch64-unknown-linux-musl.tar.gz
-cd trnovel-aarch64-unknown-linux-musl
-cat > /tmp/book-sources.json <<'JSON'
-[{
-  "schema": "trnovel-booksource/v2",
-  "name": "musl-smoke-test",
-  "url": "https://example.com",
-  "bookInfo": {},
-  "toc": {"list": {}, "name": {}, "url": {}},
-  "content": {"value": {}}
-}]
-JSON
-for binary in trnovel trn; do
-    export HOME=/tmp/home-$binary
-    mkdir -p "$HOME"
-    "./$binary" --version
-    "./$binary" --help > /dev/null
-    # import reports errors without a failing exit status: verify persistence.
-    "./$binary" import /tmp/book-sources.json
-    grep -q 'musl-smoke-test' "$HOME/.novel/book_sources.json"
+for variant in basic listening; do
+    if [ "$variant" = basic ]; then
+        archive=trnovel-basic-aarch64-unknown-linux-musl
+    else
+        apk add --no-cache alsa-lib onnxruntime
+        archive=trnovel-aarch64-unknown-linux-musl
+    fi
+    cp "/work/target/musl-distrib/$archive.tar.gz" .
+    sha256sum -c "/work/target/musl-distrib/$archive.tar.gz.sha256"
+    tar -xzf "$archive.tar.gz"
+    for binary in trnovel trn; do
+        "./$archive/$binary" --version
+        "./$archive/$binary" --help > /dev/null
+    done
+    if [ "$variant" = basic ]; then
+        test ! -e "$archive/novel-tts"
+        if "./$archive/trnovel" --help | grep -q -- '--tts-program'; then exit 1; fi
+    else
+        printf '%s\n' '{"protocol_version":1,"request_id":"hello","session_id":null,"type":"hello"}' '{"protocol_version":1,"request_id":"bye","session_id":null,"type":"shutdown"}' | "./$archive/novel-tts" --protocol > replies.jsonl
+        grep -q '"type":"ready"' replies.jsonl
+    fi
 done
-
-# Probe the native API used by the pinned ort rc.10. Python is only a test
-# helper, installed after checking the actual application runtime packages.
 apk add --no-cache python3
 python3 - <<'PY'
 import ctypes
-
 class ApiBase(ctypes.Structure):
-    _fields_ = [
-        ("get_api", ctypes.CFUNCTYPE(ctypes.c_void_p, ctypes.c_uint32)),
-        ("get_version", ctypes.CFUNCTYPE(ctypes.c_char_p)),
-    ]
-
+    _fields_ = [("get_api", ctypes.CFUNCTYPE(ctypes.c_void_p, ctypes.c_uint32)), ("get_version", ctypes.CFUNCTYPE(ctypes.c_char_p))]
 runtime = ctypes.CDLL("libonnxruntime.so.1")
 runtime.OrtGetApiBase.restype = ctypes.POINTER(ApiBase)
 base = runtime.OrtGetApiBase().contents

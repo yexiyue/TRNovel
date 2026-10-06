@@ -22,6 +22,8 @@ pub mod novel;
 pub mod pages;
 pub mod state;
 pub mod theme;
+#[cfg(feature = "tts")]
+pub mod tts;
 pub mod utils;
 
 pub use cache::*;
@@ -38,18 +40,25 @@ where
     I: IntoIterator<Item = A> + Debug,
     A: Into<OsString> + Clone,
 {
+    #[cfg(feature = "tts")]
+    let (listening, listening_task) = tts::Handle::new();
     let result = tokio::select! {
-        result = try_run_inner(args) => result,
+        result = try_run_inner(args, #[cfg(feature = "tts")] listening.clone()) => result,
         signal = tokio::signal::ctrl_c() => {
             signal?;
             Ok(())
         }
     };
+    #[cfg(feature = "tts")]
+    {
+        listening.shutdown().await;
+        let _ = listening_task.await;
+    }
     parse_book_source::shutdown_render_pool().await;
     result
 }
 
-async fn try_run_inner<I, A>(args: I) -> Result<()>
+async fn try_run_inner<I, A>(args: I, #[cfg(feature = "tts")] listening: tts::Handle) -> Result<()>
 where
     I: IntoIterator<Item = A> + Debug,
     A: Into<OsString> + Clone,
@@ -84,7 +93,13 @@ where
         return Ok(());
     }
 
-    let props = AppProps { trnovel };
+    #[cfg(feature = "tts")]
+    listening.set_path(trnovel.tts_program.clone());
+    let props = AppProps {
+        trnovel,
+        #[cfg(feature = "tts")]
+        listening,
+    };
 
     element!(App(..props)).fullscreen().await?;
 
@@ -118,6 +133,10 @@ where
 "#
 )]
 pub struct TRNovel {
+    /// 指定独立听书程序路径；无效时直接报错，不改用其他程序。
+    #[cfg(feature = "tts")]
+    #[arg(long, global = true)]
+    pub tts_program: Option<PathBuf>,
     #[command(subcommand)]
     pub subcommand: Option<Commands>,
 }

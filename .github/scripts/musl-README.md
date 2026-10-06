@@ -1,21 +1,25 @@
 # TRNovel for ARM64 musl Linux
 
-This archive contains `trnovel` and `trn` built natively for
-`aarch64-unknown-linux-musl`, including Kokoro TTS support.
+Both variants use dynamic musl linking on Alpine 3.23.
 
-It uses dynamic musl linking. It is not a fully static executable. On Alpine
-Linux 3.23, install the runtime libraries first:
+The basic archive contains only `trnovel` and `trn`. Install:
 
 ```sh
-apk add --no-cache ca-certificates alsa-lib libstdc++ onnxruntime libssl3 libcrypto3
+apk add --no-cache ca-certificates libstdc++ libssl3 libcrypto3
 ```
 
-Keep these libraries installed, then put `trnovel` and `trn` in your PATH.
-Listening requires a working audio device and the usual downloaded Kokoro
-model/voice files. Browser-assisted book sources still need a system browser.
+The listening archive also contains `novel-tts`. Keep all three binaries in
+the same directory and additionally install:
 
-Other musl distributions must provide compatible libraries, including
-ONNX Runtime 1.22 or newer. The CI runtime check uses Alpine 3.23.
+```sh
+apk add --no-cache alsa-lib onnxruntime
+```
 
-Download this archive directly from GitHub Releases. The cargo-dist shell,
-npm and Homebrew installers do not currently select this custom artifact.
+Only the listening worker loads ONNX Runtime/ALSA. It requires a working audio
+device and the separately downloaded Kokoro model files. Other musl systems
+must provide ONNX Runtime API 22 (1.22 or newer) and compatible shared libraries.
+Browser-assisted sources still require a system browser.
+
+Download these archives directly from GitHub Releases; shell, npm and Homebrew
+installers do not select the custom musl artifacts. Containers are checked in
+CI. Local Docker validation remains pending when the daemon is unavailable.

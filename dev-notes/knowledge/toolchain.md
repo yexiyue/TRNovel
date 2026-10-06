@@ -6,13 +6,13 @@ Cargo workspace 的模块组织、feature 门控、构建/发布、平台坑。`
 
 ## 模块组织
 
-### 统一用 mod.rs 风格
+### 模块名.rs 与子模块目录
 
-全 workspace（含主程序 `src/` 与子 crate）统一用 **`foo/mod.rs` 目录风格**,不用 `foo.rs` + `foo/` 并列风格。重构 `parse-book-source` 时把扁平的 16 个文件按功能域收进目录:`source/`、`eval/`、`fetch/`(含 `browser/`)、`host/`、`engine/`,每个目录一个 `mod.rs`。
+按用户在 2026-10-06 对听书重构的要求，新增和重构模块使用 **`foo.rs`** 定义模块；只有存在子模块时才建立同名 `foo/` 目录，子模块以 `foo/bar.rs` 定义。`lib.rs` 或父模块使用 `mod foo;` 声明，目录本身不再需要 `mod.rs`。
 
-**保持外部路径稳定**：`lib.rs` 用 re-export 把内部新路径映射回旧的对外路径,例如 `pub use fetch::cookie;`、`pub use host::state;`——外部 crate（主程序）的 `use parse_book_source::cookie::...` 不受目录重构影响。
+移动文件时同步 `include_str!`/`include_bytes!` 的相对路径，保持外部模块路径和 re-export 符合本次接口设计。仓库中既有 `mod.rs` 布局属于历史代码，按实际重构范围迁移。
 
-**相关文件**：`crates/parse-book-source/src/lib.rs`、各域 `mod.rs`
+**相关文件**：`crates/novel-tts-protocol/src/{codec.rs,message.rs}`、`crates/novel-tts-core/src/{config.rs,checkpoint.rs,storage.rs}`。
 
 ### include_str! 路径随文件深度变
 
@@ -28,7 +28,7 @@ Cargo workspace 的模块组织、feature 门控、构建/发布、平台坑。`
 - `kokoro-tts` 钉死 `0.3.1`——**`rc.12` 砍掉了 Intel Mac 支持,不要升**。
 - 普通发布目标使用 ort 预编译库；ARM64 musl 使用 Alpine 系统共享库，详见下方 musl 发布说明。
 
-**相关文件**：`crates/novel-tts/Cargo.toml`、根 `Cargo.toml`
+**相关文件**：`crates/novel-tts-core/Cargo.toml`、根 `Cargo.toml`
 
 ## 构建 / 发布
 
@@ -56,9 +56,9 @@ Codex / CI shell 可能带 `TERM=dumb` 或 `NO_COLOR=1`，会让 ratatui/crosste
 
 ### `ort` 是「假死依赖」——版本钉死,代码零引用但不可删
 
-`crates/novel-tts/Cargo.toml` 的 `ort = "=2.0.0-rc.10"` 在 novel-tts src 里**零 `use`/`ort::` 引用**——它不是直接用的,而是**钉死 kokoro-tts 传递依赖 ort 的版本**（kokoro-tts 声明宽松预发布范围,rc.12 砍 Intel Mac/要 glibc 2.38+）。`cargo-machete` 等死依赖工具会把它误报为 unused 并建议删除,**删了会让 ort 解析到坏版本、发布炸**。审计死依赖时这类「纯版本钉死 dep」要人工豁免。
+`crates/novel-tts-core/Cargo.toml` 的 `ort = "=2.0.0-rc.10"` 在 novel-tts-core src 里**零 `use`/`ort::` 引用**——它不是直接用的,而是**钉死 kokoro-tts 传递依赖 ort 的版本**（kokoro-tts 声明宽松预发布范围,rc.12 砍 Intel Mac/要 glibc 2.38+）。`cargo-machete` 等死依赖工具会把它误报为 unused 并建议删除,**删了会让 ort 解析到坏版本、发布炸**。审计死依赖时这类「纯版本钉死 dep」要人工豁免。
 
-**相关文件**：`crates/novel-tts/Cargo.toml`（注释已说明）
+**相关文件**：`crates/novel-tts-core/Cargo.toml`（注释已说明）
 
 ### ARM64 musl release artifact
 
@@ -77,3 +77,26 @@ Change cargo-dist metadata and regenerate `trnovel-release.yml`; do not edit the
 **相关文件**：`Cargo.toml`、`.github/workflows/publish-npm.yml`、`.github/scripts/publish-npm.sh`。
 
 npm publish-time scanning can delay registry availability by several minutes after a successful upload. Poll the public version before declaring success; do not re-upload while scanning is pending. Validate existing archives with `npm pack --dry-run`, because `npm publish --dry-run` still rejects already-published versions before a retry can skip them.
+
+### 基础阅读版与听书进程的依赖隔离
+
+根 `tts` feature 仅装配听书 UI、JSON Lines 协议及进程客户端，默认启用。基础阅读版用 `cargo build -p trnovel --no-default-features`，配套程序用 `cargo build -p novel-tts`。两种阅读器的 package-specific dependency tree 均没有 novel-tts-core、kokoro-tts、ort、rodio；不要以 workspace all-features 的依赖集合代替这项证明。
+
+`novel-tts-core` 默认 kokoro feature 引入固定原生依赖，独立程序才承担音频运行库要求。此变更的发布安装渠道与跨平台试听仍由 OpenSpec 的未完成任务跟踪，不能把本机 check 或假进程测试写成平台发布验收。
+
+**相关文件**：`Cargo.toml`、`crates/novel-tts/Cargo.toml`、`openspec/changes/decouple-tts-process/tasks.md`。
+
+
+### 双变体 cargo-dist 发布
+
+固定 cargo-dist 0.32.0 配置位于 `dist-workspace.toml`，`dist.toml` 描述泛用构建：默认听书包保留 `trnovel-v*` 标签及旧安装器名称，包含三个二进制。基础版由 custom local job 生成，仅包含两个阅读器；global extra-artifacts 校验基础压缩包并生成独立 shell/PowerShell/npm/Homebrew 安装器。
+
+`release.sh` 在升级版本后执行 `sync-dist-version.py` 保持 generic manifest 同步。`trnovel-basic.formula` 由自定义发布 job 改名为 `.rb`，避免 cargo-dist 默认 Homebrew job 把多个公式当成一个文件。新 npm 包首次发布前必须在注册表配置相应 Trusted Publisher，现有包的授权不自动覆盖新包。
+
+构建程序分别调用 package-specific Cargo 命令，防止 workspace feature unification 给阅读器带入原生音频依赖。ARM64 musl 先在无音频包的干净容器运行基础版，再装 ALSA/ONNX Runtime 检查听书程序。当前本机 Docker daemon 未启动，Windows/Intel Mac/GNU Linux 与 musl 实机验收仍依赖对应环境，不能以本机构建代替。
+
+### 听书包与模块命名
+
+`novel-tts-core` 是会话/合成/播放库，`novel-tts-protocol` 是轻量协议库，`novel-tts` 是独立程序 crate 及命令。依赖键用 `tts-core` / `tts-protocol` 显式声明 package 名，Rust 用 `tts_core` / `tts_protocol` 引用。阅读器可选模块为 `src/tts.rs` 与 `src/tts/`。
+
+CLI 接管原 novel-tts 的包名，保持 0.3.0 版本线，后续发布需递增；核心新包同样暂用 0.3.0。模型目录 `.novel-tts/kokoro` 与配置/检查点格式保持原样。更新包名时同步 crates.io 标签到目录的发布路由、cargo-dist binary 清单与同目录/PATH 程序发现。

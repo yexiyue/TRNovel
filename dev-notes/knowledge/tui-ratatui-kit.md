@@ -165,7 +165,7 @@ on_select(state.read().iter().map(|&i| data[i].clone()).collect());
 阅读页(`read_novel` 子树)已迁移到 `ratatui-kit-keymap` 的语义 action 分发,键位可经 `~/.novel/keybindings.toml` 的 `[reader]` 表自定义(issue #49);其余页面/组件仍在各自 `use_event_handler` 里 match `KeyCode`,后续变更逐 scope 迁移。快捷键帮助浮层在 `src/components/modal/shortcut_info_modal.rs`。
 
 **正确做法**:
-- 阅读页新增快捷键:在 `src/keymap/mod.rs` 的 `ReaderAction` 加变体 + `reader_defaults()` 绑默认键(变体名 snake_case 即用户配置键名,是稳定契约,改名 = 破坏用户配置);事件侧在对应组件的 `use_keymap_handler` 回调里加分支。
+- 阅读页新增快捷键:在 `src/keymap.rs` 的 `ReaderAction` 加变体 + `reader_defaults()` 绑默认键(变体名 snake_case 即用户配置键名,是稳定契约,改名 = 破坏用户配置);事件侧在对应组件的 `use_keymap_handler` 回调里加分支。
 - 键位表经 `KEYMAP: Atom<AppKeymap>` 分发,`hooks.use_atom(&KEYMAP).read().reader.clone()` 每帧取 `Arc`(引用计数,非深拷贝);hook 用 `use_keymap_handler(scope, priority, arc, |action, _key| ...)`,未命中自动 `Ignored` 不拦截 shell 键。
 - 帮助浮层/底部提示的键名一律走 `keymap::display_keys` / `display_first_key`(显示层折叠 `Shift-单字母` 为大写、方向键转箭头),保证显示与实际绑定一致;组件内部自处理的键(TreeSelect 导航、TTS 面板内 h/l)保持硬编码。
 - 迁移前 `'i' | 'I'` 这类大小写双匹配 → 默认表绑 `["i", "I"]`(crate 把大写字母视为 shift 意图,"I" ≡ shift-i);只绑小写会让 Shift+字母 失效。
@@ -175,7 +175,7 @@ on_select(state.read().iter().map(|&i| data[i].clone()).collect());
 - 不要在阅读页组件里重新 match 物理 `KeyCode`——会绕过用户自定义。
 - 不要把页面级 action(ToggleReadMode 等)在 `ReadContent` 里消费:它 `Ignored` 交给 `mod.rs` 的 handler,两处 action 集合不相交。
 
-**相关文件**:`src/keymap/mod.rs`(+tests)、`src/state.rs`(`KEYMAP`)、`src/app/mod.rs`(加载+告警)、`src/pages/read_novel/{mod.rs,read_content.rs}`、`openspec/changes/configurable-keybindings/keybindings.example.toml`(示例配置)、contrib 仓库 `crates/ratatui-kit-keymap`
+**相关文件**:`src/keymap.rs`(+tests)、`src/state.rs`(`KEYMAP`)、`src/app.rs`(加载+告警)、`src/pages/read_novel.rs、src/pages/read_novel/read_content.rs`、`openspec/changes/configurable-keybindings/keybindings.example.toml`(示例配置)、contrib 仓库 `crates/ratatui-kit-keymap`
 
 ### 阅读页章末/章首「再按一次」防误触跳章 + 翻回位置恢复
 
@@ -187,7 +187,7 @@ on_select(state.read().iter().map(|&i| data[i].clone()).collect());
 
 **同族坑 —— TTS 在最后一章的「假播放中」**:自动播放靠 `is_listening_done` 触发 `on_next`。最后一章 `on_next` 静默 no-op → `props.content` 不变 → 以 `content` 为 deps 的清理 effect **不重跑** → `is_listening` 永停 `true`,底部永久显示「播放中」且 `p` 只在 pause/play 间空转、无法重播。故最后一章须显式 `is_listening.set(false)`。**通用教训**:凡「靠 props 变化驱动状态复位」的 effect,在「操作被静默 no-op」的边界都会失效,得手动复位。
 
-**相关文件**：`src/pages/read_novel/read_content.rs`（`Edge` 状态 + `has_prev`/`has_next` + 滚动/翻页边界逻辑 + 底部提示 + TTS 复位）、`src/pages/read_novel/mod.rs`（`on_prev` 按 `is_scroll_top` 恢复位置、计算并下传 `has_prev`/`has_next`）
+**相关文件**：`src/pages/read_novel/read_content.rs`（`Edge` 状态 + `has_prev`/`has_next` + 滚动/翻页边界逻辑 + 底部提示 + TTS 复位）、`src/pages/read_novel.rs`（`on_prev` 按 `is_scroll_top` 恢复位置、计算并下传 `has_prev`/`has_next`）
 
 ### 阅读正文的滚动坐标系:进度百分比的分母必须是内容总行数
 
@@ -228,7 +228,7 @@ end_scroll = total - view                        贴底位置 = 章末判定线
 
 **正确做法**:handler 开头 `if key.modifiers.intersects(KeyModifiers::CONTROL | KeyModifiers::ALT) { return Ignored }`。**SHIFT 必须放行**——大写字母 `Q`/`G`/`B` 本身就带它。
 
-**相关文件**:`src/app/layout.rs`、`src/keymap/mod.rs`(`ctrl-b`/`ctrl-f` 默认绑定)
+**相关文件**:`src/app/layout.rs`、`src/keymap.rs`(`ctrl-b`/`ctrl-f` 默认绑定)
 
 ### 防抖 effect 在组件卸载时是 **drop 而非 flush**,须用 use_on_drop 兜底
 
@@ -238,7 +238,7 @@ end_scroll = total - view                        贴底位置 = 章末判定线
 
 **正确做法**:防抖之外再挂一个 `use_on_drop`,比对后同步补写(卸载路径阻塞一次写盘可接受,`History` 一直如此)。另外「记为已存」要放在**写盘成功之后**——先设后写会把失败的那次永久吞掉,而失败后不推进就能在下次改动时连同重试。
 
-**相关文件**:`src/pages/read_novel/mod.rs`、`src/hooks/use_debounce_effect.rs`
+**相关文件**:`src/pages/read_novel.rs`、`src/hooks/use_debounce_effect.rs`
 
 ### 阅读偏好的落盘要收敛到单一防抖点
 
@@ -246,7 +246,7 @@ end_scroll = total - view                        贴底位置 = 章末判定线
 
 **取值钳位放在配置类型内**（`ReaderDisplayConfig::page_overlap()` 访问器）而非各调用点——手改 JSON 写入的越界值由类型自己兜底。
 
-**相关文件**：`src/cache/setting.rs`、`src/pages/read_novel/mod.rs`、`src/pages/read_novel/settings/mod.rs`
+**相关文件**：`src/cache/setting.rs`、`src/pages/read_novel.rs`、`src/pages/read_novel/settings/mod.rs`
 
 ### 设置条目要上提的是「按键协议」,不是边框
 
@@ -257,7 +257,7 @@ end_scroll = total - view                        贴底位置 = 章末判定线
 
 曾经全仓有 5 处逐字相同的事件样板(`Event::Key` 解构 → `KeyEventKind::Press` → `if !is_editing { Ignored }` → `Left|h` / `Right|l`),「同层多个条目都收到这些键、只有聚焦者可消费」这条约定被复制 5 份 —— 漏写一处就是一次按键被多个条目同时响应,而开关型条目的取值展示已经开始漂移(`开/关` vs `true/false`)。**会漂移的是行为,不是外观**;将来把面板键位接入 keymap 体系也只需改这一处。
 
-**步进与边界收进配置类型**(同既有 `TTSConfig::increase_speed()`):`ReaderDisplayConfig::increase_page_overlap()` / `page_step(view)`。UI 不该知道上界 —— 那样 `PAGE_OVERLAP_MAX` 才能保持私有。越界的磁盘值在 `load()` 归一,别用「读侧访问器兜底」:那会让脏值永远留在文件里,且字段可写、访问器同名,靠注释约束等于没有约束。
+**步进与边界收进配置类型**(同配置类型内的步进方法):`ReaderDisplayConfig::increase_page_overlap()` / `page_step(view)`。UI 不该知道上界 —— 那样 `PAGE_OVERLAP_MAX` 才能保持私有。越界的磁盘值在 `load()` 归一,别用「读侧访问器兜底」:那会让脏值永远留在文件里,且字段可写、访问器同名,靠注释约束等于没有约束。
 
 ### 历史 TTS 高亮辅助函数的哨兵字符 —— `\u{002E}` 就是英文句点
 
@@ -337,7 +337,7 @@ const PANEL_HEIGHT: u16 = ITEM_COUNT as u16 * 3 + 4;
 - 浮层关闭时**在 hooks 全部注册完之后提前返回** `element!(View).into_any()`:组件每帧重跑,提示行的 `describe()` + `format!` 与整棵子树否则会每帧构建一次,而它绝大多数时间不可见。同理 `ShortcutInfoModal` 的快捷键表(十余次 `describe()` + 字符串拼接)要包在 `if info_modal_open.get()` 里再构建。
 - **UX**:数值型条目把派生值同屏展示(`翻页重叠: 2 行(每页滚动 26 行)`)——用户无法凭「2」想象效果,零成本的可解释性。
 
-**相关文件**：`src/pages/read_novel/settings/mod.rs`、`src/components/setting_item.rs`、`src/pages/read_novel/mod.rs`(`Panel`)
+**相关文件**：`src/pages/read_novel/settings/mod.rs`、`src/components/setting_item.rs`、`src/pages/read_novel.rs`(`Panel`)
 
 ### `ScrollView(active: true)` 会吞掉子树的 j/k/h/l —— 面板做焦点导航必须关掉它
 
@@ -414,13 +414,13 @@ children 透传:`{ &mut props.children }` 会因生命周期 `'1 must outlive 's
 
 ### 全局 store → Atom（change `global-state-to-atom`）
 
-ambient 单例(主题 / TTS 模型句柄 / 浏览器提示)从「`App` `use_state` + 深嵌套 `ContextProvider` 链 + 后代 `use_context`」改为 module-level `static Atom`:
+ambient 单例(主题 / 浏览器提示)从「`App` `use_state` + 深嵌套 `ContextProvider` 链 + 后代 `use_context`」改为 module-level `static Atom`:
 
 - 声明方式:`pub static FOO: Atom<FooConfig> = Atom::new(FooConfig::default);`(`Atom::new(fn() -> T)` 是 **const fn**,可作 static;无捕获闭包 `|| None` 也行)。`Atom<T>` 要 `T: Send+Sync`,`use_atom` 另要 `Unpin`。旧版示例里的 `THEME: Atom<ThemeConfig>` 已被 0.10 主题重构替换为 `APPEARANCE` / `READER_DISPLAY`。
 - 组件内订阅:`hooks.use_atom(&THEME)` 返回 `AtomState<T>`(Copy 句柄,API 同 `State`)。
 - **组件外/后端直接读写**:`THEME.set(v)` / `THEME.get()`(`Atom::set/get` 取 `&self`,无需 hooks)——这把 `browser_assist` 那套「OnceLock 持 UI State 句柄给 build_engine」的桥**整个删掉**:`BROWSER_PROMPT` 是 static 全局可达,`TuiBrowserUi` 退化成无状态单元结构体直接读写它。
 - **坑:`use_atom` 是 `&mut self`**(注册 waker 的 hook)。把它包进 `&self` 的辅助方法会强制该方法变 `&mut self`,**波及所有非 mut hooks 的调用点**(`fn Foo(.., hooks: Hooks)` → `mut hooks`)。旧 `UseThemeConfig::use_theme_config` 就踩过这个坑,当前主题代码不再保留该 helper。
-- **不 atom 化带 Drop 存档的缓存**:`History`/`BookSourceCache`/`TTSConfig` 有 `impl Drop { save() }`,而 `static` 析构永不运行 → 仍由 `App` `use_state` 持有(provider 链从 6 缩到 3)。
+- **不 atom 化带 Drop 存档的缓存**:`History`/`BookSourceCache` 有 `impl Drop { save() }`,而 `static` 析构永不运行 → 仍由 `App` `use_state` 持有(provider 链从 6 缩到 3)。
 - `BrowserPrompt::Click` 的 `Arc<AtomicBool>` 取消信号:atom 替换写入会 drop 旧 `Click`,但引擎侧持有 `Arc` 克隆保活,`cancel.load()` 不悬挂。
 
 **相关 change**:`openspec/changes/upgrade-ratatui-kit-07`、`global-state-to-atom`（均已实施 + CI 全绿,design.md 有完整决策）。
@@ -458,7 +458,7 @@ ambient 单例(主题 / TTS 模型句柄 / 浏览器提示)从「`App` `use_stat
 - 不要在 list item 等领域渲染结构体里携带旧主题快照。若自定义 `WidgetRef` 需要样式，只携带小型 `ComponentTheme` 或显式 `Style`。
 - 不要把 `show_title`、阅读行为或其他偏好塞进 `AppearanceConfig`；外观配置只保存命名主题与背景策略。
 
-**相关文件**：`src/cache/setting.rs`、`src/state.rs`、`src/app/mod.rs`、`src/theme/mod.rs`、`src/pages/theme_setting/mod.rs`
+**相关文件**：`src/cache/setting.rs`、`src/state.rs`、`src/app.rs`、`src/theme/mod.rs`、`src/pages/theme_setting/mod.rs`
 
 ### 正文搜索使用原文坐标与独占输入层
 
@@ -469,4 +469,22 @@ ambient 单例(主题 / TTS 模型句柄 / 浏览器提示)从「`App` `use_stat
 - 受控单行输入复用框架 Input + tui_input，编辑时注册 blocks_lower 输入层；框架 SearchInput 的 is_editing 是“允许激活”，不是受控打开状态。
 - 结果切换提示必须保留 n/N 的大小写，通用键名大写美化会把二者显示成同一个键。
 
-**相关文件**：`src/pages/read_novel/search/mod.rs`、`src/pages/read_novel/read_content.rs`、`src/keymap/mod.rs`。
+**相关文件**：`src/pages/read_novel/search/mod.rs`、`src/pages/read_novel/read_content.rs`、`src/keymap.rs`。
+
+### 可选听书模块的生命周期
+
+`src/tts.rs` 下的 client/controller/ui 经根 tts feature 装配。App 只提供 Handle 和协议状态快照 Context，use_future 订阅 watch；不再持有 TTSConfig::Drop 或 native 模型 atom。
+
+**正确做法**：启动路径在 run 的生命周期内创建轻量 actor，只有 Open/Toggle/Prepare 明确动作才连子进程。退出及 Ctrl+C 取消正在等待的命令，再在三秒内 shutdown 或 kill/reap。正文页用来源、正文摘要和当前终态过滤事件；挂载时记录终态修订号，防止旧 completed 使重进页面自动播放。只有已完成会话的明确下一章来源才能延续自动续章。
+
+**坑**：不能在 hooks 参数同步求值处 spawn。正文摘要及请求应 use_memo，避免每帧重算整章 SHA。动态浮层节点先算成变量，放到 Fragment 内，不能紧贴没有 children 字段的 ReadContent 后嵌表达式。设置值只在子进程确认后更新，快速输入先排入有界 actor 队列。
+
+**相关文件**：`src/app.rs`、`src/tts/controller.rs`、`src/pages/read_novel/read_content.rs`。
+
+### 空 Fragment 会参与布局，不能用作关闭插件的零尺寸占位
+
+ratatui-kit 0.10.3 的透明组件在 update 后继承第一个子节点的 LayoutStyle；无子节点时回退到默认布局约束。因此 `element!(Fragment)` 不保证零尺寸。无 TTS 构建把它作为听书面板占位，会在阅读页的垂直 View 中分走正文高度：打开阅读设置或帮助时，正文缩到上半屏，滚动行数仍按全终端算。
+
+**正确做法**：可选面板禁用时返回 `View(width: Constraint::Length(0), height: Constraint::Length(0))`，与关闭 Modal 的布局占位一致。真正无子节点的 Fragment 不适合代替零尺寸 UI。VHS 必须分别录制带/不带 feature 的二进制；编译检查发现不了此布局问题。
+
+**相关文件**：`src/pages/read_novel.rs`（`listening_panel`）、`docs/tapes/basic-ui.tape`。
