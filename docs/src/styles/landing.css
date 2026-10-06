@@ -1,22 +1,26 @@
-/* TRNovel 官网首页样式 token 与共享布局
-   圆角系统:容器/按钮/窗口统一 12px,小型代码 chip 8px */
+/* Terminal companion identity. Source palette: assets/brand/README.md. */
 
 :root {
-	/* 亮色主题(Starlight 默认 data-theme="light") */
-	--tn-accent: #0c7a54;
+	--tn-accent: #bc5a28;
 	--tn-accent-contrast: #ffffff;
-	--tn-surface: #f6f8fa;
-	--tn-surface-2: #eef1f5;
-	--tn-border: #d0d7de;
+	--tn-surface: #f5ebdd;
+	--tn-surface-2: #ece0cf;
+	--tn-border: #d7cbbc;
 	--tn-mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+	--sl-color-accent-low: #ffe1c9;
+	--sl-color-accent: #bc5a28;
+	--sl-color-accent-high: #733816;
 }
 
 [data-theme="dark"] {
-	--tn-accent: #3ddc97;
-	--tn-accent-contrast: #06281b;
-	--tn-surface: #161b22;
-	--tn-surface-2: #1c232e;
-	--tn-border: #2b3240;
+	--tn-accent: #e78a4e;
+	--tn-accent-contrast: #17212b;
+	--tn-surface: #17212b;
+	--tn-surface-2: #202e3a;
+	--tn-border: #3c4c58;
+	--sl-color-accent-low: #4d2c1c;
+	--sl-color-accent: #e78a4e;
+	--sl-color-accent-high: #f6c4a5;
 }
 
 /* 首页(带 hero 的 splash 页)加宽内容列 */
@@ -36,7 +40,7 @@
 	white-space: nowrap;
 }
 
-/* 首页 Aside 提示块改用品牌绿,避免默认紫色破坏单一强调色 */
+/* Brand accent also carries informational highlights. */
 [data-has-hero] .starlight-aside--tip {
 	border-inline-start-color: var(--tn-accent);
 	background-color: color-mix(in srgb, var(--tn-accent) 10%, var(--sl-color-bg));

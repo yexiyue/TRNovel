@@ -1,9 +1,9 @@
 ---
 title: TRNovel
-description: 终端里的现代小说阅读器，本地与网络小说双修，智能识别分卷目录，AI 一键生成书源，支持独立 TTS 听书程序与流式音色克隆。
+description: 打开终端，走进故事。TRNovel 支持本地 TXT、网络书源、断点续读和独立 TTS 听书，终端机器人小卷陪你读下一章。
 template: splash
 hero:
-  tagline: 在终端里优雅地读小说
+  tagline: 打开终端，走进故事。
 ---
 
 import { Tabs, TabItem, LinkCard, CardGrid, Aside } from '@astrojs/starlight/components';
@@ -20,8 +20,8 @@ import Gallery from '../../components/landing/Gallery.astro';
 
 <div>
 
-别人做书源要手写一堆规则，TRNovel 把「逆向、校验、导入」交给 AI 串成闭环：给一个小说站
-URL，Agent 自动探站并逆向出选择器，`trn doctor` 逐项体检到全绿，导入后立刻能读。
+把小说站 URL 交给装有 `booksource-generator` skill 的 Agent，生成搜索、目录和正文规则。
+再用 `trn doctor` 检查每个阶段，确认通过后导入阅读器。站点变化时可以重新校验和调整。
 
 书源是结构化 JSON，对 AI 友好，schema 由 Rust 类型自动生成。详见
 [书源参考](/TRNovel/book-source/intro)与[反爬与浏览器辅助](/TRNovel/reference/anti-scraping)。

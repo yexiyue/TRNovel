@@ -8,6 +8,7 @@ import starlightThemeNova from "starlight-theme-nova";
 
 // https://astro.build/config
 export default defineConfig({
+  site: "https://yexiyue.github.io",
   base: "/TRNovel",
   integrations: [
     starlight({
@@ -60,10 +61,23 @@ export default defineConfig({
       },
       customCss: ["./src/styles/landing.css"],
       logo: {
-        light: "./src/assets/trnovel-mark-light.svg",
-        dark: "./src/assets/trnovel-mark-dark.svg",
+        light: "../assets/brand/mark-on-light.svg",
+        dark: "../assets/brand/mark-on-dark.svg",
         alt: "TRNovel",
       },
+      head: [
+        {
+          tag: "meta",
+          attrs: {
+            property: "og:image",
+            content: "https://yexiyue.github.io/TRNovel/brand/social-card.png",
+          },
+        },
+        {
+          tag: "meta",
+          attrs: { name: "twitter:card", content: "summary_large_image" },
+        },
+      ],
       social: [
         {
           icon: "github",

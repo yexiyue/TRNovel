@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" role="img">
+  <title>TRNovel — terminal companion mark</title>
+<path fill="#E78A4E" d="M26 6h18v28l-9-6-9 6Z"/>
+<path fill="#17212B" fill-rule="evenodd" d="M28 26h72a16 16 0 0 1 16 16v58a16 16 0 0 1-16 16H28a16 16 0 0 1-16-16V42a16 16 0 0 1 16-16Zm3 10a9 9 0 0 0-9 9v52a9 9 0 0 0 9 9h66a9 9 0 0 0 9-9V45a9 9 0 0 0-9-9Z"/>
+<g fill="none" stroke="#E78A4E" stroke-width="7" stroke-linecap="round" stroke-linejoin="round">
+  <path d="m41 56 12 12-12 12m46-24L75 68l12 12M57 90h14"/>
+</g>
+<rect x="93" y="90" width="6" height="6" rx="1" fill="#E78A4E"/>
+</svg>

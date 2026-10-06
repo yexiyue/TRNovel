@@ -1,5 +1,5 @@
 ---
-// 特性 bento:7 项内容 = 7 格,混合尺寸;1 格渐变底 + 2 格真实录屏(VHS GIF)保证视觉多样性。
+// Feature overview with real product recordings.
 // 用原生 <img>(而非 astro:assets <Image>)以保留 GIF 动画。
 import homeGif from "../../assets/guides/home.gif";
 import localGif from "../../assets/guides/local-select.gif";
@@ -7,16 +7,16 @@ import localGif from "../../assets/guides/local-select.gif";
 
 <div class="tn-bento">
 	<div class="cell ai">
-		<h3>AI 一键生成书源</h3>
+		<h3>用 AI 制作书源</h3>
 		<p>
 			把小说站 URL 交给装了 booksource-generator skill 的
-			Agent，自动逆向出搜索、目录、正文的选择器，体检到全绿后导入即用。
+			Agent，生成搜索、目录、正文规则，再用 trn doctor 校验后导入。
 		</p>
 		<code class="chip">trn doctor my-source.v2.json</code>
 	</div>
 	<div class="cell">
 		<h3>TTS 听书</h3>
-		<p>内置 Kokoro 中文语音合成，边听边高亮当前句，解放双眼。</p>
+		<p>独立 novel-tts 程序负责合成与播放，正文高亮跟随朗读。当前源码默认 MOSS，可选 Kokoro 与 Qwen。</p>
 	</div>
 	<div class="cell shot">
 		<div class="crop">
@@ -48,8 +48,8 @@ import localGif from "../../assets/guides/local-select.gif";
 		<p>撞上 Cloudflare 时复用系统浏览器解挑战，拿到 cookie 后继续走快速请求，必要时点一下「我是真人」即可。</p>
 	</div>
 	<div class="cell">
-		<h3>跨平台单二进制</h3>
-		<p>Windows、macOS、Linux 通吃，命名主题统一全局配色，基于 ratatui-kit 构建。</p>
+		<h3>在熟悉的终端里阅读</h3>
+		<p>支持 Windows、macOS 和 Linux，主题与键位按习惯调整，基于 ratatui-kit 构建。</p>
 	</div>
 </div>
 
@@ -116,11 +116,7 @@ import localGif from "../../assets/guides/local-select.gif";
 	}
 
 	.cell.ai {
-		background: linear-gradient(
-			135deg,
-			color-mix(in srgb, var(--tn-accent) 14%, var(--tn-surface)),
-			var(--tn-surface) 72%
-		);
+		background: var(--tn-surface-2);
 	}
 
 	.cell.shot {

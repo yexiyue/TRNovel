@@ -130,3 +130,11 @@ Metal 通过 macOS target-specific 的 candle-core 别名依赖启用，避免�
 **相关文件**：`crates/novel-tts-backends/src/qwen.rs`、`src/qwen/runtime.rs`、`src/devices/calibration.rs`、后端 Cargo.toml。
 
 - Candle Metal 必须同时启用 core/nn/transformers 的 metal feature。只启用 candle-core 能加载 Qwen 权重，但推理会报 `no metal implementation for rms-norm`；验收必须包含真实 PCM 生成。对应依赖仍仅在 macOS target 启用。
+
+### 品牌主资产与官网导出
+
+终端机器人“小卷”的标志、路径字标、透明 PNG 与品牌规范统一在 `assets/brand/`。官网配置和 Hero 直接引用这个目录的主资产，Astro 可以构建文档根目录以外的静态导入；不要在 `docs/src/assets/` 手动维护另一套标志副本。
+
+矢量源使用 `source/build_vectors.py` 和随附 OFL 字体，字标导出为路径；`source/export_images.mjs` 使用文档站现有 sharp 依赖导出 app icon 与 `docs/public/brand/social-card.png`。favicon 为小尺寸单独简化。更新资源后运行导出脚本与 `pnpm build`，核对深浅主题、窄屏和 GitHub Pages `/TRNovel` 路径。
+
+**相关文件**：`assets/brand/README.md`、`assets/brand/source/`、`docs/astro.config.mjs`、`docs/src/components/landing/Hero.astro`。
