@@ -8,7 +8,7 @@ sidebar:
         variant: success
 ---
 
-听书由独立的 `novel-tts` 程序处理。阅读器只提交章节正文、先显示片段高亮，异步对齐后显示逐句高亮，并按正常完成事件续章。MOSS/Kokoro 模型和音频设备保留在听书进程中；默认使用原生 MOSS-TTS-Nano 与 Qwen 对齐，无需 Python。
+听书由独立的 `novel-tts` 程序处理。阅读器提交章节正文，显示片段高亮，并按正常完成事件续章；显式开启对齐后才异步切换逐句高亮。MOSS、Kokoro 和 Qwen TTS 模型及音频设备保留在听书进程中；默认使用原生 MOSS-TTS-Nano，对齐默认关闭，无需 Python。
 
 ## 从源码构建
 
@@ -44,7 +44,7 @@ cargo build -p novel-tts --no-default-features --features kokoro
 | 音色 | ←/→ 选择预置或已导入音色，显示后端提供的名称 |
 | 播放速度 | ←/→ 调节 0.5..2 倍速 |
 | 音量 | ←/→ 调节 0..10 |
-| 合成 / 对齐设备 | ←/→ 分别选择 auto/cpu/coreml/cuda，显示编译能力、可用设备与实际使用设备 |
+| 合成 / 对齐设备 | ←/→ 分别选择 auto/cpu/coreml/cuda/metal，显示编译能力、可用设备与实际使用设备 |
 | 自动续章 | 仅在主动开始的听书正常完成后续章；失败、取消、重启不会自动播放 |
 | 从章首重播 | Enter 明确忽略旧恢复点，从本章开头播放 |
 | 释放资源 | Enter 停播并关闭听书子进程，释放模型和设备 |
@@ -58,6 +58,23 @@ cargo build -p novel-tts --no-default-features --features kokoro
 MOSS 资源保存在 `$HOME/.novel-tts/moss/{tts,codec}`，固定版本共约 763 MB，下载后校验大小和 SHA-256。损坏文件会隔离，下次准备重新下载。支持原生流式播放，输出 48kHz 双声道 PCM；按自然段合并上下文，跳过装饰分隔行，裁剪块边界静音。对齐与播放使用同一份处理后的 PCM。
 
 可选 Kokoro 仍使用固定 0.3.1 和 v1.1 模型，保存在 `$HOME/.novel-tts/kokoro/`，输出完整片段音频。`--model-dir` 覆盖包含各后端子目录的公共根目录。
+
+### Qwen TTS（Candle）
+
+可选 `qwen` feature 集成原生 Candle 推理，首版为 Qwen3-TTS 0.6B CustomVoice，提供九种预置音色，默认福叔 `uncle_fu`。固定模型约 2.50 GB，按需下载并校验到 `$HOME/.novel-tts/qwen/`。它与 `alignment/qwen/` 的强制对齐模型相互独立。
+
+```sh
+# macOS：保留 MOSS，增加 Qwen 与 Metal GPU 支持
+cargo build --release -p novel-tts --features qwen,metal
+# 通用 CPU：只编入 Qwen
+cargo build --release -p novel-tts --no-default-features --features qwen
+novel-tts --backend qwen --voice uncle_fu book.txt
+novel-tts --backend qwen voices list
+```
+
+TUI 按能力目录直接展示 Qwen 与它的音色。CLI/TUI 切换后端时将合成设备重置为 auto，保持阅读位置，由用户重新准备和播放。Qwen 首版支持 CPU/Metal，不支持此适配器的参考音频克隆或 CUDA；MOSS 导入功能不受影响。Metal 与 CoreML 是不同执行路径，请按各后端报告的设备选择。
+
+上游 Candle 实现仍属实验版本，已固定源码 revision。流式小块的解码边界、长文本覆盖和主观音质需要试听确认，不能以正常 EOS 代替音质验收。
 
 ## 导入音色
 
@@ -91,7 +108,7 @@ novel-tts --restart book.txt
 
 ## 逐句对齐与 GPU
 
-默认 CPU 使用 Qwen3-ForcedAligner-0.6B 的 Q4 ONNX，约 0.99 GiB，准备资源时按需下载至 `~/.novel-tts/alignment/qwen/` 并校验。音频立即播放；后台对齐成功后切换逐句高亮，迟到结果不会倒退。缺少资源、失败、超时或任务积压时显示“片段高亮”并继续朗读。暂停保留高亮，恢复后继续按原始 PCM 帧位置推进；倍速不改变句子时间线。
+显式开启逐句高亮后，CPU 使用 Qwen3-ForcedAligner-0.6B 的 Q4 ONNX，约 0.99 GiB，准备资源时按需下载至 `~/.novel-tts/alignment/qwen/` 并校验。音频立即播放；后台对齐成功后切换逐句高亮，迟到结果不会倒退。缺少资源、失败、超时或任务积压时显示“片段高亮”并继续朗读。暂停保留高亮，恢复后继续按原始 PCM 帧位置推进；倍速不改变句子时间线。
 
 ```sh
 # Apple Silicon 的 CoreML 构建
@@ -103,7 +120,7 @@ novel-tts --tts-device auto --alignment-device auto book.txt
 
 默认 auto 独立校准合成与对齐：3 次预热、5 次测量，完整链路至少快 15%、首音频回退不超过 10% 才选加速；还检查并发竞争。GPU 对齐浮点资源约 3.42 GiB，首次校准可触发下载。显式选择不可用设备会报错；自动模式运行失败后切回 CPU 并显示原因，不重播已输出音频。Kokoro 当前只支持 CPU 合成，也可使用 Qwen 对齐。
 
-CoreML 可用并不保证更快或全部算子在 GPU。本机 M4 Pro 发布构建测量选择 CPU；CUDA 实机验收仍待完成。校准结果保存在模型根目录 calibration-*.json，按硬件、模型和 ORT 版本区分。各模型目录的 coreml-cache 可删除重建。协议为 v3，阅读器与 worker 必须配套更新。
+CoreML 可用并不保证更快或全部算子在 GPU。本机 M4 Pro 的 MOSS 发布构建测量选择 CPU；CUDA 实机验收仍待完成。校准结果保存在模型根目录 calibration-*.json，按硬件、模型和运行库版本区分。各模型目录的 coreml-cache 可删除重建。协议为 v4，阅读器与 worker 必须配套更新。
 
 ## 可选逐句高亮
 
@@ -112,3 +129,9 @@ CoreML 可用并不保证更快或全部算子在 GPU。本机 M4 Pro 发布构�
 独立命令可用 `novel-tts --alignment book.txt` 开启，或 `novel-tts --alignment=false book.txt` 关闭。
 
 MOSS 会合并排版单换行，空行、章节标题和装饰分隔线仍形成边界。长输入会按音色时长估算和模型预算切分。若模型超限或推理失败，会明确停止并保留位置，不自动重复已播放内容。模型的正常结束信号不能作为全部文字已经朗读的证明。
+
+### 流式播放缓冲
+
+播放前会积累约 3 秒音频，减少小块生成波动引起的停顿。队列耗尽时显示“缓冲中”，恢复目标逐次增大，最多约 10 秒；暂停期间仍可在内存预算内预取。短文本生成完后直接播放，不必攒满目标。播放倍率越高，需要的原始音频余量越多。
+
+若模型长期生成得比播放慢，缓冲只能减少频繁停顿，不能保证无限连续播放。Qwen 可用 `NOVEL_TTS_DIAGNOSTICS=1` 在 worker stderr 查看每块生成耗时、音频长度和通道等待；阅读器底栏显示缓冲余量及耗尽次数。

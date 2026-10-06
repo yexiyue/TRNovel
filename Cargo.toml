@@ -66,6 +66,7 @@ reqwest = { version = "0.13", default-features = false, features = ["rustls"] }
 members = ["crates/novel-tts-backends", "crates/novel-tts-core", "crates/novel-tts-protocol", "crates/novel-tts", "crates/parse-book-source"]
 
 [workspace.dependencies]
+qwen3-tts = { git = "https://github.com/TrevorS/qwen3-tts-rs", rev = "711ceee07cad92673f86de8997bdf54c30caa49f", default-features = false }
 ort = "=2.0.0-rc.10"
 kokoro-tts = "=0.3.1"
 rodio = { version = "0.21.1", default-features = false, features = ["playback", "wav", "tracing"] }

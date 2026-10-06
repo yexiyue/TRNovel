@@ -149,3 +149,24 @@ fn basic_ignores_legacy_listening_overrides_without_changing_data() {
     assert_eq!(map.action_for(key!(t)), None);
     assert_eq!(map.action_for(key!(ctrl - d)), Some(ReaderAction::PageDown));
 }
+
+#[test]
+fn follow_playback_is_feature_gated_and_remappable() {
+    let mut km = reader_defaults();
+    assert_eq!(
+        display_keys(&km, ReaderAction::FollowPlayback),
+        if cfg!(feature = "tts") { "F" } else { "" }
+    );
+    #[cfg(feature = "tts")]
+    {
+        assert!(
+            km.merge_toml_table(
+                ratatui_kit_keymap::toml::from_str("follow_playback = [\"r\"]").unwrap()
+            )
+            .is_empty()
+        );
+        assert_eq!(display_keys(&km, ReaderAction::FollowPlayback), "R");
+    }
+    #[cfg(not(feature = "tts"))]
+    let _ = &mut km;
+}

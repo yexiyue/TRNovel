@@ -108,6 +108,7 @@ pub async fn run(
                 event = events.recv() => {
                     let Some(event) = event else {break};
                     match event.event {
+                        Event::BufferStatus{buffered_ms,target_ms,underruns} => eprintln!("缓冲 {:.1}/{:.1}s · 耗尽 {underruns} 次\r",buffered_ms as f64/1000.0,target_ms as f64/1000.0),
                         Event::SessionState{state} => eprintln!("{state:?}\r"),
                         Event::Error(error) => eprintln!("{}: {}\r",error.stage,error.message),
                         Event::SegmentStarted{range,..} | Event::SentenceStarted{range,..} => eprintln!("bytes {}..{}\r",range.start,range.end),

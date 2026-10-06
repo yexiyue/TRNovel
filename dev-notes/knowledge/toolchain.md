@@ -120,3 +120,13 @@ VHS 验收不同 feature 的阅读器时，把构建出的 basic 二进制复制
 ### 轻量 TOC 常量共享
 
 内置章节数字、中文/英文/特殊标题正则常量在 novel-tts-protocol::headings 共享，protocol 不编译正则、不处理书籍。基础阅读版因此也依赖该轻量 crate，但仍不依赖 TTS core/backends/ORT/rodio。模型诊断 example 明确使用输出目录，真实模型测试通过 TRNOVEL_MOSS_MODEL_DIR 启用。
+
+### Candle Qwen 与平台设备
+
+Qwen TTS 使用 Git 钉版 TrevorS/qwen3-tts-rs，首版 0.6B CustomVoice。qwen-only 构建不引入 ORT；阅读器也不引入 Candle。上游尚未发布对应 crates.io 包，后端 crate 独立发布前需要解决该 Git 依赖分发，不能直接照旧发布。
+
+Metal 通过 macOS target-specific 的 candle-core 别名依赖启用，避免全 workspace/all-features Linux 构建启用 Apple 原生依赖；非 Mac 的 metal feature 不报告可用 Metal。不要直接把 qwen3-tts/metal 的全局 feature 转发到所有平台。设备目录由 Registry 按后端提供，对齐仍使用 ORT provider，不能复用 TTS 的 Metal 候选。校准缓存文件名包含 key 摘要，避免切换模型互相覆盖记录。
+
+**相关文件**：`crates/novel-tts-backends/src/qwen.rs`、`src/qwen/runtime.rs`、`src/devices/calibration.rs`、后端 Cargo.toml。
+
+- Candle Metal 必须同时启用 core/nn/transformers 的 metal feature。只启用 candle-core 能加载 Qwen 权重，但推理会报 `no metal implementation for rms-norm`；验收必须包含真实 PCM 生成。对应依赖仍仅在 macOS target 启用。

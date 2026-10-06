@@ -12,10 +12,13 @@ default = ["moss", "alignment"]
 alignment = ["dep:ort", "dep:tokenizers", "dep:rustfft", "dep:rubato"]
 moss = ["dep:ort", "dep:sentencepiece-rs", "dep:rand", "dep:hound", "dep:rubato"]
 kokoro = ["dep:ort", "dep:kokoro-tts"]
+qwen = ["dep:qwen3-tts", "dep:hound"]
+metal = ["qwen", "dep:candle-metal", "dep:candle-nn-metal", "dep:candle-transformers-metal"]
 coreml = ["dep:ort", "ort/coreml"]
 cuda = ["dep:ort", "ort/cuda"]
 
 [dependencies]
+qwen3-tts = { workspace = true, optional = true }
 tts-core = { package = "novel-tts-core", path = "../novel-tts-core", version = "0.3.0" }
 tts-protocol = { package = "novel-tts-protocol", path = "../novel-tts-protocol", version = "0.1.0" }
 ort = { workspace = true, optional = true }
@@ -33,6 +36,12 @@ tokio.workspace = true
 dirs.workspace = true
 sha2.workspace = true
 tempfile.workspace = true
+
+[target.'cfg(target_os = "macos")'.dependencies]
+candle-metal = { package = "candle-core", version = "=0.9.2", features = ["metal"], optional = true }
+candle-nn-metal = { package = "candle-nn", version = "=0.9.2", features = ["metal"], optional = true }
+candle-transformers-metal = { package = "candle-transformers", version = "=0.9.2", features = ["metal"], optional = true }
+
 
 [[example]]
 name = "basic"
@@ -62,3 +71,7 @@ required-features = ["moss"]
 [[example]]
 name = "moss_probe"
 required-features = ["moss"]
+
+[[example]]
+name = "qwen"
+required-features = ["qwen"]

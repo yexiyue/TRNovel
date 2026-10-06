@@ -42,6 +42,7 @@ pub enum SessionError {
     Disconnected,
 }
 
+mod buffering;
 mod prefetch;
 mod producer;
 use prefetch::{Budget, Packet};
@@ -72,6 +73,8 @@ struct Job {
     request: StartRequest,
     paused: Rc<Cell<bool>>,
     phase: Rc<Cell<SessionState>>,
+    buffering: Rc<Cell<bool>>,
+    speed: Rc<Cell<f32>>,
     position: Rc<Cell<usize>>,
     terminal: Rc<Cell<bool>>,
     writes: Arc<PendingWrites>,
@@ -151,12 +154,14 @@ impl SessionManager {
             .map_err(|error| SessionError::Invalid(error.to_string()))?;
         self.stop().await?;
         self.player.configure(config.volume, config.speed);
-        self.player.resume();
+        self.player.pause();
         self.used_ids.insert(id.clone());
         let phase = Rc::new(Cell::new(SessionState::Generating));
         let position = Rc::new(Cell::new(byte));
         let paused = Rc::new(Cell::new(false));
         let terminal = Rc::new(Cell::new(false));
+        let buffering = Rc::new(Cell::new(true));
+        let speed = Rc::new(Cell::new(config.speed));
         let writes = Arc::new(PendingWrites::default());
         let runner = Runner {
             id: id.clone(),
@@ -168,6 +173,8 @@ impl SessionManager {
             events: self.events.clone(),
             paused: paused.clone(),
             phase: phase.clone(),
+            buffering: buffering.clone(),
+            speed: speed.clone(),
             position: position.clone(),
             text: Arc::from(request.text.as_str()),
             writes: writes.clone(),
@@ -212,6 +219,8 @@ impl SessionManager {
             request,
             paused,
             phase,
+            buffering,
+            speed,
             position,
             terminal,
             writes,
@@ -239,7 +248,9 @@ impl SessionManager {
     pub async fn resume(&self, id: &str) -> Result<(), SessionError> {
         let job = self.active(id)?;
         job.paused.set(false);
-        self.player.resume();
+        if !job.buffering.get() {
+            self.player.resume();
+        }
         self.emit(
             id,
             Event::SessionState {
@@ -285,6 +296,9 @@ impl SessionManager {
                 self.pause(&new_id).await?;
             }
             return Ok(true);
+        }
+        if let Some(job) = &self.job {
+            job.speed.set(config.speed);
         }
         self.player.configure(config.volume, config.speed);
         Ok(false)
@@ -429,6 +443,111 @@ mod tests {
         fn stop(&self) {}
         fn configure(&self, _: f32, _: f32) {}
     }
+    #[derive(Default)]
+    struct PausablePlayer {
+        paused: Cell<bool>,
+        queued: Cell<Duration>,
+        cursor: Cell<Duration>,
+    }
+    impl Playback for PausablePlayer {
+        fn append(&self, pcm: Arc<Pcm>) {
+            self.queued
+                .set(self.queued.get() + Duration::from_millis(pcm.duration_ms().unwrap() as u64));
+        }
+        fn position(&self) -> Duration {
+            self.cursor.get()
+        }
+        fn is_empty(&self) -> bool {
+            self.cursor.get() >= self.queued.get()
+        }
+        fn pause(&self) {
+            self.paused.set(true);
+        }
+        fn resume(&self) {
+            self.paused.set(false);
+        }
+        fn stop(&self) {
+            self.paused.set(true);
+        }
+        fn configure(&self, _: f32, _: f32) {}
+    }
+    struct GatedBackend(Arc<tokio::sync::Notify>);
+    impl Backend for GatedBackend {
+        fn capabilities(&self) -> Capabilities {
+            FakeBackend {
+                calls: Cell::new(0),
+                fail_at: None,
+            }
+            .capabilities()
+        }
+        fn stream<'a>(&'a self, _: &'a str, _: &'a str) -> Streaming<'a> {
+            Box::pin(async move {
+                let (tx, rx) = mpsc::channel(1);
+                let gate = self.0.clone();
+                tokio::task::spawn_local(async move {
+                    for milliseconds in [100, 3000] {
+                        tx.send(Ok(AudioChunk::Pcm(Pcm {
+                            samples: vec![0.1; milliseconds],
+                            sample_rate: 1000,
+                            channels: 1,
+                        })))
+                        .await
+                        .unwrap();
+                        if milliseconds == 100 {
+                            gate.notified().await;
+                        }
+                    }
+                    tx.send(Ok(AudioChunk::End)).await.unwrap();
+                });
+                Ok(rx)
+            })
+        }
+    }
+    #[tokio::test]
+    async fn user_resume_cannot_bypass_buffer_and_refill_cannot_override_pause() {
+        tokio::task::LocalSet::new()
+            .run_until(async {
+                let directory = tempfile::tempdir().unwrap();
+                let player = Rc::new(PausablePlayer::default());
+                let gate = Arc::new(tokio::sync::Notify::new());
+                let (tx, mut rx) = mpsc::channel(64);
+                let mut manager = SessionManager::new(
+                    Rc::new(GatedBackend(gate.clone())),
+                    player.clone(),
+                    CheckpointStore::new(directory.path()),
+                    tx,
+                );
+                manager
+                    .start("buffer".into(), request("正文。"), &Config::default())
+                    .await
+                    .unwrap();
+                loop {
+                    if matches!(
+                        rx.recv().await.unwrap().event,
+                        Event::SessionState {
+                            state: SessionState::Buffering
+                        }
+                    ) {
+                        break;
+                    }
+                }
+                manager.resume("buffer").await.unwrap();
+                assert!(player.paused.get());
+                manager.pause("buffer").await.unwrap();
+                gate.notify_one();
+                tokio::time::sleep(Duration::from_millis(50)).await;
+                assert!(player.paused.get());
+                assert_eq!(manager.status().1, SessionState::Paused);
+                while let Ok(event) = rx.try_recv() {
+                    assert!(!matches!(event.event, Event::SegmentStarted { .. }));
+                }
+                manager.resume("buffer").await.unwrap();
+                assert!(!player.paused.get());
+                player.cursor.set(player.queued.get());
+                assert_eq!(terminal(&mut rx).await.0, EndReason::Completed);
+            })
+            .await;
+    }
     struct MergedBackend(FakeBackend);
     impl Backend for MergedBackend {
         fn capabilities(&self) -> Capabilities {
@@ -562,7 +681,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn first_middle_and_last_failures_stop_without_skipping() {
+    async fn failures_during_prebuffering_preserve_unplayed_source() {
         tokio::task::LocalSet::new()
             .run_until(async {
                 for fail_at in 0..3 {
@@ -597,12 +716,8 @@ mod tests {
                     let store = CheckpointStore::new(directory.path());
                     let checkpoint = store.load(&retry.source, &retry.text).unwrap().unwrap();
                     let segments = preprocess_text(&retry.text, 200);
-                    // Persist the played boundary, not the start of an unplayed block.
-                    let expected = if fail_at == 0 {
-                        segments[0].start
-                    } else {
-                        segments[fail_at - 1].end
-                    };
+                    // Enqueued packets are paused during prebuffering, so none were played.
+                    let expected = segments[0].start;
                     assert_eq!(checkpoint.resume_byte, expected);
                     assert!(!checkpoint.completed);
                     retry.restore_checkpoint = true;
@@ -630,7 +745,7 @@ mod tests {
                         Event::SegmentStarted { range, .. } => Some(range.start),
                         _ => None,
                     });
-                    assert_eq!(first, Some(segments[fail_at].start));
+                    assert_eq!(first, Some(segments[0].start));
                     assert!(
                         store
                             .load(&retry.source, &retry.text)
@@ -889,7 +1004,7 @@ mod tests {
                             .iter()
                             .filter(|e| matches!(e, Event::SegmentStarted { .. }))
                             .count(),
-                        1
+                        usize::from(reason == EndReason::Completed)
                     );
                     if reason == EndReason::Completed {
                         assert_eq!(player.appended.get(), 2);

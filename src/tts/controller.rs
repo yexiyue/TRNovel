@@ -48,6 +48,7 @@ pub struct Snapshot {
     pub progress: String,
     pub model_ready: bool,
     pub alignment: String,
+    pub buffer: String,
     pub devices: std::collections::BTreeMap<String, (Vec<tts_protocol::Device>, String)>,
     resource_sequence: u64,
     instance: Option<String>,
@@ -69,6 +70,7 @@ impl Default for Snapshot {
             progress: "未启用模型".into(),
             model_ready: false,
             alignment: "片段高亮".into(),
+            buffer: String::new(),
             devices: Default::default(),
             resource_sequence: 0,
             instance: None,
@@ -135,6 +137,7 @@ impl Snapshot {
                     self.model_ready = false;
                     self.session = None;
                     self.range = None;
+                    self.buffer.clear();
                     self.terminal = None;
                     self.state = SessionState::Idle;
                     self.progress = "听书设置已切换，请启用模型".into();
@@ -149,6 +152,7 @@ impl Snapshot {
                 {
                     self.session = Some(id);
                     self.range = None;
+                    self.buffer.clear();
                     self.terminal = None;
                     if self.state != SessionState::Paused {
                         self.state = SessionState::Generating;
@@ -191,6 +195,18 @@ impl Snapshot {
             }
             event if message.session_id == self.session && self.session.is_some() => match event {
                 Event::SessionState { state } => self.state = state,
+                Event::BufferStatus {
+                    buffered_ms,
+                    target_ms,
+                    underruns,
+                } => {
+                    self.buffer = format!(
+                        "缓冲 {:.1}/{:.1}s · 耗尽 {} 次",
+                        buffered_ms as f64 / 1000.0,
+                        target_ms as f64 / 1000.0,
+                        underruns
+                    );
+                }
                 Event::AlignmentStatus {
                     sentence_highlight,
                     reason,
@@ -490,6 +506,7 @@ impl Actor {
         self.view.source = Some(request.source.clone());
         self.view.text_hash = Some(request.text_hash.clone());
         self.view.range = None;
+        self.view.buffer.clear();
         self.view.terminal = None;
         self.view.error = None;
         self.view.state = SessionState::Generating;
@@ -510,6 +527,7 @@ impl Actor {
         let preparing = self.view.state == SessionState::Preparing && !self.view.model_ready;
         // Invalidate before awaiting the worker, including a stale Stop rejection.
         self.view.range = None;
+        self.view.buffer.clear();
         self.view.terminal = None;
         self.view.state = SessionState::Stopped;
         if self.client.as_ref().is_some_and(Client::is_connected) {
@@ -538,6 +556,7 @@ impl Actor {
         self.view.session = None;
         self.view.model_ready = false;
         self.view.range = None;
+        self.view.buffer.clear();
         self.view.terminal = None;
         self.view.state = SessionState::Idle;
         self.view.progress = "资源已释放".into();

@@ -72,8 +72,20 @@ impl Worker {
     pub fn catalog(&self) -> anyhow::Result<Vec<tts_protocol::Capabilities>> {
         self.resources.catalog()
     }
+    #[cfg(any(feature = "moss", feature = "kokoro", feature = "qwen"))]
+    pub fn unprepared_device_status(&self, component: &str) -> anyhow::Result<Event> {
+        Ok(crate::preparation::unprepared_device_status(
+            component,
+            &self.store.load()?.backend,
+            &self.resources,
+        ))
+    }
     pub fn is_preparing(&self) -> bool {
         self.preparing.is_some()
+    }
+    #[cfg(any(feature = "moss", feature = "kokoro", feature = "qwen"))]
+    pub fn has_prepared_model(&self) -> bool {
+        self.manager.is_some()
     }
     fn status(&self) -> (Option<String>, SessionState) {
         self.manager
@@ -162,15 +174,25 @@ impl Worker {
                     Ok(caps) => caps,
                     Err(error) => return Response::error("backend_unavailable", "config", error),
                 };
-                #[cfg(any(feature = "moss", feature = "kokoro"))]
+                #[cfg(any(feature = "moss", feature = "kokoro", feature = "qwen"))]
                 for (component, device) in [
-                    ("tts", patch.tts_device),
+                    (
+                        "tts",
+                        patch
+                            .tts_device
+                            .or_else(|| (target != old.backend).then_some(old.tts_device)),
+                    ),
                     ("alignment", patch.alignment_device),
                 ]
                 .into_iter()
                 .filter_map(|(component, device)| device.map(|device| (component, device)))
                 {
-                    if let Err(error) = crate::preparation::validate_device(component, device) {
+                    if let Err(error) = crate::preparation::validate_device(
+                        component,
+                        device,
+                        target,
+                        &self.resources,
+                    ) {
                         return Response::error("device_unavailable", "config", error);
                     }
                 }

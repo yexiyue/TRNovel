@@ -240,3 +240,19 @@ Qwen ONNX 的 feature_attention_mask 是 Int32；Whisper 前处理 extractor 调
 单换行是排版信息，不能直接当作独立生成请求或段落尾。MOSS 以空行、装饰线、共享 TOC 标题规则建立硬边界，初始目标 8 秒/预计上限 12 秒。句末闭合引号跟随前句；只清洗合成副本，源范围保持原文 UTF-8。Kokoro 分段独立。
 
 对齐默认关闭，worker 在准备入口跳过 Qwen 全部资源与校准；阅读器的设置切换门控必须涵盖后端、两类设备及对齐开关，清除待自动播放请求，避免模型卸载后旧请求恢复。MOSS 的 EOS 只表示模型结束，不是覆盖率证明；frame_limit 属于生成预算失败，不能触发 GPU 重建或写入当前块完成。
+
+### Qwen TTS 与强制对齐不同
+
+Qwen TTS 的 Candle 模型在 `.novel-tts/qwen/`，对齐器在 `alignment/qwen/`；关闭对齐只跳过后者。协议 v4 增加 Metal 设备，两个程序同步更新。CLI/TUI 后端切换同时选择新默认音色并重置 TTS 设备为 auto；原始协议调用应提交相容的设备。
+
+StreamingSession::next_chunk 返回 None 不一定是 EOS；必须额外检查 is_done，帧数耗尽时它为 false。Qwen 的流式 codec 单独解码十帧块，因此原生推理成功与边界音质验收分开记录。首版预置音色的声音克隆标志为 false，voices list 按当前后端列出，import/remove 仅限 MOSS。
+
+**相关文件**：`crates/novel-tts-backends/src/qwen/`、`crates/novel-tts/src/{preparation.rs,voices.rs}`、`dev-notes/qwen-tts-acceptance.md`。
+
+### 预缓冲与实际播放进度
+
+核心启动 sink 为暂停，初始积累 3 秒墙钟音频；队列耗尽后恢复目标每次增加 2 秒，上限 10 秒。目标乘以播放倍率且原始音频最多 20 秒，低于 30 秒预取预算。短 EOF 不足目标仍排空剩余音频。用户暂停与自动缓冲使用独立标志，resume 不能绕过缓冲。
+
+缓冲时新片段不能发布开始事件；但已播放的片段仍须处理完成并释放预算许可，否则恢复预取会死锁。RTF 需要按静音裁剪后的实际可播放时长判断，不能仅依据后端原始 PCM 时长。Qwen 的 `NOVEL_TTS_DIAGNOSTICS=1` 分开记录初始化、逐块生成与通道等待。
+
+**相关文件**：`crates/novel-tts-core/src/session/{buffering,playback}.rs`。

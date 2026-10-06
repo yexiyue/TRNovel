@@ -7,8 +7,11 @@ pub(super) async fn prepare(
     progress: &mpsc::Sender<Event>,
     mut prepared: Prepared,
     mut selected: Device,
-    candidate: Option<Device>,
+    _candidate: Option<Device>,
 ) -> anyhow::Result<Prepared> {
+    let candidate = devices::available()
+        .into_iter()
+        .find(|device| *device != Device::Cpu);
     let directory = resources.root().join("alignment/qwen");
     let mut device = if config.alignment_device == Device::Auto {
         Device::Cpu

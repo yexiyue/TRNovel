@@ -10,7 +10,7 @@ pub use codec::*;
 pub use message::*;
 
 /// Supported protocol major version.
-pub const PROTOCOL_VERSION: u32 = 3;
+pub const PROTOCOL_VERSION: u32 = 4;
 /// Maximum encoded message size, excluding the line terminator.
 pub const MAX_MESSAGE_BYTES: usize = 16 * 1024 * 1024;
 

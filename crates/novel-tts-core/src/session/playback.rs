@@ -10,6 +10,8 @@ pub(super) struct Runner {
     pub(super) events: mpsc::Sender<SessionEvent>,
     pub(super) paused: Rc<Cell<bool>>,
     pub(super) phase: Rc<Cell<SessionState>>,
+    pub(super) buffering: Rc<Cell<bool>>,
+    pub(super) speed: Rc<Cell<f32>>,
     pub(super) position: Rc<Cell<usize>>,
     pub(super) text: Arc<str>,
     pub(super) writes: Arc<PendingWrites>,
@@ -98,6 +100,8 @@ impl Runner {
             fallback: Option<String>,
         }
         let mut completed = false;
+        let mut buffering = super::buffering::Buffering::default();
+        let mut last_report = tokio::time::Instant::now() - Duration::from_secs(1);
         let mut markers = std::collections::VecDeque::<Marker>::new();
         let mut pending = std::collections::VecDeque::new();
         let mut queued = Duration::ZERO;
@@ -107,6 +111,36 @@ impl Runner {
         )>(1);
         let mut alignment_task: Option<AbortOnDrop> = None;
         loop {
+            let cursor = if self.player.is_empty() && !buffering.waiting {
+                queued
+            } else {
+                self.player.position()
+            };
+            let buffered = queued.saturating_sub(cursor);
+            let waiting = buffering.waiting;
+            buffering.update(
+                self.player.is_empty(),
+                buffered,
+                self.speed.get(),
+                completed,
+            );
+            self.buffering.set(buffering.waiting);
+            if waiting != buffering.waiting {
+                if buffering.waiting {
+                    self.player.pause();
+                } else if !self.paused.get() {
+                    self.player.resume();
+                }
+            }
+            if waiting != buffering.waiting || last_report.elapsed() >= Duration::from_secs(1) {
+                self.emit(Event::BufferStatus {
+                    buffered_ms: buffered.as_millis() as u64,
+                    target_ms: buffering.target(self.speed.get()).as_millis() as u64,
+                    underruns: buffering.underruns,
+                })
+                .await?;
+                last_report = tokio::time::Instant::now();
+            }
             if let Ok((range, result)) = alignment_rx.try_recv() {
                 alignment_task.take();
                 let current = markers
@@ -145,15 +179,15 @@ impl Runner {
                 }
             }
             if !self.paused.get() {
-                let cursor = if self.player.is_empty() {
-                    queued
-                } else {
-                    self.player.position()
-                };
                 while pending.front().is_some_and(|(end, _)| *end <= cursor) {
                     pending.pop_front();
                 }
                 while let Some(marker) = markers.front_mut() {
+                    if !marker.started
+                        && (buffering.waiting || !marker.had_audio || marker.start > cursor)
+                    {
+                        break;
+                    }
                     if marker.had_audio && !marker.started && marker.start <= cursor {
                         marker.started = true;
                         self.position.set(marker.range.start);
@@ -229,9 +263,9 @@ impl Runner {
                     .await?;
                 }
             }
-            if !self.paused.get() && !completed {
-                let phase = if self.player.is_empty() {
-                    SessionState::Generating
+            if !self.paused.get() {
+                let phase = if buffering.waiting {
+                    SessionState::Buffering
                 } else {
                     SessionState::Playing
                 };

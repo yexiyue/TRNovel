@@ -10,6 +10,8 @@ use futures::FutureExt;
 use ratatui::layout::Direction;
 use ratatui_kit::prelude::*;
 use ratatui_kit_keymap::UseKeymapHandler;
+#[cfg(feature = "tts")]
+mod follow;
 mod search;
 mod select_chapter;
 pub use select_chapter::*;
@@ -67,6 +69,7 @@ where
     let mut content_loading = hooks.use_state(|| false);
     let mut info_modal_open = hooks.use_state(|| false);
     let mut scroll_target = hooks.use_state(ScrollTarget::default);
+    let follow_suspended = hooks.use_state(|| false);
 
     let (novel, loading, error) = hooks.use_init_state(async move {
         let args = route_state.as_ref().clone();
@@ -160,6 +163,29 @@ where
     // 阅读偏好的唯一落盘点:设置面板与 v 键都只改 READER_DISPLAY atom,由这里防抖写盘。
     // 放页面级(而非 App 根)是因为该配置只在阅读页被修改,重渲染范围也就止于本子树。
     let reader_display = hooks.use_atom(&crate::state::READER_DISPLAY);
+    #[cfg(feature = "tts")]
+    {
+        let book_id = novel.read().as_ref().map(|book| book.get_id());
+        hooks.use_effect(
+            move || {
+                let mut state = follow_suspended;
+                state.set(false);
+            },
+            book_id,
+        );
+        let enabled = reader_display.read().follow_tts;
+        let mut previous = hooks.use_state(|| enabled);
+        hooks.use_effect(
+            move || {
+                if enabled && !previous.get() {
+                    let mut state = follow_suspended;
+                    state.set(false);
+                }
+                previous.set(enabled);
+            },
+            enabled,
+        );
+    }
     // 记住已在盘上的值:防抖 effect 挂载帧必然触发一次,不比对就会在每次进阅读页时
     // 把刚 load 进来的配置原样写回一遍。
     let saved_display = hooks.use_state(|| crate::state::READER_DISPLAY.get());
@@ -319,6 +345,7 @@ where
                         }
                     },
                     scroll_target: scroll_target,
+                    follow_suspended: follow_suspended,
                 )
                 Fragment{ {tts_panel} }
                 ReaderSettingsModal(
@@ -367,6 +394,7 @@ where
                                 dk("打开阅读设置", ReaderAction::ToggleReaderSettings),
                                 dk("打开TTS设置模式", ReaderAction::ToggleTts),
                                 dk("播放/暂停", ReaderAction::TogglePlay),
+                                dk("回到朗读位置并恢复跟随", ReaderAction::FollowPlayback),
                                 dk("增大音量", ReaderAction::VolumeUp),
                                 dk("减小音量", ReaderAction::VolumeDown),
                                 dk("向上滚动(章首连按翻上一章)", ReaderAction::ScrollUp),
@@ -396,8 +424,12 @@ where
                                 error.write().replace(e);
                                 return;
                             }
-                            content_loading.set(true);
-                            current_chapter.set(index);
+                            // 选中当前章只切换阅读视图：依赖章号的加载 effect 不会重新运行。
+                            // 仅在切章时置 loading，避免已有正文被永久遮住。
+                            if index != current_chapter.get() {
+                                content_loading.set(true);
+                                current_chapter.set(index);
+                            }
                             // 与 on_next/on_prev 一样必须重置:否则新章沿用上一章的进度比例,
                             // 短章节里会直接落到「贴底之下」,前向键失效并误报章末。
                             scroll_target.set(ScrollTarget::Ratio(0.0));
@@ -415,6 +447,7 @@ where
                     height: height,
                     is_loading: content_loading.get(),
                     scroll_target: scroll_target,
+                    follow_suspended: follow_suspended,
                 )
                 ShortcutInfoModal(
                     // 目录导航键是 SelectChapter/TreeSelect 内部处理(未迁移),保持硬编码;

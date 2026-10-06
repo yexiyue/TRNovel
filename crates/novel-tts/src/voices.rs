@@ -3,7 +3,7 @@ use clap::Subcommand;
 use std::path::PathBuf;
 #[derive(Subcommand)]
 pub enum VoiceCommand {
-    /// List built-in and imported MOSS voices.
+    /// List voices of the selected backend without loading a model.
     List,
     /// Encode a WAV reference once. ID accepts ASCII letters, digits, '-' and '_'.
     Import {
@@ -15,23 +15,29 @@ pub enum VoiceCommand {
     /// Delete an imported voice; built-in voices cannot be deleted.
     Remove { id: String },
 }
-pub async fn run(command: VoiceCommand, resources: Resources) -> anyhow::Result<()> {
+pub async fn run(command: VoiceCommand, resources: Resources, backend: &str) -> anyhow::Result<()> {
+    if matches!(command, VoiceCommand::List) {
+        let caps = resources.capabilities(backend)?;
+        for id in caps.voices {
+            println!(
+                "{}\t{}",
+                id,
+                caps.voice_names
+                    .get(&id)
+                    .map_or(id.as_str(), String::as_str)
+            );
+        }
+        return Ok(());
+    }
+    anyhow::ensure!(
+        backend == "moss",
+        "{backend} supports preset voices only; voice import/remove requires the MOSS backend"
+    );
     #[cfg(feature = "moss")]
     {
         let directory = resources.root().join("moss");
         match command {
-            VoiceCommand::List => {
-                let caps = resources.capabilities("moss")?;
-                for id in caps.voices {
-                    println!(
-                        "{}\t{}",
-                        id,
-                        caps.voice_names
-                            .get(&id)
-                            .map_or(id.as_str(), String::as_str)
-                    );
-                }
-            }
+            VoiceCommand::List => unreachable!("list handled before model-specific operations"),
             VoiceCommand::Remove { id } => tts_backends::moss::voices::VoiceStore::new(&directory)
                 .remove(&format!("custom:{}", id.trim_start_matches("custom:")))?,
             VoiceCommand::Import { id, name, wav } => {

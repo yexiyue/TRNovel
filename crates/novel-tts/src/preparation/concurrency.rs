@@ -11,6 +11,8 @@ pub(super) async fn calibrate(
     aligner: &mut Arc<dyn Aligner>,
 ) -> anyhow::Result<()> {
     let directory = resources.root().join("alignment/qwen");
+    let mut available = resources.available_devices(&config.backend);
+    available.extend(devices::available());
     let joint_key = calibration::key(
         "concurrent",
         &format!(
@@ -19,7 +21,7 @@ pub(super) async fn calibrate(
             tts_backends::alignment::resources::REVISION
         ),
     );
-    if calibration::cached(resources.root(), "concurrent", &joint_key).is_none() {
+    if calibration::cached_for(resources.root(), "concurrent", &joint_key, &available).is_none() {
         let _ = progress
             .send(devices::status(
                 "concurrent",
@@ -86,12 +88,12 @@ pub(super) async fn calibrate(
             )?;
         }
         let _ = progress
-            .send(devices::status("tts", *selected, Some(reason.clone())))
+            .send(resources.device_status(&config.backend, *selected, Some(reason.clone())))
             .await;
         let _ = progress
             .send(devices::status("alignment", *device, Some(reason)))
             .await;
-    } else if calibration::cached(resources.root(), "concurrent", &joint_key)
+    } else if calibration::cached_for(resources.root(), "concurrent", &joint_key, &available)
         .is_some_and(|r| r.device == Device::Cpu)
     {
         prepared.backend = resources.prepare(&config.backend, progress.clone()).await?;
@@ -100,8 +102,8 @@ pub(super) async fn calibrate(
         *selected = Device::Cpu;
         *device = Device::Cpu;
         let _ = progress
-            .send(devices::status(
-                "tts",
+            .send(resources.device_status(
+                &config.backend,
                 Device::Cpu,
                 Some("concurrent calibration rejected accelerator pair".into()),
             ))

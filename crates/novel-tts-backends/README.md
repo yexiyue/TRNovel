@@ -18,9 +18,30 @@ flowchart LR
 cargo build -p novel-tts                                  # MOSS 默认
 cargo build -p novel-tts --features kokoro                # 两个后端
 cargo build -p novel-tts --no-default-features --features kokoro
+cargo build --release -p novel-tts --features qwen,metal   # macOS: MOSS + Candle Qwen
+cargo build --release -p novel-tts --no-default-features --features qwen # Qwen CPU
 ```
 
 `Registry` 暴露已编译后端的能力、默认音色及显示名称，按需准备一个模型。后端扩展实现 core 的 `Backend::stream` 和 `Backend::segments`，无需改变播放器或阅读器。
+
+## Qwen TTS（Candle）
+
+适配 [TrevorS/qwen3-tts-rs](https://github.com/TrevorS/qwen3-tts-rs)，固定实现 revision `711ceee07cad92673f86de8997bdf54c30caa49f`。该上游仍标记为实验实现；目前未发布对应 crates.io 包，使用 Git 钉版，后端 crate 的独立 crates.io 发布仍需解决该依赖的分发。
+
+首版固定官方 `Qwen/Qwen3-TTS-12Hz-0.6B-CustomVoice` revision `85e237c12c027371202489a0ec509ded67b5e4b5`，缓存 `~/.novel-tts/qwen/`。八个资源合计 **2,498,383,173 bytes**，尺寸与 SHA-256 位于 `src/qwen/resources.json`。与 `alignment/qwen/` 的强制对齐模型相互独立。模型授权为 Apache-2.0，上游 Rust 实现为 MIT。
+
+九种预置音色默认福叔 `uncle_fu`；能力如实报告不支持本适配器的克隆、风格提示。中文/英文输入选择对应语言，混合含中文时采用 Chinese。随机种子固定 42；流式块为十帧约 800 ms，最多 375 帧。只有真实 EOS 和有效 PCM 才发送 End；取消以块为粒度，停止后不重播，超限片段不写完成检查点。
+
+Qwen 分段独立于 MOSS 的 token 预算：真实段落和标题建立硬边界；合并软换行，在 180 UTF-8 字节内优先切完整句末、分句、单词和字符边界。原文不修改，装饰线跳过，正文运算符保留。
+
+CPU 和可选 Metal 通过后端自己的设备目录报告。ORT 的 CoreML/CUDA 不是 Qwen 可用设备；首版未集成 Qwen CUDA。`metal` 的 Candle 依赖仅在 macOS 启用；其他平台即使启用该 feature 也不报告 Metal 设备。auto 使用同一完整链路校准门槛；运行错误自动模式重建 CPU供下次显式播放，不重放失败片段。
+
+上游流式 codec 对小块分别解码，边界连续性需要人工试听，EOS 也不能证明逐字覆盖。验收记录见 `dev-notes/qwen-tts-acceptance.md`。
+
+```sh
+cargo run --release -p novel-tts-backends --no-default-features --features qwen,metal --example qwen -- ~/.novel-tts/qwen output.wav metal '你好，欢迎收听。'
+TRNOVEL_QWEN_MODEL_DIR=~/.novel-tts/qwen cargo test --release -p novel-tts-backends --features qwen real_model_streams_and_releases_cancelled_request
+```
 
 ## MOSS
 

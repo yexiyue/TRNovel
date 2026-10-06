@@ -69,6 +69,9 @@ impl Default for AppearanceConfig {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ReaderDisplayConfig {
+    /// Follow actual played text; retained across basic and listening builds.
+    #[serde(default = "default_show_title")]
+    pub follow_tts: bool,
     #[serde(default = "default_show_title")]
     pub show_title: bool,
     /// 翻页时与上一屏重叠保留的行数,翻页步长由 [`Self::page_step`] 派生。
@@ -134,6 +137,7 @@ impl ReaderDisplayConfig {
 impl Default for ReaderDisplayConfig {
     fn default() -> Self {
         Self {
+            follow_tts: true,
             show_title: default_show_title(),
             page_overlap: default_page_overlap(),
             paragraph_spacing: default_paragraph_spacing(),
@@ -196,6 +200,19 @@ mod tests {
         let config: ReaderDisplayConfig =
             serde_json::from_str(r#"{"paragraphSpacing": true}"#).unwrap();
         assert!(config.paragraph_spacing);
+    }
+
+    #[test]
+    fn follow_defaults_on_and_round_trips_off() {
+        let legacy: ReaderDisplayConfig = serde_json::from_str(r#"{"showTitle":false}"#).unwrap();
+        assert!(legacy.follow_tts);
+        let config = ReaderDisplayConfig {
+            follow_tts: false,
+            ..Default::default()
+        };
+        let restored: ReaderDisplayConfig =
+            serde_json::from_str(&serde_json::to_string(&config).unwrap()).unwrap();
+        assert!(!restored.follow_tts);
     }
 
     #[test]

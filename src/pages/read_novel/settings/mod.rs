@@ -20,7 +20,7 @@ use crate::{
 };
 
 /// 面板条目数(索引上界)。新增条目时同步改这里、下方渲染的索引判断与 `PANEL_HEIGHT`。
-const ITEM_COUNT: usize = 3;
+const ITEM_COUNT: usize = 3 + cfg!(feature = "tts") as usize;
 
 /// 面板高度:每个条目 3 行(含边框),外加浮层自身的边框与外边距 4 行。
 /// 不够高会把最后一个条目裁掉 —— 条目数变了必须跟着改。
@@ -144,8 +144,32 @@ pub fn ReaderSettingsModal(
                         on_increase: move |_| reader_display.write().paragraph_spacing = true,
                     )
                 }
+                Fragment {
+                    {follow_setting(reader_display, index.get() == 3 && is_editing)}
+                }
             }
         }
     })
     .into_any()
+}
+
+#[cfg(feature = "tts")]
+fn follow_setting(
+    config: AtomState<crate::ReaderDisplayConfig>,
+    editing: bool,
+) -> AnyElement<'static> {
+    let value = if config.read().follow_tts {
+        "开"
+    } else {
+        "关"
+    };
+    element!(View(height: Constraint::Length(3)) {
+        AdjustableSettingItem(is_editing: editing, label: "跟随朗读:".to_string(), value: value.to_string(),
+            on_decrease: move |_| config.write().follow_tts = false,
+            on_increase: move |_| config.write().follow_tts = true)
+    }).into_any()
+}
+#[cfg(not(feature = "tts"))]
+fn follow_setting(_: AtomState<crate::ReaderDisplayConfig>, _: bool) -> AnyElement<'static> {
+    element!(Fragment).into_any()
 }

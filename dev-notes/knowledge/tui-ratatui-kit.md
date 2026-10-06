@@ -488,3 +488,19 @@ ratatui-kit 0.10.3 的透明组件在 update 后继承第一个子节点的 Layo
 **正确做法**：可选面板禁用时返回 `View(width: Constraint::Length(0), height: Constraint::Length(0))`，与关闭 Modal 的布局占位一致。真正无子节点的 Fragment 不适合代替零尺寸 UI。VHS 必须分别录制带/不带 feature 的二进制；编译检查发现不了此布局问题。
 
 **相关文件**：`src/pages/read_novel.rs`（`listening_panel`）、`docs/tapes/basic-ui.tape`。
+
+### 听书视口跟随
+
+跟随只消费已匹配来源与正文摘要的实际播放范围，通过 ContentLayout::match_line 定位。暂停/缓冲、搜索编辑、目录预览和模态面板不能自动移动窗口；f 是用户主动定位的例外。自由浏览标志放在 ReadNovel，不能放在会被目录/正文切换重建的 ReadContent，否则自动续章或视图切换会重新开启跟随。
+
+阅读偏好 followTts 缺省 true，基础版仍保留该序列化字段但隐藏入口。use_effect 的可变状态闭包与 deps 共享句柄时，先计算 deps 值，避免参数求值造成借用冲突；超过十二项的 tuple deps 需分组以满足 PartialEq。
+
+**相关文件**：`src/pages/read_novel/follow.rs`、`src/pages/read_novel/read_content.rs`。
+
+### 从目录进入当前章节不能开启内容 loading
+
+ReadNovel 的内容加载 effect 仅依赖 current_chapter。首次进入目录时正文已由初始化流程获取；确认当前章只是切换阅读视图，章号不变，不会触发 effect。此时置 content_loading=true 会永久遮住已有正文，本地和网络均受影响；左右切章改变依赖后才恢复。
+
+**正确做法**：目录确认仅在目标章号不同于当前章时同时设置 loading 和章号。同章确认仍保留既有滚动重置与进入正文行为。
+
+**相关文件**：`src/pages/read_novel.rs`。

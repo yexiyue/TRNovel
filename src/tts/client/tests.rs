@@ -10,6 +10,10 @@ pub(crate) fn fixture(name: &str) -> (tempfile::TempDir, PathBuf) {
         let binary = directory.join(format!("worker{}", std::env::consts::EXE_SUFFIX));
         assert!(
             std::process::Command::new("rustc")
+                .env(
+                    "FIXTURE_PROTOCOL_VERSION",
+                    tts_protocol::PROTOCOL_VERSION.to_string()
+                )
                 .arg(source)
                 .arg("--edition=2024")
                 .arg("-o")

@@ -138,3 +138,35 @@ PATH="$PWD/target/debug:$PATH" vhs docs/tapes/moss-tts.tape
 ### 默认片段高亮与可选对齐
 
 `optional-alignment.tape` 使用与 continuous-tts 相同的目录和真实 MOSS 资源，配置 `alignment_enabled=false`。录制默认关闭、播放片段高亮、开启后出现对齐设备、关闭后隐藏设备；切换不自动准备 Qwen。
+
+## Qwen3-TTS Candle
+
+`qwen-tts.tape` 检查后端与音色切换、实际设备、模型就绪、播放与暂停。使用自编书和隔离 HOME：
+
+```sh
+cargo build --release -p novel-tts --features qwen,metal
+cargo build -p trnovel --bin trn
+mkdir -p /tmp/trn-qwen-demo/home/books
+# 放入“试听.txt”，包含两个章节、至少二十段短正文。
+# 例如：第一章 山间 / 你好，欢迎收听。山风轻拂，夜色安静。 / 第二章 夜色
+ln -s "$HOME/.novel-tts" /tmp/trn-qwen-demo/home/.novel-tts
+PATH="$PWD/target/release:$PWD/target/debug:$PATH" vhs docs/tapes/qwen-tts.tape
+```
+
+worker 需编译 MOSS + Qwen（录制按后端目录顺序切到 Qwen）。真实 qwen/ 资源须预先校验，auto 应已校准并命中缓存；首次校准约数分钟，不适合用录制内短 Sleep 验收。非 macOS 构建去掉 metal。输出与截图位于 /tmp/trn-qwen-demo；重录使用新的隔离 HOME，避免续读位置影响画面。
+
+Qwen tape 也检查启动“缓冲中”及余量、随后实际播放与片段高亮；截图 `buffering.png` 中不应提前高亮尚未播放的文本。自动缓冲恢复仍服从用户暂停。
+
+## 听书跟随阅读窗口
+
+`follow-tts.tape` 使用真实 Qwen 播放和小窗口，检查跨屏、手动翻页、搜索、`f` 恢复、暂停定位和自动续章。先按上节构建并校验模型、完成 auto 设备校准；使用新的 `/tmp/trn-follow-demo/home`，把 `.novel-tts` 链接到已准备的模型目录。
+
+创建 `home/books/跟随试听.txt`：第一章“山间”，正文每段一行，段间空行，依次为“山风轻拂。月光皎洁。星河流动。夜色安静。晨光初现。鸟鸣清脆。溪水潺潺。树影摇曳。”；第二章“清晨”，正文为“清晨到了。”和“你好，欢迎收听。”。章节标题使用“第一章 山间”和“第二章 清晨”，各自单独一行。
+
+在 `home/.novel/tts_config.json` 写入：
+
+```json
+{"backend":"qwen","voice":"uncle_fu","speed":1.0,"volume":0.2,"auto_play":true,"tts_device":"auto","alignment_enabled":false}
+```
+
+运行 `PATH="$PWD/target/release:$PWD/target/debug:$PATH" vhs docs/tapes/follow-tts.tape`。录制等待按已校准 M4 Pro 设置；其他机器需调整 Sleep，截图时检查实际 Playing/Paused，不能只凭经过时间判定。首次校准或下载须在录制前完成。检查 `free.png`、`recover.png`、`search.png`、`cross-screen.png`、`paused-small.png`、`next-small.png`，确认高亮锚点可见、自由浏览不被拉回、暂停恢复定位不恢复播放、续章保留状态。无 TTS 设置与帮助另用 `basic-ui.tape` 检查。

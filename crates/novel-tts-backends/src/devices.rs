@@ -1,6 +1,10 @@
 //! Provider selection is explicit; registration never implies measured acceleration.
 pub mod calibration;
-use ort::{execution_providers::ExecutionProvider, session::Session};
+#[cfg(any(feature = "coreml", feature = "cuda"))]
+use ort::execution_providers::ExecutionProvider;
+#[cfg(any(feature = "moss", feature = "alignment", feature = "kokoro"))]
+use ort::session::Session;
+#[cfg(any(feature = "moss", feature = "alignment", feature = "kokoro"))]
 use std::path::Path;
 use tts_protocol::{Device, Event};
 
@@ -18,9 +22,11 @@ pub fn available() -> Vec<Device> {
         .into_iter()
         .filter(|device| match device {
             Device::Cpu => true,
+            #[cfg(feature = "coreml")]
             Device::Coreml => ort::execution_providers::CoreMLExecutionProvider::default()
                 .is_available()
                 .unwrap_or(false),
+            #[cfg(feature = "cuda")]
             Device::Cuda => {
                 ort::execution_providers::CUDAExecutionProvider::default()
                     .is_available()
@@ -30,7 +36,7 @@ pub fn available() -> Vec<Device> {
                         .output()
                         .is_ok_and(|output| output.status.success() && !output.stdout.is_empty())
             }
-            Device::Auto => false,
+            _ => false,
         })
         .collect()
 }
@@ -52,6 +58,7 @@ pub fn status(component: &str, selected: Device, reason: Option<String>) -> Even
         reason,
     }
 }
+#[cfg(any(feature = "moss", feature = "alignment", feature = "kokoro"))]
 pub fn session(path: &Path, device: Device, cache: &Path) -> anyhow::Result<Session> {
     validate(device)?;
     let builder = Session::builder()?.with_intra_threads(4)?;
@@ -88,6 +95,7 @@ pub fn session(path: &Path, device: Device, cache: &Path) -> anyhow::Result<Sess
             #[cfg(not(feature = "cuda"))]
             anyhow::bail!("CUDA feature is not compiled");
         }
+        Device::Metal => anyhow::bail!("Metal is supported by the Candle Qwen adapter, not ORT"),
         Device::Auto => anyhow::bail!("auto requires calibration before constructing a session"),
     };
     let _ = cache;

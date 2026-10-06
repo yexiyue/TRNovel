@@ -175,9 +175,9 @@ async fn serve(
                         Command::Hello => {
                             handshake = true;
                             output.send(Some(&request), None, Event::Ready(worker.catalog()?)).await?;
-                            #[cfg(any(feature="moss",feature="kokoro"))]
+                            #[cfg(any(feature="moss",feature="kokoro",feature="qwen"))]
                             for component in ["tts","alignment"] {
-                                output.send(None,None,crate::preparation::unprepared_device_status(component)).await?;
+                                output.send(None,None,worker.unprepared_device_status(component)?).await?;
                             }
                         }
                         Command::Shutdown => {
@@ -189,7 +189,15 @@ async fn serve(
                             if matches!(command, Command::CancelPrepare) || matches!(command, Command::UpdateConfig(patch) if patch.backend.is_some() || patch.tts_device.is_some() || patch.alignment_device.is_some() || patch.alignment_enabled.is_some()) {
                                 while model_events.try_recv().is_ok() {}
                             }
+                            let config_changed = matches!(&response.event, Event::ConfigChanged(_))
+                                && matches!(command, Command::UpdateConfig(patch) if patch.backend.is_some() || patch.tts_device.is_some() || patch.alignment_device.is_some() || patch.alignment_enabled.is_some());
                             output.send(Some(&request), response.session, response.event).await?;
+                            #[cfg(any(feature="moss",feature="kokoro",feature="qwen"))]
+                            if config_changed && !worker.is_preparing() && !worker.has_prepared_model() {
+                                output.send(None,None,worker.unprepared_device_status("tts")?).await?;
+                            }
+                            #[cfg(not(any(feature="moss",feature="kokoro",feature="qwen")))]
+                            let _ = config_changed;
                         }
                     }
                 }

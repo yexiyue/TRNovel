@@ -211,6 +211,9 @@ fn change(context: &TtsContext, kind: Setting, increase: bool) {
             let caps = &snapshot.backends[next];
             patch.backend = Some(caps.backend.clone());
             patch.voice = Some(caps.default_voice.clone());
+            if caps.backend != config.backend {
+                patch.tts_device = Some(tts_protocol::Device::Auto);
+            }
         }
         Setting::Voice => {
             let Some(capabilities) = &snapshot.capabilities else {

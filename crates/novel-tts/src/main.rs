@@ -74,7 +74,9 @@ async fn main() -> anyhow::Result<()> {
         || args.alignment_device.is_some()
         || args.alignment.is_some()
     {
-        #[cfg(any(feature = "moss", feature = "kokoro"))]
+        let current = config.load()?;
+        let target = args.backend.as_deref().unwrap_or(&current.backend);
+        #[cfg(any(feature = "moss", feature = "kokoro", feature = "qwen"))]
         for (component, device) in [
             ("tts", args.tts_device),
             ("alignment", args.alignment_device),
@@ -82,13 +84,11 @@ async fn main() -> anyhow::Result<()> {
         .into_iter()
         .filter_map(|(component, device)| device.map(|device| (component, device)))
         {
-            preparation::validate_device(component, device)?;
+            preparation::validate_device(component, device, target, &resources)?;
         }
-        let current = config.load()?;
         preparation::validate_alignment_enabled(
             args.alignment.unwrap_or(current.alignment_enabled),
         )?;
-        let target = args.backend.as_deref().unwrap_or(&current.backend);
         let caps = resources.capabilities(target)?;
         let voice = args.voice.or_else(|| {
             args.backend
@@ -96,11 +96,17 @@ async fn main() -> anyhow::Result<()> {
                 .filter(|id| *id != &current.backend)
                 .map(|_| caps.default_voice.clone())
         });
+        let tts_device = args.tts_device.or_else(|| {
+            args.backend
+                .as_ref()
+                .filter(|id| *id != &current.backend)
+                .map(|_| tts_protocol::Device::Auto)
+        });
         config.update(
             &tts_protocol::ConfigPatch {
                 expected_revision: current.revision,
                 backend: args.backend,
-                tts_device: args.tts_device,
+                tts_device,
                 alignment_device: args.alignment_device,
                 alignment_enabled: args.alignment,
                 voice,
@@ -112,7 +118,7 @@ async fn main() -> anyhow::Result<()> {
     tokio::task::LocalSet::new()
         .run_until(async move {
             if let Some(Commands::Voices { command }) = args.command {
-                voices::run(command, resources).await
+                voices::run(command, resources, &config.load()?.backend).await
             } else if args.protocol {
                 protocol::run(config, checkpoints, resources).await
             } else {
@@ -138,8 +144,9 @@ fn parse_device(value: &str) -> Result<tts_protocol::Device, String> {
         "auto" => Ok(tts_protocol::Device::Auto),
         "cpu" => Ok(tts_protocol::Device::Cpu),
         "coreml" => Ok(tts_protocol::Device::Coreml),
+        "metal" => Ok(tts_protocol::Device::Metal),
         "cuda" => Ok(tts_protocol::Device::Cuda),
-        _ => Err("expected auto/cpu/coreml/cuda".into()),
+        _ => Err("expected auto/cpu/coreml/cuda/metal".into()),
     }
 }
 

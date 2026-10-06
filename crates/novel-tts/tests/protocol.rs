@@ -24,6 +24,17 @@ impl Worker {
             .unwrap(),
         )
         .unwrap();
+        #[cfg(all(not(feature = "moss"), not(feature = "kokoro"), feature = "qwen"))]
+        std::fs::write(
+            directory.path().join("config.json"),
+            serde_json::to_vec(&tts_protocol::Config {
+                backend: "qwen".into(),
+                voice: "uncle_fu".into(),
+                ..Default::default()
+            })
+            .unwrap(),
+        )
+        .unwrap();
         let mut child = ProcessCommand::new(env!("CARGO_BIN_EXE_novel-tts"))
             .args(["--protocol", "--config"])
             .arg(directory.path().join("config.json"))
@@ -178,6 +189,51 @@ fn invalid_utf8_and_missing_files_exit_before_preparation() {
 }
 
 #[test]
+#[cfg(feature = "qwen")]
+fn qwen_selection_and_voice_listing_do_not_load_models() {
+    let mut worker = Worker::new();
+    worker.send("hello", Command::Hello);
+    let changed = worker.send(
+        "qwen",
+        Command::UpdateConfig(ConfigPatch {
+            backend: Some("qwen".into()),
+            voice: Some("uncle_fu".into()),
+            tts_device: Some(tts_protocol::Device::Cpu),
+            ..Default::default()
+        }),
+    );
+    assert!(
+        matches!(changed.event, Event::ConfigChanged(ref config) if config.backend == "qwen" && !config.alignment_enabled)
+    );
+    let invalid = worker.send(
+        "coreml",
+        Command::UpdateConfig(ConfigPatch {
+            expected_revision: 1,
+            tts_device: Some(tts_protocol::Device::Coreml),
+            ..Default::default()
+        }),
+    );
+    assert!(matches!(invalid.event, Event::Error(ref error) if error.code == "device_unavailable"));
+    assert!(!worker._directory.path().join("models").exists());
+    worker.send("shutdown", Command::Shutdown);
+    worker.wait();
+    let output = ProcessCommand::new(env!("CARGO_BIN_EXE_novel-tts"))
+        .args(["--backend", "qwen", "--config"])
+        .arg(worker._directory.path().join("config.json"))
+        .args(["voices", "list"])
+        .output()
+        .unwrap();
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let voices = String::from_utf8(output.stdout).unwrap();
+    assert_eq!(voices.lines().count(), 9);
+    assert!(voices.contains("uncle_fu"));
+}
+
+#[test]
 #[cfg(all(feature = "moss", feature = "kokoro"))]
 fn backend_directory_and_switch_are_lightweight() {
     let mut worker = Worker::new();
@@ -190,7 +246,12 @@ fn backend_directory_and_switch_are_lightweight() {
             .iter()
             .map(|caps| caps.backend.as_str())
             .collect::<Vec<_>>(),
-        ["moss", "kokoro"]
+        vec![
+            "moss",
+            "kokoro",
+            #[cfg(feature = "qwen")]
+            "qwen"
+        ]
     );
     assert_eq!(catalog[0].default_voice, "Weiguo");
     for (revision, backend, voice) in [(0, "kokoro", "Zf001"), (1, "moss", "Weiguo")] {

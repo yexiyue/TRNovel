@@ -86,25 +86,46 @@ pub fn key(component: &str, revision: &str) -> String {
         std::env::consts::OS,
         std::env::consts::ARCH,
         hardware,
-        ort::info(),
+        runtime_info(),
         super::available(),
         gpu
     )
 }
-fn path(root: &Path, component: &str) -> PathBuf {
-    root.join(format!("calibration-{component}.json"))
+fn runtime_info() -> String {
+    let mut versions: Vec<String> = Vec::new();
+    #[cfg(any(
+        feature = "moss",
+        feature = "alignment",
+        feature = "kokoro",
+        feature = "coreml",
+        feature = "cuda"
+    ))]
+    versions.push(format!("{:?}", ort::info()));
+    #[cfg(feature = "qwen")]
+    versions.push("candle-0.9.2:qwen-711ceee07cad92673f86de8997bdf54c30caa49f".into());
+    versions.join(";")
+}
+fn path(root: &Path, component: &str, key: &str) -> PathBuf {
+    use sha2::{Digest, Sha256};
+    root.join(format!(
+        "calibration-{component}-{:x}.json",
+        Sha256::digest(key.as_bytes())
+    ))
 }
 pub fn cached(root: &Path, component: &str, key: &str) -> Option<Record> {
+    cached_for(root, component, key, &super::available())
+}
+pub fn cached_for(root: &Path, component: &str, key: &str, available: &[Device]) -> Option<Record> {
     let record: Record =
-        serde_json::from_slice(&std::fs::read(path(root, component)).ok()?).ok()?;
-    (record.key == key && super::available().contains(&record.device)).then_some(record)
+        serde_json::from_slice(&std::fs::read(path(root, component, key)).ok()?).ok()?;
+    (record.key == key && available.contains(&record.device)).then_some(record)
 }
 pub fn save(root: &Path, component: &str, record: &Record) -> anyhow::Result<()> {
     std::fs::create_dir_all(root)?;
     let mut temporary = tempfile::NamedTempFile::new_in(root)?;
     serde_json::to_writer(&mut temporary, record)?;
     temporary.as_file().sync_all()?;
-    temporary.persist(path(root, component))?;
+    temporary.persist(path(root, component, &record.key))?;
     Ok(())
 }
 fn mean(values: &[Measurements]) -> Measurements {
@@ -222,6 +243,25 @@ pub async fn concurrent(
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn model_cache_records_do_not_replace_each_other() {
+        let root = tempfile::tempdir().unwrap();
+        for key in ["moss-model", "qwen-model"] {
+            save(
+                root.path(),
+                "tts",
+                &Record {
+                    key: key.into(),
+                    device: Device::Cpu,
+                    reason: key.into(),
+                },
+            )
+            .unwrap();
+        }
+        for key in ["moss-model", "qwen-model"] {
+            assert_eq!(cached(root.path(), "tts", key).unwrap().reason, key);
+        }
+    }
     #[test]
     fn speedup_and_first_audio_must_both_pass() {
         let baseline = Measurements {

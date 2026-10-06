@@ -9,15 +9,26 @@ pub struct Prepared {
     pub aligner: Option<Arc<dyn Aligner>>,
 }
 
-#[cfg(all(feature = "alignment", any(feature = "moss", feature = "kokoro")))]
+#[cfg(all(
+    feature = "alignment",
+    any(feature = "moss", feature = "kokoro", feature = "qwen")
+))]
 mod alignment;
-#[cfg(all(feature = "alignment", any(feature = "moss", feature = "kokoro")))]
+#[cfg(all(
+    feature = "alignment",
+    any(feature = "moss", feature = "kokoro", feature = "qwen")
+))]
 mod concurrency;
-#[cfg(any(feature = "moss", feature = "kokoro"))]
+#[cfg(any(feature = "moss", feature = "kokoro", feature = "qwen"))]
 mod synthesis;
 
-#[cfg(any(feature = "moss", feature = "kokoro"))]
-pub fn validate_device(component: &str, device: tts_protocol::Device) -> anyhow::Result<()> {
+#[cfg(any(feature = "moss", feature = "kokoro", feature = "qwen"))]
+pub fn validate_device(
+    component: &str,
+    device: tts_protocol::Device,
+    backend: &str,
+    resources: &Resources,
+) -> anyhow::Result<()> {
     if component == "alignment" && !cfg!(feature = "alignment") {
         anyhow::ensure!(
             device == tts_protocol::Device::Auto,
@@ -25,11 +36,29 @@ pub fn validate_device(component: &str, device: tts_protocol::Device) -> anyhow:
         );
         return Ok(());
     }
-    tts_backends::devices::validate(device)
+    if component == "tts" {
+        anyhow::ensure!(
+            device == tts_protocol::Device::Auto
+                || resources.available_devices(backend).contains(&device),
+            "device {device:?} is unavailable for {backend}; compiled {:?}, available {:?}",
+            resources.compiled_devices(backend),
+            resources.available_devices(backend)
+        );
+        Ok(())
+    } else {
+        tts_backends::devices::validate(device)
+    }
 }
 
-#[cfg(any(feature = "moss", feature = "kokoro"))]
-pub fn unprepared_device_status(component: &str) -> Event {
+#[cfg(any(feature = "moss", feature = "kokoro", feature = "qwen"))]
+pub fn unprepared_device_status(component: &str, backend: &str, resources: &Resources) -> Event {
+    if component == "tts" {
+        return resources.device_status(
+            backend,
+            tts_protocol::Device::Auto,
+            Some("resources not prepared".into()),
+        );
+    }
     if component == "alignment" && !cfg!(feature = "alignment") {
         return Event::DeviceStatus {
             component: component.into(),
@@ -59,17 +88,22 @@ pub async fn prepare(
     config: Config,
     progress: mpsc::Sender<Event>,
 ) -> anyhow::Result<Prepared> {
-    #[cfg(not(any(feature = "moss", feature = "kokoro")))]
+    #[cfg(not(any(feature = "moss", feature = "kokoro", feature = "qwen")))]
     {
         let _ = (resources, config, progress);
         anyhow::bail!("no synthesis backend is compiled");
     }
-    #[cfg(any(feature = "moss", feature = "kokoro"))]
+    #[cfg(any(feature = "moss", feature = "kokoro", feature = "qwen"))]
     {
-        validate_device("tts", config.tts_device)?;
+        validate_device("tts", config.tts_device, &config.backend, &resources)?;
         validate_alignment_enabled(config.alignment_enabled)?;
         if config.alignment_enabled {
-            validate_device("alignment", config.alignment_device)?;
+            validate_device(
+                "alignment",
+                config.alignment_device,
+                &config.backend,
+                &resources,
+            )?;
         }
         let (backend, selected, candidate) =
             synthesis::prepare(&resources, &config, &progress).await?;

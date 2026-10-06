@@ -119,6 +119,7 @@ pub struct ReadContentProps {
     pub chapter_name: String,
     pub chapter_percent: f64,
     pub scroll_target: Option<State<ScrollTarget>>,
+    pub follow_suspended: Option<State<bool>>,
     /// 全书是否还有上一章/下一章。边界提示与「再按一次」武装都要看它,
     /// 否则会在第一章/最后一章承诺不存在的章节(`on_prev`/`on_next` 那时只会静默 no-op)。
     pub has_prev: bool,
@@ -207,6 +208,7 @@ pub fn ReadContent(
         && matches!(
             snapshot.state,
             tts_protocol::SessionState::Playing
+                | tts_protocol::SessionState::Buffering
                 | tts_protocol::SessionState::Generating
                 | tts_protocol::SessionState::Paused
         );
@@ -278,6 +280,11 @@ pub fn ReadContent(
     let scroll_target = hooks.use_state(ScrollTarget::default);
     let mut scroll_target = props.scroll_target.unwrap_or(scroll_target);
 
+    #[cfg(feature = "tts")]
+    let mut follow_suspended = {
+        let local = hooks.use_state(|| false);
+        props.follow_suspended.unwrap_or(local)
+    };
     let is_scroll = props.is_scroll;
     // 滚动坐标系:以「内容总行数」为唯一绝对基准,三个量各司其职——
     //   total      正文总行数,落盘进度的分母(与视口无关,换终端尺寸后仍指向同一行)
@@ -309,6 +316,50 @@ pub fn ReadContent(
         || scroll_target.get().resolve(total, end_scroll),
         (total, view, scroll_target.get()),
     );
+    #[cfg(feature = "tts")]
+    {
+        let enabled = reader_display.read().follow_tts;
+        let deps = (
+            (
+                enabled,
+                follow_suspended.get(),
+                is_scroll,
+                editing,
+                props.is_loading,
+            ),
+            (
+                snapshot.state,
+                tts_range.clone(),
+                props.width,
+                props.height,
+                paragraph_spacing,
+            ),
+            (total, view, scroll_target.get()),
+        );
+        hooks.use_effect(
+            || {
+                if enabled
+                    && !follow_suspended.get()
+                    && is_scroll
+                    && !editing
+                    && !props.is_loading
+                    && snapshot.state == tts_protocol::SessionState::Playing
+                    && let Some(range) = &tts_range
+                    && let Some(line) = super::follow::target(
+                        layout.match_line(range),
+                        current_line,
+                        view,
+                        end_scroll,
+                        false,
+                    )
+                {
+                    scroll_target.set(ScrollTarget::Ratio(line as f64 / total.max(1) as f64));
+                    edge.set(Edge::None);
+                }
+            },
+            deps,
+        );
+    }
     let mut current_time = hooks.use_state(String::default);
 
     hooks.use_future(async move {
@@ -345,6 +396,8 @@ pub fn ReadContent(
     let reader_keymap = hooks.use_atom(&crate::state::KEYMAP).read().reader.clone();
     #[cfg(feature = "tts")]
     let playback_request = request.clone();
+    #[cfg(feature = "tts")]
+    let playback_line = tts_range.as_ref().map(|range| layout.match_line(range));
     hooks.use_keymap_handler(
         EventScope::Current,
         EventPriority::Normal,
@@ -352,6 +405,23 @@ pub fn ReadContent(
         move |action, _key| {
             if !is_scroll {
                 return EventResult::Ignored;
+            }
+            #[cfg(feature = "tts")]
+            if matches!(
+                action,
+                ReaderAction::ScrollUp
+                    | ReaderAction::ScrollDown
+                    | ReaderAction::PageUp
+                    | ReaderAction::PageDown
+                    | ReaderAction::GoTop
+                    | ReaderAction::GoBottom
+                    | ReaderAction::PrevChapter
+                    | ReaderAction::NextChapter
+                    | ReaderAction::SearchContent
+                    | ReaderAction::NextSearchMatch
+                    | ReaderAction::PrevSearchMatch
+            ) {
+                follow_suspended.set(true);
             }
             // 逐行滚动与整页翻页只差这一个步长,边界行为(全书边界只提示 / 章内边界
             // 「再按一次」武装 / 二次确认翻章)完全一致,故各自合并为一支单一实现:
@@ -461,6 +531,18 @@ pub fn ReadContent(
                     EventResult::Consumed
                 }
                 #[cfg(feature = "tts")]
+                ReaderAction::FollowPlayback if can_search => {
+                    reader_display.write().follow_tts = true;
+                    follow_suspended.set(false);
+                    if let Some(line) = playback_line.and_then(|line| {
+                        super::follow::target(line, current_line, view, end_scroll, true)
+                    }) {
+                        scroll_target.set(ScrollTarget::Ratio(line as f64 / total.max(1) as f64));
+                    }
+                    edge.set(Edge::None);
+                    EventResult::Consumed
+                }
+                #[cfg(feature = "tts")]
                 ReaderAction::TogglePlay if can_search => {
                     listening.handle.toggle((*playback_request).clone());
                     EventResult::Consumed
@@ -515,11 +597,24 @@ pub fn ReadContent(
     {
         let config = snapshot.config.as_ref();
         format!(
-            "{:?}: 速度{:.1} / 音量{:.1} · {}",
-            snapshot.state,
+            "{}: 速度{:.1} / 音量{:.1} · {} · {} · {}",
+            if snapshot.state == tts_protocol::SessionState::Buffering {
+                "缓冲中".into()
+            } else {
+                format!("{:?}", snapshot.state)
+            },
             config.map_or(1.0, |value| value.speed),
             config.map_or(1.0, |value| value.volume),
-            snapshot.alignment
+            snapshot.alignment,
+            snapshot.buffer,
+            if reader_display.read().follow_tts && !follow_suspended.get() {
+                "跟随中".into()
+            } else {
+                format!(
+                    "自由浏览 · {} 回到朗读位置",
+                    display_first_key(&reader_keymap, ReaderAction::FollowPlayback)
+                )
+            }
         )
     } else {
         format!(

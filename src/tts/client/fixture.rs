@@ -22,7 +22,7 @@ fn main() {
     let program = std::env::current_exe().unwrap().file_stem().unwrap().to_string_lossy().into_owned();
     if program.contains("timeout") {std::thread::sleep(std::time::Duration::from_secs(15));return;}
     if program.contains("logs") {for _ in 0..100 {eprintln!("{}","log".repeat(1024));}}
-    let mut out = Output {writer:std::io::stdout(),sequence:0,version:if program.contains("incompatible") {99} else {3}};
+    let mut out = Output {writer:std::io::stdout(),sequence:0,version:if program.contains("incompatible") {99} else {env!("FIXTURE_PROTOCOL_VERSION").parse().unwrap()}};
     let mut previous:Option<(String,String)> = None;
     let mut volume = 1.0;
     let mut revision = 0;

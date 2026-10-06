@@ -1,12 +1,15 @@
 use super::*;
-use tts_backends::devices::{self, calibration};
+use tts_backends::devices::calibration;
 use tts_protocol::Device;
 pub(super) async fn prepare(
     resources: &Resources,
     config: &Config,
     progress: &mpsc::Sender<Event>,
 ) -> anyhow::Result<(Rc<dyn Backend>, Device, Option<Device>)> {
-    let candidate = devices::available().into_iter().find(|d| *d != Device::Cpu);
+    let candidate = resources
+        .available_devices(&config.backend)
+        .into_iter()
+        .find(|d| *d != Device::Cpu);
     let mut selected = if config.tts_device == Device::Auto {
         Device::Cpu
     } else {
@@ -17,7 +20,14 @@ pub(super) async fn prepare(
         &format!("{}:{}", config.backend, tts_revision(&config.backend)),
     );
     let cached = (config.tts_device == Device::Auto)
-        .then(|| calibration::cached(resources.root(), "tts", &key))
+        .then(|| {
+            calibration::cached_for(
+                resources.root(),
+                "tts",
+                &key,
+                &resources.available_devices(&config.backend),
+            )
+        })
         .flatten();
     if let Some(record) = &cached {
         selected = record.device;
@@ -30,8 +40,8 @@ pub(super) async fn prepare(
         Err(error) if config.tts_device == Device::Auto && selected != Device::Cpu => {
             selected = Device::Cpu;
             let _ = progress
-                .send(devices::status(
-                    "tts",
+                .send(resources.device_status(
+                    &config.backend,
                     selected,
                     Some(format!("provider initialization failed: {error}")),
                 ))
@@ -42,12 +52,12 @@ pub(super) async fn prepare(
     };
     if config.tts_device == Device::Auto
         && cached.is_none()
-        && config.backend == "moss"
+        && (config.backend == "moss" || config.backend == "qwen")
         && let Some(device) = candidate
     {
         let _ = progress
-            .send(devices::status(
-                "tts",
+            .send(resources.device_status(
+                &config.backend,
                 Device::Cpu,
                 Some("calibrating: 3 warmups + 5 measurements".into()),
             ))
@@ -87,11 +97,11 @@ pub(super) async fn prepare(
             )?;
         }
         let _ = progress
-            .send(devices::status("tts", selected, Some(reason)))
+            .send(resources.device_status(&config.backend, selected, Some(reason)))
             .await;
     } else {
         let _ = progress
-            .send(devices::status("tts", selected, cached.map(|r| r.reason)))
+            .send(resources.device_status(&config.backend, selected, cached.map(|r| r.reason)))
             .await;
     }
     #[cfg(feature = "moss")]
@@ -105,6 +115,17 @@ pub(super) async fn prepare(
             .await?,
         );
     }
+    #[cfg(feature = "qwen")]
+    if config.tts_device == Device::Auto && selected != Device::Cpu && config.backend == "qwen" {
+        backend = Rc::new(
+            tts_backends::qwen::QwenBackend::load_with_recovery(
+                resources.root().join("qwen"),
+                selected,
+                Some(progress.clone()),
+            )
+            .await?,
+        );
+    }
 
     Ok((backend, selected, candidate))
 }
@@ -112,6 +133,10 @@ pub(super) fn tts_revision(backend: &str) -> &'static str {
     #[cfg(feature = "moss")]
     if backend == "moss" {
         return tts_backends::moss::resources::REVISION;
+    }
+    #[cfg(feature = "qwen")]
+    if backend == "qwen" {
+        return tts_backends::qwen::resources::REVISION;
     }
     let _ = backend;
     "kokoro-v1.1-zh"

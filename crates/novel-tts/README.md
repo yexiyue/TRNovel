@@ -17,7 +17,7 @@ cargo run -p novel-tts -- --restart book.txt
 ## JSON Lines
 
 ```sh
-printf '%s\n' '{"protocol_version":3,"request_id":"1","session_id":null,"type":"hello"}' '{"protocol_version":3,"request_id":"2","session_id":null,"type":"get_config"}' '{"protocol_version":3,"request_id":"3","session_id":null,"type":"shutdown"}' | target/debug/novel-tts --protocol
+printf '%s\n' '{"protocol_version":4,"request_id":"1","session_id":null,"type":"hello"}' '{"protocol_version":4,"request_id":"2","session_id":null,"type":"get_config"}' '{"protocol_version":4,"request_id":"3","session_id":null,"type":"shutdown"}' | target/debug/novel-tts --protocol
 ```
 
 完整调用顺序：hello → get_config → prepare_model → 等 model_ready → start。start payload 是 source、text、text_hash、resume_byte、restore_checkpoint，摘要必须为原文 UTF-8 SHA-256。控制命令带当前 session_id；seek payload 额外带 byte 和 new_session_id，返回新会话 ID。accepted 仅表示接受，只有当前正文的 session_ended/completed 表示已播完。
@@ -33,6 +33,8 @@ printf '%s\n' '{"protocol_version":3,"request_id":"1","session_id":null,"type":"
 ```sh
 novel-tts --backend moss --voice Weiguo book.txt
 novel-tts --backend kokoro --voice Zf001 book.txt
+novel-tts --backend qwen --voice uncle_fu book.txt
+novel-tts --backend qwen voices list
 novel-tts voices list
 novel-tts voices import narrator --name "我的朗读音色" reference.wav
 novel-tts --backend moss --voice custom:narrator book.txt
@@ -40,6 +42,13 @@ novel-tts voices remove narrator
 ```
 
 音色导入接受 1..30 秒非静音 mono/stereo WAV，自动重采样与编码，并拒绝覆盖同名音色。删除仅限自定义音色。导入音色后重新打开阅读器听书连接以刷新目录。
+
+可选 `qwen` feature 提供原生 Candle Qwen3-TTS 0.6B CustomVoice；macOS 加 `metal` feature 支持 GPU，默认后端仍为 MOSS。Qwen 资源约 2.50 GB，位于 `~/.novel-tts/qwen/`，与 Qwen 对齐资源独立。`voices list` 列出当前后端音色；导入/删除仅适用于 MOSS。CLI/TUI 切换后端时将 TTS 设备重置为 auto，可同时显式指定 `--tts-device cpu/metal`。协议为 v4，阅读器和 worker 必须一起更新。
+
+```sh
+cargo build --release -p novel-tts --features qwen,metal
+novel-tts --backend qwen --tts-device metal book.txt
+```
 
 Ready 的 payload 是后端能力数组，含 backend、default_voice、voices、voice_names 和功能标志。UpdateConfig 支持 backend 字段；切换时同时提交该后端的 voice。后端切换停止当前播放并释放模型，保留续读检查点，需要手动准备和重新播放。
 

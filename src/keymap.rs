@@ -27,6 +27,7 @@ pub enum ReaderAction {
     VolumeUp,
     VolumeDown,
     TogglePlay,
+    FollowPlayback,
     ToggleTitle,
     ToggleReadMode,
     ToggleInfo,
@@ -96,6 +97,8 @@ fn reader_defaults() -> Keymap<ReaderAction> {
         .desc(ReaderAction::VolumeUp, "增大音量")
         .bind(ReaderAction::VolumeDown, ["-"])
         .desc(ReaderAction::VolumeDown, "减小音量")
+        .bind(ReaderAction::FollowPlayback, ["f"])
+        .desc(ReaderAction::FollowPlayback, "回到朗读位置并恢复跟随")
         .bind(ReaderAction::TogglePlay, ["p"])
         .desc(ReaderAction::TogglePlay, "播放/暂停")
         .bind(ReaderAction::ToggleTts, ["t", "T"])

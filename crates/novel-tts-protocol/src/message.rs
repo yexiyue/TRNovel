@@ -34,6 +34,7 @@ pub enum Device {
     Auto,
     Cpu,
     Coreml,
+    Metal,
     Cuda,
 }
 
@@ -147,6 +148,7 @@ pub enum SessionState {
     Idle,
     Preparing,
     Generating,
+    Buffering,
     Playing,
     Paused,
     Stopped,
@@ -198,6 +200,11 @@ pub enum Event {
     },
     SessionState {
         state: SessionState,
+    },
+    BufferStatus {
+        buffered_ms: u64,
+        target_ms: u64,
+        underruns: u32,
     },
     SegmentStarted {
         range: TextRange,
