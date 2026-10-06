@@ -1,188 +1,139 @@
 ---
-// Feature overview with real product recordings.
-// 用原生 <img>(而非 astro:assets <Image>)以保留 GIF 动画。
-import homeGif from "../../assets/guides/home.gif";
-import localGif from "../../assets/guides/local-select.gif";
+import { Image } from 'astro:assets';
+import listening from '../../../../assets/brand/mascot-listening.png';
+import local from '../../assets/landing/local-select.webp';
 ---
-
-<div class="tn-bento">
-	<div class="cell ai">
-		<h3>用 AI 制作书源</h3>
-		<p>
-			把小说站 URL 交给装了 booksource-generator skill 的
-			Agent，生成搜索、目录、正文规则，再用 trn doctor 校验后导入。
-		</p>
-		<code class="chip">trn doctor my-source.v2.json</code>
-	</div>
-	<div class="cell">
-		<h3>TTS 听书</h3>
-		<p>独立 novel-tts 程序负责合成与播放，正文高亮跟随朗读。当前源码默认 MOSS，可选 Kokoro 与 Qwen。</p>
-	</div>
-	<div class="cell shot">
-		<div class="crop">
-			<img src={homeGif.src} width={homeGif.width} height={homeGif.height} alt="TRNovel 主页界面" loading="lazy" />
-		</div>
-		<div class="meta">
-			<h3>本地 + 网络双源</h3>
-			<p>自动识别 UTF-8 / GBK，阅读进度自动记录，<code>trn -q</code> 一键续读。</p>
-		</div>
-	</div>
-	<div class="cell shot">
-		<div class="crop">
-			<img src={localGif.src} width={localGif.width} height={localGif.height} alt="TRNovel 本地选书与目录树" loading="lazy" />
-		</div>
-		<div class="meta">
-			<h3>智能分卷目录</h3>
-			<p>规则引擎切分「卷、章」层级，生成可折叠目录树，长篇不迷路。</p>
-		</div>
-	</div>
-	<div class="cell">
-		<h3>声明式规则引擎</h3>
-		<p>
-			取值后端 CSS、XPath、JSONPath、正则任选；clean 流水线内置
-			AES/DES、Base64、MD5/SHA、繁简转换，正文加密纯声明式拿下。
-		</p>
-	</div>
-	<div class="cell">
-		<h3>反爬与浏览器辅助</h3>
-		<p>撞上 Cloudflare 时复用系统浏览器解挑战，拿到 cookie 后继续走快速请求，必要时点一下「我是真人」即可。</p>
-	</div>
-	<div class="cell">
-		<h3>在熟悉的终端里阅读</h3>
-		<p>支持 Windows、macOS 和 Linux，主题与键位按习惯调整，基于 ratatui-kit 构建。</p>
-	</div>
+<div class="tn-features">
+  <article class="library">
+    <div class="feature-copy">
+      <h3>一本本收好，一章章读完。</h3>
+      <p>本地 TXT 与网络书源都能读。自动识别 UTF-8 / GBK，按卷与章整理目录，阅读进度自动保存。</p>
+      <a href="/TRNovel/guides/read/">了解阅读方式 <span aria-hidden="true">↗</span></a>
+    </div>
+    <Image src={local} width={660} alt="TRNovel 本地书库与分卷目录界面" loading="lazy" />
+  </article>
+  <article class="listening">
+    <div class="feature-copy">
+      <h3>读累了，听下一章。</h3>
+      <p>开启 TTS 听书，让声音继续故事。当前源码支持独立听书程序与正文跟读高亮。</p>
+      <a href="/TRNovel/guides/tts/">查看听书配置 <span aria-hidden="true">↗</span></a>
+    </div>
+    <Image src={listening} width={300} widths={[240,400]} sizes="(min-width:768px) 250px, 220px" alt="小卷戴着耳机听故事" loading="lazy" />
+  </article>
+  <article class="keyboard">
+    <h3>让键盘顺着你的习惯。</h3>
+    <div class="keys" aria-hidden="true"><kbd>↑</kbd><kbd>↓</kbd><kbd>Enter</kbd></div>
+    <p>翻页、查目录、搜正文。主题和键位都能调整，Windows、macOS、Linux 均可使用。</p>
+    <a href="/TRNovel/guides/keybindings/">自定义键位 <span aria-hidden="true">↗</span></a>
+  </article>
+  <article class="sources">
+    <h3>书源规则，自己掌握。</h3>
+    <code class="rule">URL → 搜索 → 目录 → 正文</code>
+    <p>结构化 JSON 描述取值与处理规则。支持浏览器辅助，遇到站点变化可以逐步校验。</p>
+    <a href="/TRNovel/book-source/intro/">阅读书源参考 <span aria-hidden="true">↗</span></a>
+  </article>
 </div>
-
 <style>
-	.tn-bento {
-		display: grid;
-		gap: 14px;
-		grid-template-columns: 1fr;
-		margin-top: 2rem;
-	}
-
-	@media (min-width: 700px) {
-		.tn-bento {
-			grid-template-columns: repeat(2, 1fr);
-		}
-
-		.cell.ai {
-			grid-column: span 2;
-		}
-	}
-
-	@media (min-width: 1000px) {
-		.tn-bento {
-			grid-template-columns: repeat(12, 1fr);
-		}
-
-		.cell {
-			grid-column: span 6;
-		}
-
-		.cell.ai {
-			grid-column: span 7;
-		}
-
-		.cell:nth-child(2) {
-			grid-column: span 5;
-		}
-
-		.cell.shot {
-			grid-column: span 4;
-		}
-
-		.cell:nth-child(5) {
-			grid-column: span 4;
-		}
-	}
-
-	.cell {
-		display: flex;
-		flex-direction: column;
-		gap: 0.5rem;
-		padding: 1.5rem;
-		border: 1px solid var(--tn-border);
-		border-radius: 12px;
-		background: var(--tn-surface);
-		transition:
-			transform 0.2s cubic-bezier(0.16, 1, 0.3, 1),
-			border-color 0.2s ease;
-	}
-
-	.cell:hover {
-		transform: translateY(-2px);
-		border-color: color-mix(in srgb, var(--tn-accent) 55%, var(--tn-border));
-	}
-
-	.cell.ai {
-		background: var(--tn-surface-2);
-	}
-
-	.cell.shot {
-		padding: 0;
-		overflow: hidden;
-	}
-
-	.cell.shot .crop {
-		overflow: hidden;
-		border-bottom: 1px solid var(--tn-border);
-		background: #1e1e2e;
-	}
-
-	.cell.shot img {
-		display: block;
-		width: 100%;
-		height: auto;
-	}
-
-	.cell.shot .meta {
-		display: flex;
-		flex-direction: column;
-		gap: 0.5rem;
-		padding: 1.25rem 1.5rem 1.5rem;
-	}
-
-	h3 {
-		margin: 0;
-		font-size: 1.05rem;
-		letter-spacing: -0.01em;
-		color: var(--sl-color-white);
-	}
-
-	p {
-		margin: 0;
-		font-size: 0.9rem;
-		line-height: 1.7;
-		color: var(--sl-color-gray-2);
-	}
-
-	.chip {
-		align-self: flex-start;
-		margin-top: auto;
-		padding: 0.3rem 0.7rem;
-		border: 1px solid var(--tn-border);
-		border-radius: 8px;
-		background: var(--sl-color-bg);
-		font-family: var(--tn-mono);
-		font-size: 0.78rem;
-		color: var(--tn-accent);
-	}
-
-	@supports (animation-timeline: view()) {
-		@media (prefers-reduced-motion: no-preference) {
-			.cell {
-				animation: tn-cell-rise both;
-				animation-timeline: view();
-				animation-range: entry 0% entry 50%;
-			}
-		}
-	}
-
-	@keyframes tn-cell-rise {
-		from {
-			opacity: 0.3;
-			transform: translateY(14px);
-		}
-	}
+  .tn-features {
+    display: grid;
+    grid-template-columns: 7fr 5fr;
+    gap: 1rem;
+    margin-top: 2rem;
+  }
+  article {
+    padding: 2rem;
+    border-radius: 8px;
+    background: var(--tn-surface);
+    min-width: 0;
+  }
+  h3 {
+    margin: 0;
+    color: var(--tn-ink);
+    font-size: clamp(1.25rem, 2vw, 1.6rem);
+    letter-spacing: -0.03em;
+    line-height: 1.4;
+  }
+  p {
+    margin: 1rem 0;
+    color: var(--tn-muted);
+    font-size: 0.95rem;
+    line-height: 1.8;
+    max-width: 42em;
+  }
+  a {
+    display: inline-flex;
+    gap: 1rem;
+    color: var(--tn-accent);
+    font-size: 0.85rem;
+    text-decoration: none;
+  }
+  a:hover {
+    text-decoration: underline;
+  }
+  .library {
+    padding-bottom: 0;
+    overflow: hidden;
+  }
+  .library img {
+    display: block;
+    width: calc(100% + 4rem);
+    max-width: none;
+    margin: 2rem -2rem 0;
+    height: auto;
+  }
+  .listening {
+    display: flex;
+    flex-direction: column;
+    background: var(--tn-surface-2);
+  }
+  .listening img {
+    display: block;
+    width: 250px;
+    max-width: 100%;
+    height: auto;
+    align-self: center;
+    margin: auto auto 0;
+  }
+  .keyboard,
+  .sources {
+    background: transparent;
+    border: 1px solid var(--tn-border);
+  }
+  .keys {
+    display: flex;
+    gap: 0.5rem;
+    margin-top: 1.5rem;
+  }
+  kbd {
+    padding: 0.7rem 0.9rem;
+    border: 1px solid var(--tn-border);
+    border-bottom: 3px solid var(--tn-border);
+    border-radius: 5px;
+    background: var(--tn-surface);
+    font: 0.85rem var(--tn-mono);
+    color: var(--tn-ink);
+  }
+  .rule {
+    display: block;
+    margin-top: 1.5rem;
+    padding: 1rem 0;
+    background: none;
+    color: var(--tn-accent);
+    font: 0.85rem var(--tn-mono);
+  }
+  @media (max-width: 767px) {
+    .tn-features {
+      grid-template-columns: 1fr;
+    }
+    article {
+      padding: 1.5rem;
+    }
+    .library img {
+      width: calc(100% + 3rem);
+      margin-inline: -1.5rem;
+    }
+    .listening img {
+      width: 220px;
+    }
+  }
 </style>

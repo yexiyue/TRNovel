@@ -1,69 +1,157 @@
-/* Terminal companion identity. Source palette: assets/brand/README.md. */
-
+/* Shared brand tokens; homepage layout stays scoped to the splash page. */
 :root {
-	--tn-accent: #bc5a28;
-	--tn-accent-contrast: #ffffff;
-	--tn-surface: #f5ebdd;
-	--tn-surface-2: #ece0cf;
-	--tn-border: #d7cbbc;
-	--tn-mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-	--sl-color-accent-low: #ffe1c9;
-	--sl-color-accent: #bc5a28;
-	--sl-color-accent-high: #733816;
+  --tn-accent: #bc5a28;
+  --tn-accent-contrast: #fff;
+  --tn-surface: #f5ebdd;
+  --tn-surface-2: #ece0cf;
+  --tn-border: #d7cbbc;
+  --tn-ink: #17212b;
+  --tn-muted: #60594f;
+  --tn-mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  --sl-color-accent-low: #ffe1c9;
+  --sl-color-accent: #bc5a28;
+  --sl-color-accent-high: #733816;
 }
-
 [data-theme="dark"] {
-	--tn-accent: #e78a4e;
-	--tn-accent-contrast: #17212b;
-	--tn-surface: #17212b;
-	--tn-surface-2: #202e3a;
-	--tn-border: #3c4c58;
-	--sl-color-accent-low: #4d2c1c;
-	--sl-color-accent: #e78a4e;
-	--sl-color-accent-high: #f6c4a5;
+  --tn-accent: #e78a4e;
+  --tn-accent-contrast: #17212b;
+  --tn-surface: #202e3a;
+  --tn-surface-2: #293945;
+  --tn-border: #43535f;
+  --tn-ink: #f5ebdd;
+  --tn-muted: #b7c0c7;
+  --sl-color-accent-low: #4d2c1c;
+  --sl-color-accent: #e78a4e;
+  --sl-color-accent-high: #f6c4a5;
 }
-
-/* 首页(带 hero 的 splash 页)加宽内容列 */
 [data-has-hero] {
-	--sl-content-width: 74rem;
+  --sl-content-width: 72rem;
+  --sl-color-bg: #fffcf7;
+  --sl-color-bg-nav: #fffcf7;
+  --sl-color-text: var(--tn-ink);
 }
-
+[data-theme="dark"][data-has-hero] {
+  --sl-color-bg: #17212b;
+  --sl-color-bg-nav: #17212b;
+}
+[data-has-hero] .sl-markdown-content {
+  color: var(--tn-ink);
+}
 [data-has-hero] .sl-markdown-content h2 {
-	font-size: clamp(1.6rem, 3vw, 2.1rem);
-	letter-spacing: -0.02em;
-	margin-top: 5.5rem;
-	text-wrap: balance;
+  margin-top: 6rem;
+  font-size: clamp(1.8rem, 3.5vw, 2.6rem);
+  line-height: 1.25;
+  letter-spacing: -0.04em;
+  text-wrap: balance;
+  color: var(--tn-ink);
 }
-
-/* 窄屏下 Tab 标签不在内部折行,整条 tablist 横向滚动 */
-[data-has-hero] [role="tablist"] [role="tab"] {
-	white-space: nowrap;
+[data-has-hero] .sl-markdown-content h2 + p {
+  margin-top: 1rem;
+  color: var(--tn-muted);
 }
-
-/* Brand accent also carries informational highlights. */
-[data-has-hero] .starlight-aside--tip {
-	border-inline-start-color: var(--tn-accent);
-	background-color: color-mix(in srgb, var(--tn-accent) 10%, var(--sl-color-bg));
-	color: var(--sl-color-white);
+[data-has-hero] a:focus-visible,
+[data-has-hero] button:focus-visible {
+  outline: 2px solid var(--tn-accent);
+  outline-offset: 4px;
 }
-
-[data-has-hero] .starlight-aside--tip .starlight-aside__title {
-	color: var(--tn-accent);
+.tn-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 1.25rem;
+  padding: 0.85rem 1.2rem;
+  border-radius: 4px;
+  background: var(--tn-accent);
+  color: var(--tn-accent-contrast);
+  font-weight: 600;
+  text-decoration: none;
+  white-space: nowrap;
+  transition: transform 160ms;
 }
-
-/* 左叙事 + 右代码 的双栏布局 */
+.tn-button:hover {
+  transform: translateY(-2px);
+}
 .tn-split {
-	display: grid;
-	gap: 1.5rem 2.5rem;
-	align-items: start;
+  display: grid;
+  grid-template-columns: 5fr 7fr;
+  gap: 2.5rem;
+  margin-top: 2rem;
+  align-items: start;
 }
-
-@media (min-width: 900px) {
-	.tn-split {
-		grid-template-columns: 5fr 7fr;
-	}
+.tn-split > div {
+  min-width: 0;
 }
-
-.tn-split :first-child {
-	margin-top: 0;
+.tn-split > div > :first-child {
+  margin-top: 0;
+}
+.tn-split p {
+  color: var(--tn-muted);
+  line-height: 1.9;
+}
+.tn-install-panel {
+  margin-top: 2rem;
+  padding: 1.5rem 2rem;
+  border: 1px solid var(--tn-border);
+  border-radius: 8px;
+  background: var(--tn-surface);
+}
+[data-has-hero] [role="tablist"] [role="tab"] {
+  white-space: nowrap;
+}
+[data-has-hero] .starlight-aside--tip {
+  border-inline-start-color: var(--tn-accent);
+  background: var(--tn-surface-2);
+  color: var(--tn-ink);
+}
+[data-has-hero] .starlight-aside--tip .starlight-aside__title {
+  color: var(--tn-accent);
+}
+.tn-release-note {
+  font-size: 0.8rem;
+  color: var(--tn-muted);
+  line-height: 1.8;
+}
+[data-has-hero] .card-grid {
+  gap: 1rem;
+  margin-top: 2rem;
+}
+[data-has-hero] .card-grid .sl-link-card {
+  background: transparent;
+  border-color: var(--tn-border);
+  border-radius: 8px;
+  box-shadow: none;
+}
+.tn-signoff {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 1rem;
+  padding-block: 2rem;
+  margin-top: 5rem;
+  border-top: 1px solid var(--tn-border);
+  font-size: 0.8rem;
+  color: var(--tn-muted);
+}
+.tn-signoff a {
+  color: var(--tn-ink);
+  text-decoration: none;
+}
+@media (max-width: 767px) {
+  [data-has-hero] .sl-markdown-content h2 {
+    margin-top: 4rem;
+  }
+  .tn-split {
+    grid-template-columns: 1fr;
+    gap: 1.5rem;
+  }
+  .tn-install-panel {
+    padding: 1rem;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .tn-button {
+    transition: none;
+  }
+  .tn-button:hover {
+    transform: none;
+  }
 }

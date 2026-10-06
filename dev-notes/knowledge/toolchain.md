@@ -138,3 +138,9 @@ Metal 通过 macOS target-specific 的 candle-core 别名依赖启用，避免�
 矢量源使用 `source/build_vectors.py` 和随附 OFL 字体，字标导出为路径；`source/export_images.mjs` 使用文档站现有 sharp 依赖导出 app icon 与 `docs/public/brand/social-card.png`。favicon 为小尺寸单独简化。更新资源后运行导出脚本与 `pnpm build`，核对深浅主题、窄屏和 GitHub Pages `/TRNovel` 路径。
 
 **相关文件**：`assets/brand/README.md`、`assets/brand/source/`、`docs/astro.config.mjs`、`docs/src/components/landing/Hero.astro`。
+
+### 首页演示的静帧与播放控制
+
+首页演示默认加载 WebP 静帧，点击播放才请求对应 GIF；切换演示或暂停时恢复静帧。静帧由 `node docs/scripts/export-landing-posters.mjs` 从现有 VHS 录屏中选帧导出，更新录屏后需重新选择有完整界面的帧。减少动效偏好切换时停止播放；不把 GIF 交给 Astro Image 优化，否则会丢失动画。自定义 Hero 的主标题保留 `_top` ID，供 Starlight 的跳转内容链接定位。
+
+**相关文件**：`docs/src/components/landing/Gallery.astro`、`docs/scripts/export-landing-posters.mjs`。

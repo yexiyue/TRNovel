@@ -1,79 +1,190 @@
 ---
-// 演示画廊:横向 scroll-snap,真实界面录屏(VHS GIF)+ 一行功能性说明。
-// 用原生 <img>(而非 astro:assets <Image>)以保留 GIF 动画,不被 sharp 处理成静帧。
-import readGif from "../../assets/guides/read.gif";
-import networkGif from "../../assets/guides/network-read.gif";
-import themeGif from "../../assets/guides/theme.gif";
-import loginGif from "../../assets/guides/login.gif";
-
+import readGif from '../../assets/guides/read.gif';
+import networkGif from '../../assets/guides/network-read.gif';
+import themeGif from '../../assets/guides/theme.gif';
+import loginGif from '../../assets/guides/login.gif';
+import readPoster from '../../assets/landing/read.webp';
+import networkPoster from '../../assets/landing/network-read.webp';
+import themePoster from '../../assets/landing/theme.webp';
+import loginPoster from '../../assets/landing/login.webp';
 const shots = [
-	{ img: readGif, title: "沉浸式阅读", desc: "正文分页流畅，目录随时跳转，命名主题全局生效。" },
-	{ img: networkGif, title: "网络小说在线读", desc: "分类浏览、详情、阅读一气呵成。" },
-	{ img: themeGif, title: "主题随心配", desc: "命名主题驱动全局配色，终端背景或主题背景随时切换。" },
-	{ img: loginGif, title: "需登录的书源", desc: "表单 / 浏览器登录，登录态加密保存自动复用。" },
+  { img:readGif, poster:readPoster, title:'沉浸式阅读', desc:'翻页、跳转目录，接着上次的位置读。', key:'read' },
+  { img:networkGif, poster:networkPoster, title:'网络小说在线读', desc:'从书源分类到章节正文，在终端里完成。', key:'network' },
+  { img:themeGif, poster:themePoster, title:'主题随心配', desc:'调整配色，让正文适合你的终端。', key:'theme' },
+  { img:loginGif, poster:loginPoster, title:'需登录的书源', desc:'支持表单与浏览器登录，保存登录状态。', key:'login' },
 ];
 ---
 
-<div class="tn-gallery">
-	{
-		shots.map((s) => (
-			<figure>
-				<div class="crop">
-					<img src={s.img.src} width={s.img.width} height={s.img.height} alt={s.title} loading="lazy" />
-				</div>
-				<figcaption>
-					<strong>{s.title}</strong>
-					<span>{s.desc}</span>
-				</figcaption>
-			</figure>
-		))
-	}
+<div class="tn-demo" data-demo>
+  <div class="demo-controls" role="group" aria-label="选择界面演示">
+    {shots.map((shot,index) => <button type="button" data-shot={shot.key} aria-pressed={index===0} aria-controls={`demo-${shot.key}`}>{shot.title}</button>)}
+  </div>
+  {shots.map((shot,index) => (
+    <figure id={`demo-${shot.key}`} data-panel={shot.key} hidden={index!==0}>
+      <div class="screen">
+        <img src={shot.poster.src} data-animation={shot.img.src} data-poster={shot.poster.src} width={shot.img.width} height={shot.img.height} alt={`TRNovel ${shot.title}的真实终端界面`} loading={index===0?'eager':'lazy'} />
+      </div>
+      <figcaption>{shot.desc}</figcaption>
+    </figure>
+  ))}
+  <button class="playback" type="button" data-playback aria-pressed="false">播放演示</button>
+  <p class="demo-note">真实终端录屏 · 可用左右方向键选择</p>
 </div>
 
+<script>
+  const demo = document.querySelector<HTMLElement>("[data-demo]");
+  if (demo) {
+    const buttons = [...demo.querySelectorAll<HTMLButtonElement>("[data-shot]")];
+    const panels = [...demo.querySelectorAll<HTMLElement>("[data-panel]")];
+    const playback = demo.querySelector<HTMLButtonElement>("[data-playback]")!;
+    const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)");
+    let playing = false;
+    function updatePlayback(): void {
+      for (const panel of panels) {
+        const image = panel.querySelector<HTMLImageElement>("img")!;
+        const source =
+          playing && !panel.hidden
+            ? image.dataset.animation
+            : image.dataset.poster;
+        if (source && image.getAttribute("src") !== source) image.src = source;
+      }
+      playback.textContent = playing ? "暂停演示" : "播放演示";
+      playback.setAttribute("aria-pressed", String(playing));
+    }
+    function selectShot(index: number): void {
+      buttons.forEach((button, i) =>
+        button.setAttribute("aria-pressed", String(i === index)),
+      );
+      panels.forEach((panel, i) => {
+        panel.hidden = i !== index;
+      });
+      updatePlayback();
+    }
+    buttons.forEach((button, index) => {
+      button.addEventListener("click", () => selectShot(index));
+      button.addEventListener("keydown", (event) => {
+        let next = index;
+        switch (event.key) {
+          case "ArrowRight":
+            next = (index + 1) % buttons.length;
+            break;
+          case "ArrowLeft":
+            next = (index + buttons.length - 1) % buttons.length;
+            break;
+          case "Home":
+            next = 0;
+            break;
+          case "End":
+            next = buttons.length - 1;
+            break;
+          default:
+            return;
+        }
+        event.preventDefault();
+        selectShot(next);
+        buttons[next].focus();
+      });
+    });
+    playback.addEventListener("click", () => {
+      playing = !playing;
+      updatePlayback();
+    });
+    reducedMotion.addEventListener("change", (event) => {
+      if (event.matches) {
+        playing = false;
+        updatePlayback();
+      }
+    });
+  }
+</script>
+
 <style>
-	.tn-gallery {
-		display: flex;
-		gap: 1.25rem;
-		margin-top: 2rem;
-		overflow-x: auto;
-		scroll-snap-type: x mandatory;
-		padding-bottom: 0.75rem;
-		scrollbar-width: thin;
-	}
-
-	figure {
-		flex: 0 0 min(560px, 86%);
-		margin: 0;
-		scroll-snap-align: start;
-	}
-
-	.crop {
-		overflow: hidden;
-		border: 1px solid var(--tn-border);
-		border-radius: 12px;
-		background: #1e1e2e;
-	}
-
-	.crop img {
-		display: block;
-		width: 100%;
-		height: auto;
-	}
-
-	figcaption {
-		display: flex;
-		flex-direction: column;
-		gap: 0.15rem;
-		margin-top: 0.75rem;
-	}
-
-	figcaption strong {
-		font-size: 0.95rem;
-		color: var(--sl-color-white);
-	}
-
-	figcaption span {
-		font-size: 0.85rem;
-		color: var(--sl-color-gray-3);
-	}
+  .tn-demo {
+    position: relative;
+    margin-top: 2rem;
+  }
+  .demo-controls {
+    display: flex;
+    gap: 0.4rem;
+    overflow: auto;
+    scrollbar-width: thin;
+    margin-bottom: 1rem;
+    padding-bottom: 0.4rem;
+  }
+  .demo-controls button {
+    flex-shrink: 0;
+    border: 0;
+    border-radius: 4px;
+    padding: 0.75rem 1rem;
+    background: transparent;
+    color: var(--tn-muted);
+    font: inherit;
+    font-size: 0.9rem;
+    cursor: pointer;
+    transition: background 160ms;
+  }
+  .demo-controls button[aria-pressed="true"] {
+    background: var(--tn-surface-2);
+    color: var(--tn-ink);
+    box-shadow: inset 0 -2px var(--tn-accent);
+  }
+  .demo-controls button:hover {
+    color: var(--tn-ink);
+    background: var(--tn-surface);
+  }
+  figure {
+    margin: 0;
+  }
+  figure[hidden] {
+    display: none;
+  }
+  .screen {
+    overflow: hidden;
+    background: #17212b;
+    border: 1px solid var(--tn-border);
+    border-radius: 8px;
+  }
+  .screen img {
+    display: block;
+    width: 100%;
+    height: auto;
+  }
+  figcaption {
+    font-size: 0.9rem;
+    color: var(--tn-muted);
+    margin-top: 1.2rem;
+    padding-right: 7rem;
+  }
+  .playback {
+    position: absolute;
+    right: 0;
+    bottom: 1.9rem;
+    border: 1px solid var(--tn-border);
+    border-radius: 4px;
+    padding: 0.4rem 0.75rem;
+    font: inherit;
+    font-size: 0.8rem;
+    cursor: pointer;
+    color: var(--tn-ink);
+    background: var(--tn-surface);
+  }
+  .demo-note {
+    margin: 0.5rem 0 0;
+    font-size: 0.75rem;
+    color: var(--tn-muted);
+  }
+  @media (max-width: 767px) {
+    .demo-controls button {
+      padding: 0.7rem;
+      font-size: 0.8rem;
+    }
+    figcaption {
+      min-height: 2.5rem;
+    }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .demo-controls button {
+      transition: none;
+    }
+  }
 </style>

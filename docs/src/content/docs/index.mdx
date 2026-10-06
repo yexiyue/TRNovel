@@ -10,6 +10,12 @@ import { Tabs, TabItem, LinkCard, CardGrid, Aside } from '@astrojs/starlight/com
 import Bento from '../../components/landing/Bento.astro';
 import Gallery from '../../components/landing/Gallery.astro';
 
+## 看它跑起来
+
+在熟悉的终端里，留一段时间给故事。
+
+<Gallery />
+
 ## 为读小说，准备好了一切
 
 <Bento />
@@ -21,9 +27,9 @@ import Gallery from '../../components/landing/Gallery.astro';
 <div>
 
 把小说站 URL 交给装有 `booksource-generator` skill 的 Agent，生成搜索、目录和正文规则。
-再用 `trn doctor` 检查每个阶段，确认通过后导入阅读器。站点变化时可以重新校验和调整。
+用 `trn doctor` 校验，再导入阅读器。站点变化时，按阶段调整规则。
 
-书源是结构化 JSON，对 AI 友好，schema 由 Rust 类型自动生成。详见
+生成 → 校验 → 导入，每一步都有明确结果。详见
 [书源参考](/TRNovel/book-source/intro)与[反爬与浏览器辅助](/TRNovel/reference/anti-scraping)。
 
 </div>
@@ -45,11 +51,11 @@ trn import example.v2.json && trn -n
 
 </div>
 
-## 看它跑起来
-
-<Gallery />
-
 ## 30 秒上手
+
+选择你的安装方式，装好后运行 `trn`。
+
+<div class="tn-install-panel">
 
 <Tabs syncKey="install">
 	<TabItem label="macOS / Linux">
@@ -90,6 +96,10 @@ trn -l ./书库   # 读某个目录下的本地小说
 
 <Aside type="tip">还有 `trn doctor <书源.json>` 体检书源、`trn import <书源.json>` 一键导入。完整命令见 [CLI 参考](/TRNovel/reference/cli)。</Aside>
 
+</div>
+
+<p class="tn-release-note">独立听书程序与新后端属于当前源码功能，正式发行版的安装与听书方式请查看<a href="/TRNovel/guides/install/">安装指南</a>。</p>
+
 ## 继续深入
 
 <CardGrid>
@@ -98,3 +108,8 @@ trn -l ./书库   # 读某个目录下的本地小说
 	<LinkCard title="反爬与浏览器辅助" description="Cloudflare 挑战的工作方式与降级策略。" href="/TRNovel/reference/anti-scraping" />
 	<LinkCard title="CLI 命令参考" description="trn 的全部子命令与参数。" href="/TRNovel/reference/cli" />
 </CardGrid>
+
+<div class="tn-signoff">
+  <span>TRNovel · 打开终端，走进故事。</span>
+  <a href="https://github.com/yexiyue/TRNovel">开源于 GitHub ↗</a>
+</div>
