@@ -40,20 +40,35 @@ pub async fn run(
         .map_err(|error| anyhow::anyhow!("cannot read UTF-8 file {}: {error}", file.display()))?;
     let canonical = tokio::fs::canonicalize(&file).await?;
     let config = store.load()?;
-    tts_core::config::validate(&config, &tts_core::backend::KokoroBackend::capabilities())?;
+    tts_core::config::validate(&config, &resources.capabilities(&config.backend)?)?;
     let (progress, mut preparation) = mpsc::channel(16);
-    let mut task = tokio::task::spawn_local(resources.prepare(progress));
-    let backend = loop {
+    let settings = config.clone();
+    let mut task = tokio::task::spawn_local(async move {
+        crate::preparation::prepare(resources, settings, progress).await
+    });
+    let prepared = loop {
         tokio::select! {
             result = &mut task => break result??,
-            event = preparation.recv() => if let Some(Event::ModelProgress {resource,downloaded,total}) = event {
-                eprintln!("{resource}: {downloaded}/{total} bytes");
-            },
+            event = preparation.recv() => if let Some(event) = event { match event {
+                Event::ModelProgress {resource,downloaded,total} => eprintln!("{resource}: {:.1}% · {:.1}/{:.1} MiB", if total==0 {0.0} else {downloaded as f64/total as f64*100.0},downloaded as f64/1048576.0,total as f64/1048576.0),
+                Event::ResourceState {stage,resource}=>eprintln!("{stage} {resource}"),
+                Event::DeviceStatus {component,selected,reason,..} => eprintln!("{component}: {selected:?} {}",reason.unwrap_or_default()),
+                Event::AlignmentStatus {reason,..} => eprintln!("片段高亮: {}",reason.unwrap_or_default()),
+                _=>{}
+            } },
             signal = tokio::signal::ctrl_c() => { signal?; task.abort(); let _ = task.await; return Ok(()); }
         }
     };
     let (tx, mut events) = mpsc::channel::<SessionEvent>(64);
-    let mut manager = SessionManager::new(backend, Rc::new(AudioPlayer::open()?), checkpoints, tx);
+    let mut manager = SessionManager::new(
+        prepared.backend,
+        Rc::new(AudioPlayer::open()?),
+        checkpoints,
+        tx,
+    );
+    if let Some(aligner) = prepared.aligner {
+        manager = manager.with_aligner(aligner);
+    }
     let interactive = std::io::stdin().is_terminal() && std::io::stderr().is_terminal();
     let _terminal = if interactive {
         Some(TerminalGuard::enter()?)
@@ -95,7 +110,7 @@ pub async fn run(
                     match event.event {
                         Event::SessionState{state} => eprintln!("{state:?}\r"),
                         Event::Error(error) => eprintln!("{}: {}\r",error.stage,error.message),
-                        Event::SegmentStarted{range,..} => eprintln!("bytes {}..{}\r",range.start,range.end),
+                        Event::SegmentStarted{range,..} | Event::SentenceStarted{range,..} => eprintln!("bytes {}..{}\r",range.start,range.end),
                         Event::SessionEnded{reason,..} => {
                             if reason == EndReason::Failed {return Err(anyhow::anyhow!("listening failed; run again to retry the unfinished segment"));}
                             break;

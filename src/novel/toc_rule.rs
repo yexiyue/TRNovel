@@ -16,7 +16,7 @@ use crate::utils::novel_catch_dir;
 use serde::{Deserialize, Serialize};
 
 /// 默认标题最大字符数（超过则视为正文）。
-const DEFAULT_MAX_TITLE_LEN: usize = 35;
+const DEFAULT_MAX_TITLE_LEN: usize = tts_protocol::headings::MAX_TITLE_CHARS;
 
 /// 多规则竞争评分时，相邻被计数命中的最小字节间隔（仅用于打分，不影响最终章节列表）。
 const SCORE_MIN_GAP: usize = 64;
@@ -85,7 +85,7 @@ impl TocRuleSet {
         };
 
         // 中文数字 + 阿拉伯数字字符类（复用于卷与章）。
-        const NUM: &str = r"[0-9〇零一二两三四五六七八九十百千万壹贰叁肆伍陆柒捌玖拾佰仟]";
+        const NUM: &str = tts_protocol::headings::NUMBERS;
 
         Self {
             max_title_len: DEFAULT_MAX_TITLE_LEN,
@@ -119,21 +119,21 @@ impl TocRuleSet {
                 // 计数词后紧跟汉字的正文被误判。
                 rule(
                     "数字章节(章/节/回/话)",
-                    &format!(r"^第{NUM}{{1,12}}[章节回话](?:[ 　\t、，,:：．.\-—_~·].*)?$"),
+                    tts_protocol::headings::CHINESE_CHAPTER,
                     false,
                     false,
                     2,
                 ),
                 rule(
                     "英文章节",
-                    r"^(?:[Cc]hapter|[Ss]ection|[Pp]art|[Ee]pisode)\s*\d{1,4}",
+                    tts_protocol::headings::ENGLISH_CHAPTER,
                     false,
                     false,
                     3,
                 ),
                 rule(
                     "特殊章节",
-                    r"^(?:楔子|引子|序章|序言|前言|后记|尾声|终章|完本感言|番外|外传|附录|内容简介|作品相关)",
+                    tts_protocol::headings::SPECIAL_CHAPTER,
                     false,
                     false,
                     4,

@@ -1,5 +1,35 @@
+pub mod duration;
 use regex::Regex;
 use std::sync::LazyLock;
+
+/// Recognize standalone decorative separators, keeping operators in prose.
+/// Whitespace is ignored, but a separator needs at least three marks.
+pub fn is_decoration_line(line: &str) -> bool {
+    let mut marks = 0;
+    for c in line.chars().filter(|c| !c.is_whitespace()) {
+        if !"=＝-_＿*＊~～─━═┄┅┈┉·•".contains(c) {
+            return false;
+        }
+        marks += 1;
+    }
+    marks >= 3
+}
+
+/// Recognize a standalone heading using the reader's built-in TOC patterns.
+pub fn is_heading_line(line: &str) -> bool {
+    static HEADINGS: LazyLock<Vec<Regex>> = LazyLock::new(|| {
+        use tts_protocol::headings::*;
+        [CHINESE_CHAPTER, ENGLISH_CHAPTER, SPECIAL_CHAPTER]
+            .into_iter()
+            .map(|pattern| Regex::new(pattern).expect("built-in heading pattern"))
+            .collect()
+    });
+    let line = line.trim();
+    !line.is_empty()
+        && line.chars().count() <= tts_protocol::headings::MAX_TITLE_CHARS
+        && !line.ends_with(['。', '.', '！', '!', '？', '?'])
+        && HEADINGS.iter().any(|pattern| pattern.is_match(line))
+}
 
 /// 匹配主要句子结束标点符号（句号、感叹号、问号）
 static STOP_REGEX: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"[。！？!?]").unwrap());
@@ -66,7 +96,7 @@ fn preprocess_text_recursive(
         let line_end_offset = byte_offset + line_byte_len;
 
         // 跳过空行，更新字节偏移量（+1 表示换行符）
-        if line.trim().is_empty() {
+        if line.trim().is_empty() || is_decoration_line(line) {
             byte_offset = next_offset;
             continue;
         }
@@ -161,6 +191,21 @@ pub fn preprocess_text(text: &str, limit: usize) -> Vec<TextSegment> {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn decorations_are_skipped_without_changing_source_offsets() {
+        for line in ["====", " ＝ ＝ ＝ ", "---", "* * *", "────"] {
+            assert!(super::is_decoration_line(line));
+        }
+        for line in ["a=b", "1 - 2 = -1", "=", "==", "...", "***注释***", ""] {
+            assert!(!super::is_decoration_line(line));
+        }
+        let text = "=====\r\n正文 a=b。\n----\n结尾。";
+        let pieces = super::preprocess_text(text, 200);
+        assert_eq!(pieces.len(), 2);
+        for piece in pieces {
+            assert_eq!(&text[piece.start..piece.end], piece.text);
+        }
+    }
     use super::*;
 
     #[test]

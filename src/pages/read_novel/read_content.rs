@@ -206,7 +206,9 @@ pub fn ReadContent(
     let is_listening = snapshot.matches(&request)
         && matches!(
             snapshot.state,
-            tts_protocol::SessionState::Playing | tts_protocol::SessionState::Generating
+            tts_protocol::SessionState::Playing
+                | tts_protocol::SessionState::Generating
+                | tts_protocol::SessionState::Paused
         );
     #[cfg(not(feature = "tts"))]
     let is_listening = false;
@@ -513,10 +515,11 @@ pub fn ReadContent(
     {
         let config = snapshot.config.as_ref();
         format!(
-            "{:?}: 速度{} / 音量{}",
+            "{:?}: 速度{:.1} / 音量{:.1} · {}",
             snapshot.state,
             config.map_or(1.0, |value| value.speed),
-            config.map_or(1.0, |value| value.volume)
+            config.map_or(1.0, |value| value.volume),
+            snapshot.alignment
         )
     } else {
         format!(

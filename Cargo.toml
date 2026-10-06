@@ -21,7 +21,7 @@ path = "src/bin/trn.rs"
 
 [features]
 default = ["tts"]
-tts = ["dep:tts-protocol", "dep:tokio-util"]
+tts = ["dep:tokio-util"]
 
 [dependencies]
 async-trait = "0.1"
@@ -54,7 +54,7 @@ ratatui-kit-themes = "0.1"
 ratatui-kit-keymap = "0.1"
 textwrap = { version = "0.16.2" }
 tokio-util = { workspace = true, optional = true }
-tts-protocol = { package = "novel-tts-protocol", path = "crates/novel-tts-protocol", version = "0.1.0", optional = true }
+tts-protocol = { package = "novel-tts-protocol", path = "crates/novel-tts-protocol", version = "0.1.0" }
 strum = { version = "0.28", features = ["derive"] }
 swash = "0.2.7"
 zeno = "0.3.3"
@@ -63,9 +63,13 @@ reqwest = { version = "0.13", default-features = false, features = ["rustls"] }
 
 
 [workspace]
-members = ["crates/novel-tts-core", "crates/novel-tts-protocol", "crates/novel-tts", "crates/parse-book-source"]
+members = ["crates/novel-tts-backends", "crates/novel-tts-core", "crates/novel-tts-protocol", "crates/novel-tts", "crates/parse-book-source"]
 
 [workspace.dependencies]
+ort = "=2.0.0-rc.10"
+kokoro-tts = "=0.3.1"
+rodio = { version = "0.21.1", default-features = false, features = ["playback", "wav", "tracing"] }
+reqwest = { version = "0.13", default-features = false, features = ["rustls"] }
 serde = { version = "1.0.228", features = ["derive"] }
 serde_json = "1.0.150"
 regex = "1.12"
@@ -103,3 +107,7 @@ inherits = "release"
 
 [dev-dependencies]
 tempfile.workspace = true
+
+# Model integrity checks must remain practical in development builds.
+[profile.dev.package.sha2]
+opt-level = 3

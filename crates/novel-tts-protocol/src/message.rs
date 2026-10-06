@@ -26,6 +26,17 @@ pub struct SourceId {
     pub chapter: String,
 }
 
+/// Requested execution policy, independent for synthesis and alignment.
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum Device {
+    #[default]
+    Auto,
+    Cpu,
+    Coreml,
+    Cuda,
+}
+
 /// User preferences. `voice` retains the old JSON enum spelling, e.g. `Zf001`.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
@@ -34,8 +45,13 @@ pub struct Config {
     pub speed: f32,
     pub voice: String,
     pub auto_play: bool,
+    #[serde(default = "legacy_backend")]
     pub backend: String,
     pub revision: u64,
+    pub tts_device: Device,
+    pub alignment_device: Device,
+    /// Load sentence alignment only when explicitly requested.
+    pub alignment_enabled: bool,
     #[serde(flatten)]
     pub extra: BTreeMap<String, serde_json::Value>,
 }
@@ -45,10 +61,13 @@ impl Default for Config {
         Self {
             volume: 1.0,
             speed: 1.0,
-            voice: "Zf001".into(),
+            voice: "Weiguo".into(),
             auto_play: false,
-            backend: "kokoro".into(),
+            backend: "moss".into(),
             revision: 0,
+            tts_device: Device::Auto,
+            alignment_device: Device::Auto,
+            alignment_enabled: false,
             extra: BTreeMap::new(),
         }
     }
@@ -57,6 +76,10 @@ impl Default for Config {
 /// Only changed fields are sent, so unrelated preferences can be preserved.
 #[derive(Debug, Default, Clone, PartialEq, Serialize, Deserialize)]
 pub struct ConfigPatch {
+    pub backend: Option<String>,
+    pub tts_device: Option<Device>,
+    pub alignment_device: Option<Device>,
+    pub alignment_enabled: Option<bool>,
     pub expected_revision: u64,
     pub volume: Option<f32>,
     pub speed: Option<f32>,
@@ -67,6 +90,10 @@ pub struct ConfigPatch {
 /// A capability description; callers must not assume all backends are alike.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Capabilities {
+    #[serde(default)]
+    pub default_voice: String,
+    #[serde(default)]
+    pub voice_names: BTreeMap<String, String>,
     pub backend: String,
     pub voices: Vec<String>,
     pub native_streaming: bool,
@@ -148,20 +175,43 @@ pub struct ErrorInfo {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "type", content = "payload", rename_all = "snake_case")]
 pub enum Event {
-    Ready(Capabilities),
+    Ready(Vec<Capabilities>),
     Accepted,
     Config(Config),
     ConfigChanged(Config),
+    ResourceState {
+        stage: String,
+        resource: String,
+    },
     ModelProgress {
         resource: String,
         downloaded: u64,
         total: u64,
     },
     ModelReady,
+    DeviceStatus {
+        component: String,
+        compiled: Vec<Device>,
+        available: Vec<Device>,
+        selected: Device,
+        reason: Option<String>,
+    },
     SessionState {
         state: SessionState,
     },
     SegmentStarted {
+        range: TextRange,
+        text_hash: String,
+    },
+    AlignmentStatus {
+        sentence_highlight: bool,
+        reason: Option<String>,
+    },
+    SentenceStarted {
+        range: TextRange,
+        text_hash: String,
+    },
+    SentenceFinished {
         range: TextRange,
         text_hash: String,
     },
@@ -186,4 +236,8 @@ pub struct Message {
     pub request_id: Option<String>,
     #[serde(flatten)]
     pub event: Event,
+}
+
+fn legacy_backend() -> String {
+    "kokoro".into()
 }

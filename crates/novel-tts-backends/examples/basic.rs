@@ -1,10 +1,10 @@
 //! A small consumer of the model-independent session interface.
-use novel_tts_core as tts_core;
-use std::rc::Rc;
-use tts_core::{
-    AudioPlayer, CheckpointModel, VoicesData, backend::KokoroBackend, checkpoint::CheckpointStore,
-    session::SessionManager,
+use novel_tts_backends::kokoro::{
+    KokoroBackend,
+    models::{CheckpointModel, VoicesData},
 };
+use std::rc::Rc;
+use tts_core::{AudioPlayer, checkpoint::CheckpointStore, session::SessionManager};
 use tts_protocol::{Config, Event, SourceId, StartRequest, text_hash};
 
 #[tokio::main(flavor = "current_thread")]
@@ -43,7 +43,11 @@ async fn main() -> anyhow::Result<()> {
                         resume_byte: None,
                         restore_checkpoint: false,
                     },
-                    &Config::default(),
+                    &Config {
+                        backend: "kokoro".into(),
+                        voice: "Zf001".into(),
+                        ..Config::default()
+                    },
                 )
                 .await?;
             while let Some(event) = rx.recv().await {

@@ -136,7 +136,7 @@ async fn serve(
                         output.send(None, Some(event.session_id), event.event).await?;
                     }
                 }
-                event = model_events.recv(), if preparing => {
+                event = model_events.recv(), if handshake => {
                     if let Some(event) = event {
                         output.send(None, None, event).await?;
                     }
@@ -174,7 +174,11 @@ async fn serve(
                     match &request.command {
                         Command::Hello => {
                             handshake = true;
-                            output.send(Some(&request), None, Event::Ready(tts_core::backend::KokoroBackend::capabilities())).await?;
+                            output.send(Some(&request), None, Event::Ready(worker.catalog()?)).await?;
+                            #[cfg(any(feature="moss",feature="kokoro"))]
+                            for component in ["tts","alignment"] {
+                                output.send(None,None,crate::preparation::unprepared_device_status(component)).await?;
+                            }
                         }
                         Command::Shutdown => {
                             output.send(Some(&request), None, Event::Accepted).await?;
@@ -182,7 +186,7 @@ async fn serve(
                         }
                         command => {
                             let response = worker.command(&request).await;
-                            if matches!(command, Command::CancelPrepare) {
+                            if matches!(command, Command::CancelPrepare) || matches!(command, Command::UpdateConfig(patch) if patch.backend.is_some() || patch.tts_device.is_some() || patch.alignment_device.is_some() || patch.alignment_enabled.is_some()) {
                                 while model_events.try_recv().is_ok() {}
                             }
                             output.send(Some(&request), response.session, response.event).await?;

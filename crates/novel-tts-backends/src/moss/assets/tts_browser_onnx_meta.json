@@ -1,0 +1,186 @@
+{
+  "format_version": 1,
+  "checkpoint_path": "MOSS-TTS-Nano",
+  "files": {
+    "prefill": "moss_tts_prefill.onnx",
+    "decode_step": "moss_tts_decode_step.onnx",
+    "local_decoder": "moss_tts_local_decoder.onnx",
+    "local_cached_step": "moss_tts_local_cached_step.onnx",
+    "local_fixed_sampled_frame": "moss_tts_local_fixed_sampled_frame.onnx"
+  },
+  "external_data_files": {
+    "moss_tts_prefill.onnx": [
+      "moss_tts_global_shared.data"
+    ],
+    "moss_tts_decode_step.onnx": [
+      "moss_tts_global_shared.data"
+    ],
+    "moss_tts_local_decoder.onnx": [
+      "moss_tts_local_shared.data"
+    ],
+    "moss_tts_local_cached_step.onnx": [
+      "moss_tts_local_shared.data"
+    ],
+    "moss_tts_local_fixed_sampled_frame.onnx": [
+      "moss_tts_local_shared.data"
+    ]
+  },
+  "model_config": {
+    "n_vq": 16,
+    "row_width": 17,
+    "hidden_size": 768,
+    "global_layers": 12,
+    "global_heads": 12,
+    "head_dim": 64,
+    "local_layers": 1,
+    "local_heads": 12,
+    "local_head_dim": 64,
+    "vocab_size": 16384,
+    "audio_codebook_sizes": [
+      1024,
+      1024,
+      1024,
+      1024,
+      1024,
+      1024,
+      1024,
+      1024,
+      1024,
+      1024,
+      1024,
+      1024,
+      1024,
+      1024,
+      1024,
+      1024
+    ],
+    "audio_pad_token_id": 1024,
+    "pad_token_id": 3,
+    "im_start_token_id": 4,
+    "im_end_token_id": 5,
+    "audio_start_token_id": 6,
+    "audio_end_token_id": 7,
+    "audio_user_slot_token_id": 8,
+    "audio_assistant_slot_token_id": 9
+  },
+  "onnx": {
+    "opset": 17,
+    "prefill_output_names": [
+      "global_hidden",
+      "present_key_0",
+      "present_value_0",
+      "present_key_1",
+      "present_value_1",
+      "present_key_2",
+      "present_value_2",
+      "present_key_3",
+      "present_value_3",
+      "present_key_4",
+      "present_value_4",
+      "present_key_5",
+      "present_value_5",
+      "present_key_6",
+      "present_value_6",
+      "present_key_7",
+      "present_value_7",
+      "present_key_8",
+      "present_value_8",
+      "present_key_9",
+      "present_value_9",
+      "present_key_10",
+      "present_value_10",
+      "present_key_11",
+      "present_value_11"
+    ],
+    "decode_input_names": [
+      "input_ids",
+      "past_valid_lengths",
+      "past_key_0",
+      "past_value_0",
+      "past_key_1",
+      "past_value_1",
+      "past_key_2",
+      "past_value_2",
+      "past_key_3",
+      "past_value_3",
+      "past_key_4",
+      "past_value_4",
+      "past_key_5",
+      "past_value_5",
+      "past_key_6",
+      "past_value_6",
+      "past_key_7",
+      "past_value_7",
+      "past_key_8",
+      "past_value_8",
+      "past_key_9",
+      "past_value_9",
+      "past_key_10",
+      "past_value_10",
+      "past_key_11",
+      "past_value_11"
+    ],
+    "decode_output_names": [
+      "global_hidden",
+      "present_key_0",
+      "present_value_0",
+      "present_key_1",
+      "present_value_1",
+      "present_key_2",
+      "present_value_2",
+      "present_key_3",
+      "present_value_3",
+      "present_key_4",
+      "present_value_4",
+      "present_key_5",
+      "present_value_5",
+      "present_key_6",
+      "present_value_6",
+      "present_key_7",
+      "present_value_7",
+      "present_key_8",
+      "present_value_8",
+      "present_key_9",
+      "present_value_9",
+      "present_key_10",
+      "present_value_10",
+      "present_key_11",
+      "present_value_11"
+    ],
+    "local_cached_input_names": [
+      "global_hidden",
+      "text_token_id",
+      "audio_token_id",
+      "channel_index",
+      "step_type",
+      "past_valid_lengths",
+      "local_past_key_0",
+      "local_past_value_0"
+    ],
+    "local_cached_output_names": [
+      "text_logits",
+      "audio_logits",
+      "local_present_key_0",
+      "local_present_value_0"
+    ],
+    "local_fixed_sampled_frame_input_names": [
+      "global_hidden",
+      "repetition_seen_mask",
+      "assistant_random_u",
+      "audio_random_u"
+    ],
+    "local_fixed_sampled_frame_output_names": [
+      "should_continue",
+      "frame_token_ids"
+    ],
+    "fixed_sampled_frame_constants": {
+      "text_temperature": 1.0,
+      "text_top_p": 1.0,
+      "text_top_k": 50,
+      "audio_temperature": 0.8,
+      "audio_top_p": 0.95,
+      "audio_top_k": 25,
+      "audio_repetition_penalty": 1.2
+    }
+  }
+}

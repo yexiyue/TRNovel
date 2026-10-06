@@ -4,7 +4,7 @@ use std::{
     path::PathBuf,
     sync::{
         Arc,
-        atomic::{AtomicU64, Ordering},
+        atomic::{AtomicBool, AtomicU64, Ordering},
     },
 };
 use tokio::{
@@ -16,10 +16,28 @@ use tts_protocol::{
     StartRequest, TextRange,
 };
 
+fn download_progress(resource: &str, downloaded: u64, total: u64) -> String {
+    let name = resource.rsplit('/').next().unwrap_or(resource);
+    let mib = 1024.0 * 1024.0;
+    if total == 0 {
+        return format!("下载 {name} · {:.1} MiB", downloaded as f64 / mib);
+    }
+    let fraction = (downloaded as f64 / total as f64).clamp(0.0, 1.0);
+    let filled = (fraction * 10.0) as usize;
+    let bar = format!("{}{}", "━".repeat(filled), "─".repeat(10 - filled));
+    format!(
+        "下载 {name}\n[{bar}] {:.1}% · {:.1} / {:.1} MiB",
+        fraction * 100.0,
+        downloaded as f64 / mib,
+        total as f64 / mib
+    )
+}
+
 #[derive(Debug, Clone)]
 pub struct Snapshot {
     pub config: Option<Config>,
     pub capabilities: Option<Capabilities>,
+    pub backends: Vec<Capabilities>,
     pub state: SessionState,
     pub source: Option<SourceId>,
     pub text_hash: Option<String>,
@@ -29,6 +47,9 @@ pub struct Snapshot {
     pub error: Option<String>,
     pub progress: String,
     pub model_ready: bool,
+    pub alignment: String,
+    pub devices: std::collections::BTreeMap<String, (Vec<tts_protocol::Device>, String)>,
+    resource_sequence: u64,
     instance: Option<String>,
     session: Option<String>,
 }
@@ -37,6 +58,7 @@ impl Default for Snapshot {
         Self {
             config: None,
             capabilities: None,
+            backends: Vec::new(),
             state: SessionState::Idle,
             source: None,
             text_hash: None,
@@ -46,6 +68,9 @@ impl Default for Snapshot {
             error: None,
             progress: "未启用模型".into(),
             model_ready: false,
+            alignment: "片段高亮".into(),
+            devices: Default::default(),
+            resource_sequence: 0,
             instance: None,
             session: None,
         }
@@ -66,10 +91,58 @@ impl Snapshot {
         if self.instance.as_deref() != Some(&message.instance_id) {
             return;
         }
+        if message.session_id.is_none() && message.sequence < self.resource_sequence {
+            return;
+        }
         match message.event {
-            Event::Config(config) => self.config = Some(config),
-            Event::ConfigChanged(config) => {
+            Event::DeviceStatus {
+                component,
+                compiled,
+                available,
+                selected,
+                reason,
+            } => {
+                let status = format!(
+                    "{selected:?} · 可用 {available:?}{}",
+                    reason.map(|r| format!(" · {r}")).unwrap_or_default()
+                );
+                self.devices.insert(component, (compiled, status));
+            }
+            Event::Config(config) => {
+                self.capabilities = self
+                    .backends
+                    .iter()
+                    .find(|caps| caps.backend == config.backend)
+                    .cloned();
                 self.config = Some(config);
+            }
+            Event::ConfigChanged(config) => {
+                self.error = None;
+                let switched = self.config.as_ref().is_some_and(|old| {
+                    old.backend != config.backend
+                        || old.tts_device != config.tts_device
+                        || old.alignment_device != config.alignment_device
+                        || old.alignment_enabled != config.alignment_enabled
+                });
+                self.capabilities = self
+                    .backends
+                    .iter()
+                    .find(|caps| caps.backend == config.backend)
+                    .cloned();
+                self.config = Some(config);
+                if switched {
+                    self.resource_sequence = message.sequence;
+                    self.model_ready = false;
+                    self.session = None;
+                    self.range = None;
+                    self.terminal = None;
+                    self.state = SessionState::Idle;
+                    self.progress = "听书设置已切换，请启用模型".into();
+                    self.alignment = "片段高亮".into();
+                    for (_, status) in self.devices.values_mut() {
+                        *status = "未准备".into();
+                    }
+                }
                 if let Some(id) = message.session_id
                     && self.session.is_some()
                     && self.session.as_ref() != Some(&id)
@@ -82,12 +155,29 @@ impl Snapshot {
                     }
                 }
             }
+            Event::ResourceState { stage, resource } => {
+                self.progress = format!("{stage} {resource}")
+            }
             Event::ModelProgress {
                 resource,
                 downloaded,
                 total,
-            } => self.progress = format!("{resource}: {downloaded}/{total} bytes"),
+            } => self.progress = download_progress(&resource, downloaded, total),
+            Event::AlignmentStatus {
+                sentence_highlight,
+                reason,
+            } if message.session_id.is_none() => {
+                self.alignment = if sentence_highlight {
+                    "逐句高亮".into()
+                } else {
+                    reason.map_or_else(
+                        || "片段高亮".into(),
+                        |reason| format!("片段高亮 · {reason}"),
+                    )
+                };
+            }
             Event::ModelReady => {
+                self.error = None;
                 self.model_ready = true;
                 self.progress = "模型就绪".into();
                 if self.session.is_none() {
@@ -101,7 +191,21 @@ impl Snapshot {
             }
             event if message.session_id == self.session && self.session.is_some() => match event {
                 Event::SessionState { state } => self.state = state,
+                Event::AlignmentStatus {
+                    sentence_highlight,
+                    reason,
+                } => {
+                    self.alignment = if sentence_highlight {
+                        "逐句高亮".into()
+                    } else {
+                        reason.map_or_else(
+                            || "片段高亮".into(),
+                            |reason| format!("片段高亮 · {reason}"),
+                        )
+                    };
+                }
                 Event::SegmentStarted { range, text_hash }
+                | Event::SentenceStarted { range, text_hash }
                     if self.text_hash.as_deref() == Some(&text_hash) =>
                 {
                     self.range = Some(range)
@@ -130,6 +234,7 @@ struct HandleInner {
     actions: mpsc::Sender<QueuedAction>,
     controls: watch::Sender<Controls>,
     generation: Arc<AtomicU64>,
+    switching: Arc<AtomicBool>,
     snapshot: watch::Receiver<Snapshot>,
     stop: tokio_util::sync::CancellationToken,
     done: watch::Receiver<bool>,
@@ -171,11 +276,19 @@ enum Delivery {
     Controls(Controls),
     Action(QueuedAction),
 }
+fn resource_update(patch: &ConfigPatch) -> bool {
+    patch.backend.is_some()
+        || patch.tts_device.is_some()
+        || patch.alignment_device.is_some()
+        || patch.alignment_enabled.is_some()
+}
+
 impl Handle {
     pub fn new() -> (Self, JoinHandle<()>) {
         let (actions, receiver) = mpsc::channel(32);
         let (controls, control_receiver) = watch::channel(Controls::default());
         let generation = Arc::new(AtomicU64::new(0));
+        let switching = Arc::new(AtomicBool::new(false));
         let (snapshot, watched) = watch::channel(Snapshot::default());
         let stop = tokio_util::sync::CancellationToken::new();
         let (finished, done) = watch::channel(false);
@@ -183,6 +296,7 @@ impl Handle {
             receiver,
             controls: control_receiver,
             generation: generation.clone(),
+            switching: switching.clone(),
             releases: 0,
             cancellations: 0,
             observed_generation: 0,
@@ -203,6 +317,7 @@ impl Handle {
                 actions,
                 controls,
                 generation,
+                switching,
                 snapshot: watched,
                 stop,
                 done,
@@ -213,14 +328,16 @@ impl Handle {
     pub fn watch(&self) -> watch::Receiver<Snapshot> {
         self.0.snapshot.clone()
     }
-    fn send(&self, action: Action) {
+    fn send(&self, action: Action) -> bool {
         let queued = QueuedAction {
             generation: Some(self.0.generation.load(Ordering::SeqCst)),
             action,
         };
         if let Err(error) = self.0.actions.try_send(queued) {
             eprintln!("listening action could not be queued: {error}");
+            return false;
         }
+        true
     }
     fn control(&self, action: Action) {
         self.0.controls.send_modify(|controls| {
@@ -259,7 +376,22 @@ impl Handle {
         self.send(Action::Restart);
     }
     pub fn update(&self, patch: ConfigPatch) {
-        self.send(Action::Update(patch));
+        let switching = resource_update(&patch);
+        if switching {
+            if self
+                .0
+                .switching
+                .compare_exchange(false, true, Ordering::SeqCst, Ordering::SeqCst)
+                .is_err()
+            {
+                return;
+            }
+        } else if self.0.switching.load(Ordering::SeqCst) {
+            return;
+        }
+        if !self.send(Action::Update(patch)) && switching {
+            self.0.switching.store(false, Ordering::SeqCst);
+        }
     }
     pub fn release(&self) {
         self.control(Action::Release);
@@ -282,6 +414,7 @@ struct Actor {
     actions: mpsc::Sender<QueuedAction>,
     controls: watch::Receiver<Controls>,
     generation: Arc<AtomicU64>,
+    switching: Arc<AtomicBool>,
     releases: u64,
     cancellations: u64,
     observed_generation: u64,
@@ -308,7 +441,7 @@ impl Actor {
         let (client, ready) = Client::connect(&path).await?;
         self.view.instance = Some(client.instance().into());
         if let Event::Ready(capabilities) = ready.event {
-            self.view.capabilities = Some(capabilities);
+            self.view.backends = capabilities;
         }
         let mut events = client.subscribe();
         let actions = self.actions.clone();
@@ -400,6 +533,7 @@ impl Actor {
             client.close().await;
         }
         self.client.take();
+        self.view.resource_sequence = 0;
         self.view.instance = None;
         self.view.session = None;
         self.view.model_ready = false;
@@ -416,6 +550,7 @@ impl Actor {
             }
             Action::Prepare => {
                 self.connect().await?;
+                self.view.error = None;
                 if !self.view.model_ready && self.view.session.is_none() {
                     self.view.state = SessionState::Preparing;
                 }
@@ -464,10 +599,28 @@ impl Actor {
             }
             Action::Update(mut patch) => {
                 self.connect().await?;
-                if let Some(config) = &self.view.config {
+                let switched = if let Some(config) = &self.view.config {
                     patch.expected_revision = config.revision;
-                }
+                    patch
+                        .backend
+                        .as_ref()
+                        .is_some_and(|backend| backend != &config.backend)
+                        || patch
+                            .tts_device
+                            .is_some_and(|device| device != config.tts_device)
+                        || patch
+                            .alignment_device
+                            .is_some_and(|device| device != config.alignment_device)
+                        || patch
+                            .alignment_enabled
+                            .is_some_and(|enabled| enabled != config.alignment_enabled)
+                } else {
+                    false
+                };
                 self.command(None, Command::UpdateConfig(patch)).await?;
+                if switched {
+                    self.pending = None;
+                }
             }
             Action::Incoming(instance, Received::Message(message)) => {
                 if self.view.instance.as_deref() != Some(&instance) {
@@ -561,6 +714,7 @@ impl Actor {
                     }
                 },
             };
+            let switching = matches!(&delivery,Delivery::Action(QueuedAction {action:Action::Update(patch),..}) if resource_update(patch));
             let result = tokio::select! {
                 biased;
                 _ = stop.cancelled() => break,
@@ -577,7 +731,11 @@ impl Actor {
                 }
             }
             self.snapshot.send_replace(self.view.clone());
+            if switching {
+                self.switching.store(false, Ordering::SeqCst);
+            }
         }
+        self.switching.store(false, Ordering::SeqCst);
         self.release().await;
         self.finished.send_replace(true);
     }
@@ -593,6 +751,18 @@ impl std::fmt::Debug for Handle {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn resource_progress_uses_readable_units_and_bounded_percent() {
+        assert_eq!(
+            super::download_progress("tts/weights.data", 1024 * 1024, 4 * 1024 * 1024),
+            "下载 weights.data\n[━━────────] 25.0% · 1.0 / 4.0 MiB"
+        );
+        assert!(super::download_progress("weights", 8, 4).contains("100.0%"));
+        assert_eq!(
+            super::download_progress("weights", 0, 0),
+            "下载 weights · 0.0 MiB"
+        );
+    }
     use super::*;
     use tts_protocol::{Message, PROTOCOL_VERSION, text_hash};
     fn request(chapter: &str) -> StartRequest {
@@ -721,5 +891,72 @@ mod tests {
         assert_eq!(second.config.unwrap().revision, 1);
         handle.shutdown().await;
         task.await.unwrap();
+    }
+    #[test]
+    fn alignment_switch_invalidates_timeline_and_resource_updates_are_serialized() {
+        let mut view = Snapshot {
+            instance: Some("worker".into()),
+            config: Some(Config::default()),
+            model_ready: true,
+            session: Some("old".into()),
+            range: Some(TextRange { start: 0, end: 3 }),
+            alignment: "逐句高亮".into(),
+            ..Default::default()
+        };
+        let mut changed = message(
+            "worker",
+            "old",
+            Event::ConfigChanged(Config {
+                alignment_enabled: true,
+                ..Default::default()
+            }),
+        );
+        changed.session_id = None;
+        view.apply(changed);
+        assert!(!view.model_ready);
+        assert!(view.session.is_none() && view.range.is_none());
+        assert_eq!(view.alignment, "片段高亮");
+        assert!(resource_update(&ConfigPatch {
+            alignment_enabled: Some(true),
+            ..Default::default()
+        }));
+        assert!(resource_update(&ConfigPatch {
+            tts_device: Some(tts_protocol::Device::Cpu),
+            ..Default::default()
+        }));
+        assert!(!resource_update(&ConfigPatch {
+            volume: Some(2.0),
+            ..Default::default()
+        }));
+    }
+
+    #[test]
+    fn backend_switch_invalidates_model_and_older_resource_events() {
+        let mut view = Snapshot {
+            instance: Some("worker".into()),
+            config: Some(Config::default()),
+            model_ready: true,
+            session: Some("old".into()),
+            ..Default::default()
+        };
+        let mut changed = message(
+            "worker",
+            "old",
+            Event::ConfigChanged(Config {
+                backend: "kokoro".into(),
+                voice: "Zf001".into(),
+                ..Default::default()
+            }),
+        );
+        changed.session_id = None;
+        changed.sequence = 10;
+        view.apply(changed);
+        assert!(!view.model_ready);
+        assert!(view.session.is_none());
+        let mut stale = message("worker", "old", Event::ModelReady);
+        stale.session_id = None;
+        stale.sequence = 9;
+        view.apply(stale);
+        assert!(!view.model_ready);
     }
 }

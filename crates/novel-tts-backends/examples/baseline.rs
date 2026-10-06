@@ -1,12 +1,9 @@
 //! Record the existing Kokoro behavior before changing the listening core.
 //! Run with an output directory containing the pinned model and voices files.
 use kokoro_tts::{KokoroTts, Voice, g2p, get_token_ids};
-use novel_tts_core as tts_core;
+use novel_tts_backends::kokoro::KokoroBackend;
 use std::{fs::File, io::Write, path::PathBuf};
-use tts_core::{
-    backend::{Backend, KokoroBackend},
-    text::preprocess_text,
-};
+use tts_core::{backend::Backend, text::preprocess_text};
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {

@@ -3,11 +3,11 @@
 //! 该模块提供了对TTS所需模型文件和语音数据的管理功能，
 //! 包括自动下载、路径管理和状态检查等。
 
-use crate::download::{Download, get_cache_dir};
 use std::{
     ops::{Deref, DerefMut},
     path::Path,
 };
+use tts_core::download::{Download, get_cache_dir};
 
 /// TTS模型文件的下载地址
 static CHECKPOINT_URL: &str =
@@ -111,4 +111,34 @@ impl DerefMut for VoicesData {
     fn deref_mut(&mut self) -> &mut Self::Target {
         &mut self.0
     }
+}
+
+/// Verify the fixed V1.1 model and voices before opening inference.
+pub async fn prepare(
+    directory: &Path,
+    progress: tokio::sync::mpsc::Sender<tts_protocol::Event>,
+) -> anyhow::Result<()> {
+    let resources = [
+        (
+            "kokoro-v1.1-zh.onnx",
+            CHECKPOINT_URL,
+            343605188,
+            "eefec708cbc7aba8e8129b5c2f7cb92e1fe7d281af1e1dd451592d9ff0714a0d",
+        ),
+        (
+            "voices-v1.1-zh.bin",
+            VOICES_URL,
+            54001874,
+            "84ad1f8d2f4a1716365048360e77dbb2c8f55c0f076c577f28495bdab7cabfb0",
+        ),
+    ]
+    .into_iter()
+    .map(|(path, url, size, sha256)| crate::resources::Resource {
+        path: path.into(),
+        url: url.into(),
+        size,
+        sha256: sha256.into(),
+    })
+    .collect();
+    crate::resources::prepare(directory, "kokoro", resources, progress).await
 }

@@ -62,8 +62,20 @@ impl ConfigStore {
         if config.revision != patch.expected_revision {
             return Err(ConfigError::RevisionConflict);
         }
+        if let Some(backend) = &patch.backend {
+            config.backend.clone_from(backend);
+        }
         if let Some(volume) = patch.volume {
             config.volume = volume;
+        }
+        if let Some(device) = patch.tts_device {
+            config.tts_device = device;
+        }
+        if let Some(device) = patch.alignment_device {
+            config.alignment_device = device;
+        }
+        if let Some(enabled) = patch.alignment_enabled {
+            config.alignment_enabled = enabled;
         }
         if let Some(speed) = patch.speed {
             config.speed = speed;
@@ -113,6 +125,8 @@ mod tests {
 
     fn capabilities() -> Capabilities {
         Capabilities {
+            default_voice: "Zf001".into(),
+            voice_names: Default::default(),
             backend: "kokoro".into(),
             voices: vec!["Zf001".into()],
             native_streaming: false,
@@ -120,6 +134,39 @@ mod tests {
             cloning: false,
             pronunciation: false,
         }
+    }
+
+    #[test]
+    fn alignment_switch_persists_without_changing_voice_or_device() {
+        let dir = tempfile::tempdir().unwrap();
+        let store = ConfigStore::new(dir.path().join("config.json"));
+        let caps = capabilities();
+        let current = store
+            .update(
+                &ConfigPatch {
+                    backend: Some("kokoro".into()),
+                    voice: Some("Zf001".into()),
+                    alignment_enabled: Some(true),
+                    ..Default::default()
+                },
+                &caps,
+            )
+            .unwrap();
+        assert!(current.alignment_enabled);
+        let changed = store
+            .update(
+                &ConfigPatch {
+                    expected_revision: current.revision,
+                    alignment_enabled: Some(false),
+                    ..Default::default()
+                },
+                &caps,
+            )
+            .unwrap();
+        assert!(!changed.alignment_enabled);
+        assert_eq!(changed.voice, current.voice);
+        assert_eq!(changed.alignment_device, current.alignment_device);
+        assert_eq!(store.load().unwrap(), changed);
     }
 
     #[test]
@@ -147,6 +194,8 @@ mod tests {
         .unwrap();
         let store = ConfigStore::new(path);
         let voices = Capabilities {
+            default_voice: "Zf001".into(),
+            voice_names: Default::default(),
             voices: vec!["Zm009".into()],
             backend: "kokoro".into(),
             native_streaming: false,

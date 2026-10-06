@@ -3,7 +3,6 @@ use crate::{
     Playback,
     backend::{Backend, BackendError, Pcm},
     checkpoint::{CheckpointError, CheckpointStore},
-    text::{TextSegment, preprocess_text},
 };
 use std::{
     cell::Cell,
@@ -44,6 +43,7 @@ pub enum SessionError {
 }
 
 mod prefetch;
+mod producer;
 use prefetch::{Budget, Packet};
 
 struct AbortOnDrop(JoinHandle<()>);
@@ -82,6 +82,7 @@ struct Job {
 /// Runs inside a Tokio LocalSet; audio/model objects never move between threads.
 pub struct SessionManager {
     backend: Rc<dyn Backend>,
+    aligner: Option<Arc<dyn crate::alignment::Aligner>>,
     player: Rc<dyn Playback>,
     checkpoints: CheckpointStore,
     events: mpsc::Sender<SessionEvent>,
@@ -99,12 +100,19 @@ impl SessionManager {
     ) -> Self {
         Self {
             backend,
+            aligner: None,
             player,
             checkpoints,
             events,
             job: None,
             used_ids: HashSet::new(),
         }
+    }
+
+    /// Attach an independent alignment engine before starting playback.
+    pub fn with_aligner(mut self, aligner: Arc<dyn crate::alignment::Aligner>) -> Self {
+        self.aligner = Some(aligner);
+        self
     }
 
     /// Start explicitly. Restoring a checkpoint never starts this method on its own.
@@ -154,6 +162,7 @@ impl SessionManager {
             id: id.clone(),
             request: request.clone(),
             backend: self.backend.clone(),
+            aligner: self.aligner.clone(),
             player: self.player.clone(),
             checkpoints: self.checkpoints.clone(),
             events: self.events.clone(),
@@ -356,7 +365,10 @@ use playback::Runner;
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::backend::Synthesis;
+    use crate::{
+        backend::{AudioChunk, Streaming},
+        text::preprocess_text,
+    };
     use tts_protocol::{Capabilities, SourceId};
 
     struct FakeBackend {
@@ -366,26 +378,33 @@ mod tests {
     impl Backend for FakeBackend {
         fn capabilities(&self) -> Capabilities {
             Capabilities {
-                backend: "kokoro".into(),
-                voices: vec!["Zf001".into(), "Zf002".into()],
+                default_voice: "Weiguo".into(),
+                voice_names: Default::default(),
+                backend: "moss".into(),
+                voices: vec!["Weiguo".into(), "Zf002".into()],
                 native_streaming: false,
                 style: false,
                 cloning: false,
                 pronunciation: false,
             }
         }
-        fn synthesize<'a>(&'a self, _: &'a str, _: &'a str) -> Synthesis<'a> {
+        fn stream<'a>(&'a self, _: &'a str, _: &'a str) -> Streaming<'a> {
             Box::pin(async move {
                 let index = self.calls.get();
                 self.calls.set(index + 1);
                 if self.fail_at == Some(index) {
                     return Err(BackendError::Synthesis("injected failure".into()));
                 }
-                Ok(Pcm {
-                    samples: vec![0.0; 240],
+                let (tx, rx) = mpsc::channel(2);
+                tx.send(Ok(AudioChunk::Pcm(Pcm {
+                    samples: vec![0.1; 240],
                     sample_rate: 24000,
                     channels: 1,
-                })
+                })))
+                .await
+                .unwrap();
+                tx.send(Ok(AudioChunk::End)).await.unwrap();
+                Ok(rx)
             })
         }
     }
@@ -393,10 +412,14 @@ mod tests {
     struct FakePlayer {
         empty: Cell<bool>,
         appended: Cell<usize>,
+        cursor: Cell<Duration>,
     }
     impl Playback for FakePlayer {
-        fn append(&self, _: Pcm) {
+        fn append(&self, _: Arc<Pcm>) {
             self.appended.set(self.appended.get() + 1);
+        }
+        fn position(&self) -> Duration {
+            self.cursor.get()
         }
         fn is_empty(&self) -> bool {
             self.empty.get()
@@ -405,6 +428,110 @@ mod tests {
         fn resume(&self) {}
         fn stop(&self) {}
         fn configure(&self, _: f32, _: f32) {}
+    }
+    struct MergedBackend(FakeBackend);
+    impl Backend for MergedBackend {
+        fn capabilities(&self) -> Capabilities {
+            self.0.capabilities()
+        }
+        fn stream<'a>(&'a self, text: &'a str, voice: &'a str) -> Streaming<'a> {
+            self.0.stream(text, voice)
+        }
+        fn segments<'a>(&'a self, text: &'a str) -> crate::backend::Segmentation<'a> {
+            Box::pin(async move {
+                Ok(vec![crate::text::TextSegment {
+                    text: text.into(),
+                    start: 0,
+                    end: text.len(),
+                }])
+            })
+        }
+    }
+    struct FakeAligner;
+    impl crate::alignment::Aligner for FakeAligner {
+        fn align<'a>(
+            &'a self,
+            text: &'a crate::alignment::SpeechText,
+            _: &'a crate::alignment::AudioClip,
+        ) -> crate::alignment::Alignment<'a> {
+            Box::pin(async move {
+                Ok(text
+                    .sentences
+                    .iter()
+                    .enumerate()
+                    .map(|(i, sentence)| crate::alignment::SentenceTiming {
+                        range: sentence.range,
+                        start_frame: i as u64 * 120,
+                        end_frame: (i + 1) as u64 * 120,
+                    })
+                    .collect())
+            })
+        }
+    }
+    #[tokio::test]
+    async fn aligned_sentences_follow_playback_clock_and_pause() {
+        tokio::task::LocalSet::new()
+            .run_until(async {
+                let directory = tempfile::tempdir().unwrap();
+                let checkpoints = CheckpointStore::new(directory.path());
+                let (tx, mut rx) = mpsc::channel(64);
+                let player = Rc::new(FakePlayer::default());
+                let mut manager = SessionManager::new(
+                    Rc::new(MergedBackend(FakeBackend {
+                        calls: Cell::new(0),
+                        fail_at: None,
+                    })),
+                    player.clone(),
+                    checkpoints.clone(),
+                    tx,
+                )
+                .with_aligner(Arc::new(FakeAligner));
+                let source = request("第一句。第二句。");
+                manager
+                    .start("aligned".into(), source.clone(), &Config::default())
+                    .await
+                    .unwrap();
+                loop {
+                    if let Event::SentenceStarted { range, .. } =
+                        tokio::time::timeout(Duration::from_secs(2), rx.recv())
+                            .await
+                            .unwrap()
+                            .unwrap()
+                            .event
+                    {
+                        assert_eq!(range.start, 0);
+                        break;
+                    }
+                }
+                player.cursor.set(Duration::from_millis(6));
+                loop {
+                    if let Event::SentenceStarted { range, .. } =
+                        tokio::time::timeout(Duration::from_secs(2), rx.recv())
+                            .await
+                            .unwrap()
+                            .unwrap()
+                            .event
+                    {
+                        assert_eq!(range.start, 12);
+                        break;
+                    }
+                }
+                assert_eq!(
+                    checkpoints
+                        .load(&source.source, &source.text)
+                        .unwrap()
+                        .unwrap()
+                        .resume_byte,
+                    12
+                );
+                manager.pause("aligned").await.unwrap();
+                player.cursor.set(Duration::from_millis(10));
+                tokio::time::sleep(Duration::from_millis(30)).await;
+                assert_eq!(manager.job.as_ref().unwrap().position.get(), 12);
+                manager.resume("aligned").await.unwrap();
+                assert_eq!(terminal(&mut rx).await.0, EndReason::Completed);
+            })
+            .await;
     }
     fn request(text: &str) -> StartRequest {
         StartRequest {
@@ -469,7 +596,13 @@ mod tests {
                     let mut retry = request("第一句。\n第二句。\n第三句。");
                     let store = CheckpointStore::new(directory.path());
                     let checkpoint = store.load(&retry.source, &retry.text).unwrap().unwrap();
-                    let expected = preprocess_text(&retry.text, 200)[fail_at].start;
+                    let segments = preprocess_text(&retry.text, 200);
+                    // Persist the played boundary, not the start of an unplayed block.
+                    let expected = if fail_at == 0 {
+                        segments[0].start
+                    } else {
+                        segments[fail_at - 1].end
+                    };
                     assert_eq!(checkpoint.resume_byte, expected);
                     assert!(!checkpoint.completed);
                     retry.restore_checkpoint = true;
@@ -497,7 +630,7 @@ mod tests {
                         Event::SegmentStarted { range, .. } => Some(range.start),
                         _ => None,
                     });
-                    assert_eq!(first, Some(expected));
+                    assert_eq!(first, Some(segments[fail_at].start));
                     assert!(
                         store
                             .load(&retry.source, &retry.text)
@@ -574,8 +707,9 @@ mod tests {
                 }
                 manager.pause("old").await.unwrap();
                 tokio::time::sleep(Duration::from_millis(40)).await;
-                assert_eq!(player.appended.get(), 1);
-                assert!(backend.calls.get() <= 3);
+                assert!((1..=4).contains(&player.appended.get()));
+                assert!(backend.calls.get() <= 4);
+                assert_eq!(manager.job.as_ref().unwrap().position.get(), 0);
                 manager.stop().await.unwrap();
                 assert_eq!(terminal(&mut rx).await.0, EndReason::Cancelled);
                 manager.stop().await.unwrap();
@@ -633,22 +767,14 @@ mod tests {
             sample_rate: 24_000,
             channels: 1,
         };
-        let segment = || TextSegment {
-            text: "中".into(),
-            start: 0,
-            end: 3,
-        };
-        let packet = budget.acquire(audio(), segment()).await.unwrap();
+        let packet = budget.acquire(audio()).await.unwrap();
         assert!(
-            tokio::time::timeout(
-                Duration::from_millis(10),
-                budget.acquire(audio(), segment())
-            )
-            .await
-            .is_err()
+            tokio::time::timeout(Duration::from_millis(10), budget.acquire(audio()))
+                .await
+                .is_err()
         );
         drop(packet);
-        assert!(budget.acquire(audio(), segment()).await.is_ok());
+        assert!(budget.acquire(audio()).await.is_ok());
     }
 
     #[tokio::test]
@@ -691,6 +817,90 @@ mod tests {
                     })
                     .collect();
                 assert_eq!(ranges, vec![TextRange { start: 12, end: 24 }]);
+            })
+            .await;
+    }
+    struct FragmentedBackend {
+        ended: bool,
+        format_change: bool,
+    }
+    impl Backend for FragmentedBackend {
+        fn capabilities(&self) -> Capabilities {
+            FakeBackend {
+                calls: Cell::new(0),
+                fail_at: None,
+            }
+            .capabilities()
+        }
+        fn stream<'a>(&'a self, _: &'a str, _: &'a str) -> Streaming<'a> {
+            Box::pin(async move {
+                let (tx, rx) = mpsc::channel(4);
+                for channels in [1, if self.format_change { 2 } else { 1 }] {
+                    tx.send(Ok(AudioChunk::Pcm(Pcm {
+                        samples: vec![0.1; 240],
+                        sample_rate: 24000,
+                        channels,
+                    })))
+                    .await
+                    .unwrap();
+                }
+                if self.ended {
+                    tx.send(Ok(AudioChunk::End)).await.unwrap();
+                }
+                Ok(rx)
+            })
+        }
+    }
+    #[tokio::test(flavor = "current_thread")]
+    async fn fragmented_streams_require_completion_and_consistent_format() {
+        tokio::task::LocalSet::new()
+            .run_until(async {
+                for (ended, format_change, reason) in [
+                    (true, false, EndReason::Completed),
+                    (false, false, EndReason::Failed),
+                    (true, true, EndReason::Failed),
+                ] {
+                    let directory = tempfile::tempdir().unwrap();
+                    let checkpoints = CheckpointStore::new(directory.path());
+                    let (tx, mut rx) = mpsc::channel(64);
+                    let player = Rc::new(FakePlayer {
+                        empty: Cell::new(true),
+                        appended: Cell::new(0),
+                        cursor: Cell::new(Duration::ZERO),
+                    });
+                    let mut manager = SessionManager::new(
+                        Rc::new(FragmentedBackend {
+                            ended,
+                            format_change,
+                        }),
+                        player.clone(),
+                        checkpoints.clone(),
+                        tx,
+                    );
+                    let req = request("原文。 ");
+                    manager
+                        .start("stream".into(), req.clone(), &Config::default())
+                        .await
+                        .unwrap();
+                    let (actual, events) = terminal(&mut rx).await;
+                    assert_eq!(actual, reason);
+                    assert_eq!(
+                        events
+                            .iter()
+                            .filter(|e| matches!(e, Event::SegmentStarted { .. }))
+                            .count(),
+                        1
+                    );
+                    if reason == EndReason::Completed {
+                        assert_eq!(player.appended.get(), 2);
+                    } else {
+                        assert!(
+                            !events
+                                .iter()
+                                .any(|e| matches!(e, Event::SegmentFinished { .. }))
+                        );
+                    }
+                }
             })
             .await;
     }

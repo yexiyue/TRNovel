@@ -11,7 +11,16 @@ repository = "https://github.com/yexiyue/TRNovel"
 name = "novel-tts"
 path = "src/main.rs"
 
+[features]
+default = ["moss", "alignment"]
+moss = ["tts-backends/moss"]
+kokoro = ["tts-backends/kokoro"]
+alignment = ["tts-backends/alignment"]
+coreml = ["tts-backends/coreml"]
+cuda = ["tts-backends/cuda"]
+
 [dependencies]
+tts-backends = { package = "novel-tts-backends", path = "../novel-tts-backends", version = "0.1.0", default-features = false }
 tts-core = { package = "novel-tts-core", path = "../novel-tts-core", version = "0.3.0" }
 tts-protocol = { package = "novel-tts-protocol", path = "../novel-tts-protocol", version = "0.1.0" }
 anyhow.workspace = true

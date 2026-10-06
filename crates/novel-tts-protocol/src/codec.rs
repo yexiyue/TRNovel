@@ -117,6 +117,17 @@ mod tests {
     }
 
     #[test]
+    fn missing_alignment_preference_defaults_off_and_explicit_true_roundtrips() {
+        let config: crate::Config = serde_json::from_str("{}").unwrap();
+        assert!(!config.alignment_enabled);
+        let config: crate::Config = serde_json::from_str(r#"{"alignment_enabled":true}"#).unwrap();
+        assert!(config.alignment_enabled);
+        let patch: crate::ConfigPatch =
+            serde_json::from_str(r#"{"alignment_enabled":false,"expected_revision":0}"#).unwrap();
+        assert_eq!(patch.alignment_enabled, Some(false));
+    }
+
+    #[test]
     fn unicode_and_newlines_preserve_the_exact_snapshot() {
         let expected = request();
         let line = encode(&expected).unwrap();

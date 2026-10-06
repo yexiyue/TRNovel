@@ -202,3 +202,41 @@ kokoro-tts `0.3.1` 勿升（rc.12 砍 Intel Mac），见 [toolchain.md](toolchai
 阅读器生命周期意图使用有界 watch 通道保留最新意图，释放和取消准备另记代次；普通队列携带代次，停止前排队的播放意图不得重新启动旧章节。命令超时后关闭并回收进程，以免留下已接受但父端未确认的播放。
 
 **相关文件**：`crates/novel-tts/src/{protocol.rs,runtime.rs}`、`crates/novel-tts-core/src/session.rs`、`src/tts/{client.rs,controller.rs}`。
+
+### 模型无关的流式听书接口
+
+Backend::stream 返回容量受限的 PCM 块流，显式 End 才表示片段生成成功；流断连不能提交完成检查点。Backend::segments 返回合成文本和原文 UTF-8 范围，MOSS 以 SentencePiece 50 token / 60 个 CJK 字符预算合并相邻句子，超限优先在句末分段。normalize 只作用于合成副本，不能重写原文或检查点坐标。
+
+核心保留队列中的预算许可直到播放器实际消耗音频，整体受 30 秒 / 16 MiB 限制。单块必须在预算内，长流式段通过背压继续生成。生产任务也必须显式报告全流完成，避免任务异常退出被当成整章结束。
+
+新增后端只实现通用接口并注册能力。TUI 读取 default_voice / voice_names，不硬编码 MOSS 或 Kokoro 音色；后端切换期间忽略其他配置操作，防止将旧快照里的音色提交给新后端。
+
+**相关文件**：`crates/novel-tts-core/src/backend.rs`、`crates/novel-tts-core/src/session/playback.rs`、`crates/novel-tts-backends/src/moss.rs`。
+
+### MOSS 的生成上限与中文分段
+
+固定图默认最多 375 audio frames（约 30 秒）。SentencePiece token 可以覆盖多个汉字，单独限制 75 token 不能限制朗读时长；连续中文段落会在音频尚未结束时撞到帧数上限。
+
+**正确做法**：在每段 50 token / 60 个 CJK 字符预算内合并相邻句子，让模型保留连续朗读的韵律；预算超限时优先在完整句末分段，其次是逗号。换行保留段落边界。不要把每个短句都独立合成，否则每句会重复收尾和起读，造成顿挫。保留原文 UTF-8 范围，仍要求模型显式结束，不把截断音频当作成功。
+
+**相关文件**：`crates/novel-tts-backends/src/moss/text.rs`。
+
+### 听书装饰行过滤保持原文坐标
+
+通用 `text::is_decoration_line` 仅识别至少三个装饰字符组成的独立行（例如 ====、---、*** 和制表分隔线）。Kokoro 默认分段和 MOSS 分段在计算 token 预算前跳过整行；MOSS 合成副本规范化也过滤这些行。不能全局删除等号或减号，`a=b`、负数和含正文的装饰标题要保留。跳过后片段仍使用原文 UTF-8 字节位置，不重算清洗文本的坐标。
+
+**相关文件**：`crates/novel-tts-core/src/text.rs`、`crates/novel-tts-backends/src/moss/text.rs`。
+
+### 连续 PCM、对齐与检查点（protocol v3）
+
+core 使用共享 Arc<PCM>、原始音频帧时钟和 FIFO 块标记；连续入队不等待每段 sink 排空。对齐由独立线程执行，保留预算租约直到线程真正释放 PCM；超时或取消 future 不能提前归还额度。句子检查点只能由实际播放完成推进，迟到时间线不能倒退原文位置。设备或后端切换须断开旧模型状态事件转发通道。
+
+Qwen ONNX 的 feature_attention_mask 是 Int32；Whisper 前处理 extractor 调用必须显式 return_attention_mask。CoreML 动态 MLProgram 在该导出上无法编译，静态子图可运行，但大部分算子仍走 CPU。必须用 release 构建测完整链路，不把 debug 前处理开销当成 GPU 收益。配置与协议、资源清单和设备策略分别属于 protocol、backends 与 CLI。
+
+**相关文件**：`crates/novel-tts-core/src/session/playback.rs`、`crates/novel-tts-backends/src/alignment.rs`、`crates/novel-tts/src/preparation.rs`、`dev-notes/continuous-tts-acceptance.md`。
+
+### MOSS 软换行与可选对齐
+
+单换行是排版信息，不能直接当作独立生成请求或段落尾。MOSS 以空行、装饰线、共享 TOC 标题规则建立硬边界，初始目标 8 秒/预计上限 12 秒。句末闭合引号跟随前句；只清洗合成副本，源范围保持原文 UTF-8。Kokoro 分段独立。
+
+对齐默认关闭，worker 在准备入口跳过 Qwen 全部资源与校准；阅读器的设置切换门控必须涵盖后端、两类设备及对齐开关，清除待自动播放请求，避免模型卸载后旧请求恢复。MOSS 的 EOS 只表示模型结束，不是覆盖率证明；frame_limit 属于生成预算失败，不能触发 GPU 重建或写入当前块完成。

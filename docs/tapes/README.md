@@ -113,3 +113,28 @@ PATH="$(pwd)/../../target/debug:/opt/homebrew/bin:$PATH" vhs basic-ui.tape
 ```
 
 检查 `verify-basic-read.png`、`verify-basic-settings.png`、`verify-basic-help.png`：正文边框都应保持整个终端的高度，打开浮层只遮罩正文，不能挤出下半屏空白。帮助中不应出现听书操作；`t/p/+/-` 不应打开听书面板。录制给首次启动留 8 秒，目录进入阅读页后先切到正文再截图。
+
+## MOSS 流式听书
+
+`moss-tts.tape` 验证后端切换、预置音色、模型准备、实际播放高亮与暂停。先构建双后端并准备隔离环境：
+
+```sh
+cargo build -p trnovel -p novel-tts --features novel-tts/kokoro
+mkdir -p /tmp/trn-moss-demo/home
+cp -R /tmp/trn-demo-home/books /tmp/trn-moss-demo/home/
+# ~/.novel-tts 内需已经有完整 moss/tts 和 moss/codec；复用模型，不复制大权重。
+ln -s "$HOME/.novel-tts" /tmp/trn-moss-demo/home/.novel-tts
+PATH="$PWD/target/debug:$PATH" vhs docs/tapes/moss-tts.tape
+```
+
+新沙箱默认 MOSS/Weiguo。已有沙箱会保留后端设置，重录前先删除沙箱内 tts_config.json。所有输出写入 /tmp/trn-moss-demo，不覆盖正式指南素材。模型校验和加载需要时间；按机器性能调整准备后的 Sleep。基础版验收请固定独立二进制路径，避免后续 all-features 构建覆盖同一 target/debug/trn。
+
+## 连续朗读与逐句对齐
+
+`continuous-tts.tape` 使用真实 MOSS/Qwen，不使用伪造时间戳。构建 `trn` 和 `novel-tts --features coreml,kokoro`，把它们放在 PATH 同目录。创建 `/tmp/trn-continuous-demo/home/books/连续朗读.txt`，使用自编的两个章节和至少 12 段三句正文，例如“你好，欢迎使用听书功能。今天我们一起阅读一个故事。夜色落在山间，星河缓缓流动。”。在 home/.novel/tts_config.json 设置 moss/Weiguo、tts_device=cpu、alignment_device=cpu、alignment_enabled=true，并把 home/.novel-tts 链接到已校验模型根目录。运行 vhs；首次完整下载不能按录制中的短等待验收。
+
+录制覆盖轻量连接、准备状态、连续播放、片段转逐句高亮、暂停和执行设备。NO_COLOR 必须清空，否则继承 shell 的 NO_COLOR=1 会使高亮颜色不可见。保留新 HOME，避免旧续读检查点把待高亮正文移出视口。
+
+### 默认片段高亮与可选对齐
+
+`optional-alignment.tape` 使用与 continuous-tts 相同的目录和真实 MOSS 资源，配置 `alignment_enabled=false`。录制默认关闭、播放片段高亮、开启后出现对齐设备、关闭后隐藏设备；切换不自动准备 Qwen。

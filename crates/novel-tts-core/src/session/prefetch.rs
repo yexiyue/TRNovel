@@ -15,17 +15,17 @@ impl Default for Budget {
 }
 pub(super) struct Packet {
     pub(super) audio: Pcm,
-    pub(super) segment: TextSegment,
+    pub(super) lease: Arc<Lease>,
+}
+
+#[derive(Debug)]
+pub(super) struct Lease {
     _time: OwnedSemaphorePermit,
     _bytes: OwnedSemaphorePermit,
 }
 
 impl Budget {
-    pub(super) async fn acquire(
-        &self,
-        audio: Pcm,
-        segment: TextSegment,
-    ) -> Result<Packet, SessionError> {
+    pub(super) async fn acquire(&self, audio: Pcm) -> Result<Packet, SessionError> {
         let duration = audio.duration_ms()?;
         let bytes = u32::try_from(audio.samples.len() * size_of::<f32>())
             .map_err(|_| SessionError::Invalid("PCM memory overflow".into()))?;
@@ -48,9 +48,10 @@ impl Budget {
             .map_err(|_| SessionError::Disconnected)?;
         Ok(Packet {
             audio,
-            segment,
-            _time: time,
-            _bytes: bytes,
+            lease: Arc::new(Lease {
+                _time: time,
+                _bytes: bytes,
+            }),
         })
     }
 }

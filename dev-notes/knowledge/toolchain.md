@@ -28,7 +28,7 @@ Cargo workspace 的模块组织、feature 门控、构建/发布、平台坑。`
 - `kokoro-tts` 钉死 `0.3.1`——**`rc.12` 砍掉了 Intel Mac 支持,不要升**。
 - 普通发布目标使用 ort 预编译库；ARM64 musl 使用 Alpine 系统共享库，详见下方 musl 发布说明。
 
-**相关文件**：`crates/novel-tts-core/Cargo.toml`、根 `Cargo.toml`
+**相关文件**：`crates/novel-tts-backends/Cargo.toml`、根 `Cargo.toml`
 
 ## 构建 / 发布
 
@@ -54,11 +54,11 @@ Codex / CI shell 可能带 `TERM=dumb` 或 `NO_COLOR=1`，会让 ratatui/crosste
 
 **相关文件**：`crates/parse-book-source/src/engine/mod.rs`
 
-### `ort` 是「假死依赖」——版本钉死,代码零引用但不可删
+### ort 固定版本由后端 crate 管理
 
-`crates/novel-tts-core/Cargo.toml` 的 `ort = "=2.0.0-rc.10"` 在 novel-tts-core src 里**零 `use`/`ort::` 引用**——它不是直接用的,而是**钉死 kokoro-tts 传递依赖 ort 的版本**（kokoro-tts 声明宽松预发布范围,rc.12 砍 Intel Mac/要 glibc 2.38+）。`cargo-machete` 等死依赖工具会把它误报为 unused 并建议删除,**删了会让 ort 解析到坏版本、发布炸**。审计死依赖时这类「纯版本钉死 dep」要人工豁免。
+`ort` 和 `kokoro-tts` 的版本统一固定在根 workspace.dependencies。novel-tts-backends 的 MOSS 实现直接调用 ort，Kokoro 也通过该依赖固定其传递版本。不要删除或放宽固定版本；rc.10 保留当前 Intel Mac 和 GNU Linux 发布兼容性。
 
-**相关文件**：`crates/novel-tts-core/Cargo.toml`（注释已说明）
+**相关文件**：根 `Cargo.toml`、`crates/novel-tts-backends/Cargo.toml`。
 
 ### ARM64 musl release artifact
 
@@ -82,7 +82,7 @@ npm publish-time scanning can delay registry availability by several minutes aft
 
 根 `tts` feature 仅装配听书 UI、JSON Lines 协议及进程客户端，默认启用。基础阅读版用 `cargo build -p trnovel --no-default-features`，配套程序用 `cargo build -p novel-tts`。两种阅读器的 package-specific dependency tree 均没有 novel-tts-core、kokoro-tts、ort、rodio；不要以 workspace all-features 的依赖集合代替这项证明。
 
-`novel-tts-core` 默认 kokoro feature 引入固定原生依赖，独立程序才承担音频运行库要求。此变更的发布安装渠道与跨平台试听仍由 OpenSpec 的未完成任务跟踪，不能把本机 check 或假进程测试写成平台发布验收。
+`novel-tts-core` 不包含模型 feature；独立程序默认 moss feature，kokoro 可选，固定原生推理依赖由 novel-tts-backends 承担。核心拥有通用 rodio 播放器。此变更的发布安装渠道与跨平台试听仍由 OpenSpec 的未完成任务跟踪，不能把本机 check 或假进程测试写成平台发布验收。
 
 **相关文件**：`Cargo.toml`、`crates/novel-tts/Cargo.toml`、`openspec/changes/decouple-tts-process/tasks.md`。
 
@@ -100,3 +100,23 @@ npm publish-time scanning can delay registry availability by several minutes aft
 `novel-tts-core` 是会话/合成/播放库，`novel-tts-protocol` 是轻量协议库，`novel-tts` 是独立程序 crate 及命令。依赖键用 `tts-core` / `tts-protocol` 显式声明 package 名，Rust 用 `tts_core` / `tts_protocol` 引用。阅读器可选模块为 `src/tts.rs` 与 `src/tts/`。
 
 CLI 接管原 novel-tts 的包名，保持 0.3.0 版本线，后续发布需递增；核心新包同样暂用 0.3.0。模型目录 `.novel-tts/kokoro` 与配置/检查点格式保持原样。更新包名时同步 crates.io 标签到目录的发布路由、cargo-dist binary 清单与同目录/PATH 程序发现。
+
+### MOSS 后端与验收隔离
+
+新模型实现在 novel-tts-backends；共享原生依赖版本位于 workspace.dependencies。novel-tts 默认 moss，`--features kokoro` 编入两个后端，`--no-default-features --features kokoro` 只编入 Kokoro。阅读器保持协议依赖隔离。
+
+MOSS ONNX opset 17 的实际加载、生成和编解码已在本机固定 ort rc.10 上验证，不需升级原生运行时。SentencePiece 使用纯 Rust sentencepiece-rs，参考 WAV 用 hound 解码和 rubato sinc 重采样，无 Python 运行依赖。资源固定 revision、尺寸和 SHA-256；音色缓存绑定模型版本。
+
+VHS 验收不同 feature 的阅读器时，把构建出的 basic 二进制复制到独立目录后再录制。随后运行 workspace all-features 测试会重建 target/debug/trn；若继续录制这个共享路径，会误把完整听书版当成基础版。
+
+**相关文件**：`crates/novel-tts-backends/README.md`、`dev-notes/moss-tts-acceptance.md`。
+
+### ORT 加速 feature 与模型校验
+
+保留 ort=2.0.0-rc.10。coreml/cuda 仅由听书后端/程序 feature 启用，阅读器始终不链接它们。ORT 自带下载清单选择 CUDA12 的原生分发，Mac 可静态链接 CoreML 框架；跨平台原生运行与 CUDA/cuDNN 依赖必须在对应平台验收。本机 Mac 启用 cuda feature 会下载 CPU 原生包，因此 cargo check 不能证明 CUDA 可用。
+
+开发构建将 sha2 单包 opt-level=3，避免每次准备模型时对 GB 级权重执行慢速 debug 校验；保留每次大小与 SHA-256 校验。性能校准应使用 release 构建。多包 cargo build 配合 --bin trn 只构建名为 trn 的程序；更新 worker 必须单独 cargo build -p novel-tts，不能依据阅读器构建完成判断 worker 已更新。
+
+### 轻量 TOC 常量共享
+
+内置章节数字、中文/英文/特殊标题正则常量在 novel-tts-protocol::headings 共享，protocol 不编译正则、不处理书籍。基础阅读版因此也依赖该轻量 crate，但仍不依赖 TTS core/backends/ORT/rodio。模型诊断 example 明确使用输出目录，真实模型测试通过 TRNOVEL_MOSS_MODEL_DIR 启用。

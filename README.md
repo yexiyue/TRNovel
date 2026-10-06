@@ -41,7 +41,7 @@ TRNovel (Terminal Reader for Novel) 是一个 Rust 构建的终端小说阅读�
 | AI 生成书源 | `booksource-generator` skill 自动探站逆向，配合 `trn doctor` 校验到全绿 |
 | 加密与签名 | `clean` 流水线内置 AES/DES/3DES、Base64/Hex/URL、MD5/SHA/HMAC、繁简转换等确定性算子，少数动态站点另有 JS 逃生舱 |
 | 反爬辅助 | Cloudflare 等挑战页复用系统浏览器解挑战，cookie 回填后继续走快速请求 |
-| TTS 听书 | 内置 Kokoro 中文语音合成，播放进度与正文高亮同步 |
+| TTS 听书 | 独立 MOSS 流式语音合成与音色克隆，可选 Kokoro，播放进度与正文高亮同步 |
 | 阅读体验 | 历史记录、断点续读、命名主题与背景模式；Windows / macOS / Linux 单二进制 |
 
 ## 安装

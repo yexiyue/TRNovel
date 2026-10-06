@@ -13,6 +13,17 @@ struct Worker {
 impl Worker {
     fn new() -> Self {
         let directory = tempfile::tempdir().unwrap();
+        #[cfg(all(not(feature = "moss"), feature = "kokoro"))]
+        std::fs::write(
+            directory.path().join("config.json"),
+            serde_json::to_vec(&tts_protocol::Config {
+                backend: "kokoro".into(),
+                voice: "Zf001".into(),
+                ..Default::default()
+            })
+            .unwrap(),
+        )
+        .unwrap();
         let mut child = ProcessCommand::new(env!("CARGO_BIN_EXE_novel-tts"))
             .args(["--protocol", "--config"])
             .arg(directory.path().join("config.json"))
@@ -46,7 +57,14 @@ impl Worker {
             .unwrap()
             .write_all(&encode(&request).unwrap())
             .unwrap();
-        self.next()
+        loop {
+            let message = self.next();
+            if message.request_id.is_none() && matches!(message.event, Event::DeviceStatus { .. }) {
+                continue;
+            }
+            assert_eq!(message.request_id.as_deref(), Some(id));
+            return message;
+        }
     }
     fn next(&mut self) -> Message {
         let mut line = String::new();
@@ -157,4 +175,47 @@ fn invalid_utf8_and_missing_files_exit_before_preparation() {
         assert!(output.stdout.is_empty());
     }
     assert!(!directory.path().join("models").exists());
+}
+
+#[test]
+#[cfg(all(feature = "moss", feature = "kokoro"))]
+fn backend_directory_and_switch_are_lightweight() {
+    let mut worker = Worker::new();
+    let ready = worker.send("hello", Command::Hello);
+    let Event::Ready(catalog) = ready.event else {
+        panic!("missing catalog")
+    };
+    assert_eq!(
+        catalog
+            .iter()
+            .map(|caps| caps.backend.as_str())
+            .collect::<Vec<_>>(),
+        ["moss", "kokoro"]
+    );
+    assert_eq!(catalog[0].default_voice, "Weiguo");
+    for (revision, backend, voice) in [(0, "kokoro", "Zf001"), (1, "moss", "Weiguo")] {
+        let changed = worker.send(
+            &format!("switch-{revision}"),
+            Command::UpdateConfig(ConfigPatch {
+                expected_revision: revision,
+                backend: Some(backend.into()),
+                voice: Some(voice.into()),
+                ..Default::default()
+            }),
+        );
+        assert!(
+            matches!(changed.event,Event::ConfigChanged(ref config) if config.backend==backend && config.voice==voice)
+        );
+        assert!(matches!(
+            worker
+                .send(&format!("state-{revision}"), Command::GetStatus)
+                .event,
+            Event::SessionState {
+                state: tts_protocol::SessionState::Idle
+            }
+        ));
+    }
+    assert!(!worker._directory.path().join("models").exists());
+    worker.send("shutdown", Command::Shutdown);
+    worker.wait();
 }

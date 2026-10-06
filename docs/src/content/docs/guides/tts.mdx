@@ -8,7 +8,7 @@ sidebar:
         variant: success
 ---
 
-听书由独立的 `novel-tts` 程序处理。阅读器只提交章节正文、显示播放片段高亮，并按正常完成事件续章。Kokoro 模型和音频设备保留在听书进程中。
+听书由独立的 `novel-tts` 程序处理。阅读器只提交章节正文、先显示片段高亮，异步对齐后显示逐句高亮，并按正常完成事件续章。MOSS/Kokoro 模型和音频设备保留在听书进程中；默认使用原生 MOSS-TTS-Nano 与 Qwen 对齐，无需 Python。
 
 ## 从源码构建
 
@@ -23,6 +23,12 @@ cargo build -p trnovel -p novel-tts
 
 # 也可只构建独立文件朗读程序
 cargo build -p novel-tts
+
+# 同时编入两个后端
+cargo build -p novel-tts --features kokoro
+
+# 仅 Kokoro
+cargo build -p novel-tts --no-default-features --features kokoro
 ```
 
 阅读器查找 `novel-tts` 的顺序为 `--tts-program <路径>`、阅读器同目录、PATH。明确路径无效时会直接提示；缺少程序不影响普通阅读。
@@ -34,9 +40,11 @@ cargo build -p novel-tts
 | 选项 | 操作 |
 | --- | --- |
 | 模型准备 | Enter 启用，Esc 取消；缺少资源时下载并显示进度 |
-| 音色 | ←/→ 切换后端提供的音色 ID，如 Zf001 |
+| 语音后端 | ←/→ 选择已编译后端，切换会停止播放并释放旧模型 |
+| 音色 | ←/→ 选择预置或已导入音色，显示后端提供的名称 |
 | 播放速度 | ←/→ 调节 0.5..2 倍速 |
 | 音量 | ←/→ 调节 0..10 |
+| 合成 / 对齐设备 | ←/→ 分别选择 auto/cpu/coreml/cuda，显示编译能力、可用设备与实际使用设备 |
 | 自动续章 | 仅在主动开始的听书正常完成后续章；失败、取消、重启不会自动播放 |
 | 从章首重播 | Enter 明确忽略旧恢复点，从本章开头播放 |
 | 释放资源 | Enter 停播并关闭听书子进程，释放模型和设备 |
@@ -47,12 +55,20 @@ cargo build -p novel-tts
 
 按播放键 `P` 或在准备行按 Enter 才会加载模型，并下载缺少资源。下载可取消、续传；半文件保留，服务器忽略 Range 时重头下载。
 
-手动准备也可下载固定文件：
+MOSS 资源保存在 `$HOME/.novel-tts/moss/{tts,codec}`，固定版本共约 763 MB，下载后校验大小和 SHA-256。损坏文件会隔离，下次准备重新下载。支持原生流式播放，输出 48kHz 双声道 PCM；按自然段合并上下文，跳过装饰分隔行，裁剪块边界静音。对齐与播放使用同一份处理后的 PCM。
 
-- [kokoro-v1.1-zh.onnx](https://github.com/mzdk100/kokoro/releases/download/V1.1/kokoro-v1.1-zh.onnx)
-- [voices-v1.1-zh.bin](https://github.com/mzdk100/kokoro/releases/download/V1.1/voices-v1.1-zh.bin)
+可选 Kokoro 仍使用固定 0.3.1 和 v1.1 模型，保存在 `$HOME/.novel-tts/kokoro/`，输出完整片段音频。`--model-dir` 覆盖包含各后端子目录的公共根目录。
 
-放到 `$HOME/.novel-tts/kokoro/`（Windows 为用户目录下 `.novel-tts\kokoro`）。模型较大，实际播放需要可用音频设备。此次迁移保持 Kokoro 0.3.1 和既有 v1.1 模型；只支持片段级高亮，不承诺逐字同步。
+## 导入音色
+
+```sh
+novel-tts voices list
+novel-tts voices import narrator --name "我的朗读音色" reference.wav
+novel-tts --backend moss --voice custom:narrator book.txt
+novel-tts voices remove narrator
+```
+
+参考音频使用 1..30 秒非静音 mono/stereo WAV，内部重采样和编码，保存到 `~/.novel-tts/moss/voices/`。播放只读取缓存，不重复编码。重复 ID 拒绝覆盖，删除仅限自定义音色。导入后重新连接听书程序以刷新 TUI 音色目录。首版通过 CLI 管理音色，TUI 只选择音色。
 
 ## 播放与恢复
 
@@ -60,7 +76,7 @@ cargo build -p novel-tts
 
 恢复点由听书程序保存在 `~/.novel/tts/checkpoints/`。正文 SHA-256、来源和 UTF-8 字节坐标必须匹配；正文变化、损坏数据或未知版本会提示错误，可用面板「从章首重播」主动重置。崩溃后可能重复最近未完成片段，不自动开始播放。
 
-听书配置仍是 `~/.novel/tts_config.json`，旧音量、速度、音色、自动播放字段保留。只有听书程序写配置；界面显示保存成功后的快照。配置损坏或修订冲突时不会覆盖原文件，刷新后再主动修改。
+听书配置仍是 `~/.novel/tts_config.json`，旧音量、速度、音色、自动播放字段保留。新配置默认 MOSS/Weiguo；已有后端配置保留，旧文件缺少 backend 时解释为 Kokoro。未编译的后端会明确报错，需要用户主动切换。只有听书程序写配置；界面显示保存成功后的快照。配置损坏或修订冲突时不会覆盖原文件，刷新后再主动修改。
 
 ## 独立文件朗读
 
@@ -72,3 +88,27 @@ novel-tts --restart book.txt
 仅支持 UTF-8 文本文件。交互终端中空格暂停/继续，s 停止并退出，q/Esc/Ctrl+C 退出；非交互终端不启用原始模式，正文完成后退出。详细的协议、路径覆盖和退出码见仓库 `crates/novel-tts/README.md`。
 
 回退时阅读器与听书程序成对回退，保留配置、模型和检查点；阅读历史及阅读进度格式未改变。
+
+## 逐句对齐与 GPU
+
+默认 CPU 使用 Qwen3-ForcedAligner-0.6B 的 Q4 ONNX，约 0.99 GiB，准备资源时按需下载至 `~/.novel-tts/alignment/qwen/` 并校验。音频立即播放；后台对齐成功后切换逐句高亮，迟到结果不会倒退。缺少资源、失败、超时或任务积压时显示“片段高亮”并继续朗读。暂停保留高亮，恢复后继续按原始 PCM 帧位置推进；倍速不改变句子时间线。
+
+```sh
+# Apple Silicon 的 CoreML 构建
+cargo build --release -p novel-tts --features coreml
+# NVIDIA Linux/Windows 的 CUDA 构建
+cargo build --release -p novel-tts --features cuda
+novel-tts --tts-device auto --alignment-device auto book.txt
+```
+
+默认 auto 独立校准合成与对齐：3 次预热、5 次测量，完整链路至少快 15%、首音频回退不超过 10% 才选加速；还检查并发竞争。GPU 对齐浮点资源约 3.42 GiB，首次校准可触发下载。显式选择不可用设备会报错；自动模式运行失败后切回 CPU 并显示原因，不重播已输出音频。Kokoro 当前只支持 CPU 合成，也可使用 Qwen 对齐。
+
+CoreML 可用并不保证更快或全部算子在 GPU。本机 M4 Pro 发布构建测量选择 CPU；CUDA 实机验收仍待完成。校准结果保存在模型根目录 calibration-*.json，按硬件、模型和 ORT 版本区分。各模型目录的 coreml-cache 可删除重建。协议为 v3，阅读器与 worker 必须配套更新。
+
+## 可选逐句高亮
+
+逐句高亮默认关闭。听书设置中的“逐句高亮”开启后才显示“对齐设备”；首次启用需要额外准备 Qwen 模型。关闭时不会下载、加载或校准对齐模型，使用片段高亮。切换开关会停播并保留续读位置，请重新启用模型后播放。
+
+独立命令可用 `novel-tts --alignment book.txt` 开启，或 `novel-tts --alignment=false book.txt` 关闭。
+
+MOSS 会合并排版单换行，空行、章节标题和装饰分隔线仍形成边界。长输入会按音色时长估算和模型预算切分。若模型超限或推理失败，会明确停止并保留位置，不自动重复已播放内容。模型的正常结束信号不能作为全部文字已经朗读的证明。
