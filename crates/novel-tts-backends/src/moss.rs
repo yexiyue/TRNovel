@@ -3,6 +3,8 @@ mod audio;
 #[cfg(feature = "moss-candle")]
 pub mod candle;
 pub mod diagnostics;
+#[cfg(feature = "moss-nano-candle")]
+pub mod nano;
 pub mod resources;
 mod runtime;
 mod text;
@@ -28,7 +30,8 @@ pub fn capabilities(directory: &std::path::Path) -> anyhow::Result<Capabilities>
         voices.push(voice.id);
     }
     Ok(Capabilities {
-        model: cfg!(feature = "moss-candle").then(|| "nano".into()),
+        model: cfg!(any(feature = "moss-candle", feature = "moss-nano-candle"))
+            .then(|| "nano".into()),
         model_name: "MOSS Nano".into(),
         backend: "moss".into(),
         voices,

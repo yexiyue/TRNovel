@@ -276,3 +276,23 @@ MOSS Nano 保留原 ONNX 与音色格式，旧 model=None 不改写；Candle 试
 Codec 流式 ring-cache 在当前 chunk 注意力之前覆盖旧 key，与先算完整滑窗再裁缓存不同；需有跨窗口官方数值回归。EOS 和正常 End 不证明语音内容逐字完整。
 
 **相关文件**：`crates/novel-tts-backends/src/moss/candle.rs`、`crates/moss-tts/src/codec.rs`。
+
+### Nano Candle 实验与 ONNX 对照
+
+`moss-nano-candle` 增加 `moss/nano-candle`，Metal/CUDA 分别由 `moss-nano-candle-metal` / `moss-nano-candle-cuda` 打开，保留 ONNX Nano 作为默认 CPU 后端。Nano 使用 GPT2、带偏置投影、LayerNorm、GELU-new、交错 RoPE，不能使用 MOSS 1.7B 的 Qwen3 transformer。Candle 可直接读取官方 BF16 `pytorch_model.bin` 并转换到 F32，不需要 Python 转换权重。
+
+原生权重在 `.novel-tts/moss/models/nano-candle/<revision>/`；音色继续使用现有 Nano 的 16 码本参考，内置和自定义音色共享原格式。当前 voices import 仍复用 ONNX 编码入口，合成与流式音频解码均走 Candle。Nano codec 为 48 kHz 双声道交错 PCM、3840 samples/channel/frame，权重键使用 `in_proj` / `out_proj` / `ffn`，各 stage 的 context_duration 必须单独读取。24 kHz 单声道 1.7B codec 保留原键和行为。
+
+线程所有者关闭时，音频队列满也必须能退出；不能只在 `blocking_send` 前检查取消。Nano 发送使用有界 try_send 重试，并检查请求队列关闭。实际 CPU/Metal 的固定种子生成、65 帧 ONNX codec 采样对照、缓存数值 fixture 和真实 worker 切换记录见 `dev-notes/moss-nano-candle-experiment.md`。
+
+### Qwen / OmniVoice ONNX 实验边界
+
+`qwen-onnx` 只支持 0.6B/1.7B CustomVoice，`omnivoice-onnx` 复用原参考 WAV/text；独立后端 ID 和 feature 追加目录项，不改变默认选择。开发期导出固定上游和官方权重 revision，FP32 清单逐文件 SHA-256；当前无托管导出下载地址，缺少清单时明确提示先导出。Python 不进入 worker 推理链路。Omni ONNX 编码缓存额外按导出 revision 与 WAV SHA 隔离。
+
+Qwen ORT 的初始 KV cache 序列长度为零：rc.10 的 `Tensor::from_array` 不接受零维长度，须用 allocator 创建零元素 Tensor。不要对此 Tensor 调用 `try_extract_tensor`：ORT 零元素数据指针可为 null，rc.10 会构造非法 Rust slice；仅读 shape metadata 或传给 ORT。
+
+Qwen Candle residual 码本是贪心，ONNX 上游默认 residual 采样；不能将其听感差异直接归因于计算后端。对照另导出 greedy 图，不修改默认实验图。CoreML 提供者注册成功并不证明模型加速：使用 ORT profile 的 Node provider 记录真实分配，性能采集关闭 profiling、串行推理。
+
+固定 ORT rc.10 的 OmniVoice encoder 在 CoreML 部分分区后，CPU `Slice_1` 收到非一维 ends，真实克隆生成失败。选择实验 CoreML 时 encoder 明确保持 CPU，LM/decoder 仍注册请求的 provider，不通过初始化重试掩盖错误。此 Mac 的实际 profile 显示 Qwen 主 talker/codec decoder 与 OmniVoice codec decoder 都在 CPU；Qwen residual 才有较多 CoreML 分区，OmniVoice LM 的少量 CoreML kernel 不是主计算。大模型 CoreML 首次编译有显著内存峰值，正式测量必须区分冷编译与缓存运行。证据见 `dev-notes/onnx-tts-experiment.md`。
+
+**相关文件**：`crates/novel-tts-backends/src/{onnx_runtime,qwen_onnx,omnivoice_onnx}.rs`、`tools/tts/export_*_onnx.py`、`dev-notes/onnx-tts-experiment.md`。

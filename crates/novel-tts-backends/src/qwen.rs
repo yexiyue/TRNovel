@@ -3,7 +3,7 @@ pub mod design;
 pub mod models;
 pub mod resources;
 mod runtime;
-mod text;
+pub(crate) mod text;
 use runtime::Request;
 
 use std::path::PathBuf;
@@ -248,9 +248,7 @@ impl Backend for QwenBackend {
         Box::pin(async move { Ok(text::segments(source)) })
     }
     fn paragraph_end(&self, segment: &str, remaining: &str) -> bool {
-        remaining.trim().is_empty()
-            || tts_core::text::is_heading_line(segment.trim())
-            || remaining.starts_with('\n') && segment.ends_with('\n')
+        text::paragraph_end(segment, remaining)
     }
 }
 impl Drop for QwenBackend {

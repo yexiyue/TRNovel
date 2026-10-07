@@ -186,7 +186,10 @@ fn top_k_filter(logits: &Tensor, k: usize) -> Result<Tensor> {
     let (batch, vocab) = logits.dims2()?;
     let k = k.min(vocab);
 
-    if logits.device().is_cpu() {
+    // Candle 0.9.2 Metal bitonic sorting exceeds the threadgroup limit above
+    // 1024 columns. Sort these small logit rows on the host, then return them
+    // to the original device; transformer inference remains on Metal.
+    if logits.device().is_cpu() || (logits.device().is_metal() && logits.dims2()?.1 > 1024) {
         // CPU path: native Rust partial sort is faster than candle sort_last_dim
         let mut result_data = Vec::with_capacity(batch * vocab);
         for b in 0..batch {
@@ -218,7 +221,7 @@ fn top_p_filter(logits: &Tensor, p: f64) -> Result<Tensor> {
     #[cfg(feature = "profiling")]
     let _span = tracing::info_span!("top_p").entered();
 
-    if logits.device().is_cpu() {
+    if logits.device().is_cpu() || (logits.device().is_metal() && logits.dims2()?.1 > 1024) {
         // CPU path: native Rust sort + cumsum (avoids candle sort_last_dim overhead)
         let (batch, vocab) = logits.dims2()?;
         let mut result_data = Vec::with_capacity(batch * vocab);
@@ -406,6 +409,26 @@ pub fn greedy_sample(logits: &Tensor) -> Result<Tensor> {
 
 #[cfg(test)]
 mod tests {
+    #[cfg(all(feature = "metal", target_os = "macos"))]
+    #[test]
+    fn metal_large_vocabulary_filters_match_cpu() -> Result<()> {
+        if std::env::var_os("TRNOVEL_TEST_METAL").is_none() {
+            return Ok(());
+        }
+        let device = crate::device::metal(0)?;
+        for width in [1024, 1025, 2048, 3072] {
+            let row: Vec<f32> = (0..width).map(|i| (i as f32 * 1.7).sin()).collect();
+            let cpu = Tensor::from_vec(row.clone(), (1, width), &Device::Cpu)?;
+            let metal = Tensor::from_vec(row, (1, width), &device)?;
+            for (expected, actual) in [
+                (top_k_filter(&cpu, 50)?, top_k_filter(&metal, 50)?),
+                (top_p_filter(&cpu, 0.9)?, top_p_filter(&metal, 0.9)?),
+            ] {
+                assert_eq!(expected.to_vec2::<f32>()?, actual.to_vec2::<f32>()?);
+            }
+        }
+        Ok(())
+    }
     use super::*;
     use candle_core::Device;
 

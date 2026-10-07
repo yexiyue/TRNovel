@@ -1,5 +1,5 @@
 """Development-only native process memory sampling (stdlib only)."""
-import os, ctypes
+import os, ctypes, subprocess, sys
 from pathlib import Path
 
 def memory(pid):
@@ -27,4 +27,8 @@ def memory(pid):
     elif Path(f'/proc/{pid}/status').exists():
         rows = dict((line.split(':', 1) for line in Path(f'/proc/{pid}/status').read_text().splitlines() if ':' in line))
         return {name: int(rows[key].split()[0]) * 1024 for name, key in [('rss_bytes', 'VmRSS'), ('peak_rss_bytes', 'VmHWM')] if key in rows}
+    elif sys.platform == 'darwin':
+        result = subprocess.run(['ps', '-o', 'rss=', '-p', str(pid)], capture_output=True, text=True)
+        if result.returncode == 0 and result.stdout.strip():
+            return dict(rss_bytes=int(result.stdout.strip()) * 1024)
     return {}

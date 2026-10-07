@@ -1,0 +1,98 @@
+{
+  "fresh-qwen06": {
+    "codec_embed": {
+      "CPUExecutionProvider": {
+        "executed_kernel_count": 53,
+        "total_kernel_us": 356.0
+      }
+    },
+    "decode": {
+      "CPUExecutionProvider": {
+        "executed_kernel_count": 801,
+        "total_kernel_us": 318315.0
+      },
+      "CoreMLExecutionProvider": {
+        "executed_kernel_count": 451,
+        "total_kernel_us": 4677967.0
+      }
+    },
+    "talker": {
+      "CPUExecutionProvider": {
+        "executed_kernel_count": 1279,
+        "total_kernel_us": 726642.0
+      }
+    },
+    "text_project": {
+      "CPUExecutionProvider": {
+        "executed_kernel_count": 6,
+        "total_kernel_us": 1761.0
+      }
+    },
+    "tokenizer": {
+      "CPUExecutionProvider": {
+        "executed_kernel_count": 620,
+        "total_kernel_us": 2152869.0
+      }
+    }
+  },
+  "fresh-qwen17": {
+    "codec_embed": {
+      "CPUExecutionProvider": {
+        "executed_kernel_count": 53,
+        "total_kernel_us": 1638.0
+      }
+    },
+    "decode": {
+      "CPUExecutionProvider": {
+        "executed_kernel_count": 816,
+        "total_kernel_us": 303741.0
+      },
+      "CoreMLExecutionProvider": {
+        "executed_kernel_count": 466,
+        "total_kernel_us": 3162045.0
+      }
+    },
+    "talker": {
+      "CPUExecutionProvider": {
+        "executed_kernel_count": 1279,
+        "total_kernel_us": 1844863.0
+      }
+    },
+    "text_project": {
+      "CPUExecutionProvider": {
+        "executed_kernel_count": 6,
+        "total_kernel_us": 18199.0
+      }
+    },
+    "tokenizer": {
+      "CPUExecutionProvider": {
+        "executed_kernel_count": 620,
+        "total_kernel_us": 1419562.0
+      }
+    }
+  },
+  "fixed-omni": {
+    "audio_tokenizer_decoder": {
+      "CPUExecutionProvider": {
+        "executed_kernel_count": 643,
+        "total_kernel_us": 290674.0
+      }
+    },
+    "audio_tokenizer_encoder": {
+      "CPUExecutionProvider": {
+        "executed_kernel_count": 1306,
+        "total_kernel_us": 500863.0
+      }
+    },
+    "omnivoice_lm": {
+      "CPUExecutionProvider": {
+        "executed_kernel_count": 2738,
+        "total_kernel_us": 32993899.0
+      },
+      "CoreMLExecutionProvider": {
+        "executed_kernel_count": 28,
+        "total_kernel_us": 190865.0
+      }
+    }
+  }
+}

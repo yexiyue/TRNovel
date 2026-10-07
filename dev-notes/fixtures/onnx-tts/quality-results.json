@@ -1,0 +1,458 @@
+[
+  {
+    "name": "qwen-onnx-fp32-style-0",
+    "backend": "qwen-onnx",
+    "model": "1.7b-customvoice",
+    "device": "cpu",
+    "voice": "uncle_fu",
+    "style": "自然平静地讲述",
+    "text": "我们终于到家了，今天的故事就讲到这里。",
+    "exit_code": 0,
+    "peak_rss_bytes": 10214703104,
+    "peak_footprint_bytes": 16565630488,
+    "runs": [
+      {
+        "audio_seconds": 4.64,
+        "backend": "qwen-onnx",
+        "device": "cpu",
+        "eos": true,
+        "first_pcm_ms": 1815.0612499999997,
+        "generate_ms": 9897.918167,
+        "iteration": 0,
+        "load_ms": 19488.143957999997,
+        "model": "1.7b-customvoice",
+        "output": "target/tts-integration/quality/qwen-onnx-fp32-style-0.wav",
+        "rtf": 2.1331720187500003,
+        "style": "自然平静地讲述",
+        "voice": "uncle_fu",
+        "warmup": false
+      }
+    ],
+    "median": {
+      "rtf": 2.1331720187500003,
+      "first_pcm_ms": 1815.0612499999997,
+      "generate_ms": 9897.918167,
+      "audio_seconds": 4.64,
+      "load_ms": 19488.143957999997
+    }
+  },
+  {
+    "name": "qwen-fp32-style-1",
+    "backend": "qwen",
+    "model": "1.7b-customvoice",
+    "device": "cpu",
+    "voice": "uncle_fu",
+    "style": "自然平静地讲述",
+    "text": "我们终于到家了，今天的故事就讲到这里。",
+    "exit_code": 0,
+    "peak_rss_bytes": 12250513408,
+    "peak_footprint_bytes": 16827150720,
+    "runs": [
+      {
+        "audio_seconds": 5.04,
+        "backend": "qwen",
+        "device": "cpu",
+        "eos": true,
+        "first_pcm_ms": 4889.607416999999,
+        "generate_ms": 22980.572209,
+        "iteration": 0,
+        "load_ms": 3373.434,
+        "model": "1.7b-customvoice",
+        "output": "target/tts-integration/quality/qwen-fp32-style-1.wav",
+        "rtf": 4.559637343055556,
+        "style": "自然平静地讲述",
+        "voice": "uncle_fu",
+        "warmup": false
+      }
+    ],
+    "median": {
+      "rtf": 4.559637343055556,
+      "first_pcm_ms": 4889.607416999999,
+      "generate_ms": 22980.572209,
+      "audio_seconds": 5.04,
+      "load_ms": 3373.434
+    }
+  },
+  {
+    "name": "qwen-onnx-fp32-style-2",
+    "backend": "qwen-onnx",
+    "model": "1.7b-customvoice",
+    "device": "cpu",
+    "voice": "uncle_fu",
+    "style": "非常开心，充满喜悦地讲述",
+    "text": "我们终于到家了，今天的故事就讲到这里。",
+    "exit_code": 0,
+    "peak_rss_bytes": 13045776384,
+    "peak_footprint_bytes": 16596235704,
+    "runs": [
+      {
+        "audio_seconds": 4.88,
+        "backend": "qwen-onnx",
+        "device": "cpu",
+        "eos": true,
+        "first_pcm_ms": 1896.3848329999998,
+        "generate_ms": 11359.956415999999,
+        "iteration": 0,
+        "load_ms": 16605.380375,
+        "model": "1.7b-customvoice",
+        "output": "target/tts-integration/quality/qwen-onnx-fp32-style-2.wav",
+        "rtf": 2.3278599213114752,
+        "style": "非常开心，充满喜悦地讲述",
+        "voice": "uncle_fu",
+        "warmup": false
+      }
+    ],
+    "median": {
+      "rtf": 2.3278599213114752,
+      "first_pcm_ms": 1896.3848329999998,
+      "generate_ms": 11359.956415999999,
+      "audio_seconds": 4.88,
+      "load_ms": 16605.380375
+    }
+  },
+  {
+    "name": "qwen-fp32-style-3",
+    "backend": "qwen",
+    "model": "1.7b-customvoice",
+    "device": "cpu",
+    "voice": "uncle_fu",
+    "style": "非常开心，充满喜悦地讲述",
+    "text": "我们终于到家了，今天的故事就讲到这里。",
+    "exit_code": 0,
+    "peak_rss_bytes": 12087623680,
+    "peak_footprint_bytes": 16828051840,
+    "runs": [
+      {
+        "audio_seconds": 4.48,
+        "backend": "qwen",
+        "device": "cpu",
+        "eos": true,
+        "first_pcm_ms": 4917.198291,
+        "generate_ms": 20796.370958,
+        "iteration": 0,
+        "load_ms": 3473.273792,
+        "model": "1.7b-customvoice",
+        "output": "target/tts-integration/quality/qwen-fp32-style-3.wav",
+        "rtf": 4.642047088839285,
+        "style": "非常开心，充满喜悦地讲述",
+        "voice": "uncle_fu",
+        "warmup": false
+      }
+    ],
+    "median": {
+      "rtf": 4.642047088839285,
+      "first_pcm_ms": 4917.198291,
+      "generate_ms": 20796.370958,
+      "audio_seconds": 4.48,
+      "load_ms": 3473.273792
+    }
+  },
+  {
+    "name": "qwen-onnx-fp32-style-4",
+    "backend": "qwen-onnx",
+    "model": "1.7b-customvoice",
+    "device": "cpu",
+    "voice": "uncle_fu",
+    "style": "悲伤低落，带着难过的情绪讲述",
+    "text": "我们终于到家了，今天的故事就讲到这里。",
+    "exit_code": 0,
+    "peak_rss_bytes": 12912803840,
+    "peak_footprint_bytes": 16533485152,
+    "runs": [
+      {
+        "audio_seconds": 6.08,
+        "backend": "qwen-onnx",
+        "device": "cpu",
+        "eos": true,
+        "first_pcm_ms": 1925.576167,
+        "generate_ms": 14306.908958,
+        "iteration": 0,
+        "load_ms": 16657.862959,
+        "model": "1.7b-customvoice",
+        "output": "target/tts-integration/quality/qwen-onnx-fp32-style-4.wav",
+        "rtf": 2.353110025986842,
+        "style": "悲伤低落，带着难过的情绪讲述",
+        "voice": "uncle_fu",
+        "warmup": false
+      }
+    ],
+    "median": {
+      "rtf": 2.353110025986842,
+      "first_pcm_ms": 1925.576167,
+      "generate_ms": 14306.908958,
+      "audio_seconds": 6.08,
+      "load_ms": 16657.862959
+    }
+  },
+  {
+    "name": "qwen-fp32-style-5",
+    "backend": "qwen",
+    "model": "1.7b-customvoice",
+    "device": "cpu",
+    "voice": "uncle_fu",
+    "style": "悲伤低落，带着难过的情绪讲述",
+    "text": "我们终于到家了，今天的故事就讲到这里。",
+    "exit_code": 0,
+    "peak_rss_bytes": 11750621184,
+    "peak_footprint_bytes": 16826003864,
+    "runs": [
+      {
+        "audio_seconds": 6.16,
+        "backend": "qwen",
+        "device": "cpu",
+        "eos": true,
+        "first_pcm_ms": 4908.553708,
+        "generate_ms": 28022.816791,
+        "iteration": 0,
+        "load_ms": 3534.56,
+        "model": "1.7b-customvoice",
+        "output": "target/tts-integration/quality/qwen-fp32-style-5.wav",
+        "rtf": 4.549158569967532,
+        "style": "悲伤低落，带着难过的情绪讲述",
+        "voice": "uncle_fu",
+        "warmup": false
+      }
+    ],
+    "median": {
+      "rtf": 4.549158569967532,
+      "first_pcm_ms": 4908.553708,
+      "generate_ms": 28022.816791,
+      "audio_seconds": 6.16,
+      "load_ms": 3534.56
+    }
+  },
+  {
+    "name": "omnivoice-onnx-fp32-narrator",
+    "backend": "omnivoice-onnx",
+    "model": "0.6b",
+    "device": "cpu",
+    "voice": "narrator",
+    "style": null,
+    "text": "你好，欢迎使用听书功能。",
+    "exit_code": 0,
+    "peak_rss_bytes": 2479767552,
+    "peak_footprint_bytes": 2361117864,
+    "runs": [
+      {
+        "audio_seconds": 1.86,
+        "backend": "omnivoice-onnx",
+        "device": "cpu",
+        "eos": true,
+        "first_pcm_ms": 10229.153125,
+        "generate_ms": 10232.176958,
+        "iteration": 0,
+        "load_ms": 3814.5343340000004,
+        "model": "0.6b",
+        "output": "target/tts-integration/quality/omnivoice-onnx-fp32-narrator.wav",
+        "rtf": 5.501170407526882,
+        "style": null,
+        "voice": "narrator",
+        "warmup": false
+      }
+    ],
+    "median": {
+      "rtf": 5.501170407526882,
+      "first_pcm_ms": 10229.153125,
+      "generate_ms": 10232.176958,
+      "audio_seconds": 1.86,
+      "load_ms": 3814.5343340000004
+    }
+  },
+  {
+    "name": "omnivoice-fp32-narrator",
+    "backend": "omnivoice",
+    "model": "0.6b",
+    "device": "cpu",
+    "voice": "narrator",
+    "style": null,
+    "text": "你好，欢迎使用听书功能。",
+    "exit_code": 0,
+    "peak_rss_bytes": 5067866112,
+    "peak_footprint_bytes": 2952383344,
+    "runs": [
+      {
+        "audio_seconds": 1.95,
+        "backend": "omnivoice",
+        "device": "cpu",
+        "eos": true,
+        "first_pcm_ms": 18949.073458000003,
+        "generate_ms": 18949.078166,
+        "iteration": 0,
+        "load_ms": 142.712583,
+        "model": "0.6b",
+        "output": "target/tts-integration/quality/omnivoice-fp32-narrator.wav",
+        "rtf": 9.717475982564103,
+        "style": null,
+        "voice": "narrator",
+        "warmup": false
+      }
+    ],
+    "median": {
+      "rtf": 9.717475982564103,
+      "first_pcm_ms": 18949.073458000003,
+      "generate_ms": 18949.078166,
+      "audio_seconds": 1.95,
+      "load_ms": 142.712583
+    }
+  },
+  {
+    "name": "omnivoice-onnx-mid-cancel-narrator",
+    "backend": "omnivoice-onnx",
+    "model": "0.6b",
+    "device": "cpu",
+    "voice": "narrator",
+    "style": null,
+    "text": "你好，欢迎使用听书功能。",
+    "exit_code": 0,
+    "peak_rss_bytes": 2481504256,
+    "peak_footprint_bytes": 2362952848,
+    "runs": [
+      {
+        "cancelled_before_pcm": true
+      },
+      {
+        "audio_seconds": 1.86,
+        "backend": "omnivoice-onnx",
+        "device": "cpu",
+        "eos": true,
+        "first_pcm_ms": 10564.608542,
+        "generate_ms": 10567.635624999999,
+        "iteration": 0,
+        "load_ms": 1401.698792,
+        "model": "0.6b",
+        "output": "target/tts-integration/quality/omnivoice-onnx-mid-cancel-narrator.wav",
+        "rtf": 5.6815245295698915,
+        "style": null,
+        "voice": "narrator",
+        "warmup": false
+      },
+      {
+        "owner_drop_with_live_stream_ms": 232
+      }
+    ],
+    "median": {
+      "rtf": 5.6815245295698915,
+      "first_pcm_ms": 10564.608542,
+      "generate_ms": 10567.635624999999,
+      "audio_seconds": 1.86,
+      "load_ms": 1401.698792
+    }
+  },
+  {
+    "name": "omnivoice-onnx-fp32-custom-onnx-acceptance",
+    "backend": "omnivoice-onnx",
+    "model": "0.6b",
+    "device": "cpu",
+    "voice": "custom:onnx-acceptance",
+    "style": null,
+    "text": "你好，欢迎使用听书功能。",
+    "exit_code": 0,
+    "peak_rss_bytes": 2573942784,
+    "peak_footprint_bytes": 2448149720,
+    "runs": [
+      {
+        "audio_seconds": 3.02,
+        "backend": "omnivoice-onnx",
+        "device": "cpu",
+        "eos": true,
+        "first_pcm_ms": 34615.074583,
+        "generate_ms": 34617.819500000005,
+        "iteration": 0,
+        "load_ms": 1413.4291249999999,
+        "model": "0.6b",
+        "output": "target/tts-integration/quality/omnivoice-onnx-fp32-custom-onnx-acceptance.wav",
+        "rtf": 11.46285413907285,
+        "style": null,
+        "voice": "custom:onnx-acceptance",
+        "warmup": false
+      }
+    ],
+    "median": {
+      "rtf": 11.46285413907285,
+      "first_pcm_ms": 34615.074583,
+      "generate_ms": 34617.819500000005,
+      "audio_seconds": 3.02,
+      "load_ms": 1413.4291249999999
+    }
+  },
+  {
+    "name": "omnivoice-fp32-custom-onnx-acceptance",
+    "backend": "omnivoice",
+    "model": "0.6b",
+    "device": "cpu",
+    "voice": "custom:onnx-acceptance",
+    "style": null,
+    "text": "你好，欢迎使用听书功能。",
+    "exit_code": 0,
+    "peak_rss_bytes": 5067931648,
+    "peak_footprint_bytes": 3008433032,
+    "runs": [
+      {
+        "audio_seconds": 2.51,
+        "backend": "omnivoice",
+        "device": "cpu",
+        "eos": true,
+        "first_pcm_ms": 24951.018708,
+        "generate_ms": 24951.023875,
+        "iteration": 0,
+        "load_ms": 143.165041,
+        "model": "0.6b",
+        "output": "target/tts-integration/quality/omnivoice-fp32-custom-onnx-acceptance.wav",
+        "rtf": 9.940646962151396,
+        "style": null,
+        "voice": "custom:onnx-acceptance",
+        "warmup": false
+      }
+    ],
+    "median": {
+      "rtf": 9.940646962151396,
+      "first_pcm_ms": 24951.018708,
+      "generate_ms": 24951.023875,
+      "audio_seconds": 2.51,
+      "load_ms": 143.165041
+    }
+  },
+  {
+    "name": "omnivoice-onnx-mid-cancel-custom-onnx-acceptance",
+    "backend": "omnivoice-onnx",
+    "model": "0.6b",
+    "device": "cpu",
+    "voice": "custom:onnx-acceptance",
+    "style": null,
+    "text": "你好，欢迎使用听书功能。",
+    "exit_code": 0,
+    "peak_rss_bytes": 2574123008,
+    "peak_footprint_bytes": 2447772888,
+    "runs": [
+      {
+        "cancelled_before_pcm": true
+      },
+      {
+        "audio_seconds": 3.02,
+        "backend": "omnivoice-onnx",
+        "device": "cpu",
+        "eos": true,
+        "first_pcm_ms": 35088.663375000004,
+        "generate_ms": 35091.18125,
+        "iteration": 0,
+        "load_ms": 1373.803125,
+        "model": "0.6b",
+        "output": "target/tts-integration/quality/omnivoice-onnx-mid-cancel-custom-onnx-acceptance.wav",
+        "rtf": 11.61959644039735,
+        "style": null,
+        "voice": "custom:onnx-acceptance",
+        "warmup": false
+      },
+      {
+        "owner_drop_with_live_stream_ms": 958
+      }
+    ],
+    "median": {
+      "rtf": 11.61959644039735,
+      "first_pcm_ms": 35088.663375000004,
+      "generate_ms": 35091.18125,
+      "audio_seconds": 3.02,
+      "load_ms": 1373.803125
+    }
+  }
+]

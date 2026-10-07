@@ -185,6 +185,19 @@ fn register_omnivoice_gguf_specials(
 }
 
 impl Frontend {
+    /// Load text preparation without requiring native model weight artifacts.
+    pub fn from_onnx_directory(directory: &Path) -> Result<Self> {
+        let tokenizer = Tokenizer::from_file(directory.join("tokenizer.json"))?;
+        let config: ModelConfigFile =
+            serde_json::from_str(&fs::read_to_string(directory.join("config.json"))?)?;
+        Ok(Self {
+            tokenizer,
+            num_audio_codebook: config.num_audio_codebook,
+            audio_mask_id: config.audio_mask_id,
+            frame_rate: 25,
+            duration_estimator: RuleDurationEstimator,
+        })
+    }
     pub fn from_model_root(model_root: impl AsRef<Path>) -> Result<Self> {
         let runtime = RuntimeArtifacts::from_model_root(model_root)?;
         Self::from_runtime_artifacts(&runtime)

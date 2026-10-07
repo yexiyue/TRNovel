@@ -1,0 +1,109 @@
+{
+  "abi_version": 1,
+  "export_revision": "5d1687f02855ee403792ed145fabc936f62b60f8",
+  "source_revision": "85e237c12c027371202489a0ec509ded67b5e4b5",
+  "precision": "fp32",
+  "parameters": {
+    "torch": "2.5.1",
+    "device": "cpu",
+    "dynamo": false,
+    "attention_width_fix": true,
+    "tokenizer_fix_mistral_regex": true,
+    "residual_sampling": true,
+    "residual_top_k": 50,
+    "residual_temperature": 0.9,
+    "greedy_control": true,
+    "export_script_sha256": "969589bef253ef635fc07beb526670d5a0bf529aae78ee5242cec6b28f66b380",
+    "manifest_script_sha256": "3bf3f6f45497d4fa13ffaa1795d0deb18d6c0caf0883dee3ebb66f309bee003d"
+  },
+  "graph_opsets": {
+    "onnx/codec_embed/codec_embed.onnx": {
+      "ai.onnx": 18
+    },
+    "onnx/decode/sub_talker_sample.onnx": {
+      "ai.onnx": 18
+    },
+    "onnx/talker/talker_core.onnx": {
+      "ai.onnx": 18
+    },
+    "onnx/text_project/text_project.onnx": {
+      "ai.onnx": 18
+    },
+    "onnx/tokenizer/tokenizer12hz_decode_chunk.onnx": {
+      "ai.onnx": 18
+    },
+    "onnx/tokenizer/tokenizer12hz_encode.onnx": {
+      "ai.onnx": 18
+    },
+    "onnx-greedy/decode/sub_talker_sample.onnx": {
+      "ai.onnx": 18
+    }
+  },
+  "resources": [
+    {
+      "path": "config.json",
+      "size": 4908,
+      "sha256": "81aca2b6fac304944d8acf345272d8a9a727d5fc2e2e66b222ab4729340c7455"
+    },
+    {
+      "path": "generation_config.json",
+      "size": 245,
+      "sha256": "f1b90b4513f3b34c62851049e2492d7b4c5940daf1276f89c82b8ef04127f3aa"
+    },
+    {
+      "path": "onnx/codec_embed/codec_embed.onnx",
+      "size": 138422121,
+      "sha256": "bf4fe29da4a00820129d82120c9a8968730680c1e49168cd5ded109fb03ca54d"
+    },
+    {
+      "path": "onnx/decode/sub_talker_sample.onnx",
+      "size": 3581200,
+      "sha256": "8594f459f60c3ccfea9d0862ee7689e6b75910cc71e516ff23ad4c99823443b6"
+    },
+    {
+      "path": "onnx/decode/sub_talker_sample.onnx.data",
+      "size": 578864128,
+      "sha256": "ed2b843919a664ee9d8961ed8952fef61c78b4524b3edaf47978bb97fdb7ddc6"
+    },
+    {
+      "path": "onnx/talker/talker_core.onnx",
+      "size": 800099,
+      "sha256": "4c75488488a57ba161dce56d73896da889beb67a599dbd3641c5dda03930a4b4"
+    },
+    {
+      "path": "onnx/talker/talker_core.onnx.data",
+      "size": 1774452736,
+      "sha256": "2e7ce149cfca0e521e3c029518c8b06992f80c7ae9c54764b871e515c0a64696"
+    },
+    {
+      "path": "onnx/text_project/text_project.onnx",
+      "size": 1269839093,
+      "sha256": "7ba6930ae3be3e93ffbe167fa2aaf5fd5f071a383639df56474253f62ab850ff"
+    },
+    {
+      "path": "onnx/tokenizer/tokenizer12hz_decode_chunk.onnx",
+      "size": 456595384,
+      "sha256": "d9bfc54ab9766d1c6aa85adfd3f55549dcb1b07b88580fb2ca4c9549f63d2f7d"
+    },
+    {
+      "path": "onnx/tokenizer/tokenizer12hz_encode.onnx",
+      "size": 192825525,
+      "sha256": "c6af59bedbc37008afae0e9568e9cad343dfdb211a0d86311b16db1c9190c736"
+    },
+    {
+      "path": "onnx-greedy/decode/sub_talker_sample.onnx",
+      "size": 3544887,
+      "sha256": "3ccb2e6ab9c1987b1900eeaa70fd3444af5b661a8143cc09fdb04f0ff6aad8ad"
+    },
+    {
+      "path": "onnx-greedy/decode/sub_talker_sample.onnx.data",
+      "size": 578864128,
+      "sha256": "ed2b843919a664ee9d8961ed8952fef61c78b4524b3edaf47978bb97fdb7ddc6"
+    },
+    {
+      "path": "tokenizer.json",
+      "size": 11424108,
+      "sha256": "21cbba93fc2b3723c68db44ba5a8ff1a22a3f7bed34a5adbd5a165e17fff551c"
+    }
+  ]
+}

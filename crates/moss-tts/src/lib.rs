@@ -6,6 +6,7 @@ pub mod codec;
 pub mod config;
 pub mod delay;
 pub mod local;
+pub mod nano;
 pub mod prompt;
 pub mod realtime;
 mod sampling;

@@ -25,6 +25,16 @@ async fn run() -> anyhow::Result<()> {
     };
     let load = || async {
         let backend: Rc<dyn Backend> = match args[1].as_str() {
+            #[cfg(feature = "moss-nano-candle")]
+            "moss-nano-candle" => Rc::new(
+                novel_tts_backends::moss::nano::NanoBackend::load_on(directory.clone(), device)
+                    .await?,
+            ),
+            #[cfg(feature = "moss")]
+            "moss-nano-onnx" => Rc::new(
+                novel_tts_backends::moss::MossBackend::load_on(directory.join("moss"), device)
+                    .await?,
+            ),
             #[cfg(feature = "moss-candle")]
             "moss" => Rc::new(
                 novel_tts_backends::moss::candle::CandleBackend::load_on(

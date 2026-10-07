@@ -1,0 +1,7 @@
+{
+  "prompt_max_abs": 0.0,
+  "first_logits_max_abs": 0.0,
+  "pcm_max_abs": 7.511116564273834e-07,
+  "frames": 61,
+  "passed": true
+}

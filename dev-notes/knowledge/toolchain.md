@@ -199,3 +199,9 @@ Candle 0.9.2 的 Metal `arg_sort_last_dim` 使用单线程组 bitonic sort，线
 2026-10-07 移除 Kokoro、ZipVoice adapters、features、专用依赖和 ZipVoice 的 vendored eSpeak/CMake helper。保留 MOSS Nano 为 CPU 默认，现有 GPU 模型继续保留。ORT rc.10 仍由 Nano 与强制对齐使用；不要随旧后端一起删除。worker 启动时将退休后端及无 backend 的旧配置迁移为 Nano 默认音色、CPU；文件锁内校验并原子保存，保留其他偏好与未知字段，revision 只增加一次。用户缓存不删除。
 
 **相关文件**：`crates/novel-tts-core/src/config.rs`、`crates/novel-tts/src/main.rs`、`crates/novel-tts-backends/src/lib.rs`。
+
+### Qwen Metal 采样同样需要长列排序保护
+
+Qwen 的主词表 3072 列也触发 Candle 0.9.2 Metal bitonic sort 的 >1024 列限制。top-k/top-p 过滤在 Metal 长列时使用已有 CPU 过滤算法，再返回原设备；transformer 仍走 Metal。这次实际 0.6B 短句在修复前达到 375 帧上限，修复后正常 EOS。GPU 回归用 `TRNOVEL_TEST_METAL=1` 开启，覆盖 1024/1025/2048/3072 列与 CPU 结果对照。
+
+**相关文件**：`crates/qwen3-tts/src/generation/sampling.rs`。

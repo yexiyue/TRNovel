@@ -2,9 +2,19 @@
 pub mod calibration;
 #[cfg(any(feature = "coreml", feature = "ort-cuda"))]
 use ort::execution_providers::ExecutionProvider;
-#[cfg(any(feature = "moss", feature = "alignment"))]
+#[cfg(any(
+    feature = "moss",
+    feature = "alignment",
+    feature = "qwen-onnx",
+    feature = "omnivoice-onnx"
+))]
 use ort::session::Session;
-#[cfg(any(feature = "moss", feature = "alignment"))]
+#[cfg(any(
+    feature = "moss",
+    feature = "alignment",
+    feature = "qwen-onnx",
+    feature = "omnivoice-onnx"
+))]
 use std::path::Path;
 use tts_protocol::{Device, Event};
 
@@ -58,10 +68,26 @@ pub fn status(component: &str, selected: Device, reason: Option<String>) -> Even
         reason,
     }
 }
-#[cfg(any(feature = "moss", feature = "alignment"))]
+#[cfg(any(
+    feature = "moss",
+    feature = "alignment",
+    feature = "qwen-onnx",
+    feature = "omnivoice-onnx"
+))]
 pub fn session(path: &Path, device: Device, cache: &Path) -> anyhow::Result<Session> {
     validate(device)?;
     let builder = Session::builder()?.with_intra_threads(4)?;
+    let builder = if let Some(profile) = std::env::var_os("NOVEL_TTS_ORT_PROFILE_DIR") {
+        let profile = std::path::PathBuf::from(profile);
+        std::fs::create_dir_all(&profile)?;
+        let name = path
+            .parent()
+            .and_then(|p| p.file_name())
+            .unwrap_or_default();
+        builder.with_profiling(profile.join(name))?
+    } else {
+        builder
+    };
     let builder = match device {
         Device::Cpu => builder,
         Device::Coreml => {

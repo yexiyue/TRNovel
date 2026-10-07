@@ -189,6 +189,14 @@ pub(super) async fn prepare(
 }
 pub(super) fn tts_revision(config: &Config) -> &'static str {
     let backend = config.backend.as_str();
+    #[cfg(feature = "qwen-onnx")]
+    if backend == "qwen-onnx" {
+        return tts_backends::qwen_onnx::EXPORT_REVISION;
+    }
+    #[cfg(feature = "omnivoice-onnx")]
+    if backend == "omnivoice-onnx" {
+        return tts_backends::omnivoice_onnx::EXPORT_REVISION;
+    }
     #[cfg(feature = "voxcpm")]
     if backend == "voxcpm" {
         return tts_backends::voxcpm::resources::REVISION;
@@ -196,6 +204,10 @@ pub(super) fn tts_revision(config: &Config) -> &'static str {
     #[cfg(feature = "omnivoice")]
     if backend == "omnivoice" {
         return tts_backends::omnivoice::resources::REVISION;
+    }
+    #[cfg(feature = "moss-nano-candle")]
+    if backend == "moss" && config.model.as_deref() == Some("nano-candle") {
+        return tts_backends::moss::nano::REVISION;
     }
     #[cfg(feature = "moss-candle")]
     if backend == "moss"

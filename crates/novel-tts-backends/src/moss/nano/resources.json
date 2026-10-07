@@ -1,0 +1,38 @@
+[
+  {
+    "path": "tts/pytorch_model.bin",
+    "url": "https://huggingface.co/OpenMOSS-Team/MOSS-TTS-Nano-100M/resolve/44502f80dbf9743528fa921cc544d662c685ebec/pytorch_model.bin",
+    "size": 234693095,
+    "sha256": "24003f2f11ac8a2cbf70514db2d8f1c02fb451aa6b3c0bffc9da09f31cd7caa5"
+  },
+  {
+    "path": "tts/config.json",
+    "url": "https://huggingface.co/OpenMOSS-Team/MOSS-TTS-Nano-100M/resolve/44502f80dbf9743528fa921cc544d662c685ebec/config.json",
+    "size": 5210,
+    "sha256": "ba36b08c80d4ae0805a2bab32b6ac90ec0d1815d01d3854ba42811db1d5bde99"
+  },
+  {
+    "path": "tts/tokenizer.model",
+    "url": "https://huggingface.co/OpenMOSS-Team/MOSS-TTS-Nano-100M/resolve/44502f80dbf9743528fa921cc544d662c685ebec/tokenizer.model",
+    "size": 470897,
+    "sha256": "c353ee1479b536bf414c1b247f5542b6607fb8ae91320e5af1781fee200fddff"
+  },
+  {
+    "path": "codec/model-00001-of-00001.safetensors",
+    "url": "https://huggingface.co/OpenMOSS-Team/MOSS-Audio-Tokenizer-Nano/resolve/6aa02b01e445cc585582cf0ba480bc3ea6c8dd68/model-00001-of-00001.safetensors",
+    "size": 87922568,
+    "sha256": "34d9880d805eecb21bde975202b1c256dbd0eb98c8680b9d3aeffd2bc6ac2f67"
+  },
+  {
+    "path": "codec/config.json",
+    "url": "https://huggingface.co/OpenMOSS-Team/MOSS-Audio-Tokenizer-Nano/resolve/6aa02b01e445cc585582cf0ba480bc3ea6c8dd68/config.json",
+    "size": 7385,
+    "sha256": "b38892f8ba00efc18af2ad9eca999c7603f871548c2e7f99258cb1cefc70ee06"
+  },
+  {
+    "path": "codec/model.safetensors.index.json",
+    "url": "https://huggingface.co/OpenMOSS-Team/MOSS-Audio-Tokenizer-Nano/resolve/6aa02b01e445cc585582cf0ba480bc3ea6c8dd68/model.safetensors.index.json",
+    "size": 34346,
+    "sha256": "2bf639e2c37c8502b1d0d92bf616b8108cb9975d42f587487a103682575b1d6d"
+  }
+]

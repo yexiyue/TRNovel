@@ -11,6 +11,10 @@ repository = "https://github.com/yexiyue/TRNovel"
 default = ["moss", "alignment"]
 alignment = ["dep:ort", "dep:tokenizers", "dep:rustfft", "dep:rubato"]
 moss = ["dep:ort", "dep:sentencepiece-rs", "dep:rand", "dep:hound", "dep:rubato"]
+moss-nano-candle = ["moss", "dep:moss-tts", "dep:candle-core"]
+moss-nano-candle-metal = ["moss-nano-candle", "moss-tts/metal"]
+moss-nano-candle-cuda = ["moss-nano-candle", "moss-tts/cuda"]
+
 moss-candle = ["moss", "dep:moss-tts", "dep:candle-core"]
 moss-candle-cuda = ["moss-candle", "moss-tts/cuda"]
 moss-candle-metal = ["moss-candle", "moss-tts/metal"]
@@ -23,6 +27,8 @@ voxcpm-metal = ["voxcpm", "voxcpm-sys/metal"]
 omnivoice = ["dep:omnivoice", "dep:hound", "dep:rubato"]
 omnivoice-cuda = ["omnivoice", "omnivoice/cuda"]
 omnivoice-metal = ["omnivoice", "omnivoice/metal"]
+qwen-onnx = ["qwen", "dep:ort", "dep:rand", "dep:tokenizers"]
+omnivoice-onnx = ["omnivoice", "dep:ort", "dep:rand"]
 coreml = ["dep:ort", "ort/coreml"]
 ort-cuda = ["dep:ort", "ort/cuda"]
 
@@ -81,3 +87,11 @@ required-features = ["qwen"]
 [[example]]
 name = "native_probe"
 required-features = ["qwen"]
+
+[[example]]
+name = "moss_nano_probe"
+required-features = ["moss-nano-candle"]
+
+[[example]]
+name = "onnx_probe"
+required-features = ["qwen-onnx", "omnivoice-onnx"]

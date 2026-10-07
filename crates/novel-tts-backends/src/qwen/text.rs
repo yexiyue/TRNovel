@@ -1,6 +1,6 @@
 use tts_core::text::{TextSegment, is_decoration_line, is_heading_line};
 
-pub(super) fn normalize(source: &str) -> String {
+pub(crate) fn normalize(source: &str) -> String {
     let mut result = String::new();
     for line in source.lines() {
         let line = line.trim();
@@ -24,7 +24,7 @@ pub(super) fn normalize(source: &str) -> String {
 }
 
 /// Keep soft layout lines together; separate headings and true paragraphs.
-pub(super) fn segments(source: &str) -> Vec<TextSegment> {
+pub(crate) fn segments(source: &str) -> Vec<TextSegment> {
     let mut result = Vec::new();
     let mut start = 0;
     let mut offset = 0;
@@ -41,6 +41,11 @@ pub(super) fn segments(source: &str) -> Vec<TextSegment> {
     }
     append(source, start, source.len(), &mut result);
     result
+}
+pub(crate) fn paragraph_end(segment: &str, remaining: &str) -> bool {
+    remaining.trim().is_empty()
+        || is_heading_line(segment.trim())
+        || remaining.starts_with('\n') && segment.ends_with('\n')
 }
 fn append(source: &str, mut start: usize, end: usize, result: &mut Vec<TextSegment>) {
     // 180 UTF-8 bytes allow up to 60 Chinese characters per synthesis context.

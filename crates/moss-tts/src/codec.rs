@@ -8,11 +8,19 @@ use std::path::Path;
 #[derive(Deserialize)]
 struct Config {
     sampling_rate: u32,
+    #[serde(default = "mono_channels")]
+    number_channels: usize,
+    #[serde(default)]
+    #[serde(rename = "enable_channel_interleave")]
+    channel_interleave: bool,
     downsample_rate: usize,
     causal_transformer_context_duration: f64,
     encoder_kwargs: Vec<StageConfig>,
     decoder_kwargs: Vec<StageConfig>,
     quantizer_kwargs: QuantizerConfig,
+}
+fn mono_channels() -> usize {
+    1
 }
 #[derive(Deserialize)]
 struct QuantizerConfig {
@@ -42,6 +50,8 @@ struct StageConfig {
     dim_feedforward: usize,
     #[serde(default)]
     max_period: f64,
+    #[serde(default)]
+    context_duration: Option<f64>,
 }
 
 struct Layer {
@@ -61,13 +71,24 @@ struct Layer {
 }
 impl Layer {
     fn load(c: &StageConfig, context: usize, vb: VarBuilder<'_>) -> candle_core::Result<Self> {
+        let nano = vb.contains_tensor("self_attn.in_proj.weight");
+        let (input, output, ff1, ff2) = if nano {
+            ("self_attn.in_proj", "self_attn.out_proj", "ffn.0", "ffn.2")
+        } else {
+            (
+                "self_attn.in_projs.0",
+                "self_attn.out_projs.0",
+                "linear1",
+                "linear2",
+            )
+        };
         Ok(Self {
-            input: linear_no_bias(c.d_model, 3 * c.d_model, vb.pp("self_attn.in_projs.0"))?,
-            output: linear_no_bias(c.d_model, c.d_model, vb.pp("self_attn.out_projs.0"))?,
+            input: linear_no_bias(c.d_model, 3 * c.d_model, vb.pp(input))?,
+            output: linear_no_bias(c.d_model, c.d_model, vb.pp(output))?,
             norm1: layer_norm(c.d_model, 1e-5, vb.pp("norm1"))?,
             norm2: layer_norm(c.d_model, 1e-5, vb.pp("norm2"))?,
-            ff1: linear_no_bias(c.d_model, c.dim_feedforward, vb.pp("linear1"))?,
-            ff2: linear_no_bias(c.dim_feedforward, c.d_model, vb.pp("linear2"))?,
+            ff1: linear_no_bias(c.d_model, c.dim_feedforward, vb.pp(ff1))?,
+            ff2: linear_no_bias(c.dim_feedforward, c.d_model, vb.pp(ff2))?,
             scale1: vb.get(c.d_model, "layer_scale_1.scale")?,
             scale2: vb.get(c.d_model, "layer_scale_2.scale")?,
             heads: c.num_heads,
@@ -381,12 +402,17 @@ pub struct AudioCodec {
     dtype: DType,
     hop: usize,
     pub sample_rate: u32,
+    pub channels: usize,
 }
 impl AudioCodec {
     pub fn load(directory: &Path, device: &Device, dtype: DType) -> anyhow::Result<Self> {
         let c: Config = serde_json::from_slice(&std::fs::read(directory.join("config.json"))?)?;
         anyhow::ensure!(
-            c.sampling_rate == 24000 && c.downsample_rate == 1920,
+            (c.sampling_rate == 24000 && c.downsample_rate == 1920 && c.number_channels == 1)
+                || (c.sampling_rate == 48000
+                    && c.downsample_rate == 3840
+                    && c.number_channels == 2
+                    && c.channel_interleave),
             "unsupported codec configuration"
         );
         let vb = crate::weights(directory, dtype, device)?;
@@ -401,7 +427,11 @@ impl AudioCodec {
                 .map(|(i, stage)| {
                     let result = Stage::load(
                         stage,
-                        (rate * c.causal_transformer_context_duration) as usize,
+                        (rate
+                            * stage
+                                .context_duration
+                                .unwrap_or(c.causal_transformer_context_duration))
+                            as usize,
                         vb.pp(format!("{name}.{i}")),
                     )?;
                     if stage.module_type == "PatchedPretransform" {
@@ -415,7 +445,12 @@ impl AudioCodec {
                 })
                 .collect()
         };
-        let encoder = build(&c.encoder_kwargs, "encoder", c.sampling_rate as f64, true)?;
+        let encoder = build(
+            &c.encoder_kwargs,
+            "encoder",
+            c.sampling_rate as f64 * c.number_channels as f64,
+            true,
+        )?;
         let decoder = build(
             &c.decoder_kwargs,
             "decoder",
@@ -434,6 +469,7 @@ impl AudioCodec {
             dtype,
             hop: c.downsample_rate,
             sample_rate: c.sampling_rate,
+            channels: c.number_channels,
         })
     }
     pub fn reset_decoder(&mut self) {
@@ -457,12 +493,13 @@ impl AudioCodec {
         }
         let samples = x.flatten_all()?.to_dtype(DType::F32)?.to_vec1::<f32>()?;
         anyhow::ensure!(
-            samples.len() == frames.len() * self.hop && samples.iter().all(|v| v.is_finite()),
+            samples.len() == frames.len() * self.hop * self.channels
+                && samples.iter().all(|v| v.is_finite()),
             "invalid codec waveform"
         );
         Ok(samples)
     }
-    /// Encode 24 kHz mono reference audio, zero-padding the final codec frame.
+    /// Encode interleaved reference audio at the codec sample rate, padding the final frame.
     pub fn encode(
         &mut self,
         samples: &[f32],
@@ -470,14 +507,17 @@ impl AudioCodec {
         cancelled: &impl Fn() -> bool,
     ) -> anyhow::Result<Vec<Vec<u32>>> {
         anyhow::ensure!(
-            !samples.is_empty() && samples.iter().all(|v| v.is_finite()),
+            !samples.is_empty()
+                && samples.len().is_multiple_of(self.channels)
+                && samples.iter().all(|v| v.is_finite()),
             "invalid reference waveform"
         );
         for stage in &mut self.encoder {
             stage.reset();
         }
         let mut padded = samples.to_vec();
-        padded.resize(samples.len().div_ceil(self.hop) * self.hop, 0.);
+        let frame_samples = self.hop * self.channels;
+        padded.resize(samples.len().div_ceil(frame_samples) * frame_samples, 0.);
         let mut x = Tensor::from_vec(padded.clone(), (1, 1, padded.len()), &self.device)?
             .to_dtype(self.dtype)?;
         for stage in &mut self.encoder {
@@ -546,6 +586,53 @@ mod tests {
             .fold(0f32, f32::max);
         assert!(maximum < 1e-5, "codec ring boundary error: {maximum}");
         assert!(stage.forward(&input, false, &|| true).is_err());
+        Ok(())
+    }
+}
+
+#[cfg(test)]
+mod nano_tests {
+    use super::*;
+    #[test]
+    fn real_nano_codec_matches_pinned_onnx_stereo_and_streaming() -> anyhow::Result<()> {
+        let Some(directory) = std::env::var_os("TRNOVEL_MOSS_NANO_CANDLE_DIR") else {
+            return Ok(());
+        };
+        let reference: serde_json::Value =
+            serde_json::from_str(include_str!("../tests/fixtures/nano-codec.json"))?;
+        let frames: Vec<Vec<u32>> = serde_json::from_value(reference["codes"].clone())?;
+        #[allow(unused_mut)] // CPU-only test builds do not append a GPU.
+        let mut devices = vec![Device::Cpu];
+        #[cfg(all(feature = "metal", target_os = "macos"))]
+        devices.push(Device::new_metal(0)?);
+        for device in devices {
+            let mut codec = AudioCodec::load(
+                &std::path::PathBuf::from(&directory).join("codec"),
+                &device,
+                DType::F32,
+            )?;
+            assert_eq!((codec.sample_rate, codec.channels), (48000, 2));
+            let mut samples = Vec::new();
+            for chunk in frames.chunks(3) {
+                samples.extend(codec.decode(chunk, &|| false)?);
+            }
+            assert_eq!(
+                samples.len(),
+                reference["sample_count"].as_u64().unwrap() as usize
+            );
+            let mut max_error = 0f32;
+            for probe in reference["probes"].as_array().unwrap() {
+                let actual = samples[probe["index"].as_u64().unwrap() as usize];
+                let expected = probe["value"].as_f64().unwrap() as f32;
+                max_error = max_error.max((actual - expected).abs());
+            }
+            assert!(
+                max_error < 3e-4,
+                "Nano {device:?} codec differs from ONNX: {max_error}"
+            );
+            codec.reset_decoder();
+            assert!(codec.decode(&frames[..3], &|| true).is_err());
+        }
         Ok(())
     }
 }

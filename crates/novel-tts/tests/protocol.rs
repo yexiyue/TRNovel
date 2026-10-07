@@ -247,7 +247,11 @@ fn backend_directory_and_switch_are_lightweight() {
             #[cfg(feature = "omnivoice")]
             "omnivoice",
             #[cfg(feature = "qwen")]
-            "qwen"
+            "qwen",
+            #[cfg(feature = "qwen-onnx")]
+            "qwen-onnx",
+            #[cfg(feature = "omnivoice-onnx")]
+            "omnivoice-onnx",
         ]
     );
     assert_eq!(catalog[0].default_voice, "Weiguo");

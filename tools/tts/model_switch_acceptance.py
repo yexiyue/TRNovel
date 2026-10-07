@@ -4,6 +4,7 @@ import atexit
 import hashlib
 import json
 import queue
+import shutil
 import subprocess
 import threading
 import time
@@ -17,14 +18,24 @@ parser.add_argument('--model-root', required=True)
 parser.add_argument('--output', required=True)
 parser.add_argument('--choices-file', help='Optional JSON array of [backend, model, voice, device] choices.')
 args = parser.parse_args()
+choices = [('qwen', '0.6b-customvoice', 'uncle_fu', 'cuda'),
+           ('qwen', '1.7b-customvoice', 'uncle_fu', 'cuda'),
+           ('qwen', '1.7b-base', 'custom:acceptance', 'cuda'),
+           ('voxcpm', '2b-q8_0', 'custom:acceptance', 'cuda'),
+           ('omnivoice', '0.6b', 'custom:acceptance', 'cuda'),
+           ('moss', 'nano', 'Weiguo', 'cpu')]
+if args.choices_file:
+    choices = json.loads(Path(args.choices_file).read_text(encoding='utf-8'))
+    assert choices and all(len(choice) == 4 for choice in choices)
+
 root = Path(args.output)
 root.mkdir(parents=True, exist_ok=True)
 events = queue.Queue()
 stderr = (root / 'worker.log').open('w', encoding='utf-8')
 log = (root / 'events.jsonl').open('w', encoding='utf-8')
 worker = subprocess.Popen(
-    [args.worker, '--protocol', '--backend', 'qwen', '--model', '0.6b-customvoice',
-     '--voice', 'uncle_fu', '--tts-device', 'cuda', '--config', str(root / 'config.json'),
+    [args.worker, '--protocol', '--backend', choices[0][0], '--model', choices[0][1],
+     '--voice', choices[0][2], '--tts-device', choices[0][3], '--config', str(root / 'config.json'),
      '--model-dir', args.model_root, '--checkpoint-dir', str(root / 'positions')],
     stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=stderr, text=True, encoding='utf-8')
 
@@ -69,23 +80,18 @@ def wait(kind, request=None):
 
 
 def sample():
-    gpu = subprocess.run(['nvidia-smi', '--query-gpu=memory.used',
-                          '--format=csv,noheader,nounits'], capture_output=True, text=True)
-    return dict(vram_mib=int(gpu.stdout.strip()), **memory(worker.pid))
+    result = memory(worker.pid)
+    if shutil.which('nvidia-smi'):
+        gpu = subprocess.run(['nvidia-smi', '--query-gpu=memory.used',
+                              '--format=csv,noheader,nounits'], capture_output=True, text=True)
+        if gpu.returncode == 0:
+            result['vram_mib'] = int(gpu.stdout.strip())
+    return result
 
 
 send('hello', 'hello')
 wait('ready')
 results = []
-choices = [('qwen', '0.6b-customvoice', 'uncle_fu', 'cuda'),
-           ('qwen', '1.7b-customvoice', 'uncle_fu', 'cuda'),
-           ('qwen', '1.7b-base', 'custom:acceptance', 'cuda'),
-           ('voxcpm', '2b-q8_0', 'custom:acceptance', 'cuda'),
-           ('omnivoice', '0.6b', 'custom:acceptance', 'cuda'),
-           ('moss', 'nano', 'Weiguo', 'cpu')]
-if args.choices_file:
-    choices = json.loads(Path(args.choices_file).read_text(encoding='utf-8'))
-    assert choices and all(len(choice) == 4 for choice in choices)
 for index, (backend, model, voice, device) in enumerate(choices):
     send('get_config', f'config-{index}')
     config = wait('config')['payload']

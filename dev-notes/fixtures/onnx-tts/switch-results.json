@@ -1,0 +1,98 @@
+[
+  {
+    "backend": "qwen-onnx",
+    "model": "0.6b-customvoice",
+    "released": {
+      "rss_bytes": 15450112
+    },
+    "prepared": {
+      "rss_bytes": 7570292736
+    },
+    "seconds": 25.155384666,
+    "completed": true
+  },
+  {
+    "backend": "qwen-onnx",
+    "model": "1.7b-customvoice",
+    "released": {
+      "rss_bytes": 1069350912
+    },
+    "prepared": {
+      "rss_bytes": 6555123712
+    },
+    "seconds": 41.700080333,
+    "completed": true
+  },
+  {
+    "backend": "omnivoice-onnx",
+    "model": "0.6b",
+    "released": {
+      "rss_bytes": 237355008
+    },
+    "prepared": {
+      "rss_bytes": 2486353920
+    },
+    "seconds": 27.621084333,
+    "completed": true
+  },
+  {
+    "backend": "omnivoice-onnx",
+    "model": "0.6b",
+    "released": {
+      "rss_bytes": 2621227008
+    },
+    "prepared": {
+      "rss_bytes": 2621227008
+    },
+    "seconds": 51.20042087499999,
+    "completed": true
+  },
+  {
+    "backend": "qwen",
+    "model": "0.6b-customvoice",
+    "released": {
+      "rss_bytes": 688357376
+    },
+    "prepared": {
+      "rss_bytes": 5693505536
+    },
+    "seconds": 15.617042334000018,
+    "completed": true
+  },
+  {
+    "backend": "moss",
+    "model": "nano",
+    "released": {
+      "rss_bytes": 3197845504
+    },
+    "prepared": {
+      "rss_bytes": 3813556224
+    },
+    "seconds": 7.915658708999985,
+    "completed": true
+  },
+  {
+    "backend": "qwen-onnx",
+    "model": "0.6b-customvoice",
+    "released": {
+      "rss_bytes": 918290432
+    },
+    "prepared": {
+      "rss_bytes": 7826522112
+    },
+    "seconds": 25.385863333000003,
+    "completed": true
+  },
+  {
+    "backend": "omnivoice-onnx",
+    "model": "0.6b",
+    "released": {
+      "rss_bytes": 1261322240
+    },
+    "prepared": {
+      "rss_bytes": 3427336192
+    },
+    "seconds": 28.115385875000015,
+    "completed": true
+  }
+]

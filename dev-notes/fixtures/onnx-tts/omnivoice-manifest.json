@@ -1,0 +1,69 @@
+{
+  "abi_version": 1,
+  "export_revision": "4ec8125833a6a2806ff2e07b31e73f106954aad0",
+  "source_revision": "c5fdb5ccb189668d56333f77ba2629f4cd7535f4",
+  "precision": "fp32",
+  "parameters": {
+    "python_revision": "08be0b4ccbac3e13e374e86fbfead4b4cac343e2",
+    "torch": "2.5.1",
+    "device": "cpu",
+    "dynamo": false,
+    "optimize": false,
+    "opset": 17,
+    "export_script_sha256": "641847f06b6a82c67a1989fcfd8e587e9f70286f2c4c649a04b1e04a37c00902",
+    "manifest_script_sha256": "3bf3f6f45497d4fa13ffaa1795d0deb18d6c0caf0883dee3ebb66f309bee003d"
+  },
+  "graph_opsets": {
+    "audio_tokenizer_decoder/model.onnx": {
+      "ai.onnx": 17
+    },
+    "audio_tokenizer_encoder/model.onnx": {
+      "ai.onnx": 17
+    },
+    "omnivoice_lm/model.onnx": {
+      "ai.onnx": 17
+    }
+  },
+  "resources": [
+    {
+      "path": "audio_tokenizer_decoder/model.onnx",
+      "size": 271838,
+      "sha256": "444f208770f7dd0ec252467ec29988944c7f2be47f41552d1cce559e09326155"
+    },
+    {
+      "path": "audio_tokenizer_decoder/model.onnx_data",
+      "size": 86241280,
+      "sha256": "ec99cf5209ae6aae4be937a6589166f7998079c86c3b2ac82e1bf18ae173c3e3"
+    },
+    {
+      "path": "audio_tokenizer_encoder/model.onnx",
+      "size": 563674,
+      "sha256": "39dc96a4f4aeb5f22b0af698fdd62330b1f9723230c5508c1611616bd423979f"
+    },
+    {
+      "path": "audio_tokenizer_encoder/model.onnx_data",
+      "size": 653864704,
+      "sha256": "98c7fc3df67d2e2ec61aac0c5cdbbcb7c7c771bb9fab6732e71cbe4c1ae6699a"
+    },
+    {
+      "path": "config.json",
+      "size": 2238,
+      "sha256": "5e359117e13b420c5e0c925d4aba650d624767131f1d1746928f8b850d5dc372"
+    },
+    {
+      "path": "omnivoice_lm/model.onnx",
+      "size": 1295321,
+      "sha256": "e40869d6a85c11b723d60920083bfd497ff5ef7e19dbcea59a94dd60a30b9a90"
+    },
+    {
+      "path": "omnivoice_lm/model.onnx_data",
+      "size": 2450280448,
+      "sha256": "2ea0980e184bbf8457048fbb3ed2a01f8f8c3816a8ee9fbff3ce0886c1aeeb4a"
+    },
+    {
+      "path": "tokenizer.json",
+      "size": 11423986,
+      "sha256": "408f669b7e2b045fdf54201d815bd364e6667dbd845115da81239c40bc6dcfd1"
+    }
+  ]
+}

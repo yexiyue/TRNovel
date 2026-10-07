@@ -342,7 +342,12 @@ fn shared_store(
 ) -> anyhow::Result<Option<(tts_core::voices::VoiceStore, u32)>> {
     Ok(match config.backend.as_str() {
         #[cfg(feature = "moss-candle")]
-        "moss" if config.model.as_deref().is_some_and(|id| id != "nano") => {
+        "moss"
+            if config
+                .model
+                .as_deref()
+                .is_some_and(|id| id != "nano" && id != "nano-candle") =>
+        {
             let mode = tts_backends::moss::candle::Mode::parse(
                 config.model.as_deref().expect("matched model"),
             )?;
@@ -357,7 +362,7 @@ fn shared_store(
             16000,
         )),
         #[cfg(feature = "omnivoice")]
-        "omnivoice" => Some((
+        "omnivoice" | "omnivoice-onnx" => Some((
             tts_backends::omnivoice::voice_store(&tts_backends::omnivoice::directory(
                 resources.root(),
             ))?,

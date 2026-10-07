@@ -28,6 +28,13 @@ mod resources;
 #[cfg(feature = "voxcpm")]
 pub mod voxcpm;
 
+#[cfg(feature = "omnivoice-onnx")]
+pub mod omnivoice_onnx;
+#[cfg(any(feature = "qwen-onnx", feature = "omnivoice-onnx"))]
+mod onnx_runtime;
+#[cfg(feature = "qwen-onnx")]
+pub mod qwen_onnx;
+
 use std::{
     path::{Path, PathBuf},
     rc::Rc,
@@ -57,6 +64,14 @@ impl Registry {
     fn devices_for(&self, backend: &str, available: bool) -> Vec<tts_protocol::Device> {
         let _ = available;
         match backend {
+            #[cfg(any(feature = "qwen-onnx", feature = "omnivoice-onnx"))]
+            "qwen-onnx" | "omnivoice-onnx" => {
+                if available {
+                    devices::available()
+                } else {
+                    devices::compiled()
+                }
+            }
             #[cfg(feature = "voxcpm")]
             "voxcpm" => {
                 if available {
@@ -141,6 +156,10 @@ impl Registry {
         backend: &str,
         model: Option<&str>,
     ) -> Vec<tts_protocol::Device> {
+        #[cfg(feature = "moss-nano-candle")]
+        if backend == "moss" && model == Some("nano-candle") {
+            return moss::nano::compiled_devices();
+        }
         #[cfg(feature = "moss-candle")]
         if backend == "moss" && model.is_some_and(|id| id != "nano") {
             return moss::candle::compiled_devices();
@@ -159,6 +178,10 @@ impl Registry {
         backend: &str,
         model: Option<&str>,
     ) -> Vec<tts_protocol::Device> {
+        #[cfg(feature = "moss-nano-candle")]
+        if backend == "moss" && model == Some("nano-candle") {
+            return moss::nano::available_devices();
+        }
         #[cfg(feature = "moss-candle")]
         if backend == "moss" && model.is_some_and(|id| id != "nano") {
             return moss::candle::available_devices();
@@ -191,6 +214,8 @@ impl Registry {
         let entries = vec![
             #[cfg(feature = "moss")]
             moss::capabilities(&self.root.join("moss"))?,
+            #[cfg(feature = "moss-nano-candle")]
+            moss::nano::capabilities(&self.root)?,
             #[cfg(feature = "moss-candle")]
             moss::candle::capabilities(&self.root, moss::candle::Mode::Local)?,
             #[cfg(feature = "moss-candle")]
@@ -207,6 +232,13 @@ impl Registry {
             .collect();
         #[allow(unused_mut)] // An empty-backend build has no device catalog to populate.
         let mut entries: Vec<Capabilities> = entries;
+        #[cfg(feature = "qwen-onnx")]
+        entries.extend([
+            qwen_onnx::capabilities(qwen::models::Model::Custom06),
+            qwen_onnx::capabilities(qwen::models::Model::Custom17),
+        ]);
+        #[cfg(feature = "omnivoice-onnx")]
+        entries.push(omnivoice_onnx::capabilities(&self.root)?);
         #[cfg(any(
             feature = "moss",
             feature = "qwen",
@@ -297,6 +329,17 @@ impl Registry {
             "device {device:?} is unavailable for {id}"
         );
         match id {
+            #[cfg(feature = "omnivoice-onnx")]
+            "omnivoice-onnx" => {
+                omnivoice_onnx::prepare(&self.root, progress).await?;
+                Ok(Rc::new(omnivoice_onnx::load(&self.root, device).await?))
+            }
+            #[cfg(feature = "qwen-onnx")]
+            "qwen-onnx" => {
+                let model = qwen_onnx::model(model)?;
+                qwen_onnx::prepare(&self.root, model, progress).await?;
+                Ok(Rc::new(qwen_onnx::load(&self.root, model, device).await?))
+            }
             #[cfg(feature = "voxcpm")]
             "voxcpm" => {
                 let directory = voxcpm::directory(&self.root);
@@ -324,6 +367,13 @@ impl Registry {
             }
             #[cfg(feature = "moss")]
             "moss" => {
+                #[cfg(feature = "moss-nano-candle")]
+                if model == Some("nano-candle") {
+                    moss::nano::prepare(&self.root, progress).await?;
+                    return Ok(Rc::new(
+                        moss::nano::NanoBackend::load_on(self.root.clone(), device).await?,
+                    ));
+                }
                 #[cfg(feature = "moss-candle")]
                 if let Some(model) = model.filter(|id| *id != "nano") {
                     let mode = moss::candle::Mode::parse(model)?;
