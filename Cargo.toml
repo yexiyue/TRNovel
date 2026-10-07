@@ -63,7 +63,7 @@ reqwest = { version = "0.13", default-features = false, features = ["rustls"] }
 
 
 [workspace]
-members = ["crates/moss-tts", "crates/tts-candle-platform", "crates/omnivoice", "crates/voxcpm-sys", "crates/qwen3-tts", "crates/novel-tts-backends", "crates/novel-tts-core", "crates/novel-tts-protocol", "crates/novel-tts", "crates/parse-book-source"]
+members = ["crates/voxcpm", "crates/moss-tts", "crates/tts-candle-platform", "crates/omnivoice", "crates/voxcpm-sys", "crates/qwen3-tts", "crates/novel-tts-backends", "crates/novel-tts-core", "crates/novel-tts-protocol", "crates/novel-tts", "crates/parse-book-source"]
 
 [workspace.dependencies]
 moss-tts = { path = "crates/moss-tts" }
@@ -71,9 +71,9 @@ tts-candle-platform = { path = "crates/tts-candle-platform", version = "0.1.0" }
 cmake = "0.1.58"
 cc = "1.2"
 qwen3-tts = { path = "crates/qwen3-tts", version = "0.3.0", default-features = false }
-candle-core = "=0.9.2"
-candle-nn = "=0.9.2"
-candle-transformers = "=0.9.2"
+candle-core = "=0.11.0"
+candle-nn = "=0.11.0"
+candle-transformers = "=0.11.0"
 tokenizers = { version = "0.22.2", default-features = false }
 hound = "3.5"
 rustfft = "6.4"

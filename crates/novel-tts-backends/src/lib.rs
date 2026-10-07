@@ -141,6 +141,11 @@ impl Registry {
         backend: &str,
         model: Option<&str>,
     ) -> Vec<tts_protocol::Device> {
+        #[cfg(feature = "voxcpm")]
+        if backend == "voxcpm" {
+            return voxcpm::models::Model::parse(model)
+                .map_or_else(|_| vec![], |model| model.compiled_devices());
+        }
         #[cfg(feature = "moss-candle")]
         if backend == "moss" && model.is_some_and(|id| id != "nano") {
             return moss::candle::compiled_devices();
@@ -159,6 +164,14 @@ impl Registry {
         backend: &str,
         model: Option<&str>,
     ) -> Vec<tts_protocol::Device> {
+        #[cfg(feature = "voxcpm")]
+        if backend == "voxcpm" {
+            let compiled = self.compiled_devices_for(backend, model);
+            return voxcpm::available_devices()
+                .into_iter()
+                .filter(|device| compiled.contains(device))
+                .collect();
+        }
         #[cfg(feature = "moss-candle")]
         if backend == "moss" && model.is_some_and(|id| id != "nano") {
             return moss::candle::available_devices();
@@ -200,6 +213,18 @@ impl Registry {
             #[cfg(feature = "omnivoice")]
             omnivoice::capabilities(&omnivoice::directory(&self.root))?,
         ];
+        #[cfg(feature = "voxcpm")]
+        let entries = {
+            let mut entries = entries;
+            let model = voxcpm::models::Model::OriginalBf16;
+            if !model.compiled_devices().is_empty() {
+                entries.push(voxcpm::capabilities_for(
+                    &model.directory(&self.root),
+                    model,
+                )?);
+            }
+            entries
+        };
         #[cfg(feature = "qwen")]
         let entries = entries
             .into_iter()
@@ -299,10 +324,11 @@ impl Registry {
         match id {
             #[cfg(feature = "voxcpm")]
             "voxcpm" => {
-                let directory = voxcpm::directory(&self.root);
-                voxcpm::resources::prepare(&directory, progress).await?;
+                let model = voxcpm::models::Model::parse(model)?;
+                let directory = model.directory(&self.root);
+                voxcpm::resources::prepare_model(&directory, model, progress).await?;
                 Ok(Rc::new(
-                    voxcpm::VoxBackend::load_on(directory, device).await?,
+                    voxcpm::VoxBackend::load_model_on(directory, model, device).await?,
                 ))
             }
             #[cfg(feature = "omnivoice")]

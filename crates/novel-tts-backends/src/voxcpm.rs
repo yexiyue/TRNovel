@@ -1,5 +1,7 @@
 //! Native VoxCPM2 streaming; the model never leaves its inference thread.
+mod cache;
 pub mod design;
+pub mod models;
 pub mod resources;
 mod runtime;
 use std::path::{Path, PathBuf};
@@ -7,19 +9,28 @@ use tokio::sync::{mpsc, oneshot};
 use tts_core::backend::{Backend, BackendError, Segmentation, Streaming};
 use tts_protocol::{Capabilities, Device};
 pub const MODEL: &str = "2b-q8_0";
+/// Invalidate native-engine performance calibration without changing model resources.
+pub const CALIBRATION_REVISION: &str = "169f64d8b98bbaab1761e4ca3a83e6af653456cc-candle-v1";
 pub fn directory(root: &Path) -> PathBuf {
-    root.join("voxcpm/models")
-        .join(MODEL)
-        .join(resources::REVISION)
+    models::Model::Q8.directory(root)
 }
 pub fn voice_store(directory: &Path) -> anyhow::Result<tts_core::voices::VoiceStore> {
-    tts_core::voices::VoiceStore::new(directory, "voxcpm", MODEL, resources::REVISION)
+    voice_store_for(directory, models::Model::Q8)
+}
+pub fn voice_store_for(
+    directory: &Path,
+    model: models::Model,
+) -> anyhow::Result<tts_core::voices::VoiceStore> {
+    tts_core::voices::VoiceStore::new(directory, "voxcpm", model.id(), model.revision())
 }
 pub fn capabilities(directory: &Path) -> anyhow::Result<Capabilities> {
+    capabilities_for(directory, models::Model::Q8)
+}
+pub fn capabilities_for(directory: &Path, model: models::Model) -> anyhow::Result<Capabilities> {
     let mut caps = Capabilities {
         backend: "voxcpm".into(),
-        model: Some(MODEL.into()),
-        model_name: "VoxCPM2 2B · Q8_0".into(),
+        model: Some(model.id().into()),
+        model_name: model.name().into(),
         voices: vec!["narrator".into()],
         default_voice: "narrator".into(),
         voice_names: [("narrator".into(), "自然音色（模型默认）".into())].into(),
@@ -29,7 +40,7 @@ pub fn capabilities(directory: &Path) -> anyhow::Result<Capabilities> {
         compiled_devices: Vec::new(),
         pronunciation: false,
     };
-    for voice in voice_store(directory)?.list()? {
+    for voice in voice_store_for(directory, model)?.list()? {
         caps.voice_names.insert(voice.id.clone(), voice.name);
         caps.voices.push(voice.id);
     }
@@ -50,7 +61,11 @@ pub fn compiled_devices() -> Vec<Device> {
 pub fn available_devices() -> Vec<Device> {
     compiled_devices()
         .into_iter()
-        .filter(|device| runtime::native_device(*device).is_some_and(|device| device.available()))
+        .filter(|device| match device {
+            Device::Cpu => true,
+            Device::Cuda | Device::Metal => runtime::candle_device(*device).is_ok(),
+            _ => false,
+        })
         .collect()
 }
 pub struct VoxBackend {
@@ -60,17 +75,25 @@ pub struct VoxBackend {
 }
 impl VoxBackend {
     pub async fn load_on(directory: PathBuf, device: Device) -> Result<Self, BackendError> {
-        if !available_devices().contains(&device) {
+        Self::load_model_on(directory, models::Model::Q8, device).await
+    }
+    pub async fn load_model_on(
+        directory: PathBuf,
+        model: models::Model,
+        device: Device,
+    ) -> Result<Self, BackendError> {
+        if !model.compiled_devices().contains(&device) || !available_devices().contains(&device) {
             return Err(BackendError::Initialize(format!(
                 "VoxCPM2 device {device:?} is unavailable"
             )));
         }
-        let caps = capabilities(&directory).map_err(|e| BackendError::Initialize(e.to_string()))?;
+        let caps = capabilities_for(&directory, model)
+            .map_err(|e| BackendError::Initialize(e.to_string()))?;
         let (requests, jobs) = mpsc::channel(1);
         let (ready, loaded) = oneshot::channel();
         let thread = std::thread::Builder::new()
             .name("voxcpm-inference".into())
-            .spawn(move || runtime::run(directory, device, jobs, ready))
+            .spawn(move || runtime::run(directory, model, device, jobs, ready))
             .map_err(|e| BackendError::Initialize(e.to_string()))?;
         // Own the thread before awaiting initialization: cancellation must join it.
         let backend = Self {

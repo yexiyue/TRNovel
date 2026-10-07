@@ -149,10 +149,17 @@ pub async fn run(
                         }
                         #[cfg(feature = "voxcpm")]
                         "voxcpm" => {
-                            let directory = tts_backends::voxcpm::directory(resources.root());
-                            tts_backends::voxcpm::resources::prepare(&directory, progress).await?;
-                            tts_backends::voxcpm::design::reference(
+                            let model = tts_backends::voxcpm::models::Model::parse(
+                                config.model.as_deref(),
+                            )?;
+                            let directory = model.directory(resources.root());
+                            tts_backends::voxcpm::resources::prepare_model(
+                                &directory, model, progress,
+                            )
+                            .await?;
+                            tts_backends::voxcpm::design::reference_model(
                                 directory,
+                                model,
                                 device,
                                 text.clone(),
                                 description.clone(),
@@ -352,10 +359,13 @@ fn shared_store(
             ))
         }
         #[cfg(feature = "voxcpm")]
-        "voxcpm" => Some((
-            tts_backends::voxcpm::voice_store(&tts_backends::voxcpm::directory(resources.root()))?,
-            16000,
-        )),
+        "voxcpm" => {
+            let model = tts_backends::voxcpm::models::Model::parse(config.model.as_deref())?;
+            Some((
+                tts_backends::voxcpm::voice_store_for(&model.directory(resources.root()), model)?,
+                16000,
+            ))
+        }
         #[cfg(feature = "omnivoice")]
         "omnivoice" => Some((
             tts_backends::omnivoice::voice_store(&tts_backends::omnivoice::directory(

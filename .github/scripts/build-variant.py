@@ -67,7 +67,7 @@ if variant.startswith("listening"):
     if any(feature.startswith("omnivoice") for feature in optional_features):
         sources.append(root / "crates" / "omnivoice")
     if any(feature.startswith("voxcpm") for feature in optional_features):
-        sources.append(root / "crates" / "voxcpm-sys" / "native")
+        sources.append(root / "crates" / "voxcpm")
     for source in sources:
         for path in source.rglob("*"):
             if path.is_file() and (path.name.startswith(("LICENSE", "COPYING")) or path.name in ("SOURCE.md", "NOTICE")):

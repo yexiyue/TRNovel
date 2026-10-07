@@ -70,6 +70,7 @@ started = time.monotonic()
 samples = []
 playing = False
 segments = 0
+underruns = 0
 deadline = started + args.seconds
 while time.monotonic() < deadline:
     try:
@@ -85,6 +86,8 @@ while time.monotonic() < deadline:
             raise RuntimeError(e)
         if e['type'] == 'session_state' and e['payload']['state'] == 'playing':
             playing = True
+        if playing and e['type'] == 'session_state' and e['payload']['state'] == 'buffering':
+            underruns += 1
         if e['type'] == 'segment_started':
             segments += 1
     if len(samples) == 0 or time.monotonic() - samples[-1]['at'] >= 10:
@@ -93,7 +96,7 @@ while time.monotonic() < deadline:
         except FileNotFoundError:
             gpu = None
         samples.append(dict(at=time.monotonic(), elapsed=time.monotonic() - started, vram_mib=gpu, **memory(p.pid)))
-        (root / 'progress.json').write_text(json.dumps(dict(elapsed=time.monotonic() - started, playing=playing, segments=segments, memory=samples), indent=2))
+        (root / 'progress.json').write_text(json.dumps(dict(elapsed=time.monotonic() - started, playing=playing, segments=segments, underruns=underruns, memory=samples), indent=2))
 send('stop', 'cancel', session='soak')
 cancel_at = time.monotonic()
 wait_for('session_ended', time.monotonic() + 20)
@@ -105,5 +108,6 @@ send('shutdown', 'shutdown')
 p.stdin.close()
 p.wait(timeout=30)
 assert p.returncode == 0 and playing
-(root / 'result.json').write_text(json.dumps(dict(seconds=time.monotonic() - started, playing=playing, segments=segments, stop_ack_ms=cancel_ms, after_cancel='completed', memory=samples), indent=2))
+(root / 'result.json').write_text(json.dumps(dict(seconds=time.monotonic() - started, playing=playing, segments=segments, underruns=underruns, stop_ack_ms=cancel_ms, after_cancel='completed', memory=samples), indent=2))
+assert underruns == 0, f'{underruns} buffering underruns after playback began'
 print(f'{args.backend}: {args.seconds}-second actual playback and subsequent request completed', flush=True)

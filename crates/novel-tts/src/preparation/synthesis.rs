@@ -191,7 +191,8 @@ pub(super) fn tts_revision(config: &Config) -> &'static str {
     let backend = config.backend.as_str();
     #[cfg(feature = "voxcpm")]
     if backend == "voxcpm" {
-        return tts_backends::voxcpm::resources::REVISION;
+        return tts_backends::voxcpm::models::Model::parse(config.model.as_deref())
+            .map_or("unknown", |model| model.calibration_revision());
     }
     #[cfg(feature = "omnivoice")]
     if backend == "omnivoice" {

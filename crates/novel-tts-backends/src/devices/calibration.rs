@@ -100,8 +100,13 @@ fn runtime_info() -> String {
             feature = "ort-cuda",
         ))]
         format!("{:?}", ort::info()),
-        #[cfg(feature = "qwen")]
-        "candle-0.9.2:qwen-local-v1".into(),
+        #[cfg(any(
+            feature = "qwen",
+            feature = "voxcpm",
+            feature = "omnivoice",
+            feature = "moss-candle"
+        ))]
+        "candle-0.11.0:local-v1".into(),
     ];
     versions.join(";")
 }

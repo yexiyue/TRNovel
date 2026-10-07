@@ -95,7 +95,15 @@ Candle 实现已纳入本地 `crates/qwen3-tts`，来源 revision 已记录。�
 | 后端 | 模型选项 | 设备 / 输出 | 音色 |
 | --- | --- | --- | --- |
 | VoxCPM2 | `2b-q8_0` | CUDA / Metal / CPU；48kHz 原生流式 | 参考 WAV + 文字克隆，描述设计 |
+| VoxCPM2（实验） | `2b-bf16` | CUDA；原始 BF16 网络 + F32 AudioVAE，48kHz 原生流式 | 独立音色和参考编码缓存 |
 | OmniVoice | `0.6b` | CUDA / Metal / CPU；24kHz 语义分段 | 克隆，支持标签描述设计 |
+
+编入 `voxcpm-cuda` 后，可在阅读器的 VoxCPM 后端“模型”行选择
+“原始 BF16（实验）”；默认仍为 Q8，已有选择保留。实验模型约 4.96 GB，
+保存在 `~/.novel-tts/voxcpm/models/2b-bf16/<revision>`，已有完整缓存直接校验复用。
+数值对照、人工听感和长期稳定性仍有待验收项，设置面板会显示提示。
+音色按模型隔离；要比较同一音色，可用 `--model 2b-bf16 voices import`
+重新导入相同参考 WAV 和文字。实验档不开放 CPU 或 Metal。
 
 ```sh
 cargo build --release -p novel-tts --features qwen-cuda,voxcpm-cuda,omnivoice-cuda

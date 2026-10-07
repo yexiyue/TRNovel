@@ -94,6 +94,14 @@ pub fn TTSManager(props: &TTSManagerProps, mut hooks: Hooks) -> impl Into<AnyEle
         .error
         .clone()
         .unwrap_or_else(|| format!("{} · {}", snapshot.progress, snapshot.alignment));
+    let status =
+        if snapshot.capabilities.as_ref().is_some_and(|caps| {
+            caps.backend == "voxcpm" && caps.model.as_deref() == Some("2b-bf16")
+        }) {
+            format!("实验模型 · 数值与长期稳定性验收待完成\n{status}")
+        } else {
+            status
+        };
     element!(Modal(layer:Some(layer),width:Constraint::Percentage(80),height:Constraint::Percentage(80),open:open,blocks_lower:false,margin:Margin::new(1,1),style:Style::default().dim()) {
         View(margin:Margin::new(1,1)) {
             ScrollView(active:false,state:scroll,block:Block::bordered().border_style(theme.border.not_dim()).title_top(Line::from("听书设置").centered().style(theme.title))) {

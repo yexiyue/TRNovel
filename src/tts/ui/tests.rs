@@ -142,6 +142,53 @@ async fn moss_models_switch_between_nano_and_gpu_without_reusing_voice_or_device
 }
 
 #[tokio::test]
+async fn experimental_voxcpm_model_is_labelled_and_can_switch_back() {
+    let Some(worker) = std::env::var_os("TRNOVEL_VOX_EXPERIMENT_TUI_WORKER") else {
+        return;
+    };
+    let (handle, task) = Handle::new();
+    handle.set_path(Some(worker.into()));
+    let mut watched = handle.watch();
+    handle.open();
+    let mut snapshot = configuration(&mut watched, None).await;
+    let revision = snapshot.config.as_ref().unwrap().revision;
+    handle.update(ConfigPatch {
+        expected_revision: revision,
+        backend: Some("voxcpm".into()),
+        model: Some("2b-q8_0".into()),
+        voice: Some("narrator".into()),
+        tts_device: Some(tts_protocol::Device::Cpu),
+        ..Default::default()
+    });
+    snapshot = configuration(&mut watched, Some(revision)).await;
+    let trial = adjust(&handle, &mut snapshot, &mut watched, Setting::Model, true).await;
+    assert_eq!(
+        trial.config.as_ref().unwrap().model.as_deref(),
+        Some("2b-bf16")
+    );
+    assert_eq!(
+        trial.config.as_ref().unwrap().tts_device,
+        tts_protocol::Device::Auto
+    );
+    assert_eq!(trial.config.as_ref().unwrap().voice, "narrator");
+    assert_eq!(
+        trial.capabilities.as_ref().unwrap().compiled_devices,
+        vec![tts_protocol::Device::Cuda]
+    );
+    let display = rendered(&handle, &snapshot, None);
+    assert!(display.contains("原始BF16（实验）"));
+    assert!(display.contains("验收待完成"));
+    let restored = adjust(&handle, &mut snapshot, &mut watched, Setting::Model, false).await;
+    assert_eq!(
+        restored.config.as_ref().unwrap().model.as_deref(),
+        Some("2b-q8_0")
+    );
+    assert!(!rendered(&handle, &snapshot, None).contains("验收待完成"));
+    handle.shutdown().await;
+    task.await.unwrap();
+}
+
+#[tokio::test]
 async fn real_worker_model_voice_and_backend_changes_follow_rendered_capabilities() {
     let Some(worker) = std::env::var_os("TRNOVEL_TTS_TUI_WORKER") else {
         return;

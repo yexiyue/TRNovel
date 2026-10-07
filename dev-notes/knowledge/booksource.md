@@ -276,3 +276,23 @@ MOSS Nano 保留原 ONNX 与音色格式，旧 model=None 不改写；Candle 试
 Codec 流式 ring-cache 在当前 chunk 注意力之前覆盖旧 key，与先算完整滑窗再裁缓存不同；需有跨窗口官方数值回归。EOS 和正常 End 不证明语音内容逐字完整。
 
 **相关文件**：`crates/novel-tts-backends/src/moss/candle.rs`、`crates/moss-tts/src/codec.rs`。
+
+### VoxCPM Candle 音色兼容（2026-10-07）
+
+后端 `voxcpm` 与模型 `2b-q8_0` 不变，既有音色记录、参考 WAV 和参考文字继续可用。计算实现改为 Candle，旧原生编码 features.json 不作为兼容数据读取，第一次使用会从 WAV 生成带身份校验的新缓存。音色设计只生成并保存短参考，后续播放复用克隆编码；只在有效 PCM 和 EOS 后完成片段，取消和截断不发送 End。
+
+**相关文件**：`crates/novel-tts-backends/src/voxcpm/cache.rs`、`design.rs`、`runtime.rs`。
+
+### VoxCPM 原始前端与 GGUF 前端对照
+
+GGUF 重建的 SentencePiece 与官方实际 `LlamaTokenizerFast` 并非所有输入都一致：当前 17 条夹具有 3 条 token ID 不同，包括开头空白标记及相邻中文的 BPE 合并。原始 Safetensors 路径直接加载 Hugging Face tokenizer.json，并沿用固定官方源码的中文多字 token 拆分；两套夹具分别保存，不把同一 GGUF 的解量化对照称为原始权重验证。该差异对听感/漏读的影响需要单独试听与内容验证，不能仅由 token 不同推断。
+
+**相关文件**：`crates/voxcpm/src/tokenizer.rs`、`crates/voxcpm/tests/fixtures/{tokenizer,original-tokenizer}.json`、`tools/tts/voxcpm_tokenizer_reference.py`。
+
+### VoxCPM 原始 BF16 阅读器实验入口
+
+用户明确授权在阅读器开放实验模型。`2b-bf16` 使用原始权重 revision 和
+独立音色、资源清单、校准、参考缓存；默认 `None` / `2b-q8_0` 仍走既有 Q8。
+实验目录沿用开发验证下载的默认目录，只校验所选资源，不重新下载完整缓存。
+首版只列出已编译 CUDA 的 BF16 实验，设置明确提示待验收；不由入口开放
+推断数值、音质或 30 分钟资格已经通过。模型切换仍先 Stop / 释放，再准备。

@@ -18,3 +18,7 @@ cc.workspace = true
 
 [dev-dependencies]
 hound.workspace = true
+anyhow.workspace = true
+serde_json.workspace = true
+tts-core = { package = "novel-tts-core", path = "../novel-tts-core" }
+novel-tts-backends = { path = "../novel-tts-backends", default-features = false, features = ["voxcpm"] }

@@ -126,7 +126,7 @@ Qwen 推理源码位于 `crates/qwen3-tts`，来自 TrevorS/qwen3-tts-rs revisio
 
 **正确做法**：
 - `qwen` 是 CPU 后端；`qwen-cuda` 同时启用 Qwen 和三套 Candle CUDA 算子；`metal` 启用 Candle core/nn 的 Metal 算子，仅在 macOS 构建。`ort-cuda` 独立用于 MOSS/对齐器，不保留旧 `cuda` 别名。
-- GPU feature 经 `tts-candle-platform` 按 target 路由，同一 Candle 0.9.2 同时服务 Qwen 和 Omni。Windows/Linux 的 CUDA 依赖和 macOS Metal 依赖分别生效；Windows all-features 不会编入 Objective-C。CUDA 构建仍需 Toolkit，通用 CI/lefthook 使用 CPU feature 集合，平台 GPU CI 单独启用。
+- GPU feature 经 `tts-candle-platform` 按 target 路由，同一 Candle 0.11.0 同时服务 Qwen 和 Omni。Windows/Linux 的 CUDA 依赖和 macOS Metal 依赖分别生效；Windows all-features 不会编入 Objective-C。CUDA 构建仍需 Toolkit，通用 CI/lefthook 使用 CPU feature 集合，平台 GPU CI 单独启用。
 - `device.rs` 统一设备创建；显式 CUDA 使用 `Device::new_cuda`，避免 `cuda_if_available` 静默返回 CPU。Registry 继续按后端提供编译/可用设备，对齐器使用自己的 ORT provider。
 - CUDA 编译需要 Toolkit/`nvcc`；驱动提供的 `nvidia-smi` 不代替 Toolkit。RTX 5070 的 CC 为 12.0，使用支持 Blackwell 的 Toolkit；无 GPU 构建机显式设置 `CUDA_COMPUTE_CAP`。
 - tokenizers 仅启用推理用 `onig`，不启用训练用 `esaxx_fast`。上游 esaxx-rs 的 `.static_crt(true)` 与 ORT 的 `/MD` 在 Windows 导致 LNK2038/LNK2005；从依赖 feature 源头移除 C++ 加速，不使用 `/NODEFAULTLIB` 或全局 `/MD` workaround。
@@ -152,9 +152,9 @@ Qwen 推理源码位于 `crates/qwen3-tts`，来自 TrevorS/qwen3-tts-rs revisio
 
 `baseline-segments.json` 保存 narration.txt 的原始 UTF-8 字节坐标；Windows 的 Git autocrlf 会把 LF 改为 CRLF，导致基线偏移逐行增加。`.gitattributes` 将这个 fixture 固定为 `text eol=lf`；真实 CRLF 坐标行为由单独测试验证，不能通过规范化生产输入来掩盖 fixture 的换行差异。
 
-### Windows CUDA Toolkit 本地安装
+### Windows CUDA 12.9 初始安装记录
 
-本机 CUDA 12.9 Update 1 从 NVIDIA 官方 redistrib Windows ZIP 组件安装到 `D:\dev-tools\cuda\v12.9`，逐包按官方 manifest 校验 SHA-256，保留现有显示驱动。包含 nvcc、运行时、数学库、头文件、命令行工具与示例；不安装 Nsight GUI 或 Visual Studio 项目集成。系统环境的 `CUDA_PATH` / `CUDA_PATH_V12_9` 指向该目录，系统 PATH 添加 CUDA `bin` 与 VS 2022 的 x64 MSVC 编译器目录。
+此前 CUDA 12.9 Update 1 从 NVIDIA 官方 redistrib Windows ZIP 组件安装到 `D:\dev-tools\cuda\v12.9`，逐包按官方 manifest 校验 SHA-256，保留现有显示驱动。包含 nvcc、运行时、数学库、头文件、命令行工具与示例；不安装 Nsight GUI 或 Visual Studio 项目集成。当时 `CUDA_PATH` / `CUDA_PATH_V12_9` 指向该目录，系统 PATH 添加 CUDA `bin` 与 VS 2022 的 x64 MSVC 编译器目录；当前默认已升级为下一节的 CUDA 13。
 
 **正确做法**：
 - 重开终端或父进程以加载系统环境，CMD/PowerShell 均不需要激活脚本。Rust 自行发现 MSVC 的 linker 不代表 nvcc 可以找到 cl.exe；后者需要编译器目录在 PATH 中，随后 nvcc 自行加载 VS 编译环境。
@@ -163,6 +163,26 @@ Qwen 推理源码位于 `crates/qwen3-tts`，来自 TrevorS/qwen3-tts-rs revisio
 - nvcc 12.9.86 与本机 MSVC 14.44 配合完成 `sm_120` 内核编译和 RTX 5070 实际执行；官方 deviceQuery / vectorAdd 也通过。该结果证明 Toolkit/驱动工作，不能代替真实 Qwen PCM/EOS 与听感验收。
 
 安装清单和哈希：`D:\dev-tools\cuda\v12.9\installation-manifest.json`；本机使用说明：`D:\dev-tools\cuda\README.txt`。
+
+### Windows ORT rc.13 与 CUDA 13（2026-10-07）
+
+同步远程 TTS 分支后，ORT 固定 rc.13 / ONNX Runtime 1.28，发布目标仅保留
+Apple Silicon macOS、Windows 和 Linux；不恢复 Intel Mac、Kokoro 或 ZipVoice。
+CUDA 13.0 Update 2 安装到 `D:\dev-tools\cuda\v13.0`，cuDNN 9.14 CUDA13
+安装到 `D:\dev-tools\cudnn\v9.14-cuda13`。安装仅使用 NVIDIA 官方 redistrib，
+按官方 SHA-256 校验；旧 Toolkit 12.9 保留。下载缓存迁移至 C 盘，避免 D 盘
+构建空间不足。
+
+CUDA 13 的运行库位于 `bin\x64`，系统 PATH 要同时包含 `bin` 和 `bin\x64`，
+以及 cuDNN 的 `bin`。保留 `NVCC_PREPEND_FLAGS=-Xcompiler=/MD`，使 Candle
+host 对象与 ORT 共用动态 CRT。ORT 构建显式设置 `ORT_CUDA_VERSION=13`；
+旧终端须重新加载环境。Linux Candle CUDA 构建镜像同步为 13.0.2；Windows
+构建和真实 provider 检查结果见 `dev-notes/ort-rc13-upgrade.md`，不以 Windows
+feature 检查替代 Linux CUDA 或 macOS Metal 验收。
+
+独立 `voxcpm-sys` 对照工具在 CMake 3.31 / CUDA 13 下自动 `native` 架构探测
+失败；本机完整 workspace CUDA 检查显式设 `CUDA_COMPUTE_CAP=120`。该值是
+RTX 5070 的硬件算力；其他设备不能照搬。生产 Candle 推理不依赖此 C++ 工具。
 
 ### 多模型原生 TTS 与 CMake
 
@@ -174,9 +194,10 @@ Omni tokenizer 权重为 BOSON/Higgs/Llama 条款，不能跟生成器一起标�
 
 ### MOSS 统一 Candle 试用
 
-`crates/moss-tts` 与 Qwen/Omni 共用 Candle 0.9.2。worker 使用 `moss-candle-cuda` / `moss-candle-metal`，不把推理依赖引入阅读器。CUDA 大模型 BF16、codec F16；VoiceGenerator F16 的真实权重会产生无效 logits。四组权重按官方固定 revision 和 SHA 放用户缓存，7.1 GB codec 共用一次，不按每个生成模型复制。打包可选 feature 时附带 moss-tts LICENSE/NOTICE。CPU 库检查不等于完整大模型 CPU 验收；当前 worker 新模式仅公开 GPU。
+`crates/moss-tts` 与 Qwen/Omni 共用 Candle 0.11.0。worker 使用 `moss-candle-cuda` / `moss-candle-metal`，不把推理依赖引入阅读器。CUDA 大模型 BF16、codec F16；VoiceGenerator F16 的真实权重会产生无效 logits。四组权重按官方固定 revision 和 SHA 放用户缓存，7.1 GB codec 共用一次，不按每个生成模型复制。打包可选 feature 时附带 moss-tts LICENSE/NOTICE。CPU 库检查不等于完整大模型 CPU 验收；当前 worker 新模式仅公开 GPU。
 
 **相关文件**：`crates/moss-tts/`、`crates/novel-tts-backends/src/moss/candle/`、`dev-notes/moss-candle-acceptance.md`。
+
 
 ### macOS VoxCPM2 原生链接
 
@@ -216,3 +237,56 @@ rc.13 开启 api-22 时，SessionBuilder 默认设置 MaxEfficiency 自动 EP po
 ### 发布 smoke 与协议版本同步
 
 `smoke-variant.py` 与 musl smoke 从 `novel-tts-protocol/src/lib.rs` 读取 `PROTOCOL_VERSION` 构造握手，避免写死的旧协议使新版 worker 误报 incompatible_version。协议升级时无需再重复更新 smoke 常量；实际 worker 的 ready 和 shutdown accepted 仍需验证。
+
+### VoxCPM Candle 候选与数值门槛
+
+`crates/voxcpm` 直接读取现有 Q8_0 BaseLM/F16 Acoustic GGUF，统一 Candle（初始 0.9.2，现升级 0.11.0）。严格 F32 对照未全部通过；用户随后明确接受差异先接入，生产 `voxcpm` 已切换 Candle。吞吐通过及用户接受差异均不代替数值、听感与连续播放验收。
+
+原始权重对照增加 `Model::load_original`，网络 BF16/F16，AudioVAE F32。官方 `audiovae.pth` 的参数在 `state_dict` 中，须用 Candle `from_pth_with_state`；归一化卷积通过 Rust 合并 `weight_g/weight_v`，沿非第零维求范数。Safetensors 原名与既有计算层名的映射在权重入口集中处理，不复制网络实现。权重固定到 32279effe8c19989596f05d353d1447f51d9e915；比较工具通过显式 precision 选择，生产目录及 Q8 模型选择继续保持。
+
+CFM 只缓存一个步数对应的时间嵌入表，每个 patch 的 cond projection 只计算一次。步数变化重建时间表，取消中断不提交部分表；不可缓存依赖扩散输入的 LocalDiT 深层 KV。真实固定噪声 oracle、步数切换及取消复用通过；GPU Q8 的 11 段 WAV 与修改前逐字节相同。
+
+**正确做法**：
+- GGUF `voxcpm.model_version` 是 F32，而非字符串。
+- 共享 Linear 在调用 QMatMul 前执行 contiguous 并展为二维，计算后恢复前导维度。LocalDiT 转置后的非连续三维输入曾导致 CFG 分支数值错误。
+- AudioVAE 缓存只持有因果卷积 receptive field 和转置卷积 overlap tail；每次生成均重置，不累积解码全历史。
+- 模块 profiling 用显式设备同步，独立于吞吐测量。Windows /MD 约定继续适用于 CUDA 与 ORT 共存。
+
+**相关文件**：`crates/voxcpm/`、`crates/novel-tts-backends/examples/voxcpm_candle_probe.rs`、`tools/tts/voxcpm_reference.py`、`dev-notes/voxcpm-candle-acceptance.md`。
+
+### VoxCPM2 Candle 生产接入（2026-10-07）
+
+用户明确接受当前 F32 数值差异先接入；不改容差，不将数值验收记为通过。`voxcpm` worker 现使用本地 Candle crate，沿用 Q8_0/F16 GGUF、模型目录和 feature 名称。`voxcpm-sys` 暂留独立开发基准 crate，适配器和 worker 的依赖及 CUDA/Metal feature 均不含它。发布通知复制 `crates/voxcpm` 的 Apache-2.0 许可证和 SOURCE.md。
+
+**正确做法**：旧音色 WAV/voice.json 保留；`features.json` 不读取。`candle-reference-v1.json` 验证实现、权重清单摘要、模型/revision、WAV 摘要、文字及 F32/F16 精度，不兼容则重建。专用线程只保留一个音色编码，初始化/生成/设计取消后均回收线程。性能校准 revision 带 candle-v1，不能复用 llama.cpp 的校准值。
+
+**相关文件**：`crates/novel-tts-backends/src/voxcpm/`、`crates/novel-tts/src/preparation/synthesis.rs`、`dev-notes/voxcpm-candle-acceptance.md`。
+
+
+
+### Windows AMD 核显候选（2026-10-07）
+
+本机是 Ryzen 7 9700X，Windows 枚举到 AMD Radeon(TM) Graphics 和 RTX 5070。WMI 的 AdapterRAM 不是共享 GPU 内存上限，不能据其 512 MiB 值判断模型可用性。Candle 0.9.2 与 0.11.0 的 Device 均只有 CPU/CUDA/Metal；当前 Qwen、VoxCPM、OmniVoice 及 MOSS Candle 后端没有 AMD Windows 计算路径，不将“检测到核显”等同于模型可运行。
+
+候选方案是先验证现有 MOSS Nano ONNX 的 ORT DirectML 路径。rc.13 的 Windows 1.28 分发清单包含 CUDA13+DirectML 联合包，支持复用 ORT；实际 provider 和模型算子覆盖仍须验证。DirectML 需禁用 memory pattern 和 parallel execution；适配器编号来自 DXGI 枚举，不是 CUDA 编号，不写死 0 或 1。显式选择不得静默切换 NVIDIA/CPU；Auto 必须经过真实生成校准，核显不优先于已通过吞吐的 RTX。
+
+后续验收先测逐阶段图分区、CPU fallback、动态 KV 与 int8 算子覆盖、共享内存、首 PCM/RTF、取消和重复生成；只有完整生成有效 PCM 后才新增协议设备及阅读器选项。当前没有发布 DirectML 设备，也没有 AMD 性能验收结果。不要为此维护第二套 Candle 或将 ROCm/Metal 支持误认为 Windows 核显支持。
+
+来源：Candle 0.11.0 `candle-core/src/device.rs`；ORT 官方 https://onnxruntime.ai/docs/execution-providers/DirectML-ExecutionProvider.html；本地 ort-sys rc.13 `build/download/dist.tsv`。
+
+
+### Candle 0.11.0 统一升级（2026-10-07）
+
+用户授权在 VoxCPM 移植期间升级最新稳定 Candle。core/nn/transformers 精确统一为 crates.io 0.11.0；上游打包源码 revision 为 31f35b147389700ed2a178ee66a91c3cc25cc80d。CPU 四个计算库检查通过，未需要复制网络或私有 fork。CUDA 内核构建由 bindgen_cuda 改为 cudaforge；Metal 改为 objc2-metal，但仍通过 tts-candle-platform 按目标路由。不删除已有 Metal 排序保护，需 macOS 实机再核验。
+
+校准 runtime_info 标识同步为 candle-0.11.0，涵盖所有 Candle 后端；Vox 参考缓存实现身份也带版本，从原 WAV 重建旧编码，不重下权重或修改音色记录。CUDA/CPU 回归及性能见移植验收报告。crate 未声明 rust-version，Cargo 按工作区 1.89 兼容约束解析依赖；当前 stable 构建不等同于已完成 Rust 1.89 实机验证。
+
+### Windows CUDA 升级后的磁盘与链接诊断
+
+Candle 0.11 all-features 测试第一次链接报告 LNK1318 / LIMIT(12)，当时 D 盘仅剩 29 MiB，失败 PDB 约 61 MiB；不能据错误名称推断触及 4 GiB PDB 格式限制。将 20:20 之前的旧 Rust incremental 缓存移到 C 盘后（保留移动清单，未移动模型/源码/试听材料），原参数 `-j1` 重跑 537 passed / 7 ignored。没有修改 PDB 页面参数或压制 CRT 警告。CUDA 模型开发的多次 debug/profile/feature 编译可积累大量 incremental 缓存；先检查实际磁盘空间，再诊断链接限制。
+
+CUDA 13 官方 `cuda.lib` 的静态 driver loader 对象带 `/DEFAULTLIB:LIBCMT`，当前 release 链接仍有 LNK4098；Candle 0.11 MOE 对象已全部为 `/MD`。不通过全局 `/NODEFAULTLIB`、修改 SDK 或压制警告掩盖冲突。独立 sm120 CUDA 程序及 Vox Q8/BF16 实际播放通过，CRT 风险继续记录。
+
+### ORT CUDA 预编译包与 Blackwell 架构覆盖
+
+本机 rc.13 Runtime 1.28 CUDA13 provider 中只有 sm75/sm80/sm90a cubin，且没有 PTX；RTX 5070 sm120 的 Nano `/Cast` 实际生成报 `cudaErrorNoKernelImageForDevice`。CUDA 13 安装、驱动可用、EP 注册成功都不能证明模型算子覆盖。用 `cuobjdump --list-elf` 和 `--list-ptx` 检查实际打包 DLL，并保存真实生成错误；不静默降级显式 CUDA，不以升级 Toolkit 修复缺失内核。后续验证匹配的含 Blackwell Runtime/provider 分发或可重复原生构建，不能只替换不匹配的 provider DLL。详见 `dev-notes/ort-rc13-upgrade.md`。

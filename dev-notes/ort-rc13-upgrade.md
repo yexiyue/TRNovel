@@ -50,3 +50,20 @@ ORT 1.28 的 CoreML MLProgram 路径在 MOSS 生成时出现内部 Shape 输入�
 - 独立新 CoreML 缓存：MOSS 加载 4.659 s、首 PCM 123 ms、生成 729 ms、音频 2.880 s；对齐约 155 ms，文本范围 0..36、时间 0..2.560 s。重复 WAV 与前一份 NeuralNetwork WAV 完全相同，PCM 全部有限且非零。
 - Apple Silicon 基础版 shell/npm 本地安装通过；cargo-dist 0.32.0 `generate --check` 通过，release plan 共 23 个 artifacts，未包含 Intel Mac。
 - 依赖升级由 `tts-gpu-model-integration` 分支交付，实验由 `codex/moss-nano-candle` 独立保留；不合并实验实现。
+
+## Windows CUDA 13 补记（2026-10-07）
+
+RTX 5070（sm120）、驱动 616.56，已安装 CUDA 13.0 Update 2（nvcc
+13.0.88）和 cuDNN 9.14.0.64 CUDA13，并更新系统环境变量；CUDA 12.9
+保留。独立 sm120 CUDA 程序运行成功，Candle 0.11.0 的 Vox Q8/BF16
+也完成真实播放。
+
+ORT rc.13 下载的 Runtime 1.28 CUDA13 Windows provider **未通过本机
+CUDA 推理验收**：MOSS Nano `/Cast` 报
+`cudaErrorNoKernelImageForDevice`。`cuobjdump --list-elf` 检查当前
+`target/release/onnxruntime_providers_cuda.dll`，仅有 sm75、sm80、sm90a
+内核；`--list-ptx` 确认没有 PTX，不能在 sm120 上回退编译。日志保存在
+`target/tts-integration/ort13-cuda-images.log` 与 `candle011-switch/`。
+这是预编译分发的架构覆盖阻碍，不由 Toolkit 安装或显式设备注册成功解决。
+保持显式 CUDA 错误，不静默降级。后续须验证包含 Blackwell 内核的匹配
+Runtime/provider 分发，或可重复构建；不能直接替换不匹配的单个 DLL。

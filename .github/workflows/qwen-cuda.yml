@@ -7,6 +7,7 @@ on:
       - 'crates/qwen3-tts/**'
       - 'crates/omnivoice/**'
       - 'crates/voxcpm-sys/**'
+      - 'crates/voxcpm/**'
       - 'crates/tts-candle-platform/**'
       - 'crates/novel-tts-backends/**'
       - 'crates/novel-tts/**'
@@ -20,7 +21,7 @@ permissions:
 jobs:
   compile:
     runs-on: ubuntu-22.04
-    container: nvidia/cuda:12.8.1-devel-ubuntu22.04
+    container: nvidia/cuda:13.0.2-devel-ubuntu22.04
     env:
       # This runner has a compiler, but no GPU to detect. Target RTX 50 series.
       CUDA_COMPUTE_CAP: '120'

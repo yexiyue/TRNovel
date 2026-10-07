@@ -17,9 +17,9 @@ moss-candle-metal = ["moss-candle", "moss-tts/metal"]
 qwen = ["dep:qwen3-tts", "dep:hound"]
 metal = ["qwen", "qwen3-tts/metal"]
 qwen-cuda = ["qwen", "qwen3-tts/cuda"]
-voxcpm = ["dep:voxcpm-sys", "dep:hound", "dep:rubato"]
-voxcpm-cuda = ["voxcpm", "voxcpm-sys/cuda"]
-voxcpm-metal = ["voxcpm", "voxcpm-sys/metal"]
+voxcpm = ["dep:voxcpm", "dep:candle-core", "dep:hound", "dep:rubato"]
+voxcpm-cuda = ["voxcpm", "voxcpm/cuda"]
+voxcpm-metal = ["voxcpm", "voxcpm/metal"]
 omnivoice = ["dep:omnivoice", "dep:hound", "dep:rubato"]
 omnivoice-cuda = ["omnivoice", "omnivoice/cuda"]
 omnivoice-metal = ["omnivoice", "omnivoice/metal"]
@@ -30,7 +30,7 @@ ort-cuda = ["dep:ort", "ort/cuda"]
 moss-tts = { workspace = true, optional = true }
 candle-core = { workspace = true, optional = true }
 omnivoice = { path = "../omnivoice", optional = true }
-voxcpm-sys = { path = "../voxcpm-sys", optional = true }
+voxcpm = { path = "../voxcpm", optional = true }
 qwen3-tts = { workspace = true, optional = true }
 tts-core = { package = "novel-tts-core", path = "../novel-tts-core", version = "0.3.0" }
 tts-protocol = { package = "novel-tts-protocol", path = "../novel-tts-protocol", version = "0.1.0" }
@@ -77,7 +77,14 @@ name = "qwen"
 required-features = ["qwen"]
 
 
+[dev-dependencies]
+candle-core.workspace = true
 
 [[example]]
 name = "native_probe"
 required-features = ["qwen"]
+
+[[example]]
+name = "voxcpm_candle_probe"
+required-features = ["voxcpm"]
+
