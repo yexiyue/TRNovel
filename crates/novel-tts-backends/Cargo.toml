@@ -25,6 +25,7 @@ omnivoice-cuda = ["omnivoice", "omnivoice/cuda"]
 omnivoice-metal = ["omnivoice", "omnivoice/metal"]
 coreml = ["dep:ort", "ort/coreml"]
 ort-cuda = ["dep:ort", "ort/cuda"]
+directml-probe = ["moss", "ort/directml", "dep:windows"]
 
 [dependencies]
 moss-tts = { workspace = true, optional = true }
@@ -48,6 +49,13 @@ tokio.workspace = true
 dirs.workspace = true
 sha2.workspace = true
 tempfile.workspace = true
+
+[target.'cfg(windows)'.dependencies]
+windows = { workspace = true, optional = true, features = ["Win32_Graphics_Dxgi", "Win32_Graphics_Dxgi_Common", "Win32_Graphics_Direct3D", "Win32_Graphics_Direct3D12"] }
+
+[[example]]
+name = "moss_directml_probe"
+required-features = ["directml-probe"]
 
 [[example]]
 name = "moss"

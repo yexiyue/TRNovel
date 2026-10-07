@@ -274,6 +274,16 @@ CFM 只缓存一个步数对应的时间嵌入表，每个 patch 的 cond projec
 
 来源：Candle 0.11.0 `candle-core/src/device.rs`；ORT 官方 https://onnxruntime.ai/docs/execution-providers/DirectML-ExecutionProvider.html；本地 ort-sys rc.13 `build/download/dist.tsv`。
 
+2026-10-07 进一步静态评估：本机 Windows build 28000，AMD 驱动 32.0.21042.62，Ryzen 9700X 官方标注 2 个图形核心。缓存中的 Nano 8 个 ONNX 图均为 opset17，权重为 FLOAT（编码器另有 INT64 常量），无 Quantize/MatMulInteger/MatMulNBits；不能把当前资源描述成 INT8。prefill/decode/codec 含动态序列长度。`moss/runtime.rs::run` 仅 CUDA 分支用 I/O Binding 把 present/cache 留在 GPU，其他设备走普通 Run；新增 DirectML 注册本身不能证明缓存不会逐步拷回 CPU，需要同时验证 DirectML 设备分配、I/O Binding 和图分区。现有专用线程符合 DirectML 同一 session 不并发 Run 的约束。
+
+Windows ML 新路线不是只有 DirectML：官方 MIGraphX 插件要求 RDNA3+、指定最低驱动，当前明确未支持 GenAI 场景；WebGPU 插件仍为实验。DirectML 继续支持，但新功能开发转向 WinML。对当前 Rust/ORT worker，DirectML 是范围最小的功能试验；WinML/MIGraphX 留作新硬件后续评估，不为这个基础核显迁移整个运行时。此次未启用 DirectML 或执行 AMD 推理，尚无性能/算子覆盖结论。
+
+后续原生试验已实现：后端可选 `directml-probe` example 使用 DXGI 显式选择、专用 session 线程、禁用 memory pattern/parallel execution，支持 host outputs 与持久缓存 I/O Binding。DML `MemoryInfo` 的 allocation id 0 是所选 session 内的设备分配标识，不是 DXGI adapter0；实际 adapter1 的缓存返回身份验证通过。显卡按 D3D12 能力筛选，AMD 独显与核显均可参与，不因本机核显结果排除 RX 系列。
+
+本机短语料 release 五轮平均 RTF：CPU .4224、AMD 核显 host 1.2694、device cache 1.1145。真实 provider profiles 显示 MatMul/Conv 在 DML 执行，但仍有 CPU shape/control 与 codec 算术节点；内置音色不触发参考 encoder，不能宣称克隆图覆盖。取消和再次生成通过。CPU/DML 输出时长及 ASR 有差异，人工音质、长播放与 AMD 独显实机未验收，未新增产品设备或 Auto 偏好。资源是 FLOAT opset17，当前不测试 INT8 算子。详见 `dev-notes/moss-directml-evaluation.md`。
+
+来源：AMD 9700X 规格 https://www.amd.com/en/products/processors/desktops/ryzen/9000-series/amd-ryzen-7-9700x.html；Windows ML provider 要求 https://learn.microsoft.com/en-us/windows/ai/new-windows-ml/supported-execution-providers；本地 ONNX 图静态检查。
+
 
 ### Candle 0.11.0 统一升级（2026-10-07）
 

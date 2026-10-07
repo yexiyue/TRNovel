@@ -13,22 +13,31 @@ use std::{collections::HashMap, path::Path};
 use tts_core::backend::{AudioChunk, Pcm};
 
 type Feeds = HashMap<String, DynValue>;
+/// Output placement is separate from the product's persisted device choices.
+#[derive(Clone, Copy)]
+pub(super) enum Placement {
+    Host,
+    Cuda,
+    #[cfg(all(windows, feature = "directml-probe"))]
+    DirectML,
+}
 fn ints(shape: impl Into<Vec<usize>>, data: Vec<i32>) -> anyhow::Result<DynValue> {
     Ok(Tensor::from_array((shape.into(), data))?.into_dyn())
 }
 fn floats(shape: impl Into<Vec<usize>>, data: Vec<f32>) -> anyhow::Result<DynValue> {
     Ok(Tensor::from_array((shape.into(), data))?.into_dyn())
 }
-fn run(session: &mut Session, feeds: Feeds, device: tts_protocol::Device) -> anyhow::Result<Feeds> {
+fn run(session: &mut Session, feeds: Feeds, placement: Placement) -> anyhow::Result<Feeds> {
     let mut binding = session.create_binding()?;
-    let mut outputs = if device == tts_protocol::Device::Cuda {
+    let mut outputs = if !matches!(placement, Placement::Host) {
         use ort::memory::{AllocationDevice, AllocatorType, MemoryInfo, MemoryType};
-        let gpu = MemoryInfo::new(
-            AllocationDevice::CUDA,
-            0,
-            AllocatorType::Device,
-            MemoryType::Default,
-        )?;
+        let allocation = match placement {
+            Placement::Cuda => AllocationDevice::CUDA,
+            #[cfg(all(windows, feature = "directml-probe"))]
+            Placement::DirectML => AllocationDevice::DIRECTML,
+            Placement::Host => unreachable!(),
+        };
+        let gpu = MemoryInfo::new(allocation, 0, AllocatorType::Device, MemoryType::Default)?;
         let cpu = MemoryInfo::default();
         for (name, value) in &feeds {
             binding.bind_input(name, value)?;
@@ -37,7 +46,21 @@ fn run(session: &mut Session, feeds: Feeds, device: tts_protocol::Device) -> any
             let cached = output.name().starts_with("present_") || output.name().contains("_out_");
             binding.bind_output_to_device(output.name(), if cached { &gpu } else { &cpu })?;
         }
-        session.run_binding(&binding)?
+        let outputs = session.run_binding(&binding)?;
+        #[cfg(all(windows, feature = "directml-probe"))]
+        if matches!(placement, Placement::DirectML) {
+            for (name, value) in outputs.iter() {
+                if name.starts_with("present_") || name.contains("_out_") {
+                    let tensor = value.downcast_ref::<ort::value::DynTensorValueType>()?;
+                    anyhow::ensure!(
+                        tensor.memory_info().allocation_device() == AllocationDevice::DIRECTML,
+                        "cache {name} was not allocated by DirectML: {:?}",
+                        tensor.memory_info()
+                    );
+                }
+            }
+        }
+        outputs
     } else {
         session.run(
             feeds
@@ -109,7 +132,7 @@ pub(super) struct Runtime {
     manifest: Value,
     codec_meta: Value,
     directory: std::path::PathBuf,
-    device: tts_protocol::Device,
+    placement: Placement,
 }
 impl Runtime {
     pub(super) fn load_on(
@@ -118,44 +141,47 @@ impl Runtime {
         device: tts_protocol::Device,
     ) -> anyhow::Result<Self> {
         let cache = directory.join("coreml-cache");
+        Self::load_sessions(
+            directory,
+            if device == tts_protocol::Device::Cuda {
+                Placement::Cuda
+            } else {
+                Placement::Host
+            },
+            |path| session(path, &cancelled, device, &cache),
+        )
+    }
+    pub(super) fn load_sessions(
+        directory: &Path,
+        placement: Placement,
+        mut create: impl FnMut(&Path) -> anyhow::Result<Session>,
+    ) -> anyhow::Result<Self> {
         let tts = directory.join("tts");
         let codec = directory.join("codec");
         Ok(Self {
-            device,
-            prefill: session(
-                &tts.join("moss_tts_prefill.onnx"),
-                &cancelled,
-                device,
-                &cache,
-            )?,
-            decode: session(
-                &tts.join("moss_tts_decode_step.onnx"),
-                &cancelled,
-                device,
-                &cache,
-            )?,
-            local: session(
-                &tts.join("moss_tts_local_fixed_sampled_frame.onnx"),
-                &cancelled,
-                device,
-                &cache,
-            )?,
-            codec: session(
-                &codec.join("moss_audio_tokenizer_decode_step.onnx"),
-                &cancelled,
-                device,
-                &cache,
-            )?,
-            encoder: session(
-                &codec.join("moss_audio_tokenizer_encode.onnx"),
-                &cancelled,
-                device,
-                &cache,
-            )?,
+            placement,
+            prefill: create(&tts.join("moss_tts_prefill.onnx"))?,
+            decode: create(&tts.join("moss_tts_decode_step.onnx"))?,
+            local: create(&tts.join("moss_tts_local_fixed_sampled_frame.onnx"))?,
+            codec: create(&codec.join("moss_audio_tokenizer_decode_step.onnx"))?,
+            encoder: create(&codec.join("moss_audio_tokenizer_encode.onnx"))?,
             manifest: serde_json::from_str(include_str!("assets/browser_poc_manifest.json"))?,
             codec_meta: serde_json::from_str(include_str!("assets/codec_browser_onnx_meta.json"))?,
             directory: directory.to_owned(),
         })
+    }
+    #[cfg(all(windows, feature = "directml-probe"))]
+    pub(super) fn finish_profiles(&mut self) -> anyhow::Result<Vec<String>> {
+        [
+            &mut self.prefill,
+            &mut self.decode,
+            &mut self.local,
+            &mut self.codec,
+            &mut self.encoder,
+        ]
+        .into_iter()
+        .map(|s| s.end_profiling().map_err(Into::into))
+        .collect()
     }
     fn rows(&self, tokens: &[i32], codes: &[Vec<i32>]) -> anyhow::Result<Vec<i32>> {
         let config = &self.manifest["tts_config"];
@@ -273,7 +299,7 @@ impl Runtime {
             "audio_code_lengths".into(),
             ints(vec![1], vec![count as i32])?,
         );
-        let mut outputs = run(&mut self.codec, feeds, self.device)?;
+        let mut outputs = run(&mut self.codec, feeds, self.placement)?;
         let len = length(&outputs, "audio_lengths")?;
         let value = take(&mut outputs, "audio")?;
         let (shape, data) = value.try_extract_tensor::<f32>()?;
@@ -307,7 +333,7 @@ impl Runtime {
                 ("waveform".into(), floats(vec![1, 2, len], waveform)?),
                 ("input_lengths".into(), ints(vec![1], vec![len as i32])?),
             ]),
-            self.device,
+            self.placement,
         )?;
         let length = length(&outputs, "audio_code_lengths")?;
         let value = take(&mut outputs, "audio_codes")?;
@@ -344,7 +370,7 @@ impl Runtime {
                     ints(vec![1, count], vec![1; count])?,
                 ),
             ]),
-            self.device,
+            self.placement,
         )?;
         let mut global_hidden = hidden(&mut outputs)?;
         let mut cache = global_cache(outputs);
@@ -382,7 +408,7 @@ impl Runtime {
                         floats(vec![1, 16], (0..16).map(|_| uniform()).collect())?,
                     ),
                 ]),
-                self.device,
+                self.placement,
             )?;
             if length(&sampled, "should_continue")? == 0 {
                 break;
@@ -411,7 +437,7 @@ impl Runtime {
                 "past_valid_lengths".into(),
                 ints(vec![1], vec![valid_length as i32])?,
             );
-            let mut decoded = run(&mut self.decode, cache, self.device)?;
+            let mut decoded = run(&mut self.decode, cache, self.placement)?;
             global_hidden = hidden(&mut decoded)?;
             cache = global_cache(decoded);
             if step == 374 {

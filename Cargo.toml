@@ -66,6 +66,7 @@ reqwest = { version = "0.13", default-features = false, features = ["rustls"] }
 members = ["crates/voxcpm", "crates/moss-tts", "crates/tts-candle-platform", "crates/omnivoice", "crates/voxcpm-sys", "crates/qwen3-tts", "crates/novel-tts-backends", "crates/novel-tts-core", "crates/novel-tts-protocol", "crates/novel-tts", "crates/parse-book-source"]
 
 [workspace.dependencies]
+windows = { version = "0.54.0", default-features = false }
 moss-tts = { path = "crates/moss-tts" }
 tts-candle-platform = { path = "crates/tts-candle-platform", version = "0.1.0" }
 cmake = "0.1.58"

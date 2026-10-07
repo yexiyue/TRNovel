@@ -3,6 +3,8 @@ mod audio;
 #[cfg(feature = "moss-candle")]
 pub mod candle;
 pub mod diagnostics;
+#[cfg(all(windows, feature = "directml-probe"))]
+pub mod directml_probe;
 pub mod resources;
 mod runtime;
 mod text;
