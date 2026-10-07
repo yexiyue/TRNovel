@@ -13,18 +13,7 @@ struct Worker {
 impl Worker {
     fn new() -> Self {
         let directory = tempfile::tempdir().unwrap();
-        #[cfg(all(not(feature = "moss"), feature = "kokoro"))]
-        std::fs::write(
-            directory.path().join("config.json"),
-            serde_json::to_vec(&tts_protocol::Config {
-                backend: "kokoro".into(),
-                voice: "Zf001".into(),
-                ..Default::default()
-            })
-            .unwrap(),
-        )
-        .unwrap();
-        #[cfg(all(not(feature = "moss"), not(feature = "kokoro"), feature = "qwen"))]
+        #[cfg(all(not(feature = "moss"), feature = "qwen"))]
         std::fs::write(
             directory.path().join("config.json"),
             serde_json::to_vec(&tts_protocol::Config {
@@ -234,7 +223,7 @@ fn qwen_selection_and_voice_listing_do_not_load_models() {
 }
 
 #[test]
-#[cfg(all(feature = "moss", feature = "kokoro"))]
+#[cfg(all(feature = "moss", feature = "qwen"))]
 fn backend_directory_and_switch_are_lightweight() {
     let mut worker = Worker::new();
     let ready = worker.send("hello", Command::Hello);
@@ -253,19 +242,16 @@ fn backend_directory_and_switch_are_lightweight() {
             }),
         vec![
             "moss",
-            "kokoro",
             #[cfg(feature = "voxcpm")]
             "voxcpm",
             #[cfg(feature = "omnivoice")]
             "omnivoice",
-            #[cfg(feature = "zipvoice")]
-            "zipvoice",
             #[cfg(feature = "qwen")]
             "qwen"
         ]
     );
     assert_eq!(catalog[0].default_voice, "Weiguo");
-    for (revision, backend, voice) in [(0, "kokoro", "Zf001"), (1, "moss", "Weiguo")] {
+    for (revision, backend, voice) in [(0, "qwen", "uncle_fu"), (1, "moss", "Weiguo")] {
         let changed = worker.send(
             &format!("switch-{revision}"),
             Command::UpdateConfig(ConfigPatch {

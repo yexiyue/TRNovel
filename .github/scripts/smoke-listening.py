@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Opt-in native protocol smoke using explicitly supplied Kokoro models/device."""
+"""Opt-in native protocol smoke using explicitly supplied MOSS Nano models/device."""
 import argparse
 import hashlib
 import json

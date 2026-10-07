@@ -1,4 +1,4 @@
-# MOSS/Kokoro 双后端真实 UI 验收，准备方式见 README.md。
+# MOSS/Qwen 双后端真实 UI 验收，准备方式见 README.md。
 Output "/tmp/trn-moss-demo/moss.gif"
 Set Width 1280
 Set Height 800
@@ -24,7 +24,7 @@ Sleep 1s
 Down
 Right
 Sleep 2s
-Screenshot "/tmp/trn-moss-demo/kokoro-selected.png"
+Screenshot "/tmp/trn-moss-demo/backend-selected.png"
 Sleep 1s
 Left
 Sleep 1s

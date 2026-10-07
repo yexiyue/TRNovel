@@ -40,7 +40,7 @@ TRNovel 是用 Rust 构建的终端小说阅读器，支持 Windows、macOS 和 
 | 按习惯翻页 | 可配置键位、主题、背景模式和阅读布局 |
 | 读网络小说 | 搜索、分类、详情、目录和正文；结构化 v2 书源 |
 | 制作新书源 | Agent skill 探站生成，`trn doctor` 校验，`trn import` 导入 |
-| 听小说 | 独立 `novel-tts` 程序，MOSS 流式合成与音色导入，可选 Kokoro / Qwen；正文高亮和跟随朗读 |
+| 听小说 | 独立 `novel-tts` 程序，MOSS 流式合成与音色导入，可选 Qwen / VoxCPM2 / OmniVoice；正文高亮和跟随朗读 |
 
 <details>
 <summary>看看真实阅读界面</summary>
@@ -123,7 +123,7 @@ TRNovel 不直接接受 Legado 书源 JSON。
 
 当前源码将听书放在独立的 `novel-tts` 进程中。阅读器负责正文、控制和高亮，听书程序负责模型、合成、播放与恢复点。普通阅读无需加载语音模型。
 
-默认后端是 MOSS-TTS-Nano，支持流式合成和 WAV 参考音色导入；Kokoro 与 Qwen3-TTS 可按 feature 编入。Qwen 提供九种预置音色，CPU / Metal 支持取决于构建与平台，主观音质验收仍在进行。
+默认后端是 MOSS-TTS-Nano，支持流式合成和 WAV 参考音色导入；Qwen3-TTS、VoxCPM2 与 OmniVoice 可按 feature 编入。Qwen 提供九种预置音色，CPU / Metal 支持取决于构建与平台，主观音质验收仍在进行。
 
 阅读页默认按 `P` 播放或暂停，`T` 打开听书设置，`f` 回到朗读位置并恢复跟随。手动滚动或搜索会暂时解除跟随；播放失败保留恢复点，等待你主动重试。
 

@@ -25,7 +25,7 @@ for variant in basic listening; do
         source="$CARGO_TARGET_DIR/dist/$binary"
         readelf -h "$source" | grep -q 'Machine:.*AArch64'
         readelf -l "$source" | grep -q '/lib/ld-musl-aarch64.so.1'
-        if [ "$binary" != novel-tts ] && readelf -d "$source" | grep -Ei 'NEEDED.*(onnxruntime|asound|kokoro)'; then
+        if [ "$binary" != novel-tts ] && readelf -d "$source" | grep -Ei 'NEEDED.*(onnxruntime|asound)'; then
             echo 'Reader unexpectedly links native listening libraries' >&2
             exit 1
         fi

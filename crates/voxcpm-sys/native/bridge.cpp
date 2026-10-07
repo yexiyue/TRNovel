@@ -16,7 +16,7 @@ using AudioCallback = bool (*)(void *, const float *, size_t, bool);
 extern "C" {
 bool trn_vox_available(int device) {
     if (device == 0) return true;
-    const char * expected = device == 1 ? "CUDA" : device == 2 ? "Metal" : "";
+    const char * expected = device == 1 ? "CUDA" : device == 2 ? "MTL" : "";
     for (size_t i = 0; i < ggml_backend_dev_count(); ++i) {
         auto dev = ggml_backend_dev_get(i);
         if (std::strcmp(ggml_backend_reg_name(ggml_backend_dev_backend_reg(dev)), expected) == 0) return true;
@@ -31,7 +31,7 @@ TrnVox * trn_vox_create(const char * base, const char * acoustic, int device) {
             creation_error = model->runtime.last_error(); return nullptr;
         }
         const char * backend = model->runtime.backend_name();
-        if ((device == 1 && !std::strstr(backend, "CUDA")) || (device == 2 && !std::strstr(backend, "Metal"))) {
+        if ((device == 1 && !std::strstr(backend, "CUDA")) || (device == 2 && !std::strstr(backend, "MTL"))) {
             creation_error = "explicit GPU request fell back to another backend"; return nullptr;
         }
         return model.release();

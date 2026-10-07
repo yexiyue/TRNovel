@@ -521,6 +521,9 @@ impl Stage1RuntimePlan {
     }
 
     fn decode_chunk(&self, tokens: &I64Tensor2) -> Result<Vec<f32>> {
+        // Metal embedding gathers clamp out-of-range indices instead of failing.
+        // Reject unfinished mask tokens before they can turn into noise.
+        self.bundle.validate_generated_tokens(tokens)?;
         let tokens = tokens.to_candle(&self.device)?.unsqueeze(0)?;
         self.decode_audio_tensor(&tokens)
     }

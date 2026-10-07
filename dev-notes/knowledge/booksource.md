@@ -2,7 +2,7 @@
 
 ## 概览
 
-`crates/parse-book-source`（结构化 v2 书源引擎、规则 AST、反爬/渲染抓取）与 `crates/novel-tts-core`（Kokoro TTS）的项目特有约束。重点是番茄（fanqienovel.com）这类 SPA + 签名站点的接入路线。
+`crates/parse-book-source`（结构化 v2 书源引擎、规则 AST、反爬/渲染抓取）与 `crates/novel-tts-core`（听书核心）的项目特有约束。重点是番茄（fanqienovel.com）这类 SPA + 签名站点的接入路线。
 
 ## 规则引擎
 
@@ -169,23 +169,13 @@ for &arg in HEADFUL_DEFAULT_ARGS { builder = builder.arg(arg); }
 
 ## novel-tts-core
 
-### 模型钉版见 toolchain
+### 模型资源与后端
 
-kokoro-tts `0.3.1` 勿升（rc.12 砍 Intel Mac），见 [toolchain.md](toolchain.md)。模型文件（`kokoro-v1.1-zh.onnx`、`voices-v1.1-zh.bin`）自动从 GitHub 下载到 `~/.novel-tts/kokoro/`，HTTP Range 断点续传，`CancellationToken` 取消。
-
-<!-- 随开发补充:新规则 DSL 前缀、新站点接入坑等 -->
-
-### 当前 Kokoro 中文前端：词典与规则，不是上下文模型
-
-已安装 `kokoro-tts 0.3.1` 的 `g2p/v11.rs` 使用 jieba、词组拼音词典、变调与儿化规则；`get_pinyin_fine` 词典未命中时退回逐字 `ToPinyin`。`neural_sandhi` 名称不能证明有神经消歧，它是规则函数。公开 `KokoroTts::synth` 内部调用 G2P，替换前端需要额外音素合成接口或适配实现。
-
-**正确做法**：区分多音字读音、模型韵律与章节分段的影响；更换前端时保持 v1.1 音素与模型词表兼容。新版 crate 的存在不代表中文音质改进，不绕过 toolchain 中的 ort 钉版约束。
-
-**相关文件**：`crates/novel-tts-core/src/{session.rs,text.rs,models.rs}`、[听书演进计划](../tts-backend-plan.md)（讨论稿，尚未实施）。
+CPU 默认使用 MOSS Nano；Kokoro 与 ZipVoice 已移除。ORT 钉版仍保留，见 [toolchain.md](toolchain.md)。模型下载保留 HTTP Range 断点续传与取消，缓存根为 `~/.novel-tts/`。
 
 ### 听书进程边界与保存职责
 
-`novel-tts-core` 的 session/backend/player/text/models/config/checkpoint 为听书核心；`novel-tts` 提供独立 CLI 和协议入口。阅读器只链接 `novel-tts-protocol`，不持有模型或音频设备，也不读写听书配置。Kokoro 在专用推理线程构建/销毁，只用文本与 PCM 通道通信；播放器和会话留在 LocalSet，不再手写 unsafe Send/Sync。
+`novel-tts-core` 的 session/backend/player/text/models/config/checkpoint 为听书核心；`novel-tts` 提供独立 CLI 和协议入口。阅读器只链接 `novel-tts-protocol`，不持有模型或音频设备，也不读写听书配置。模型在专用推理线程构建/销毁，只用文本与 PCM 通道通信；播放器和会话留在 LocalSet，不再手写 unsafe Send/Sync。
 
 **正确做法**：按实际播放边界发布原文 UTF-8 范围。配置使用旧路径、短文件锁、修订号和原子替换，未知字段保留。独立检查点用来源、正文摘要及字节位置恢复；失败停止并等待用户主动重试。取消会等待不能中断的检查点事务，防止旧会话覆盖新位置。
 
@@ -209,7 +199,7 @@ Backend::stream 返回容量受限的 PCM 块流，显式 End 才表示片段生
 
 核心保留队列中的预算许可直到播放器实际消耗音频，整体受 30 秒 / 16 MiB 限制。单块必须在预算内，长流式段通过背压继续生成。生产任务也必须显式报告全流完成，避免任务异常退出被当成整章结束。
 
-新增后端只实现通用接口并注册能力。TUI 读取 default_voice / voice_names，不硬编码 MOSS 或 Kokoro 音色；后端切换期间忽略其他配置操作，防止将旧快照里的音色提交给新后端。
+新增后端只实现通用接口并注册能力。TUI 读取 default_voice / voice_names，不硬编码 具体模型音色；后端切换期间忽略其他配置操作，防止将旧快照里的音色提交给新后端。
 
 **相关文件**：`crates/novel-tts-core/src/backend.rs`、`crates/novel-tts-core/src/session/playback.rs`、`crates/novel-tts-backends/src/moss.rs`。
 
@@ -223,7 +213,7 @@ Backend::stream 返回容量受限的 PCM 块流，显式 End 才表示片段生
 
 ### 听书装饰行过滤保持原文坐标
 
-通用 `text::is_decoration_line` 仅识别至少三个装饰字符组成的独立行（例如 ====、---、*** 和制表分隔线）。Kokoro 默认分段和 MOSS 分段在计算 token 预算前跳过整行；MOSS 合成副本规范化也过滤这些行。不能全局删除等号或减号，`a=b`、负数和含正文的装饰标题要保留。跳过后片段仍使用原文 UTF-8 字节位置，不重算清洗文本的坐标。
+通用 `text::is_decoration_line` 仅识别至少三个装饰字符组成的独立行（例如 ====、---、*** 和制表分隔线）。通用默认分段和 MOSS 分段在计算 token 预算前跳过整行；MOSS 合成副本规范化也过滤这些行。不能全局删除等号或减号，`a=b`、负数和含正文的装饰标题要保留。跳过后片段仍使用原文 UTF-8 字节位置，不重算清洗文本的坐标。
 
 **相关文件**：`crates/novel-tts-core/src/text.rs`、`crates/novel-tts-backends/src/moss/text.rs`。
 
@@ -237,7 +227,7 @@ Qwen ONNX 的 feature_attention_mask 是 Int32；Whisper 前处理 extractor 调
 
 ### MOSS 软换行与可选对齐
 
-单换行是排版信息，不能直接当作独立生成请求或段落尾。MOSS 以空行、装饰线、共享 TOC 标题规则建立硬边界，初始目标 8 秒/预计上限 12 秒。句末闭合引号跟随前句；只清洗合成副本，源范围保持原文 UTF-8。Kokoro 分段独立。
+单换行是排版信息，不能直接当作独立生成请求或段落尾。MOSS 以空行、装饰线、共享 TOC 标题规则建立硬边界，初始目标 8 秒/预计上限 12 秒。句末闭合引号跟随前句；只清洗合成副本，源范围保持原文 UTF-8。
 
 对齐默认关闭，worker 在准备入口跳过 Qwen 全部资源与校准；阅读器的设置切换门控必须涵盖后端、两类设备及对齐开关，清除待自动播放请求，避免模型卸载后旧请求恢复。MOSS 的 EOS 只表示模型结束，不是覆盖率证明；frame_limit 属于生成预算失败，不能触发 GPU 重建或写入当前块完成。
 
@@ -263,21 +253,21 @@ StreamingSession::next_chunk 返回 None 不一定是 EOS；必须额外检查 i
 
 ### 模型选择、音色隔离与取消
 
-协议 v5 的 Config 增加可选 model/style；旧 Qwen None 对应 0.6B，已有后端/音色/设备不变。新文件默认检测 GPU 并选择 Qwen 1.7B CustomVoice 及实际 CUDA/Metal，否则依编译目录选择 CPU MOSS/Kokoro/Qwen 0.6B。不编入稳定后端时须显式指定候选；目录查询不下载模型，实际 Prepare 只下载当前模型。
+协议 v5 的 Config 增加可选 model/style；旧 Qwen None 对应 0.6B，已有后端/音色/设备不变。新文件默认检测 GPU 并选择 Qwen 1.7B CustomVoice 及实际 CUDA/Metal，否则选择 CPU MOSS Nano。不编入稳定后端时须显式指定候选；目录查询不下载模型，实际 Prepare 只下载当前模型。
 
 音色与提示、下载及校准按 backend/model/revision 隔离。阅读器切换模型先 Stop 并释放 manager，再准备新模型；style/voice 更改从未完成片段重建会话。共享 VoiceStore 保存 WAV/准确文字/描述/模型身份，各适配器自己的编码缓存按该身份保存。Qwen 设计音色先 VoiceDesign 短片段，保存后用 Base 克隆。
 
-Omni 和 Zip 首版是 semantic segment PCM，native_streaming=false；不得将整段完成描述为实时流式。原生线程取消直接检查 Sender::is_closed，不能依赖 Tokio 上的监视 future：Backend Drop 的 join 会阻塞该执行器，旧方式可能等完整扩散生成才退出。调用层先销毁音频 receiver 再 Drop 后端，避免 bounded send 与 join 死锁。有效 PCM 加正常 End 才提交完成检查点。
+Omni 首版是 semantic segment PCM，native_streaming=false；不得将整段完成描述为实时流式。原生线程取消直接检查 Sender::is_closed，不能依赖 Tokio 上的监视 future：Backend Drop 的 join 会阻塞该执行器，旧方式可能等完整扩散生成才退出。调用层先销毁音频 receiver 再 Drop 后端，避免 bounded send 与 join 死锁。有效 PCM 加正常 End 才提交完成检查点。
 
 **相关文件**：`crates/novel-tts-core/src/{voices.rs,config.rs,backend.rs}`、`crates/novel-tts/src/voices/`、`src/tts/ui.rs`、`dev-notes/tts-model-tiers-acceptance.md`。
 
-首次 Prepare 或 CLI 实际朗读时 ConfigStore::initialize 在文件锁内保存新默认值；Hello/GetConfig/voices list 保持只读。已有配置逐字保留，不通过初始化重写未知字段。这样 GPU 首次默认成为用户偏好，下一次硬件变化不会悄悄换后端。
+首次 Prepare 或 CLI 实际朗读时 ConfigStore::initialize 在文件锁内保存新默认值；Hello/GetConfig/voices list 保持只读。普通已有配置逐字保留，不通过初始化重写未知字段；退休 Kokoro/ZipVoice 及无 backend 的旧配置是例外，worker 启动时迁移到 Nano，保留未知字段与其他偏好。这样 GPU 首次默认成为用户偏好，下一次硬件变化不会悄悄换后端。
 
 ### 推理线程在初始化 await 之前就必须有所有者
 
 std::thread::JoinHandle 直接 drop 会脱离线程。后端加载时先构造持有请求 sender 和 JoinHandle 的后端，再 await 初始化 ready，取消准备就会通过后端 Drop 关闭通道并 join；不能 ready 成功后才构造后端，否则取消并立刻切换可能短暂同时保留两套 GPU 权重。已加载模型的取消仍先丢弃 PCM receiver，释放有界发送后再 join。
 
-**相关文件**：`crates/novel-tts-backends/src/{qwen,voxcpm,omnivoice,zipvoice}.rs`。
+**相关文件**：`crates/novel-tts-backends/src/{qwen,voxcpm,omnivoice}.rs`。
 
 ### MOSS 多种原生模型
 

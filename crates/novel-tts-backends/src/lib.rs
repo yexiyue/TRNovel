@@ -4,42 +4,29 @@ pub mod alignment;
 #[cfg(any(
     feature = "moss",
     feature = "alignment",
-    feature = "kokoro",
     feature = "qwen",
     feature = "voxcpm",
     feature = "omnivoice",
-    feature = "zipvoice"
 ))]
 pub mod devices;
-#[cfg(feature = "kokoro")]
-pub mod kokoro;
 #[cfg(feature = "moss")]
 pub mod moss;
 #[cfg(feature = "omnivoice")]
 pub mod omnivoice;
 #[cfg(feature = "qwen")]
 pub mod qwen;
-#[cfg(any(
-    feature = "voxcpm",
-    feature = "omnivoice",
-    feature = "zipvoice",
-    feature = "moss-candle"
-))]
+#[cfg(any(feature = "voxcpm", feature = "omnivoice", feature = "moss-candle"))]
 pub mod reference;
 #[cfg(any(
     feature = "moss",
     feature = "alignment",
-    feature = "kokoro",
     feature = "qwen",
     feature = "voxcpm",
     feature = "omnivoice",
-    feature = "zipvoice"
 ))]
 mod resources;
 #[cfg(feature = "voxcpm")]
 pub mod voxcpm;
-#[cfg(feature = "zipvoice")]
-pub mod zipvoice;
 
 use std::{
     path::{Path, PathBuf},
@@ -63,17 +50,13 @@ impl Registry {
     }
     #[cfg(any(
         feature = "moss",
-        feature = "kokoro",
         feature = "qwen",
         feature = "voxcpm",
         feature = "omnivoice",
-        feature = "zipvoice"
     ))]
     fn devices_for(&self, backend: &str, available: bool) -> Vec<tts_protocol::Device> {
         let _ = available;
         match backend {
-            #[cfg(feature = "zipvoice")]
-            "zipvoice" => vec![tts_protocol::Device::Cpu],
             #[cfg(feature = "voxcpm")]
             "voxcpm" => {
                 if available {
@@ -98,8 +81,6 @@ impl Registry {
                     qwen::compiled_devices()
                 }
             }
-            #[cfg(feature = "kokoro")]
-            "kokoro" => vec![tts_protocol::Device::Cpu],
             #[cfg(feature = "moss")]
             "moss" => {
                 if available {
@@ -113,33 +94,27 @@ impl Registry {
     }
     #[cfg(any(
         feature = "moss",
-        feature = "kokoro",
         feature = "qwen",
         feature = "voxcpm",
         feature = "omnivoice",
-        feature = "zipvoice"
     ))]
     pub fn compiled_devices(&self, backend: &str) -> Vec<tts_protocol::Device> {
         self.devices_for(backend, false)
     }
     #[cfg(any(
         feature = "moss",
-        feature = "kokoro",
         feature = "qwen",
         feature = "voxcpm",
         feature = "omnivoice",
-        feature = "zipvoice"
     ))]
     pub fn available_devices(&self, backend: &str) -> Vec<tts_protocol::Device> {
         self.devices_for(backend, true)
     }
     #[cfg(any(
         feature = "moss",
-        feature = "kokoro",
         feature = "qwen",
         feature = "voxcpm",
         feature = "omnivoice",
-        feature = "zipvoice"
     ))]
     pub fn device_status(
         &self,
@@ -157,11 +132,9 @@ impl Registry {
     }
     #[cfg(any(
         feature = "moss",
-        feature = "kokoro",
         feature = "qwen",
         feature = "voxcpm",
         feature = "omnivoice",
-        feature = "zipvoice"
     ))]
     pub fn compiled_devices_for(
         &self,
@@ -177,11 +150,9 @@ impl Registry {
     }
     #[cfg(any(
         feature = "moss",
-        feature = "kokoro",
         feature = "qwen",
         feature = "voxcpm",
         feature = "omnivoice",
-        feature = "zipvoice"
     ))]
     pub fn available_devices_for(
         &self,
@@ -197,11 +168,9 @@ impl Registry {
     }
     #[cfg(any(
         feature = "moss",
-        feature = "kokoro",
         feature = "qwen",
         feature = "voxcpm",
         feature = "omnivoice",
-        feature = "zipvoice"
     ))]
     pub fn device_status_for(
         &self,
@@ -226,22 +195,10 @@ impl Registry {
             moss::candle::capabilities(&self.root, moss::candle::Mode::Local)?,
             #[cfg(feature = "moss-candle")]
             moss::candle::capabilities(&self.root, moss::candle::Mode::Realtime)?,
-            #[cfg(feature = "kokoro")]
-            kokoro::KokoroBackend::capabilities(),
             #[cfg(feature = "voxcpm")]
             voxcpm::capabilities(&voxcpm::directory(&self.root))?,
             #[cfg(feature = "omnivoice")]
             omnivoice::capabilities(&omnivoice::directory(&self.root))?,
-            #[cfg(feature = "zipvoice")]
-            zipvoice::capabilities(
-                &zipvoice::Variant::Int8.directory(&self.root),
-                zipvoice::Variant::Int8,
-            )?,
-            #[cfg(feature = "zipvoice")]
-            zipvoice::capabilities(
-                &zipvoice::Variant::Fp32.directory(&self.root),
-                zipvoice::Variant::Fp32,
-            )?,
         ];
         #[cfg(feature = "qwen")]
         let entries = entries
@@ -252,11 +209,9 @@ impl Registry {
         let mut entries: Vec<Capabilities> = entries;
         #[cfg(any(
             feature = "moss",
-            feature = "kokoro",
             feature = "qwen",
             feature = "voxcpm",
             feature = "omnivoice",
-            feature = "zipvoice"
         ))]
         for caps in &mut entries {
             caps.compiled_devices = self.compiled_devices_for(&caps.backend, caps.model.as_deref());
@@ -291,16 +246,16 @@ impl Registry {
                 ..Default::default()
             });
         }
-        for id in ["moss", "kokoro", "qwen"] {
-            if let Some(caps) = catalog.iter().find(|caps| caps.backend == id) {
-                return Ok(tts_protocol::Config {
-                    backend: caps.backend.clone(),
-                    model: caps.model.clone(),
-                    voice: caps.default_voice.clone(),
-                    tts_device: tts_protocol::Device::Cpu,
-                    ..Default::default()
-                });
-            }
+        if let Some(caps) = catalog.iter().find(|caps| {
+            caps.backend == "moss" && caps.model.as_deref().is_none_or(|id| id == "nano")
+        }) {
+            return Ok(tts_protocol::Config {
+                backend: caps.backend.clone(),
+                model: caps.model.clone(),
+                voice: caps.default_voice.clone(),
+                tts_device: tts_protocol::Device::Cpu,
+                ..Default::default()
+            });
         }
         anyhow::bail!(
             "no default synthesis backend is compiled; select an available backend explicitly"
@@ -333,26 +288,15 @@ impl Registry {
         let _ = (&progress, device);
         #[cfg(any(
             feature = "moss",
-            feature = "kokoro",
             feature = "qwen",
             feature = "voxcpm",
             feature = "omnivoice",
-            feature = "zipvoice"
         ))]
         anyhow::ensure!(
             self.available_devices_for(id, model).contains(&device),
             "device {device:?} is unavailable for {id}"
         );
         match id {
-            #[cfg(feature = "zipvoice")]
-            "zipvoice" => {
-                let variant = zipvoice::Variant::parse(model)?;
-                let directory = variant.directory(&self.root);
-                zipvoice::resources::prepare(&directory, variant, progress).await?;
-                Ok(Rc::new(
-                    zipvoice::ZipBackend::load_on(directory, variant, device).await?,
-                ))
-            }
             #[cfg(feature = "voxcpm")]
             "voxcpm" => {
                 let directory = voxcpm::directory(&self.root);
@@ -393,22 +337,6 @@ impl Registry {
                 moss::resources::prepare(&directory, progress).await?;
                 Ok(Rc::new(
                     moss::MossBackend::load_on(directory, device).await?,
-                ))
-            }
-            #[cfg(feature = "kokoro")]
-            "kokoro" => {
-                anyhow::ensure!(
-                    device == tts_protocol::Device::Cpu,
-                    "Kokoro currently supports CPU only"
-                );
-                let directory = self.root.join("kokoro");
-                kokoro::models::prepare(&directory, progress).await?;
-                Ok(Rc::new(
-                    kokoro::KokoroBackend::load(
-                        &directory.join("kokoro-v1.1-zh.onnx"),
-                        &directory.join("voices-v1.1-zh.bin"),
-                    )
-                    .await?,
                 ))
             }
             _ => anyhow::bail!("backend {id} is not compiled"),

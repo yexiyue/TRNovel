@@ -92,6 +92,8 @@ fn main() {
             if apple { "c++" } else { "stdc++" }
         );
         if apple {
+            // GGML enables the Apple BLAS backend by default on macOS.
+            println!("cargo:rustc-link-lib=static=ggml-blas");
             println!("cargo:rustc-link-lib=framework=Accelerate");
             if metal {
                 println!("cargo:rustc-link-lib=static=ggml-metal");

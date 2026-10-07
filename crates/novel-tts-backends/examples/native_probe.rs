@@ -49,17 +49,6 @@ async fn run() -> anyhow::Result<()> {
                 novel_tts_backends::omnivoice::OmniBackend::load_on(directory.clone(), device)
                     .await?,
             ),
-            #[cfg(feature = "zipvoice")]
-            "zipvoice" => Rc::new(
-                novel_tts_backends::zipvoice::ZipBackend::load_on(
-                    directory.clone(),
-                    novel_tts_backends::zipvoice::Variant::parse(
-                        std::env::var("ZIP_MODEL").ok().as_deref(),
-                    )?,
-                    device,
-                )
-                .await?,
-            ),
             _ => anyhow::bail!("backend not compiled"),
         };
         Ok::<_, anyhow::Error>(backend)

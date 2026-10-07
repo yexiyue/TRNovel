@@ -96,10 +96,8 @@ fn runtime_info() -> String {
         #[cfg(any(
             feature = "moss",
             feature = "alignment",
-            feature = "kokoro",
             feature = "coreml",
             feature = "ort-cuda",
-            feature = "zipvoice"
         ))]
         format!("{:?}", ort::info()),
         #[cfg(feature = "qwen")]

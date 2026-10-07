@@ -16,7 +16,7 @@ apk add --no-cache alsa-lib onnxruntime
 ```
 
 Only the listening worker loads ONNX Runtime/ALSA. It requires a working audio
-device and the separately downloaded Kokoro model files. Other musl systems
+device and the separately downloaded MOSS Nano model files. Other musl systems
 must provide ONNX Runtime API 22 (1.22 or newer) and compatible shared libraries.
 Browser-assisted sources still require a system browser.
 

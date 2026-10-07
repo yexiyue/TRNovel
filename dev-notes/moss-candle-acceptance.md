@@ -45,7 +45,7 @@ Windows / RTX 5070 12 GB / CUDA 12.9 / release。各样本用途不同，不作�
 
 ## Product boundaries
 
-`moss-candle-cuda` 添加 Local/Realtime GPU 实验选项。`moss-candle-metal` 是对应构建入口，Metal 尚无实机验收。VoiceGenerator 是 voices design 辅助模型，不逐段重新设计。Local 在目录注明实验、较慢，不作为默认主力。
+`moss-candle-cuda` 添加 Local/Realtime GPU 实验选项。`moss-candle-metal` 的 M4 Pro 真实 PCM/吞吐补测见 [Metal 效率报告](metal-tts-efficiency.md)，不替代 30 分钟持续播放与人工音质验收。VoiceGenerator 是 voices design 辅助模型，不逐段重新设计。Local 在目录注明实验、较慢，不作为默认主力。
 
 CPU 库构建/小模型数值测试通过，完整大模型 CPU 内存/吞吐未验收，worker 暂只公开 GPU 设备，Nano CPU 不变。Auto 只从该模型公开设备选择；有 CPU 对照时保留实测校准，GPU-only 模式不加载未开放的 CPU adapter。显式 CPU 请求报错。
 

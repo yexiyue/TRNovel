@@ -112,3 +112,7 @@ CRITICAL（归档完整性）：共六个未勾选的组合验收任务，涉及
 ## 2026-10-07 用户试听反馈与 MOSS 扩展
 
 用户确认 OmniVoice 是句中漏字，听感不如 ZipVoice Distill FP32，VoxCPM2 2B 最好。该反馈不被既有 EOS/吞吐验收覆盖，中文完整性和音质仍独立判断。按用户新要求增加统一 Candle 的 MOSS Local / Realtime / VoiceGenerator，详见 `moss-candle-acceptance.md`；不改变当前用户的后端、模型、音色或设备。
+
+## macOS Metal 补测
+
+M4 Pro 的六种模型真实 PCM、同机 CPU 对照、较长语料和 Mac 构建/设备识别修复见 [Metal 效率报告](metal-tts-efficiency.md)。各模型可完成推理，但本轮预热后 RTF 均大于 1；不将可用性写成实时连续播放验收。权重已放默认缓存，人工音质、30 分钟播放及其他平台的组合任务仍保持未完成。

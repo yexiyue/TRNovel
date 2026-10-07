@@ -82,7 +82,7 @@ choices = [('qwen', '0.6b-customvoice', 'uncle_fu', 'cuda'),
            ('qwen', '1.7b-base', 'custom:acceptance', 'cuda'),
            ('voxcpm', '2b-q8_0', 'custom:acceptance', 'cuda'),
            ('omnivoice', '0.6b', 'custom:acceptance', 'cuda'),
-           ('zipvoice', 'distill-int8', 'custom:probe', 'cpu')]
+           ('moss', 'nano', 'Weiguo', 'cpu')]
 if args.choices_file:
     choices = json.loads(Path(args.choices_file).read_text(encoding='utf-8'))
     assert choices and all(len(choice) == 4 for choice in choices)

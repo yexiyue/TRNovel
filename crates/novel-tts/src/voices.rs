@@ -50,12 +50,7 @@ pub async fn run(
         }
         return Ok(());
     }
-    #[cfg(any(
-        feature = "voxcpm",
-        feature = "omnivoice",
-        feature = "zipvoice",
-        feature = "moss-candle"
-    ))]
+    #[cfg(any(feature = "voxcpm", feature = "omnivoice", feature = "moss-candle"))]
     if let Some((store, rate)) = shared_store(&resources, config)? {
         match command {
             VoiceCommand::List => unreachable!(),
@@ -340,12 +335,7 @@ pub async fn run(
         anyhow::bail!("voice import requires the moss Cargo feature")
     }
 }
-#[cfg(any(
-    feature = "voxcpm",
-    feature = "omnivoice",
-    feature = "zipvoice",
-    feature = "moss-candle"
-))]
+#[cfg(any(feature = "voxcpm", feature = "omnivoice", feature = "moss-candle"))]
 fn shared_store(
     resources: &Resources,
     config: &tts_protocol::Config,
@@ -373,14 +363,6 @@ fn shared_store(
             ))?,
             24000,
         )),
-        #[cfg(feature = "zipvoice")]
-        "zipvoice" => {
-            let variant = tts_backends::zipvoice::Variant::parse(config.model.as_deref())?;
-            Some((
-                tts_backends::zipvoice::voice_store(&variant.directory(resources.root()), variant)?,
-                24000,
-            ))
-        }
         _ => None,
     })
 }

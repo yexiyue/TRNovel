@@ -5,7 +5,6 @@ from pathlib import Path
 import shutil
 import subprocess
 import sys
-import zipfile
 
 variant = sys.argv[1]
 if variant not in ("basic", "listening", "listening-coreml", "listening-cuda"):
@@ -75,16 +74,3 @@ if variant.startswith("listening"):
                 destination = notices / path.relative_to(root)
                 destination.parent.mkdir(parents=True, exist_ok=True)
                 shutil.copy2(path, destination)
-    if "zipvoice" in optional_features:
-        helper = root / "crates" / "novel-tts-backends" / "native" / "zipvoice-phonemizer"
-        # Provide corresponding GPL helper source, including our CMake and API changes.
-        with zipfile.ZipFile(notices / "zipvoice-phonemizer-source.zip", "w", zipfile.ZIP_DEFLATED) as archive:
-            for path in sorted(helper.rglob("*")):
-                if path.is_file():
-                    archive.write(path, path.relative_to(helper))
-        for source in (root / "crates" / "novel-tts-backends" / "src" / "zipvoice",):
-            for path in source.rglob("*"):
-                if path.is_file() and ("LICENSE" in path.name or path.name == "SOURCE.md"):
-                    destination = notices / path.relative_to(root)
-                    destination.parent.mkdir(parents=True, exist_ok=True)
-                    shutil.copy2(path, destination)

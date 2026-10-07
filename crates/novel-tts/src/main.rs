@@ -74,6 +74,9 @@ async fn main() -> anyhow::Result<()> {
         None => tts_core::checkpoint::CheckpointStore::user_default()?,
     };
     let resources = resources::Resources::new(args.model_dir)?;
+    if matches!(config.load()?.backend.as_str(), "kokoro" | "zipvoice") {
+        config.migrate_retired_backend(&resources.capabilities_for("moss", None)?)?;
+    }
     let config = if config.path().exists() {
         config
     } else {
@@ -109,11 +112,9 @@ async fn main() -> anyhow::Result<()> {
         });
         #[cfg(any(
             feature = "moss",
-            feature = "kokoro",
             feature = "qwen",
             feature = "voxcpm",
             feature = "omnivoice",
-            feature = "zipvoice"
         ))]
         for (component, device) in [
             ("tts", args.tts_device),

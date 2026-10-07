@@ -1,3 +1,5 @@
+> 已撤回（2026-10-07）：按用户决定移除 ZipVoice，CPU 默认仅保留 MOSS Nano。以下内容为历史方案，不再要求实现或验收。
+
 # Design
 
 Implement the complete official ONNX CPU pipeline using existing ORT, including text frontend, reference features, iterative flow matching and Vocos. Support INT8 and FP32 resources.

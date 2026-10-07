@@ -36,9 +36,9 @@ jobs:
           components: clippy
       - uses: Swatinem/rust-cache@v2
       - name: Check CUDA implementation
-        run: cargo clippy --locked -p novel-tts --no-default-features --features qwen-cuda,voxcpm-cuda,omnivoice-cuda,zipvoice --all-targets -- -D warnings
+        run: cargo clippy --locked -p novel-tts --no-default-features --features qwen-cuda,voxcpm-cuda,omnivoice-cuda --all-targets -- -D warnings
       - name: Link CUDA worker
-        run: cargo build --locked --release -p novel-tts --no-default-features --features qwen-cuda,voxcpm-cuda,omnivoice-cuda,zipvoice
+        run: cargo build --locked --release -p novel-tts --no-default-features --features qwen-cuda,voxcpm-cuda,omnivoice-cuda
       # Real-model playback and performance require a separate GPU machine.
   metal:
     runs-on: macos-14
@@ -51,6 +51,6 @@ jobs:
         run: brew install cmake ninja pkg-config
       - uses: Swatinem/rust-cache@v2
       - name: Check shared Candle and native Metal adapters
-        run: cargo clippy --locked -p novel-tts --no-default-features --features metal,voxcpm-metal,omnivoice-metal,zipvoice --all-targets -- -D warnings
+        run: cargo clippy --locked -p novel-tts --no-default-features --features metal,voxcpm-metal,omnivoice-metal --all-targets -- -D warnings
       - name: Link Metal worker
-        run: cargo build --locked --release -p novel-tts --no-default-features --features metal,voxcpm-metal,omnivoice-metal,zipvoice
+        run: cargo build --locked --release -p novel-tts --no-default-features --features metal,voxcpm-metal,omnivoice-metal

@@ -1213,7 +1213,7 @@ fn filter_top_k(logits: &Tensor, ratio: f32) -> Result<Tensor> {
     let logits = logits.contiguous()?;
     let vocab_size = logits.dim(candle_core::D::Minus1)?;
     let top_k = ((ratio * vocab_size as f32).ceil() as usize).clamp(1, vocab_size);
-    let sorted_indices = logits.arg_sort_last_dim(false)?.contiguous()?;
+    let sorted_indices = argsort_descending(&logits)?.contiguous()?;
     let top_indices = sorted_indices
         .narrow(candle_core::D::Minus1, 0, top_k)?
         .contiguous()?;
@@ -1224,6 +1224,21 @@ fn filter_top_k(logits: &Tensor, ratio: f32) -> Result<Tensor> {
     masked
         .scatter(&top_indices, &top_values, candle_core::D::Minus1)
         .map_err(Into::into)
+}
+
+fn argsort_descending(values: &Tensor) -> Result<Tensor> {
+    // Candle 0.9.2's Metal bitonic sort launches next_power_of_two(ncols)
+    // threads in one group. More than 1024 threads silently corrupt indices.
+    // Sort only the scores on CPU; model evaluation and token updates stay on GPU.
+    if values.device().is_metal() && values.dim(candle_core::D::Minus1)? > 1024 {
+        values
+            .to_device(&Device::Cpu)?
+            .arg_sort_last_dim(false)?
+            .to_device(values.device())
+            .map_err(Into::into)
+    } else {
+        values.arg_sort_last_dim(false).map_err(Into::into)
+    }
 }
 
 fn with_rng<T>(
@@ -1609,9 +1624,7 @@ fn apply_step_updates_device(
     let flat_scores = masked_scores.flatten_all()?;
     let flat_len = flat_scores.elem_count();
     let top_k = update_count.min(flat_len);
-    let sorted_indices = flat_scores
-        .reshape((1, flat_len))?
-        .arg_sort_last_dim(false)?;
+    let sorted_indices = argsort_descending(&flat_scores.reshape((1, flat_len))?)?;
     let top_indices = sorted_indices.i((0, 0..top_k))?;
     let flat_predicted = predicted_tokens.flatten_all()?;
     let update_values = flat_predicted.gather(&top_indices, 0)?;
@@ -1872,4 +1885,76 @@ pub(crate) fn tensor_to_i64_tensor2(tensor: &Tensor) -> Result<I64Tensor2> {
         .flatten_all()?
         .to_vec1::<i64>()?;
     I64Tensor2::new(dims, data)
+}
+
+#[cfg(all(test, feature = "metal", target_os = "macos"))]
+mod metal_tests {
+    use super::*;
+
+    #[test]
+    fn class_top_k_above_metal_threadgroup_limit_matches_cpu() -> Result<()> {
+        let device = match Device::new_metal(0) {
+            Ok(device) => device,
+            Err(error) => {
+                eprintln!("Skipping Metal parity test: {error}");
+                return Ok(());
+            }
+        };
+        for width in [1024, 1025, 4097] {
+            let values = (0..2 * width)
+                .map(|i| (i % width) as f32)
+                .collect::<Vec<_>>();
+            let cpu = Tensor::from_vec(values, (2, width), &Device::Cpu)?;
+            let actual = filter_top_k(&cpu.to_device(&device)?, 0.1)?
+                .to_device(&Device::Cpu)?
+                .flatten_all()?
+                .to_vec1::<f32>()?;
+            let expected = filter_top_k(&cpu, 0.1)?.flatten_all()?.to_vec1::<f32>()?;
+            assert_eq!(actual, expected, "vocabulary width {width}");
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn unmask_selection_above_metal_threadgroup_limit_matches_cpu() -> Result<()> {
+        let device = match Device::new_metal(0) {
+            Ok(device) => device,
+            Err(error) => {
+                eprintln!("Skipping Metal parity test: {error}");
+                return Ok(());
+            }
+        };
+        // 130 frames * 8 codebooks requires a 2048-thread bitonic sort.
+        let dims = (1, 8, 130);
+        for update_count in [7, 1040] {
+            let run = |device: &Device| -> Result<Vec<i64>> {
+                let current = Tensor::full(1024i64, dims, device)?;
+                let predictions =
+                    Tensor::from_vec((0..1040).map(|i| (i % 1024) as i64).collect(), dims, device)?;
+                let scores = Tensor::from_vec((0..1040).map(|i| i as f32).collect(), dims, device)?;
+                let penalties = Tensor::zeros((1, 8, 1), DType::F32, device)?;
+                let updated = apply_step_updates_device(
+                    &current,
+                    &predictions,
+                    &scores,
+                    1024,
+                    update_count,
+                    &penalties,
+                    0.0,
+                    None,
+                    None,
+                )?;
+                Ok(updated
+                    .to_device(&Device::Cpu)?
+                    .flatten_all()?
+                    .to_vec1::<i64>()?)
+            };
+            assert_eq!(
+                run(&device)?,
+                run(&Device::Cpu)?,
+                "update count {update_count}"
+            );
+        }
+        Ok(())
+    }
 }

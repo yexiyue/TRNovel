@@ -22,10 +22,9 @@ Cargo workspace 的模块组织、feature 门控、构建/发布、平台坑。`
 
 ## 依赖钉版（勿随意升级）
 
-### ort / kokoro-tts 钉死，勿升
+### ort 钉版
 
 - `ort` 钉死 `2.0.0-rc.10`（onnxruntime 绑定）。
-- `kokoro-tts` 钉死 `0.3.1`——**`rc.12` 砍掉了 Intel Mac 支持,不要升**。
 - 普通发布目标使用 ort 预编译库；ARM64 musl 使用 Alpine 系统共享库，详见下方 musl 发布说明。
 
 **相关文件**：`crates/novel-tts-backends/Cargo.toml`、根 `Cargo.toml`
@@ -56,7 +55,7 @@ Codex / CI shell 可能带 `TERM=dumb` 或 `NO_COLOR=1`，会让 ratatui/crosste
 
 ### ort 固定版本由后端 crate 管理
 
-`ort` 和 `kokoro-tts` 的版本统一固定在根 workspace.dependencies。novel-tts-backends 的 MOSS 实现直接调用 ort，Kokoro 也通过该依赖固定其传递版本。不要删除或放宽固定版本；rc.10 保留当前 Intel Mac 和 GNU Linux 发布兼容性。
+`ort` 的版本统一固定在根 workspace.dependencies。MOSS Nano 与对齐器仍使用 ORT，不要删除或放宽固定版本；rc.10 保留当前 Intel Mac 和 GNU Linux 发布兼容性。
 
 **相关文件**：根 `Cargo.toml`、`crates/novel-tts-backends/Cargo.toml`。
 
@@ -82,7 +81,7 @@ npm publish-time scanning can delay registry availability by several minutes aft
 
 根 `tts` feature 仅装配听书 UI、JSON Lines 协议及进程客户端，默认启用。基础阅读版用 `cargo build -p trnovel --no-default-features`，配套程序用 `cargo build -p novel-tts`。两种阅读器的 package-specific dependency tree 均没有 novel-tts-core、kokoro-tts、ort、rodio；不要以 workspace all-features 的依赖集合代替这项证明。
 
-`novel-tts-core` 不包含模型 feature；独立程序默认 moss feature，kokoro 可选，固定原生推理依赖由 novel-tts-backends 承担。核心拥有通用 rodio 播放器。此变更的发布安装渠道与跨平台试听仍由 OpenSpec 的未完成任务跟踪，不能把本机 check 或假进程测试写成平台发布验收。
+`novel-tts-core` 不包含模型 feature；独立程序默认 moss feature，固定原生推理依赖由 novel-tts-backends 承担。核心拥有通用 rodio 播放器。此变更的发布安装渠道与跨平台试听仍由 OpenSpec 的未完成任务跟踪，不能把本机 check 或假进程测试写成平台发布验收。
 
 **相关文件**：`Cargo.toml`、`crates/novel-tts/Cargo.toml`、`openspec/changes/decouple-tts-process/tasks.md`。
 
@@ -99,11 +98,11 @@ npm publish-time scanning can delay registry availability by several minutes aft
 
 `novel-tts-core` 是会话/合成/播放库，`novel-tts-protocol` 是轻量协议库，`novel-tts` 是独立程序 crate 及命令。依赖键用 `tts-core` / `tts-protocol` 显式声明 package 名，Rust 用 `tts_core` / `tts_protocol` 引用。阅读器可选模块为 `src/tts.rs` 与 `src/tts/`。
 
-CLI 接管原 novel-tts 的包名，保持 0.3.0 版本线，后续发布需递增；核心新包同样暂用 0.3.0。模型目录 `.novel-tts/kokoro` 与配置/检查点格式保持原样。更新包名时同步 crates.io 标签到目录的发布路由、cargo-dist binary 清单与同目录/PATH 程序发现。
+CLI 接管原 novel-tts 的包名，保持 0.3.0 版本线，后续发布需递增；核心新包同样暂用 0.3.0。模型公共根目录 `.novel-tts` 与配置/检查点路径保持原样。更新包名时同步 crates.io 标签到目录的发布路由、cargo-dist binary 清单与同目录/PATH 程序发现。
 
 ### MOSS 后端与验收隔离
 
-新模型实现在 novel-tts-backends；共享原生依赖版本位于 workspace.dependencies。novel-tts 默认 moss，`--features kokoro` 编入两个后端，`--no-default-features --features kokoro` 只编入 Kokoro。阅读器保持协议依赖隔离。
+新模型实现在 novel-tts-backends；共享原生依赖版本位于 workspace.dependencies。novel-tts 默认 moss，CPU 默认仅 MOSS Nano；Kokoro 和 ZipVoice 已移除。阅读器保持协议依赖隔离。
 
 MOSS ONNX opset 17 的实际加载、生成和编解码已在本机固定 ort rc.10 上验证，不需升级原生运行时。SentencePiece 使用纯 Rust sentencepiece-rs，参考 WAV 用 hound 解码和 rubato sinc 重采样，无 Python 运行依赖。资源固定 revision、尺寸和 SHA-256；音色缓存绑定模型版本。
 
@@ -169,12 +168,34 @@ Qwen 推理源码位于 `crates/qwen3-tts`，来自 TrevorS/qwen3-tts-rs revisio
 
 新增 `crates/voxcpm-sys` 固定 llama.cpp-omni 静态 C ABI，`crates/omnivoice` 只保留标准 Candle 推理。native 依赖只经 worker 引入；阅读器仅使用 protocol。CMake/cc 置于 workspace dependencies。Windows 使用 Ninja 与 cc::windows_registry 得到的 MSVC 环境，无需 CUDA Visual Studio 插件；VS generator 在 ZIP Toolkit 安装中会报 No CUDA toolset。本机 CMake 3.31.6 / Ninja 1.11.1.4 位于 D:/dev-tools/bin。
 
-ZipVoice 复用 ORT，Vocos 输出 mag/x/y，由 Rust ISTFT 恢复 PCM。英文音素使用独立 patched eSpeak 工具，仅在 zipvoice feature 下编译；数据清单每个文件固定大小与 SHA。发行 zipvoice 时 `.github/scripts/build-variant.py` 附 GPL 对应源码、许可与前端数据许可证。Omni tokenizer 权重为 BOSON/Higgs/Llama 条款，不能跟生成器一起标为 Apache；`crates/omnivoice/LICENSE.Higgs-Audio` 保存原始许可。
+Omni tokenizer 权重为 BOSON/Higgs/Llama 条款，不能跟生成器一起标为 Apache；`crates/omnivoice/LICENSE.Higgs-Audio` 保存原始许可。
 
-**相关文件**：`crates/tts-candle-platform/`、`crates/voxcpm-sys/build.rs`、`crates/novel-tts-backends/build.rs`、`.github/workflows/qwen-cuda.yml`。
+**相关文件**：`crates/tts-candle-platform/`、`crates/voxcpm-sys/build.rs`、`.github/workflows/qwen-cuda.yml`。
 
 ### MOSS 统一 Candle 试用
 
 `crates/moss-tts` 与 Qwen/Omni 共用 Candle 0.9.2。worker 使用 `moss-candle-cuda` / `moss-candle-metal`，不把推理依赖引入阅读器。CUDA 大模型 BF16、codec F16；VoiceGenerator F16 的真实权重会产生无效 logits。四组权重按官方固定 revision 和 SHA 放用户缓存，7.1 GB codec 共用一次，不按每个生成模型复制。打包可选 feature 时附带 moss-tts LICENSE/NOTICE。CPU 库检查不等于完整大模型 CPU 验收；当前 worker 新模式仅公开 GPU。
 
 **相关文件**：`crates/moss-tts/`、`crates/novel-tts-backends/src/moss/candle/`、`dev-notes/moss-candle-acceptance.md`。
+
+### macOS VoxCPM2 原生链接
+
+VoxCPM2 的 vendored GGML 在 Apple 平台默认启用 BLAS；Rust 静态链接必须同时包含 `ggml-blas` 和 Accelerate 框架，否则最终链接报 `_ggml_backend_blas_reg` 未定义。仅完成 CMake 构建或 `cargo check` 不能发现该问题，必须构建实际 worker/example。
+
+**相关文件**：`crates/voxcpm-sys/build.rs`。
+
+VoxCPM2 设备探测要匹配 vendored GGML 的注册名 `MTL`（实际 backend 名为 `MTL0`），不是 UI/协议名 `Metal`。显式设备加载后的防 CPU 回退检查也必须使用同一原生名称；只检查 GPU 日志或 Metal feature 编译通过会漏掉这个错误。
+
+### OmniVoice Metal 的长向量排序限制
+
+Candle 0.9.2 的 Metal `arg_sort_last_dim` 使用单线程组 bitonic sort，线程数为列数的下一个 2 次幂。列数超过 1024 时会超出线程组限制，返回损坏的索引；OmniVoice 的位置选择会残留 mask token，进而生成噪音。8 个 codebook、130 帧已触发；强制 F32 不能修复。
+
+**正确做法**：OmniVoice 在 Metal 且排序列数 >1024 时仅把分数排序放在 CPU，将索引传回原设备；位置选择和 class top-k 共用此保护。模型计算仍在 Metal，CUDA 路径不变。Stage1 普通解码也校验 token 范围，避免 Metal embedding 的越界截断掩盖异常。回归测试覆盖 1040 个位置，以及 1024/1025/4097 列 class top-k。
+
+**相关文件**：`crates/omnivoice/src/stage0_model.rs`、`crates/omnivoice/src/stage1_decoder.rs`；实测见 `dev-notes/metal-tts-efficiency.md`。
+
+### CPU 后端收敛与旧配置迁移
+
+2026-10-07 移除 Kokoro、ZipVoice adapters、features、专用依赖和 ZipVoice 的 vendored eSpeak/CMake helper。保留 MOSS Nano 为 CPU 默认，现有 GPU 模型继续保留。ORT rc.10 仍由 Nano 与强制对齐使用；不要随旧后端一起删除。worker 启动时将退休后端及无 backend 的旧配置迁移为 Nano 默认音色、CPU；文件锁内校验并原子保存，保留其他偏好与未知字段，revision 只增加一次。用户缓存不删除。
+
+**相关文件**：`crates/novel-tts-core/src/config.rs`、`crates/novel-tts/src/main.rs`、`crates/novel-tts-backends/src/lib.rs`。

@@ -195,21 +195,6 @@ async fn real_worker_model_voice_and_backend_changes_follow_rendered_capabilitie
     rendered(&handle, &snapshot, Some((Setting::Backend, true)));
     tokio::task::yield_now().await;
     assert_eq!(watched.borrow().config, before);
-    let zip = adjust(
-        &handle,
-        &mut snapshot,
-        &mut watched,
-        Setting::Backend,
-        false,
-    )
-    .await;
-    assert_eq!(zip.config.as_ref().unwrap().backend, "zipvoice");
-    assert_eq!(
-        zip.config.as_ref().unwrap().model.as_deref(),
-        Some("distill-int8")
-    );
-    assert!(rendered(&handle, &snapshot, None).contains("ZipVoice"));
-    assert!(!zip.capabilities.as_ref().unwrap().native_streaming);
     let omni = adjust(
         &handle,
         &mut snapshot,

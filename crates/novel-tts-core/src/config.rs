@@ -61,6 +61,33 @@ impl ConfigStore {
         }
     }
 
+    /// Retire the former CPU backends while preserving unrelated preferences.
+    pub fn migrate_retired_backend(&self, nano: &Capabilities) -> Result<(), ConfigError> {
+        if !matches!(self.load()?.backend.as_str(), "kokoro" | "zipvoice") {
+            return Ok(());
+        }
+        let _lock = crate::storage::lock(&self.path.with_extension("json.lock"))?;
+        let mut config = self.load()?;
+        if !matches!(config.backend.as_str(), "kokoro" | "zipvoice") {
+            return Ok(());
+        }
+        if nano.backend != "moss" || nano.model.as_deref().is_some_and(|id| id != "nano") {
+            return Err(ConfigError::Invalid("migration requires MOSS Nano".into()));
+        }
+        config.backend.clone_from(&nano.backend);
+        config.model.clone_from(&nano.model);
+        config.voice.clone_from(&nano.default_voice);
+        config.style = None;
+        config.tts_device = tts_protocol::Device::Cpu;
+        validate(&config, nano)?;
+        config.revision = config
+            .revision
+            .checked_add(1)
+            .ok_or_else(|| ConfigError::Invalid("revision overflow".into()))?;
+        crate::storage::save(&self.path, &config)?;
+        Ok(())
+    }
+
     /// Persist the selected defaults on first activation, without rewriting old files.
     pub fn initialize(&self, capabilities: &Capabilities) -> Result<Config, ConfigError> {
         let _lock = crate::storage::lock(&self.path.with_extension("json.lock"))?;
@@ -159,6 +186,66 @@ pub fn validate(config: &Config, capabilities: &Capabilities) -> Result<(), Conf
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn retired_backends_migrate_once_and_preserve_preferences() {
+        let directory = tempfile::tempdir().unwrap();
+        let path = directory.path().join("config.json");
+        let store = ConfigStore::new(&path);
+        let mut nano = capabilities();
+        nano.backend = "moss".into();
+        nano.model = Some("nano".into());
+        nano.default_voice = "Weiguo".into();
+        nano.voices = vec!["Weiguo".into()];
+        for backend in [Some("kokoro"), Some("zipvoice"), None] {
+            let mut old = serde_json::json!({
+                "voice": "custom:old", "model": "distill-fp32", "style": "old",
+                "volume": 0.5, "speed": 1.4, "auto_play": true, "revision": 8,
+                "tts_device": "cuda", "alignment_device": "coreml",
+                "alignment_enabled": true, "future": {"keep": true}
+            });
+            if let Some(backend) = backend {
+                old["backend"] = backend.into();
+            }
+            std::fs::write(&path, serde_json::to_vec(&old).unwrap()).unwrap();
+            store.migrate_retired_backend(&nano).unwrap();
+            let migrated = store.load().unwrap();
+            assert_eq!(migrated.backend, "moss");
+            assert_eq!(migrated.model.as_deref(), Some("nano"));
+            assert_eq!(migrated.voice, "Weiguo");
+            assert_eq!(migrated.tts_device, tts_protocol::Device::Cpu);
+            assert_eq!(migrated.style, None);
+            assert_eq!(migrated.volume, 0.5);
+            assert_eq!(migrated.speed, 1.4);
+            assert!(migrated.auto_play && migrated.alignment_enabled);
+            assert_eq!(migrated.alignment_device, tts_protocol::Device::Coreml);
+            assert_eq!(migrated.extra["future"]["keep"], true);
+            assert_eq!(migrated.revision, 9);
+            let bytes = std::fs::read(&path).unwrap();
+            store.migrate_retired_backend(&nano).unwrap();
+            assert_eq!(std::fs::read(&path).unwrap(), bytes);
+        }
+    }
+
+    #[test]
+    fn failed_migration_and_other_backends_preserve_existing_bytes() {
+        let directory = tempfile::tempdir().unwrap();
+        let path = directory.path().join("config.json");
+        let store = ConfigStore::new(&path);
+        for backend in ["qwen", "future", "kokoro"] {
+            let bytes = serde_json::to_vec(&Config {
+                backend: backend.into(),
+                ..Default::default()
+            })
+            .unwrap();
+            std::fs::write(&path, &bytes).unwrap();
+            assert_eq!(
+                store.migrate_retired_backend(&capabilities()).is_err(),
+                backend == "kokoro"
+            );
+            assert_eq!(std::fs::read(&path).unwrap(), bytes);
+        }
+    }
 
     fn capabilities() -> Capabilities {
         Capabilities {

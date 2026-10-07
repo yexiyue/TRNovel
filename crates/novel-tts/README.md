@@ -6,7 +6,7 @@ MOSS GPU 试用可增加 `moss-candle-cuda`（Metal 构建入口为
 Local 速度仍未达主力要求，Realtime 更适合先试听，两者均标为实验。
 
 ```sh
-cargo build --release -p novel-tts --features qwen-cuda,voxcpm-cuda,omnivoice-cuda,zipvoice,moss-candle-cuda
+cargo build --release -p novel-tts --features qwen-cuda,voxcpm-cuda,omnivoice-cuda,moss-candle-cuda
 novel-tts --backend moss --model realtime-1.7b --tts-device cuda voices design myvoice --name "我的音色" --description "温暖清晰的成年女性普通话"
 novel-tts --backend moss --model realtime-1.7b --voice custom:myvoice --tts-device cuda book.txt
 ```
@@ -27,7 +27,7 @@ cargo run -p novel-tts -- book.txt
 cargo run -p novel-tts -- --restart book.txt
 ```
 
-默认启用原生 CPU MOSS-TTS-Nano，首次实际启用会下载固定版本模型并校验，再打开音频设备。添加 `--features kokoro` 同时编入 Kokoro，或用 `--no-default-features --features kokoro` 单独构建它。单纯协议握手、查询设置或状态不下载、不加载、不播放。模型分别位于 `~/.novel-tts/moss/` 和 `~/.novel-tts/kokoro/`，`--model-dir` 指定包含这些后端子目录的公共根目录；`--config` 和 `--checkpoint-dir` 可用于隔离运行。
+默认启用 CPU MOSS-TTS-Nano，首次实际启用下载并校验固定版本模型，再打开音频设备。协议握手和查询不下载、不加载、不播放。Nano 模型位于 `~/.novel-tts/moss/`；`--model-dir` 指定各后端共用的缓存根目录，`--config` 和 `--checkpoint-dir` 可用于隔离运行。
 
 交互终端：空格暂停/继续，s 停播并退出，q/Esc 退出，Ctrl+C 退出；按键模式退出时恢复终端。非交互输入不启用原始模式，正文完成后退出，也支持 Ctrl+C。文件不可读/非 UTF-8 在准备模型前失败。成功/主动停止返回 0；文件、模型、设备或会话错误返回非零，参数错误由 clap 返回 2。状态输出写 stderr，不把正文/音频发到 stdout。
 
@@ -45,11 +45,10 @@ printf '%s\n' '{"protocol_version":5,"request_id":"1","session_id":null,"type":"
 
 ## 后端与音色
 
-新配置在可用 CUDA/Metal 且编入 Qwen 时默认选择 1.7B-CustomVoice，否则按 CPU MOSS → Kokoro → Qwen 0.6B 选择；已有明确配置保留，旧文件未声明 backend 时解释为 Kokoro。未编译后端会报错，必须显式切换。下面的后端/音色选项保存到听书配置：
+新配置在可用 CUDA/Metal 且编入 Qwen 时默认选择 1.7B-CustomVoice，否则选择 CPU MOSS Nano；已有其他后端配置保留；旧 Kokoro、ZipVoice 配置和缺少 backend 的旧配置在 worker 启动时迁移为 MOSS Nano 默认音色，保留音量、语速、自动播放、对齐及未知字段，修订号递增一次。未编译后端会报错，必须显式切换。下面的后端/音色选项保存到听书配置：
 
 ```sh
 novel-tts --backend moss --voice Weiguo book.txt
-novel-tts --backend kokoro --voice Zf001 book.txt
 novel-tts --backend qwen --voice uncle_fu book.txt
 novel-tts --backend qwen voices list
 novel-tts voices list
@@ -69,27 +68,23 @@ novel-tts voices remove narrator
 | qwen / 1.7b-base | 4.54 GB | 保存参考音色后渐进生成 |
 | voxcpm / 2b-q8_0 | 3.55 GB | Q8 BaseLM + F16 Acoustic，原生流式与克隆 |
 | omnivoice / 0.6b | 3.27 GB | 语义段生成、克隆、标签设计音色 |
-| zipvoice / distill-int8 | 184 MB | CPU 克隆，8 步离线语义段 |
-| zipvoice / distill-fp32 | 549 MB | CPU 质量对比，独立音色与缓存 |
 
 只下载启用的模型。原 Qwen 未声明 model 的配置仍解释为 0.6B。
-新模型位于 `~/.novel-tts/<backend>/models/<model>/<revision>/`；旧 Qwen 0.6B、MOSS 和 Kokoro 目录保持不变。
+新模型位于 `~/.novel-tts/<backend>/models/<model>/<revision>/`；旧 Qwen 0.6B 与 MOSS 目录保持不变；移除后端的模型缓存不会自动删除。
 阅读器与 worker 使用协议 5，必须一起更新。目录返回模型 ID、名称、能力与编译设备；运行时另外检测可用设备。
 切换后端或模型先停止会话并释放旧模型，再显式准备新模型；已有音色在阅读器中选择。
 
 ```sh
 # Windows / Linux GPU；保留 MOSS 和默认关闭的对齐
-cargo build --release -p novel-tts --features qwen-cuda,voxcpm-cuda,omnivoice-cuda,zipvoice
+cargo build --release -p novel-tts --features qwen-cuda,voxcpm-cuda,omnivoice-cuda
 # macOS GPU
-cargo build --release -p novel-tts --features metal,voxcpm-metal,omnivoice-metal,zipvoice
-# CPU 补充；也可以只启用 zipvoice
-cargo build --release -p novel-tts --features zipvoice
+cargo build --release -p novel-tts --features metal,voxcpm-metal,omnivoice-metal
 novel-tts --backend qwen --model 1.7b-customvoice --tts-device cuda --style "温暖沉稳，适合小说旁白。" book.txt
 novel-tts --backend voxcpm --model 2b-q8_0 --tts-device cuda book.txt
 ```
 
 Qwen 1.7B-CustomVoice 支持 `--style`，传空字符串清除。0.6B 和 Base 不接收风格描述。
-显式设备不可用会报错；Auto 使用实测校准。VoxCPM2、OmniVoice、ZipVoice 都是按需 feature，不改变已有用户选择。
+显式设备不可用会报错；Auto 使用实测校准。VoxCPM2、OmniVoice 都是按需 feature，不改变已有用户选择。
 NVIDIA 编译需要 CUDA Toolkit 和 C++ 编译器；Windows CUDA 与 ORT 共存需要动态 CRT，具体设置见工具链笔记。
 
 ### 克隆与可复用设计音色
@@ -102,19 +97,16 @@ novel-tts --backend qwen --model 1.7b-base --voice custom:warm book.txt
 novel-tts --backend voxcpm voices import narrator --name "旁白" --text "参考音频的准确文字" reference.wav
 novel-tts --backend voxcpm --tts-device cuda voices design warm --name "温暖男声" --description "A deep, calm male voice"
 novel-tts --backend omnivoice --tts-device cuda voices design narrator --name "旁白" --description "男，中年，低音调"
-novel-tts --backend zipvoice --model distill-int8 voices import narrator --name "旁白" --text "参考音频的准确文字" reference.wav
-novel-tts --backend zipvoice --model distill-int8 --voice custom:narrator book.txt
-novel-tts --backend zipvoice --model distill-int8 voices remove narrator
 ```
 
 Qwen VoiceDesign 仅生成短参考，保存到 1.7B-Base 音色库，长文使用 Base 复用提示；设计与 Base 资源分别按需下载。
 VoxCPM2 和 OmniVoice 也只设计一次参考片段，后续朗读使用缓存的克隆提示。
 Omni 描述要求模型支持的性别、年龄、音调等标签，非法标签会明确报错。
 克隆要求参考 WAV 和准确文字：Qwen 接受 1..15 秒，其余新后端接受 1..30 秒。
-音色按模型和 revision 隔离，不共享专用编码缓存，Zip FP32 对比需要再次导入参考。
+音色按模型和 revision 隔离，不共享专用编码缓存。
 
 固定来源、SHA-256 和验收记录见 `dev-notes/tts-model-tiers-acceptance.md`。
-Omni 音频 tokenizer 权重另有 BOSON/Higgs/Llama 许可；Zip 英文前端的独立 eSpeak 工具为 GPL-3.0-or-later。
+Omni 音频 tokenizer 权重另有 BOSON/Higgs/Llama 许可。
 这些组件不能笼统称为 Apache/MIT，发行需要附带对应许可和源码材料。
 
 ## 执行设备与逐句高亮
@@ -129,7 +121,7 @@ novel-tts --tts-device auto --alignment-device auto book.txt
 novel-tts --tts-device cpu --alignment-device cpu book.txt
 ```
 
-auto 对两个组件独立预热 3 次、测量 5 次，完整链路至少快 15%、首音频不慢超过 10% 才选加速；同时使用加速时再校准并发竞争。开发构建测量不代表发布构建性能。缓存按硬件、模型 revision、ORT 版本保存于模型根目录的 calibration-*.json；删除可重新校准。显式不可用设备返回错误。Kokoro 当前仅支持 CPU 合成，也可使用 Qwen 对齐。
+auto 对两个组件独立预热 3 次、测量 5 次，完整链路至少快 15%、首音频不慢超过 10% 才选加速；同时使用加速时再校准并发竞争。开发构建测量不代表发布构建性能。缓存按硬件、模型 revision、ORT 版本保存于模型根目录的 calibration-*.json；删除可重新校准。显式不可用设备返回错误。
 
 Qwen CPU Q4 约 0.99 GiB，GPU 浮点权重约 3.42 GiB，独立按需下载并校验。资源在 `~/.novel-tts/alignment/qwen/`；各模型目录下的 coreml-cache 可删除重建。CoreML 使用 MLProgram 和静态子图，允许系统选择 GPU/神经引擎，但仍有 CPU 算子。CUDA 的 KV/codec 状态通过 I/O binding 保留在设备端，实机性能仍须验收。
 

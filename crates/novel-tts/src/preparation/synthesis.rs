@@ -189,10 +189,6 @@ pub(super) async fn prepare(
 }
 pub(super) fn tts_revision(config: &Config) -> &'static str {
     let backend = config.backend.as_str();
-    #[cfg(feature = "zipvoice")]
-    if backend == "zipvoice" {
-        return tts_backends::zipvoice::resources::REVISION;
-    }
     #[cfg(feature = "voxcpm")]
     if backend == "voxcpm" {
         return tts_backends::voxcpm::resources::REVISION;
@@ -220,5 +216,5 @@ pub(super) fn tts_revision(config: &Config) -> &'static str {
             .revision();
     }
     let _ = backend;
-    "kokoro-v1.1-zh"
+    "unavailable"
 }

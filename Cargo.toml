@@ -79,7 +79,6 @@ hound = "3.5"
 rustfft = "6.4"
 tracing = "0.1"
 ort = "=2.0.0-rc.10"
-kokoro-tts = "=0.3.1"
 rodio = { version = "0.21.1", default-features = false, features = ["playback", "wav", "tracing"] }
 reqwest = { version = "0.13", default-features = false, features = ["rustls"] }
 serde = { version = "1.0.228", features = ["derive"] }

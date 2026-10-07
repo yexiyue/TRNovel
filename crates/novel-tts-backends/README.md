@@ -16,10 +16,7 @@ flowchart LR
 
 ```sh
 cargo build -p novel-tts                                  # MOSS 默认
-cargo build -p novel-tts --features kokoro                # 两个后端
-cargo build -p novel-tts --no-default-features --features kokoro
 cargo build --release -p novel-tts --features qwen,metal   # macOS: MOSS + Candle Qwen
-cargo build --release -p novel-tts --no-default-features --features qwen # Qwen CPU
 cargo build --release -p novel-tts --no-default-features --features qwen-cuda # NVIDIA GPU
 ```
 
@@ -55,7 +52,7 @@ TRNOVEL_QWEN_MODEL_DIR=~/.novel-tts/qwen cargo test --release -p novel-tts-backe
 
 CPU ONNX 推理在独立线程执行。通道容量为 1；消费者丢弃流后，生成在推理步骤之间终止。SentencePiece 按 50 token / 60 个 CJK 字符预算合并相邻句子，超限优先在句末分段，保存原文范围，合成副本执行空白/标点规范化。首版不引入官方 Python 可选的 WeText 数字规范化包。
 
-资源位于 `~/.novel-tts/moss/{tts,codec}`，自定义音色位于 `moss/voices`。`--model-dir` 覆盖的是公共根目录，其子目录分别为 moss 和 kokoro。
+资源位于 `~/.novel-tts/moss/{tts,codec}`，自定义音色位于 `moss/voices`。`--model-dir` 覆盖的是公共根目录，子目录按后端和模型隔离。
 
 固定资源清单位于 `src/moss/assets/resources.json`，每个文件记录下载 URL、大小和 SHA-256：
 
@@ -102,12 +99,11 @@ MOSS 软换行可共享上下文；初始目标 8 秒/预计上限 12 秒，保�
 | --- | --- | --- | --- |
 | VoxCPM2 / voxcpm[-cuda/-metal] | 固定 llama.cpp-omni + 窄 C ABI | Q8_0 BaseLM + F16 Acoustic，3.55 GB | 48 kHz，原生流式 |
 | OmniVoice / omnivoice[-cuda/-metal] | 工作区 Candle 0.9.2 | 0.6B，3.27 GB | 24 kHz，语义分段 |
-| ZipVoice / zipvoice | 既有 ORT rc.10 | Distill INT8 184 MB / FP32 549 MB | 24 kHz，CPU 语义分段 |
 
 推理模型在线程内创建、执行、释放；请求与音频通道容量为 1。取消通过接收通道关闭直接通知推理循环，无需 Tokio 继续调度；Drop 关闭请求并等待原生线程退出。切换模型须先停止会话、关闭音频接收端，再释放后端，避免重复占用显存。
 
-统一音色管理保存参考 WAV、准确文字、描述及模型身份；模型专用提示由适配器懒编码并缓存。Vox 和 Omni 支持一次性设计参考再克隆。Zip 使用上游完整 Emilia/Jieba/Pypinyin/Cn2An 前端和 patched eSpeak 英文音素，八步 flow matching，Rust mel 与 Vocos ISTFT；不新增 sherpa 推理运行时。
+统一音色管理保存参考 WAV、准确文字、描述及模型身份；模型专用提示由适配器懒编码并缓存。Vox 和 Omni 支持一次性设计参考再克隆。
 
-来源与固定 revision：`crates/voxcpm-sys/native/SOURCE.md`、`crates/omnivoice/SOURCE.md`、`src/zipvoice/SOURCE.md`。Vox 代码 MIT、权重 Apache-2.0；Omni 生成器 Apache-2.0，但 tokenizer 使用 BOSON/Higgs/Llama 许可；Zip 的独立 eSpeak 前端为 GPL-3.0-or-later，构建发行包时附对应源码。不得将整个组件集合标作 Apache/MIT。
+来源与固定 revision：`crates/voxcpm-sys/native/SOURCE.md`、`crates/omnivoice/SOURCE.md`。Vox 代码 MIT、权重 Apache-2.0；Omni 生成器 Apache-2.0，但 tokenizer 使用 BOSON/Higgs/Llama 许可。不得将整个组件集合标作 Apache/MIT。
 
 对照数值 fixture、固定语料、WAV、性能和待验收项见 `dev-notes/tts-model-tiers-acceptance.md`；普通测试不下载大模型。

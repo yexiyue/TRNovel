@@ -94,7 +94,7 @@ VHS 会继承当前 shell 的环境变量,所以这样挂 PATH 对 tape 文件�
 | `login.tape` | login.gif | 表单登录(loginUi)填写 | 沙箱(离线) |
 | `tts-settings.tape` | tts-settings.gif | 听书设置页(未下载状态 + 各参数) | 沙箱(离线) |
 | `network-search.tape` | network-search.gif | 在线搜索 → 结果 → 阅读 | **真机** |
-| `tts-play.tape` | tts-play.gif | 下载 Kokoro 模型 + 播放按句高亮 | **真机**(需音频) |
+| `tts-play.tape` | tts-play.gif | 下载 MOSS Nano 模型 + 播放按句高亮 | **真机**(需音频) |
 | `login-fanqie.tape` | login-fanqie.gif | 番茄:浏览器登录全流程 | **真机**(需 Chrome) |
 | `browser-challenge.tape` | browser-challenge.gif | bilixs/CF 浏览器辅助过挑战 | **真机**(需 Chrome) |
 
@@ -119,7 +119,7 @@ PATH="$(pwd)/../../target/debug:/opt/homebrew/bin:$PATH" vhs basic-ui.tape
 `moss-tts.tape` 验证后端切换、预置音色、模型准备、实际播放高亮与暂停。先构建双后端并准备隔离环境：
 
 ```sh
-cargo build -p trnovel -p novel-tts --features novel-tts/kokoro
+cargo build -p trnovel -p novel-tts --features novel-tts/qwen
 mkdir -p /tmp/trn-moss-demo/home
 cp -R /tmp/trn-demo-home/books /tmp/trn-moss-demo/home/
 # ~/.novel-tts 内需已经有完整 moss/tts 和 moss/codec；复用模型，不复制大权重。
@@ -127,11 +127,11 @@ ln -s "$HOME/.novel-tts" /tmp/trn-moss-demo/home/.novel-tts
 PATH="$PWD/target/debug:$PATH" vhs docs/tapes/moss-tts.tape
 ```
 
-新沙箱默认 MOSS/Weiguo。已有沙箱会保留后端设置，重录前先删除沙箱内 tts_config.json。所有输出写入 /tmp/trn-moss-demo，不覆盖正式指南素材。模型校验和加载需要时间；按机器性能调整准备后的 Sleep。基础版验收请固定独立二进制路径，避免后续 all-features 构建覆盖同一 target/debug/trn。
+此录制仅编入 Qwen 的通用 adapter，不启用 Metal；新沙箱默认 MOSS/Weiguo。已有沙箱会保留后端设置，重录前先删除沙箱内 tts_config.json。所有输出写入 /tmp/trn-moss-demo，不覆盖正式指南素材。模型校验和加载需要时间；按机器性能调整准备后的 Sleep。基础版验收请固定独立二进制路径，避免后续 all-features 构建覆盖同一 target/debug/trn。
 
 ## 连续朗读与逐句对齐
 
-`continuous-tts.tape` 使用真实 MOSS/Qwen，不使用伪造时间戳。构建 `trn` 和 `novel-tts --features coreml,kokoro`，把它们放在 PATH 同目录。创建 `/tmp/trn-continuous-demo/home/books/连续朗读.txt`，使用自编的两个章节和至少 12 段三句正文，例如“你好，欢迎使用听书功能。今天我们一起阅读一个故事。夜色落在山间，星河缓缓流动。”。在 home/.novel/tts_config.json 设置 moss/Weiguo、tts_device=cpu、alignment_device=cpu、alignment_enabled=true，并把 home/.novel-tts 链接到已校验模型根目录。运行 vhs；首次完整下载不能按录制中的短等待验收。
+`continuous-tts.tape` 使用真实 MOSS/Qwen，不使用伪造时间戳。构建 `trn` 和 `novel-tts --features coreml`，把它们放在 PATH 同目录。创建 `/tmp/trn-continuous-demo/home/books/连续朗读.txt`，使用自编的两个章节和至少 12 段三句正文，例如“你好，欢迎使用听书功能。今天我们一起阅读一个故事。夜色落在山间，星河缓缓流动。”。在 home/.novel/tts_config.json 设置 moss/Weiguo、tts_device=cpu、alignment_device=cpu、alignment_enabled=true，并把 home/.novel-tts 链接到已校验模型根目录。运行 vhs；首次完整下载不能按录制中的短等待验收。
 
 录制覆盖轻量连接、准备状态、连续播放、片段转逐句高亮、暂停和执行设备。NO_COLOR 必须清空，否则继承 shell 的 NO_COLOR=1 会使高亮颜色不可见。保留新 HOME，避免旧续读检查点把待高亮正文移出视口。
 

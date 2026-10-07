@@ -22,7 +22,7 @@ jobs:
         uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
       - name: Run tests
-        run: cargo test --locked --features trnovel/tts,parse-book-source/browser,parse-book-source/js-host,parse-book-source/schema,novel-tts/kokoro,novel-tts/qwen,novel-tts/voxcpm,novel-tts/omnivoice,novel-tts/zipvoice,novel-tts/coreml,novel-tts/ort-cuda,qwen3-tts/profiling --workspace --lib --tests --examples
+        run: cargo test --locked --features trnovel/tts,parse-book-source/browser,parse-book-source/js-host,parse-book-source/schema,novel-tts/qwen,novel-tts/voxcpm,novel-tts/omnivoice,novel-tts/coreml,novel-tts/ort-cuda,qwen3-tts/profiling --workspace --lib --tests --examples
 
   rustfmt:
     name: Rustfmt
@@ -58,7 +58,7 @@ jobs:
           components: clippy
       - uses: Swatinem/rust-cache@v2
       - name: Clippy check
-        run: cargo clippy --all-targets --features trnovel/tts,parse-book-source/browser,parse-book-source/js-host,parse-book-source/schema,novel-tts/kokoro,novel-tts/qwen,novel-tts/voxcpm,novel-tts/omnivoice,novel-tts/zipvoice,novel-tts/coreml,novel-tts/ort-cuda,qwen3-tts/profiling --workspace -- -D warnings
+        run: cargo clippy --all-targets --features trnovel/tts,parse-book-source/browser,parse-book-source/js-host,parse-book-source/schema,novel-tts/qwen,novel-tts/voxcpm,novel-tts/omnivoice,novel-tts/coreml,novel-tts/ort-cuda,qwen3-tts/profiling --workspace -- -D warnings
 
   docs:
     name: Docs
@@ -76,4 +76,4 @@ jobs:
       - name: Check documentation
         env:
           RUSTDOCFLAGS: -D warnings
-        run: cargo doc --no-deps --document-private-items --features trnovel/tts,parse-book-source/browser,parse-book-source/js-host,parse-book-source/schema,novel-tts/kokoro,novel-tts/qwen,novel-tts/voxcpm,novel-tts/omnivoice,novel-tts/zipvoice,novel-tts/coreml,novel-tts/ort-cuda,qwen3-tts/profiling --workspace --examples
+        run: cargo doc --no-deps --document-private-items --features trnovel/tts,parse-book-source/browser,parse-book-source/js-host,parse-book-source/schema,novel-tts/qwen,novel-tts/voxcpm,novel-tts/omnivoice,novel-tts/coreml,novel-tts/ort-cuda,qwen3-tts/profiling --workspace --examples

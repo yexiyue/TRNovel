@@ -74,11 +74,9 @@ impl Worker {
     }
     #[cfg(any(
         feature = "moss",
-        feature = "kokoro",
         feature = "qwen",
         feature = "voxcpm",
         feature = "omnivoice",
-        feature = "zipvoice"
     ))]
     pub fn unprepared_device_status(&self, component: &str) -> anyhow::Result<Event> {
         let config = self.store.load()?;
@@ -94,11 +92,9 @@ impl Worker {
     }
     #[cfg(any(
         feature = "moss",
-        feature = "kokoro",
         feature = "qwen",
         feature = "voxcpm",
         feature = "omnivoice",
-        feature = "zipvoice"
     ))]
     pub fn has_prepared_model(&self) -> bool {
         self.manager.is_some()
@@ -195,11 +191,9 @@ impl Worker {
                 };
                 #[cfg(any(
                     feature = "moss",
-                    feature = "kokoro",
                     feature = "qwen",
                     feature = "voxcpm",
                     feature = "omnivoice",
-                    feature = "zipvoice"
                 ))]
                 for (component, device) in [
                     (

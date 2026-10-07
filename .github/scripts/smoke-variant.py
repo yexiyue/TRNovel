@@ -28,4 +28,4 @@ if "linux" in target:
     for binary in ("trnovel", "trn"):
         result = subprocess.run(["readelf", "-d", str(directory / binary)], check=True, capture_output=True, text=True)
         lowered = result.stdout.lower()
-        assert not any(name in lowered for name in ("onnxruntime", "libasound", "kokoro"))
+        assert not any(name in lowered for name in ("onnxruntime", "libasound"))

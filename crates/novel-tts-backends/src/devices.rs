@@ -2,9 +2,9 @@
 pub mod calibration;
 #[cfg(any(feature = "coreml", feature = "ort-cuda"))]
 use ort::execution_providers::ExecutionProvider;
-#[cfg(any(feature = "moss", feature = "alignment", feature = "kokoro"))]
+#[cfg(any(feature = "moss", feature = "alignment"))]
 use ort::session::Session;
-#[cfg(any(feature = "moss", feature = "alignment", feature = "kokoro"))]
+#[cfg(any(feature = "moss", feature = "alignment"))]
 use std::path::Path;
 use tts_protocol::{Device, Event};
 
@@ -58,7 +58,7 @@ pub fn status(component: &str, selected: Device, reason: Option<String>) -> Even
         reason,
     }
 }
-#[cfg(any(feature = "moss", feature = "alignment", feature = "kokoro"))]
+#[cfg(any(feature = "moss", feature = "alignment"))]
 pub fn session(path: &Path, device: Device, cache: &Path) -> anyhow::Result<Session> {
     validate(device)?;
     let builder = Session::builder()?.with_intra_threads(4)?;

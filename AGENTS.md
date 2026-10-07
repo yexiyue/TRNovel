@@ -18,7 +18,7 @@ Book sources use structured `trnovel-booksource/v2` JSON and `parse_book_source:
 
 The TUI uses ratatui-kit components and hooks. Routes and root providers live in `src/app/`. Process-wide appearance, reader preferences, TTS handles and keybindings live in `src/state.rs` as atoms; caches that rely on `Drop::save` remain owned by the app. Configurable keyboard actions live in `src/keymap/` and load `~/.novel/keybindings.toml`.
 
-Runtime data lives under `~/.novel/`; TTS models live under `~/.novel-tts/kokoro/`. Preserve existing persisted formats unless a migration is part of the task.
+Runtime data lives under `~/.novel/`; TTS models live under `~/.novel-tts/`. Preserve existing persisted formats unless a migration is part of the task.
 
 ## Commands
 
@@ -35,7 +35,7 @@ cargo fmt --all --check
 RUSTDOCFLAGS="-D warnings" cargo doc --no-deps --document-private-items --all-features --workspace --examples
 
 cargo run -p parse-book-source --features schema --example gen_schema
-cargo run -p novel-tts-core --example basic
+cargo run -p novel-tts-backends --example moss
 
 cd docs
 pnpm install
@@ -49,7 +49,7 @@ Tests exist in both the application and library crates, plus `tests/`. Optional 
 
 Use Rust 2024 idioms and `rustfmt.toml`. Modules use `foo.rs`, with a same-named directory only when child modules exist, functions and variables use snake_case, and types use PascalCase. Keep shared dependencies in `[workspace.dependencies]`. Avoid unrelated parser, UI-state or cache refactors.
 
-Rust 1.89 or newer is required. Linux builds need ALSA/OpenSSL development libraries and pkg-config. Preserve the pinned ort/kokoro-tts versions and `msvc-crt-static = false`; see toolchain notes before changing native dependencies.
+Rust 1.89 or newer is required. Linux builds need ALSA/OpenSSL development libraries and pkg-config. Preserve the pinned ort version and `msvc-crt-static = false`; see toolchain notes before changing native dependencies.
 
 `lefthook.yaml` runs tests, Clippy, formatting and rustdoc before commits. Honor any explicit user instruction to validate through CI instead of running locally.
 

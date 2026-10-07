@@ -13,11 +13,9 @@ pub struct Prepared {
     feature = "alignment",
     any(
         feature = "moss",
-        feature = "kokoro",
         feature = "qwen",
         feature = "voxcpm",
         feature = "omnivoice",
-        feature = "zipvoice"
     )
 ))]
 mod alignment;
@@ -25,31 +23,25 @@ mod alignment;
     feature = "alignment",
     any(
         feature = "moss",
-        feature = "kokoro",
         feature = "qwen",
         feature = "voxcpm",
         feature = "omnivoice",
-        feature = "zipvoice"
     )
 ))]
 mod concurrency;
 #[cfg(any(
     feature = "moss",
-    feature = "kokoro",
     feature = "qwen",
     feature = "voxcpm",
     feature = "omnivoice",
-    feature = "zipvoice"
 ))]
 mod synthesis;
 
 #[cfg(any(
     feature = "moss",
-    feature = "kokoro",
     feature = "qwen",
     feature = "voxcpm",
     feature = "omnivoice",
-    feature = "zipvoice"
 ))]
 pub fn validate_device(
     component: &str,
@@ -83,11 +75,9 @@ pub fn validate_device(
 
 #[cfg(any(
     feature = "moss",
-    feature = "kokoro",
     feature = "qwen",
     feature = "voxcpm",
     feature = "omnivoice",
-    feature = "zipvoice"
 ))]
 pub fn unprepared_device_status(
     component: &str,
@@ -134,11 +124,9 @@ pub async fn prepare(
 ) -> anyhow::Result<Prepared> {
     #[cfg(not(any(
         feature = "moss",
-        feature = "kokoro",
         feature = "qwen",
         feature = "voxcpm",
         feature = "omnivoice",
-        feature = "zipvoice"
     )))]
     {
         let _ = (resources, config, progress);
@@ -146,11 +134,9 @@ pub async fn prepare(
     }
     #[cfg(any(
         feature = "moss",
-        feature = "kokoro",
         feature = "qwen",
         feature = "voxcpm",
         feature = "omnivoice",
-        feature = "zipvoice"
     ))]
     {
         validate_device(
