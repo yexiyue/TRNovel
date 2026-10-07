@@ -22,7 +22,9 @@ for variant in basic listening; do
         test ! -e "$archive/novel-tts"
         if "./$archive/trnovel" --help | grep -q -- '--tts-program'; then exit 1; fi
     else
-        printf '%s\n' '{"protocol_version":1,"request_id":"hello","session_id":null,"type":"hello"}' '{"protocol_version":1,"request_id":"bye","session_id":null,"type":"shutdown"}' | "./$archive/novel-tts" --protocol > replies.jsonl
+        version=$(sed -n 's/^pub const PROTOCOL_VERSION: u32 = \([0-9]*\);$/\1/p' /work/crates/novel-tts-protocol/src/lib.rs)
+        test -n "$version"
+        printf '{"protocol_version":%s,"request_id":"hello","session_id":null,"type":"hello"}\n{"protocol_version":%s,"request_id":"bye","session_id":null,"type":"shutdown"}\n' "$version" "$version" | "./$archive/novel-tts" --protocol > replies.jsonl
         grep -q '"type":"ready"' replies.jsonl
     fi
 done
@@ -34,6 +36,6 @@ class ApiBase(ctypes.Structure):
 runtime = ctypes.CDLL("libonnxruntime.so.1")
 runtime.OrtGetApiBase.restype = ctypes.POINTER(ApiBase)
 base = runtime.OrtGetApiBase().contents
-assert base.get_api(22), "ort rc.10 requires ONNX Runtime API 22"
+assert base.get_api(22), "musl release requires ONNX Runtime 1.22 (API 22) or newer"
 print("ONNX Runtime:", base.get_version().decode(), "(API 22 available)")
 PY

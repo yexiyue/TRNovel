@@ -3,7 +3,7 @@ mod features;
 pub mod resources;
 mod timestamps;
 use ort::{
-    session::{Session, run_options::RunOptions},
+    session::{RunOptions, Session},
     value::Tensor,
 };
 use std::{path::PathBuf, sync::Arc};

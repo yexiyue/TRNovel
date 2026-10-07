@@ -24,7 +24,7 @@ Cargo workspace 的模块组织、feature 门控、构建/发布、平台坑。`
 
 ### ort 钉版
 
-- `ort` 钉死 `2.0.0-rc.10`（onnxruntime 绑定）。
+- `ort` 固定 `2.0.0-rc.13`（原生预编译 ONNX Runtime 1.28），Rust API 显式选择 `api-21`（应用原生库仍为 1.22 或更新）。
 - 普通发布目标使用 ort 预编译库；ARM64 musl 使用 Alpine 系统共享库，详见下方 musl 发布说明。
 
 **相关文件**：`crates/novel-tts-backends/Cargo.toml`、根 `Cargo.toml`
@@ -55,7 +55,7 @@ Codex / CI shell 可能带 `TERM=dumb` 或 `NO_COLOR=1`，会让 ratatui/crosste
 
 ### ort 固定版本由后端 crate 管理
 
-`ort` 的版本统一固定在根 workspace.dependencies。MOSS Nano 与对齐器仍使用 ORT，不要删除或放宽固定版本；rc.10 保留当前 Intel Mac 和 GNU Linux 发布兼容性。
+`ort` 的版本统一固定在根 workspace.dependencies。MOSS Nano 与对齐器仍使用 ORT，不要删除或放宽固定版本；rc.13 支持多版本 API；用户已授权取消 Intel Mac 发布，普通目标使用新的预编译库。
 
 **相关文件**：根 `Cargo.toml`、`crates/novel-tts-backends/Cargo.toml`。
 
@@ -63,7 +63,7 @@ Codex / CI shell 可能带 `TERM=dumb` 或 `NO_COLOR=1`，会让 ratatui/crosste
 
 `local-artifacts-jobs = ["./musl"]` extends cargo-dist without hand-editing the generated workflow. The reusable musl workflow builds both application binaries natively in an ARM64 Alpine 3.23 Rust container and uploads `artifacts-build-musl`; the generated host job includes these files in the GitHub Release. It runs on PRs separately because the main dist workflow normally only plans PR releases.
 
-The pinned ort rc.10 requires ONNX Runtime API 1.22. Its GNU prebuilt libraries are incompatible with musl, so the musl build uses Alpine's system ONNX Runtime with `ORT_LIB_LOCATION`, `ORT_PREFER_DYNAMIC_LINK=1`, `ORT_SKIP_DOWNLOAD=1`, and `-C target-feature=-crt-static`. This preserves TTS but requires runtime shared libraries. Do not add this target to dist's ordinary matrix until its build and installer dependency handling supports this setup. The custom archive is currently a manual download rather than an installer-selected platform.
+The pinned ort rc.13 explicitly enables API 21 while shipping ONNX Runtime 1.22 or newer. Its GNU prebuilt libraries are incompatible with musl, so the musl build uses Alpine's system ONNX Runtime with `ORT_LIB_PATH`, `ORT_PREFER_DYNAMIC_LINK=1`, `ORT_SKIP_DOWNLOAD=1`, and `-C target-feature=-crt-static`. This preserves TTS but requires runtime shared libraries. Do not add this target to dist's ordinary matrix until its build and installer dependency handling supports this setup. The custom archive is currently a manual download rather than an installer-selected platform.
 
 **相关文件**：`.github/workflows/musl.yml`、`.github/scripts/build-musl.sh`、`.github/scripts/smoke-musl.sh`、`Cargo.toml`。
 
@@ -92,7 +92,7 @@ npm publish-time scanning can delay registry availability by several minutes aft
 
 `release.sh` 在升级版本后执行 `sync-dist-version.py` 保持 generic manifest 同步。`trnovel-basic.formula` 由自定义发布 job 改名为 `.rb`，避免 cargo-dist 默认 Homebrew job 把多个公式当成一个文件。新 npm 包首次发布前必须在注册表配置相应 Trusted Publisher，现有包的授权不自动覆盖新包。
 
-构建程序分别调用 package-specific Cargo 命令，防止 workspace feature unification 给阅读器带入原生音频依赖。ARM64 musl 先在无音频包的干净容器运行基础版，再装 ALSA/ONNX Runtime 检查听书程序。当前本机 Docker daemon 未启动，Windows/Intel Mac/GNU Linux 与 musl 实机验收仍依赖对应环境，不能以本机构建代替。
+构建程序分别调用 package-specific Cargo 命令，防止 workspace feature unification 给阅读器带入原生音频依赖。ARM64 musl 先在无音频包的干净容器运行基础版，再装 ALSA/ONNX Runtime 检查听书程序。当前本机 Docker daemon 未启动，Windows/GNU Linux 与 musl 实机验收仍依赖对应环境，不能以本机构建代替。
 
 ### 听书包与模块命名
 
@@ -104,7 +104,7 @@ CLI 接管原 novel-tts 的包名，保持 0.3.0 版本线，后续发布需递�
 
 新模型实现在 novel-tts-backends；共享原生依赖版本位于 workspace.dependencies。novel-tts 默认 moss，CPU 默认仅 MOSS Nano；Kokoro 和 ZipVoice 已移除。阅读器保持协议依赖隔离。
 
-MOSS ONNX opset 17 的实际加载、生成和编解码已在本机固定 ort rc.10 上验证，不需升级原生运行时。SentencePiece 使用纯 Rust sentencepiece-rs，参考 WAV 用 hound 解码和 rubato sinc 重采样，无 Python 运行依赖。资源固定 revision、尺寸和 SHA-256；音色缓存绑定模型版本。
+MOSS ONNX opset 17 原始验收使用 ort rc.10，升级到 rc.13 后需重测加载、生成与编解码。SentencePiece 使用纯 Rust sentencepiece-rs，参考 WAV 用 hound 解码和 rubato sinc 重采样，无 Python 运行依赖。资源固定 revision、尺寸和 SHA-256；音色缓存绑定模型版本。
 
 VHS 验收不同 feature 的阅读器时，把构建出的 basic 二进制复制到独立目录后再录制。随后运行 workspace all-features 测试会重建 target/debug/trn；若继续录制这个共享路径，会误把完整听书版当成基础版。
 
@@ -112,7 +112,7 @@ VHS 验收不同 feature 的阅读器时，把构建出的 basic 二进制复制
 
 ### ORT 加速 feature 与模型校验
 
-保留 ort=2.0.0-rc.10。coreml/ort-cuda 仅由听书后端/程序 feature 启用，阅读器始终不链接它们。ORT 自带下载清单选择 CUDA12 的原生分发，Mac 可静态链接 CoreML 框架；跨平台原生运行与 CUDA/cuDNN 依赖必须在对应平台验收。本机 Mac 启用 ort-cuda feature 会下载 CPU 原生包，因此 cargo check 不能证明 CUDA 可用。
+固定 ort=2.0.0-rc.13，显式启用 api-21。coreml/ort-cuda 仅由听书后端/程序 feature 启用，阅读器始终不链接它们。ORT 自带下载清单仅提供 CUDA13 的原生分发，Mac 可静态链接 CoreML 框架；跨平台原生运行与 CUDA/cuDNN 依赖必须在对应平台验收。本机 Mac 启用 ort-cuda feature 会下载 CPU 原生包，因此 cargo check 不能证明 CUDA 可用。
 
 开发构建将 sha2 单包 opt-level=3，避免每次准备模型时对 GB 级权重执行慢速 debug 校验；保留每次大小与 SHA-256 校验。性能校准应使用 release 构建。多包 cargo build 配合 --bin trn 只构建名为 trn 的程序；更新 worker 必须单独 cargo build -p novel-tts，不能依据阅读器构建完成判断 worker 已更新。
 
@@ -196,6 +196,23 @@ Candle 0.9.2 的 Metal `arg_sort_last_dim` 使用单线程组 bitonic sort，线
 
 ### CPU 后端收敛与旧配置迁移
 
-2026-10-07 移除 Kokoro、ZipVoice adapters、features、专用依赖和 ZipVoice 的 vendored eSpeak/CMake helper。保留 MOSS Nano 为 CPU 默认，现有 GPU 模型继续保留。ORT rc.10 仍由 Nano 与强制对齐使用；不要随旧后端一起删除。worker 启动时将退休后端及无 backend 的旧配置迁移为 Nano 默认音色、CPU；文件锁内校验并原子保存，保留其他偏好与未知字段，revision 只增加一次。用户缓存不删除。
+2026-10-07 移除 Kokoro、ZipVoice adapters、features、专用依赖和 ZipVoice 的 vendored eSpeak/CMake helper。保留 MOSS Nano 为 CPU 默认，现有 GPU 模型继续保留。ORT 仍由 Nano 与强制对齐使用；不要随旧后端一起删除。worker 启动时将退休后端及无 backend 的旧配置迁移为 Nano 默认音色、CPU；文件锁内校验并原子保存，保留其他偏好与未知字段，revision 只增加一次。用户缓存不删除。
 
 **相关文件**：`crates/novel-tts-core/src/config.rs`、`crates/novel-tts/src/main.rs`、`crates/novel-tts-backends/src/lib.rs`。
+
+### ORT rc.13 升级与当前平台要求
+
+2026-10-07 用户明确授权升级到最新 rc.13，Windows 配套升级 CUDA 13；不把 CUDA 12 机器上编译通过等同于新版 ORT CUDA 可运行。采用新 `ort::ep::{CoreML, CUDA}`、`session::RunOptions` 和 `Session::outputs()` / `Outlet::name()` API。SessionBuilder 的错误携带非 Send/Sync 的可恢复 builder，跨 anyhow 边界保留错误消息并正常销毁 builder，不通过 `.recover()` 忽略设备初始化错误。
+
+workspace 显式关闭 ORT 默认 feature，选择 `api-21` 关闭 ORT 默认自动 EP policy，设备继续由应用显式管理，同时启用原来使用的 std/ndarray/tracing/下载/复制和 pkg-config。`lax-feature-matching` 仅让通用 all-features 在目标平台选择可用预编译包（例如 Mac 无 CUDA）；运行期仍检查设备可用性且 EP 注册 `error_on_failure`，CUDA 发布还检查实际 provider 库，不能静默打包 CPU 替代物。
+
+Intel Mac 上游已停止提供新包，用户授权取消 Intel Mac 的基础版和听书版发布；不维护旧 ORT 静态包的兼容路径。musl 保持系统库 API 22。新 Windows/Linux 默认预编译 x86-64-v3 至少需要 Haswell/Zen 等对应指令集；Apple Silicon 新原生包需要 macOS 13.4 或更新。依赖升级与 CUDA 13 原生验收是两件事，后者留待 Windows。
+
+**相关文件**：根 `Cargo.toml`、`.github/scripts/build-variant.py`、`.github/workflows/accelerated.yml`。
+
+rc.13 开启 api-22 时，SessionBuilder 默认设置 MaxEfficiency 自动 EP policy，显式注册 CPU 也不能清掉该 policy。应用使用 api-21 关闭这段未需要的自动策略，继续由自身校准选择并显式注册设备。ORT 1.28 的 MLProgram 在 Nano 生成时出现 Shape/Slice 错误；改用 NeuralNetwork 格式完成生成，不能据此声称有加速。CoreML 编译缓存以格式及原生 `ort::info()` SHA 隔离，避免跨原生运行时复用旧编译分区；旧缓存保留。
+
+
+### 发布 smoke 与协议版本同步
+
+`smoke-variant.py` 与 musl smoke 从 `novel-tts-protocol/src/lib.rs` 读取 `PROTOCOL_VERSION` 构造握手，避免写死的旧协议使新版 worker 误报 incompatible_version。协议升级时无需再重复更新 smoke 常量；实际 worker 的 ready 和 shutdown accepted 仍需验证。

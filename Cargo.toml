@@ -78,7 +78,13 @@ tokenizers = { version = "0.22.2", default-features = false }
 hound = "3.5"
 rustfft = "6.4"
 tracing = "0.1"
-ort = "=2.0.0-rc.10"
+# API 21 leaves device selection to the application instead of enabling ORT's auto EP policy.
+# Native prebuilt libraries still use the latest ONNX Runtime 1.28.
+# Lax matching permits platform-independent all-features checks; runtime EPs stay explicit.
+ort = { version = "=2.0.0-rc.13", default-features = false, features = [
+    "std", "ndarray", "tracing", "download-binaries", "tls-native", "copy-dylibs",
+    "api-21", "pkg-config", "lax-feature-matching",
+] }
 rodio = { version = "0.21.1", default-features = false, features = ["playback", "wav", "tracing"] }
 reqwest = { version = "0.13", default-features = false, features = ["rustls"] }
 serde = { version = "1.0.228", features = ["derive"] }

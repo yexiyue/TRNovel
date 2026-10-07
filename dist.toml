@@ -15,8 +15,6 @@ build = ["python3", ".github/scripts/generate-basic-installers.py"]
 artifacts = [
     "target/distrib/trnovel-basic-aarch64-apple-darwin.tar.xz",
     "target/distrib/trnovel-basic-aarch64-apple-darwin.tar.xz.sha256",
-    "target/distrib/trnovel-basic-x86_64-apple-darwin.tar.xz",
-    "target/distrib/trnovel-basic-x86_64-apple-darwin.tar.xz.sha256",
     "target/distrib/trnovel-basic-x86_64-unknown-linux-gnu.tar.xz",
     "target/distrib/trnovel-basic-x86_64-unknown-linux-gnu.tar.xz.sha256",
     "target/distrib/trnovel-basic-x86_64-pc-windows-msvc.zip",

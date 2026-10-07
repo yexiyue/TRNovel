@@ -5,7 +5,6 @@ base=${TRNOVEL_RELEASE_BASE_URL:-https://github.com/yexiyue/TRNovel/releases/dow
 install_dir=${TRNOVEL_INSTALL_DIR:-$HOME/.cargo/bin}
 case "$(uname -s):$(uname -m)" in
   Darwin:arm64) target=aarch64-apple-darwin ;;
-  Darwin:x86_64) target=x86_64-apple-darwin ;;
   Linux:x86_64) target=x86_64-unknown-linux-gnu ;;
   *) echo 'Unsupported platform; use the documented ARM64 musl archive when applicable.' >&2; exit 1 ;;
 esac

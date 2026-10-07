@@ -2,7 +2,7 @@
 set -eu
 # Native Alpine build; readers and worker have separate Cargo feature graphs.
 apk add --no-cache build-base pkgconf alsa-lib-dev onnxruntime-dev openssl-dev binutils
-export ORT_LIB_LOCATION=/usr/lib ORT_PREFER_DYNAMIC_LINK=1 ORT_SKIP_DOWNLOAD=1
+export ORT_LIB_PATH=/usr/lib ORT_PREFER_DYNAMIC_LINK=1 ORT_SKIP_DOWNLOAD=1
 export RUSTFLAGS='-C target-feature=-crt-static'
 target=aarch64-unknown-linux-musl
 rustc -vV | grep -q "host: $target"

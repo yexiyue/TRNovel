@@ -6,6 +6,7 @@ use tts_core::{
 };
 #[tokio::main(flavor = "current_thread")]
 async fn main() -> anyhow::Result<()> {
+    eprintln!("ONNX Runtime: {:?}", ort::info());
     let mut args = std::env::args().skip(1);
     let model = args
         .next()

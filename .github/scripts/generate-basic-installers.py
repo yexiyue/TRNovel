@@ -17,7 +17,7 @@ args = parser.parse_args()
 output = args.directory.resolve()
 output.mkdir(parents=True, exist_ok=True)
 version = re.search(r'^version = "([^"]+)"', (root / 'Cargo.toml').read_text(), re.MULTILINE).group(1)
-targets = args.platform or ['aarch64-apple-darwin', 'x86_64-apple-darwin', 'x86_64-unknown-linux-gnu', 'x86_64-pc-windows-msvc']
+targets = args.platform or ['aarch64-apple-darwin', 'x86_64-unknown-linux-gnu', 'x86_64-pc-windows-msvc']
 checksums = {}
 for target in targets:
     extension = 'zip' if 'windows' in target else 'tar.xz'

@@ -1,7 +1,7 @@
 //! Provider selection is explicit; registration never implies measured acceleration.
 pub mod calibration;
 #[cfg(any(feature = "coreml", feature = "ort-cuda"))]
-use ort::execution_providers::ExecutionProvider;
+use ort::ep::ExecutionProvider;
 #[cfg(any(feature = "moss", feature = "alignment"))]
 use ort::session::Session;
 #[cfg(any(feature = "moss", feature = "alignment"))]
@@ -23,14 +23,10 @@ pub fn available() -> Vec<Device> {
         .filter(|device| match device {
             Device::Cpu => true,
             #[cfg(feature = "coreml")]
-            Device::Coreml => ort::execution_providers::CoreMLExecutionProvider::default()
-                .is_available()
-                .unwrap_or(false),
+            Device::Coreml => ort::ep::CoreML::default().is_available().unwrap_or(false),
             #[cfg(feature = "ort-cuda")]
             Device::Cuda => {
-                ort::execution_providers::CUDAExecutionProvider::default()
-                    .is_available()
-                    .unwrap_or(false)
+                ort::ep::CUDA::default().is_available().unwrap_or(false)
                     && std::process::Command::new("nvidia-smi")
                         .args(["--query-gpu=uuid", "--format=csv,noheader"])
                         .output()
@@ -61,24 +57,38 @@ pub fn status(component: &str, selected: Device, reason: Option<String>) -> Even
 #[cfg(any(feature = "moss", feature = "alignment"))]
 pub fn session(path: &Path, device: Device, cache: &Path) -> anyhow::Result<Session> {
     validate(device)?;
-    let builder = Session::builder()?.with_intra_threads(4)?;
-    let builder = match device {
-        Device::Cpu => builder,
+    let builder = Session::builder()?
+        .with_intra_threads(4)
+        .map_err(|e| anyhow::anyhow!("{e}"))?;
+    let mut builder = match device {
+        // Keep the CPU choice explicit, independent of ORT's device policies.
+        Device::Cpu => builder
+            .with_execution_providers([ort::ep::CPU::default().build().error_on_failure()])
+            .map_err(|e| anyhow::anyhow!("{e}"))?,
         Device::Coreml => {
             #[cfg(feature = "coreml")]
             {
-                use ort::execution_providers::{
-                    CoreMLExecutionProvider,
-                    coreml::{CoreMLComputeUnits, CoreMLModelFormat},
+                use ort::ep::{
+                    CoreML,
+                    coreml::{ComputeUnits, ModelFormat},
                 };
-                std::fs::create_dir_all(cache)?;
-                builder.with_execution_providers([CoreMLExecutionProvider::default()
-                    .with_model_format(CoreMLModelFormat::MLProgram)
-                    .with_compute_units(CoreMLComputeUnits::All)
-                    .with_static_input_shapes(true)
-                    .with_model_cache_dir(cache.to_string_lossy())
-                    .build()
-                    .error_on_failure()])?
+                use sha2::{Digest, Sha256};
+                // MLProgram fails on MOSS dynamic shape partitions with ORT 1.28.
+                // Isolate compiled partitions by format and native ORT version.
+                let cache = cache.join(format!(
+                    "neural-network-ort-{:x}",
+                    Sha256::digest(ort::info().as_bytes())
+                ));
+                std::fs::create_dir_all(&cache)?;
+                builder
+                    .with_execution_providers([CoreML::default()
+                        .with_model_format(ModelFormat::NeuralNetwork)
+                        .with_compute_units(ComputeUnits::All)
+                        .with_static_input_shapes(true)
+                        .with_model_cache_dir(cache.to_string_lossy())
+                        .build()
+                        .error_on_failure()])
+                    .map_err(|e| anyhow::anyhow!("{e}"))?
             }
             #[cfg(not(feature = "coreml"))]
             anyhow::bail!("CoreML feature is not compiled");
@@ -86,11 +96,9 @@ pub fn session(path: &Path, device: Device, cache: &Path) -> anyhow::Result<Sess
         Device::Cuda => {
             #[cfg(feature = "ort-cuda")]
             {
-                builder.with_execution_providers([
-                    ort::execution_providers::CUDAExecutionProvider::default()
-                        .build()
-                        .error_on_failure(),
-                ])?
+                builder
+                    .with_execution_providers([ort::ep::CUDA::default().build().error_on_failure()])
+                    .map_err(|e| anyhow::anyhow!("{e}"))?
             }
             #[cfg(not(feature = "ort-cuda"))]
             anyhow::bail!("CUDA feature is not compiled");
@@ -99,5 +107,7 @@ pub fn session(path: &Path, device: Device, cache: &Path) -> anyhow::Result<Sess
         Device::Auto => anyhow::bail!("auto requires calibration before constructing a session"),
     };
     let _ = cache;
-    Ok(builder.commit_from_file(path)?)
+    builder
+        .commit_from_file(path)
+        .map_err(|e| anyhow::anyhow!("{e}"))
 }

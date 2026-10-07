@@ -33,9 +33,9 @@ fn run(session: &mut Session, feeds: Feeds, device: tts_protocol::Device) -> any
         for (name, value) in &feeds {
             binding.bind_input(name, value)?;
         }
-        for output in &session.outputs {
-            let cached = output.name.starts_with("present_") || output.name.contains("_out_");
-            binding.bind_output_to_device(&output.name, if cached { &gpu } else { &cpu })?;
+        for output in session.outputs() {
+            let cached = output.name().starts_with("present_") || output.name().contains("_out_");
+            binding.bind_output_to_device(output.name(), if cached { &gpu } else { &cpu })?;
         }
         session.run_binding(&binding)?
     } else {

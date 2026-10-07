@@ -33,6 +33,7 @@ jobs:
       - name: Build provider distribution
         shell: bash
         env:
+          ORT_CUDA_VERSION: '13'
           CARGO_DIST_TARGET: ${{ matrix.target }}
           TRNOVEL_VARIANT_OUTPUT: target/accelerated/${{ matrix.variant }}-${{ matrix.target }}
         run: python .github/scripts/build-variant.py "${{ matrix.variant }}"

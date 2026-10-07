@@ -82,7 +82,7 @@ MOSS 推理流程移植自 [OpenMOSS/MOSS-TTS-Nano](https://github.com/OpenMOSS/
 
 alignment feature 提供独立 `QwenAligner`，实现 core 的 `Aligner`，通过容量为 1 的请求通道在线程内运行；原文单位、16kHz mono、128-bin log-mel、分词、时间戳修复全部使用 Rust。来源为 [Qwen3-ASR](https://github.com/QwenLM/Qwen3-ASR) 和 [固定 ONNX 导出](https://huggingface.co/valoomba/Qwen3-ForcedAligner-0.6B-ONNX/tree/261c9ed100c1b18a4a1fbc488e05625dc9a4ae5c)，许可见 alignment/LICENSE.Qwen。
 
-coreml/ort-cuda feature 启用对应 ORT provider，Rust ort 继续固定 rc.10 / ORT 1.22。设备与校准策略由 CLI 组装，不进入 core 或阅读器。CoreML 使用 MLProgram、静态子图和独立编译缓存；CUDA 用 I/O binding 保留 KV/codec 状态。设备可用、子图分配与性能通过不同证据判断；验收见 `dev-notes/continuous-tts-acceptance.md`。
+coreml/ort-cuda feature 启用对应 ORT provider，Rust ort 固定 rc.13，普通预编译 ORT 1.28、Rust API 21（实际原生库 1.22 或更新，设备由应用显式选择），CUDA 原生分发要求 CUDA 13；不再发布 Intel Mac 制品。设备与校准策略由 CLI 组装，不进入 core 或阅读器。CoreML 使用 NeuralNetwork、静态子图和独立编译缓存；CUDA 用 I/O binding 保留 KV/codec 状态。设备可用、子图分配与性能通过不同证据判断；验收见 `dev-notes/continuous-tts-acceptance.md`。
 
 ```sh
 TRNOVEL_MOSS_MODEL_DIR=<root>/moss TRNOVEL_QWEN_MODEL_DIR=<root>/alignment/qwen cargo test -p novel-tts-backends

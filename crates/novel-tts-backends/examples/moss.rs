@@ -3,6 +3,7 @@ use novel_tts_backends::moss::MossBackend;
 use tts_core::backend::{AudioChunk, Backend};
 #[tokio::main(flavor = "current_thread")]
 async fn main() -> anyhow::Result<()> {
+    eprintln!("ONNX Runtime: {:?}", ort::info());
     let mut args = std::env::args().skip(1);
     let directory = args
         .next()

@@ -7,23 +7,29 @@ fn main() -> anyhow::Result<()> {
         .ok_or_else(|| anyhow::anyhow!("ONNX path required"))?;
     let provider = args.next().unwrap_or_else(|| "cpu".into());
     let builder = Session::builder()?
-        .with_intra_threads(4)?
-        .with_profiling("target/alignment-research/ort-profile")?;
-    let builder = if provider == "coreml" {
+        .with_intra_threads(4)
+        .map_err(|e| anyhow::anyhow!("{e}"))?
+        .with_profiling("target/alignment-research/ort-profile")
+        .map_err(|e| anyhow::anyhow!("{e}"))?;
+    let mut builder = if provider == "coreml" {
         #[cfg(feature = "coreml")]
         {
-            use ort::execution_providers::{CoreMLExecutionProvider, coreml::CoreMLModelFormat};
-            builder.with_execution_providers([CoreMLExecutionProvider::default()
-                .with_static_input_shapes(true)
-                .with_model_format(CoreMLModelFormat::MLProgram)
-                .build()
-                .error_on_failure()])?
+            use ort::ep::{CoreML, coreml::ModelFormat};
+            builder
+                .with_execution_providers([CoreML::default()
+                    .with_static_input_shapes(true)
+                    .with_model_format(ModelFormat::NeuralNetwork)
+                    .build()
+                    .error_on_failure()])
+                .map_err(|e| anyhow::anyhow!("{e}"))?
         }
         #[cfg(not(feature = "coreml"))]
         anyhow::bail!("coreml feature required");
     } else {
         anyhow::ensure!(provider == "cpu", "unsupported probe provider");
         builder
+            .with_execution_providers([ort::ep::CPU::default().build().error_on_failure()])
+            .map_err(|e| anyhow::anyhow!("{e}"))?
     };
     let start = std::time::Instant::now();
     let mut session = builder.commit_from_file(path)?;
@@ -31,11 +37,11 @@ fn main() -> anyhow::Result<()> {
         "loaded in {:?}; provider requested: {provider}",
         start.elapsed()
     );
-    for input in &session.inputs {
-        eprintln!("input {} {:?}", input.name, input.input_type);
+    for input in session.inputs() {
+        eprintln!("input {} {:?}", input.name(), input.dtype());
     }
-    for output in &session.outputs {
-        eprintln!("output {} {:?}", output.name, output.output_type);
+    for output in session.outputs() {
+        eprintln!("output {} {:?}", output.name(), output.dtype());
     }
     let input = args.next().map(std::fs::read_to_string).transpose()?;
     let input: Option<serde_json::Value> =
