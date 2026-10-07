@@ -504,3 +504,17 @@ ReadNovel 的内容加载 effect 仅依赖 current_chapter。首次进入目录�
 **正确做法**：目录确认仅在目标章号不同于当前章时同时设置 loading 和章号。同章确认仍保留既有滚动重置与进入正文行为。
 
 **相关文件**：`src/pages/read_novel.rs`。
+
+### TTS 模型目录与组件回归
+
+协议目录一行对应一个模型，后端选择去重后必须按 backend ID 定位当前行；不能比较整个 Capabilities，否则 Qwen 1.7B 会与保留的 0.6B 行不匹配。后端边界无变化时直接返回，保留模型与音色。
+
+ratatui-kit test-util 可渲染实际设置组件并调用生产设置回调，对接隔离配置的真实 worker；中文宽字符的第二个空 cell 不属于文本。此类回归覆盖组件和协议，不等同于物理终端按键验收。
+
+**相关文件**：`src/tts/ui.rs`、`src/tts/ui/tests.rs`。
+
+### 模型切换与编译设备
+
+同后端的模型也可能使用不同推理栈和设备，如 Nano ORT / Local-Realtime Candle。模型选择回调仅在原显式设备不属于目标模型 compiled_devices 时切换为 Auto；兼容设备保留，实际推理显式请求仍不降级。Nano 的显式目录 ID 让 model=None 的旧默认可以被重新选择。
+
+**相关文件**：`src/tts/ui.rs`、`crates/novel-tts-backends/src/lib.rs`。

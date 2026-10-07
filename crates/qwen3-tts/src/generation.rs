@@ -1,0 +1,21 @@
+//! Generation and sampling utilities for Qwen3-TTS
+//!
+//! This module provides:
+//! - Sampling strategies (greedy, top-k, top-p, temperature)
+//! - Generation configuration
+//! - Repetition penalty
+//! - Per-session RNG via [`SamplingContext`] for reproducible generation
+//! - TTS-specific generation (prefill construction, token suppression)
+
+mod sampling;
+pub mod tts;
+
+pub use sampling::{
+    GenerationConfig, SamplingContext, apply_repetition_penalty,
+    apply_repetition_penalty_with_mask, greedy_sample, sample,
+};
+
+pub use tts::{
+    SuppressionMask, apply_token_suppression, apply_token_suppression_with_mask,
+    build_suppression_mask,
+};

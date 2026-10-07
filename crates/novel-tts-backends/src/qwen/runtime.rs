@@ -8,7 +8,8 @@ use tts_protocol::{Device, Event};
 
 pub(super) struct Request {
     pub(super) text: String,
-    pub(super) speaker: Speaker,
+    pub(super) voice: String,
+    pub(super) style: Option<String>,
     pub(super) audio: mpsc::Sender<Result<AudioChunk, BackendError>>,
 }
 
@@ -31,11 +32,12 @@ pub(super) fn run(
         return;
     }
     let mut active_device = device;
+    let mut prompts = std::collections::HashMap::new();
     while let Some(request) = jobs.blocking_recv() {
         if request.audio.is_closed() {
             continue;
         }
-        if let Err(error) = generate(&model, &request) {
+        if let Err(error) = generate(&model, &directory, &mut prompts, &request) {
             let recover = !request.audio.is_closed()
                 && recovery.is_some()
                 && active_device != Device::Cpu
@@ -45,6 +47,7 @@ pub(super) fn run(
                 match load(&directory, Device::Cpu) {
                     Ok(cpu) => {
                         model = cpu;
+                        prompts.clear();
                         active_device = Device::Cpu;
                         if let Some(progress) = &recovery {
                             let status = Event::DeviceStatus {
@@ -64,11 +67,13 @@ pub(super) fn run(
     }
 }
 
-fn load(directory: &std::path::Path, selected: Device) -> anyhow::Result<Qwen3TTS> {
+pub(super) fn load(directory: &std::path::Path, selected: Device) -> anyhow::Result<Qwen3TTS> {
     let device = match selected {
-        Device::Cpu => qwen3_tts::parse_device("cpu")?,
+        Device::Cpu => qwen3_tts::Device::Cpu,
+        #[cfg(all(feature = "qwen-cuda", any(target_os = "windows", target_os = "linux")))]
+        Device::Cuda => qwen3_tts::device::cuda(0)?,
         #[cfg(all(feature = "metal", target_os = "macos"))]
-        Device::Metal => candle_metal::Device::new_metal(0)?,
+        Device::Metal => qwen3_tts::device::metal(0)?,
         _ => anyhow::bail!("Qwen device {selected:?} is unavailable"),
     };
     Qwen3TTS::from_pretrained(&directory.to_string_lossy(), device)
@@ -77,7 +82,12 @@ fn load(directory: &std::path::Path, selected: Device) -> anyhow::Result<Qwen3TT
 fn inference_error(error: anyhow::Error) -> BackendError {
     BackendError::Synthesis(error.to_string())
 }
-fn generate(model: &Qwen3TTS, request: &Request) -> Result<(), BackendError> {
+fn generate(
+    model: &Qwen3TTS,
+    directory: &std::path::Path,
+    prompts: &mut std::collections::HashMap<String, qwen3_tts::VoiceClonePrompt>,
+    request: &Request,
+) -> Result<(), BackendError> {
     let language = if request
         .text
         .chars()
@@ -88,19 +98,61 @@ fn generate(model: &Qwen3TTS, request: &Request) -> Result<(), BackendError> {
         Language::English
     };
     let initialization = std::time::Instant::now();
-    let mut stream = model
-        .synthesize_streaming(
+    let options = SynthesisOptions {
+        max_length: MAX_FRAMES,
+        chunk_frames: if model.device().is_cuda() { 20 } else { 10 },
+        seed: Some(42),
+        ..Default::default()
+    };
+    let mut stream = if request.voice.starts_with("custom:") {
+        if !prompts.contains_key(&request.voice) {
+            let variant = super::models::Model::detect(directory).map_err(inference_error)?;
+            let store = super::voice_store(directory, variant).map_err(inference_error)?;
+            let voice = store.load(&request.voice).map_err(inference_error)?;
+            let path = store.path(&request.voice).map_err(inference_error)?;
+            let cache = path.join("prompt.json");
+            let prompt = if cache.exists() {
+                qwen3_tts::VoiceClonePrompt::load(&cache, model.device())
+                    .map_err(inference_error)?
+            } else {
+                let reference = qwen3_tts::AudioBuffer::load(path.join("reference.wav"))
+                    .map_err(inference_error)?;
+                super::validate_reference(&reference).map_err(inference_error)?;
+                let prompt = model
+                    .create_voice_clone_prompt(&reference, Some(&voice.transcript))
+                    .map_err(inference_error)?;
+                let temp = tempfile::NamedTempFile::new_in(&path)
+                    .map_err(|e| inference_error(e.into()))?;
+                prompt.save(temp.path()).map_err(inference_error)?;
+                temp.persist(&cache)
+                    .map_err(|e| inference_error(e.into()))?;
+                prompt
+            };
+            prompts.insert(request.voice.clone(), prompt);
+        }
+        model.synthesize_voice_clone_streaming(
             &request.text,
-            request.speaker,
+            &prompts[&request.voice],
             language,
-            SynthesisOptions {
-                max_length: MAX_FRAMES,
-                chunk_frames: 10,
-                seed: Some(42),
-                ..Default::default()
-            },
+            options,
         )
-        .map_err(inference_error)?;
+    } else if let Some(style) = &request.style {
+        model.synthesize_styled_streaming(
+            &request.text,
+            style,
+            request.voice.parse::<Speaker>().map_err(inference_error)?,
+            language,
+            options,
+        )
+    } else {
+        model.synthesize_streaming(
+            &request.text,
+            request.voice.parse::<Speaker>().map_err(inference_error)?,
+            language,
+            options,
+        )
+    }
+    .map_err(inference_error)?;
     let mut emitted = false;
     let diagnostics = std::env::var("NOVEL_TTS_DIAGNOSTICS").is_ok_and(|value| value == "1");
     if diagnostics {
@@ -112,7 +164,13 @@ fn generate(model: &Qwen3TTS, request: &Request) -> Result<(), BackendError> {
     let mut chunk_index = 0;
     while !request.audio.is_closed() {
         let generated = std::time::Instant::now();
-        let Some(audio) = stream.next_chunk().map_err(inference_error)? else {
+        let Some(audio) = stream
+            .next_chunk_with_cancel(|| request.audio.is_closed())
+            .map_err(inference_error)?
+        else {
+            if request.audio.is_closed() {
+                return Ok(());
+            }
             validate_completion(stream.is_done(), emitted)?;
             let _ = request.audio.blocking_send(Ok(AudioChunk::End));
             return Ok(());

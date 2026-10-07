@@ -48,6 +48,9 @@ pub struct Config {
     pub auto_play: bool,
     #[serde(default = "legacy_backend")]
     pub backend: String,
+    /// None retains the backend's legacy model for existing configurations.
+    pub model: Option<String>,
+    pub style: Option<String>,
     pub revision: u64,
     pub tts_device: Device,
     pub alignment_device: Device,
@@ -65,6 +68,8 @@ impl Default for Config {
             voice: "Weiguo".into(),
             auto_play: false,
             backend: "moss".into(),
+            model: None,
+            style: None,
             revision: 0,
             tts_device: Device::Auto,
             alignment_device: Device::Auto,
@@ -78,6 +83,9 @@ impl Default for Config {
 #[derive(Debug, Default, Clone, PartialEq, Serialize, Deserialize)]
 pub struct ConfigPatch {
     pub backend: Option<String>,
+    pub model: Option<String>,
+    /// An empty string clears the current style.
+    pub style: Option<String>,
     pub tts_device: Option<Device>,
     pub alignment_device: Option<Device>,
     pub alignment_enabled: Option<bool>,
@@ -88,9 +96,33 @@ pub struct ConfigPatch {
     pub auto_play: Option<bool>,
 }
 
+impl ConfigPatch {
+    /// A backend change resets model selection unless a new model is provided.
+    pub fn target_model<'a>(&'a self, current: &'a Config) -> Option<&'a str> {
+        self.model.as_deref().or_else(|| {
+            if self
+                .backend
+                .as_ref()
+                .is_some_and(|id| id != &current.backend)
+            {
+                None
+            } else {
+                current.model.as_deref()
+            }
+        })
+    }
+}
+
 /// A capability description; callers must not assume all backends are alike.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Capabilities {
+    /// Devices included in this build; runtime availability is reported separately.
+    #[serde(default)]
+    pub compiled_devices: Vec<Device>,
+    #[serde(default)]
+    pub model: Option<String>,
+    #[serde(default)]
+    pub model_name: String,
     #[serde(default)]
     pub default_voice: String,
     #[serde(default)]
@@ -101,6 +133,13 @@ pub struct Capabilities {
     pub style: bool,
     pub cloning: bool,
     pub pronunciation: bool,
+}
+
+impl Capabilities {
+    /// Omitted model IDs select the first (legacy) entry for that backend.
+    pub fn matches(&self, backend: &str, model: Option<&str>) -> bool {
+        self.backend == backend && model.is_none_or(|id| self.model.as_deref() == Some(id))
+    }
 }
 
 /// Validated immutable text and requested recovery position.

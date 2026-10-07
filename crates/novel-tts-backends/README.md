@@ -20,23 +20,31 @@ cargo build -p novel-tts --features kokoro                # 两个后端
 cargo build -p novel-tts --no-default-features --features kokoro
 cargo build --release -p novel-tts --features qwen,metal   # macOS: MOSS + Candle Qwen
 cargo build --release -p novel-tts --no-default-features --features qwen # Qwen CPU
+cargo build --release -p novel-tts --no-default-features --features qwen-cuda # NVIDIA GPU
 ```
 
 `Registry` 暴露已编译后端的能力、默认音色及显示名称，按需准备一个模型。后端扩展实现 core 的 `Backend::stream` 和 `Backend::segments`，无需改变播放器或阅读器。
 
+## MOSS GPU（Candle）
+
+MOSS 也可通过 `moss-candle-cuda` / `moss-candle-metal` 增加 GPU 试用模型
+`local-1.7b` 和 `realtime-1.7b`。计算与 codec 位于 `crates/moss-tts`，共用
+工作区 Candle；Nano 继续走原 ONNX。VoiceGenerator 仅用于创建可复用参考音色。
+资源与真实验收边界见 `dev-notes/moss-candle-acceptance.md`。
+
 ## Qwen TTS（Candle）
 
-适配 [TrevorS/qwen3-tts-rs](https://github.com/TrevorS/qwen3-tts-rs)，固定实现 revision `711ceee07cad92673f86de8997bdf54c30caa49f`。该上游仍标记为实验实现；目前未发布对应 crates.io 包，使用 Git 钉版，后端 crate 的独立 crates.io 发布仍需解决该依赖的分发。
+适配 [TrevorS/qwen3-tts-rs](https://github.com/TrevorS/qwen3-tts-rs)，固定实现 revision `711ceee07cad92673f86de8997bdf54c30caa49f`。源码已纳入 `crates/qwen3-tts`，保留 MIT 授权和来源记录；推理库只读取本地模型，下载与校验由 worker 负责。
 
-首版固定官方 `Qwen/Qwen3-TTS-12Hz-0.6B-CustomVoice` revision `85e237c12c027371202489a0ec509ded67b5e4b5`，缓存 `~/.novel-tts/qwen/`。八个资源合计 **2,498,383,173 bytes**，尺寸与 SHA-256 位于 `src/qwen/resources.json`。与 `alignment/qwen/` 的强制对齐模型相互独立。模型授权为 Apache-2.0，上游 Rust 实现为 MIT。
+支持 `0.6b-customvoice`、`1.7b-customvoice`、`1.7b-base`。旧 Qwen 配置及 0.6B 目录保留；新增模型与 VoiceDesign 资源按模型 ID/revision 隔离。固定清单在 `src/qwen/resources.json` 和 `src/qwen/models/`，分别约 2.50 GB、4.52 GB、4.54 GB；VoiceDesign 约 4.52 GB，仅创建参考音色时下载。模型授权为 Apache-2.0，上游 Rust 实现为 MIT。
 
-九种预置音色默认福叔 `uncle_fu`；能力如实报告不支持本适配器的克隆、风格提示。中文/英文输入选择对应语言，混合含中文时采用 Chinese。随机种子固定 42；流式块为十帧约 800 ms，最多 375 帧。只有真实 EOS 和有效 PCM 才发送 End；取消以块为粒度，停止后不重播，超限片段不写完成检查点。
+CustomVoice 提供九种预置音色，默认福叔 `uncle_fu`；1.7B 支持朗读风格。Base 使用导入的参考 WAV/文本及可复用编码缓存进行渐进克隆；VoiceDesign 只创建一次短参考片段，随后由 Base 播放。随机种子固定 42；GPU 二十帧、CPU 十帧一块，最多 375 帧。取消在帧及解码边界检查；只有真实 EOS 和有效 PCM 才发送 End，超限片段不写完成检查点。
 
 Qwen 分段独立于 MOSS 的 token 预算：真实段落和标题建立硬边界；合并软换行，在 180 UTF-8 字节内优先切完整句末、分句、单词和字符边界。原文不修改，装饰线跳过，正文运算符保留。
 
-CPU 和可选 Metal 通过后端自己的设备目录报告。ORT 的 CoreML/CUDA 不是 Qwen 可用设备；首版未集成 Qwen CUDA。`metal` 的 Candle 依赖仅在 macOS 启用；其他平台即使启用该 feature 也不报告 Metal 设备。auto 使用同一完整链路校准门槛；运行错误自动模式重建 CPU供下次显式播放，不重放失败片段。
+CPU、可选 CUDA（Windows/Linux，`qwen-cuda`）和 Metal（macOS，`metal`）由 Qwen 自己的设备目录报告。`ort-cuda` 仅用于 MOSS/对齐器，不能为 Qwen 提供 CUDA。`tts-candle-platform` 按目标平台启用同一套 Candle 0.9.2 的 GPU 依赖，Windows 的 all-features 不会编入 Objective-C Metal。CUDA feature 仍需 Toolkit。Auto 使用同一完整链路校准门槛；运行错误仅在 Auto 模式重建 CPU 供下次显式播放，不重放失败片段。
 
-上游流式 codec 对小块分别解码，边界连续性需要人工试听，EOS 也不能证明逐字覆盖。验收记录见 `dev-notes/qwen-tts-acceptance.md`。
+流式 codec 的边界连续性需要人工试听，EOS 也不能证明逐字覆盖。当前各模型实测与待验收项见 `dev-notes/tts-model-tiers-acceptance.md`。
 
 ```sh
 cargo run --release -p novel-tts-backends --no-default-features --features qwen,metal --example qwen -- ~/.novel-tts/qwen output.wav metal '你好，欢迎收听。'
@@ -77,7 +85,7 @@ MOSS 推理流程移植自 [OpenMOSS/MOSS-TTS-Nano](https://github.com/OpenMOSS/
 
 alignment feature 提供独立 `QwenAligner`，实现 core 的 `Aligner`，通过容量为 1 的请求通道在线程内运行；原文单位、16kHz mono、128-bin log-mel、分词、时间戳修复全部使用 Rust。来源为 [Qwen3-ASR](https://github.com/QwenLM/Qwen3-ASR) 和 [固定 ONNX 导出](https://huggingface.co/valoomba/Qwen3-ForcedAligner-0.6B-ONNX/tree/261c9ed100c1b18a4a1fbc488e05625dc9a4ae5c)，许可见 alignment/LICENSE.Qwen。
 
-coreml/cuda feature 启用对应 ORT provider，Rust ort 继续固定 rc.10 / ORT 1.22。设备与校准策略由 CLI 组装，不进入 core 或阅读器。CoreML 使用 MLProgram、静态子图和独立编译缓存；CUDA 用 I/O binding 保留 KV/codec 状态。设备可用、子图分配与性能通过不同证据判断；验收见 `dev-notes/continuous-tts-acceptance.md`。
+coreml/ort-cuda feature 启用对应 ORT provider，Rust ort 继续固定 rc.10 / ORT 1.22。设备与校准策略由 CLI 组装，不进入 core 或阅读器。CoreML 使用 MLProgram、静态子图和独立编译缓存；CUDA 用 I/O binding 保留 KV/codec 状态。设备可用、子图分配与性能通过不同证据判断；验收见 `dev-notes/continuous-tts-acceptance.md`。
 
 ```sh
 TRNOVEL_MOSS_MODEL_DIR=<root>/moss TRNOVEL_QWEN_MODEL_DIR=<root>/alignment/qwen cargo test -p novel-tts-backends
@@ -87,3 +95,19 @@ cargo run --release -p novel-tts-backends --features coreml --example device_cal
 ## MOSS 连贯性与终止诊断
 
 MOSS 软换行可共享上下文；初始目标 8 秒/预计上限 12 秒，保留 50 token/60 CJK/375 帧限制。标题规则复用轻量 protocol 的内置 TOC 常量。`stream_diagnosed` 提供可选报告（规范化文本/token/帧/时长/EOS、frame_limit、cancelled、inference_failure），只用于诊断，不用于推断完整朗读。`moss_probe` example 可生成固定 seed=42 的源范围、报告和 WAV；报告只写入显式输出目录。失败不发送成功 End，不自动重读，frame_limit 不触发设备回退。
+
+## 新增原生后端
+
+| 后端 / feature | 计算库 | 模型 | PCM / 流式 |
+| --- | --- | --- | --- |
+| VoxCPM2 / voxcpm[-cuda/-metal] | 固定 llama.cpp-omni + 窄 C ABI | Q8_0 BaseLM + F16 Acoustic，3.55 GB | 48 kHz，原生流式 |
+| OmniVoice / omnivoice[-cuda/-metal] | 工作区 Candle 0.9.2 | 0.6B，3.27 GB | 24 kHz，语义分段 |
+| ZipVoice / zipvoice | 既有 ORT rc.10 | Distill INT8 184 MB / FP32 549 MB | 24 kHz，CPU 语义分段 |
+
+推理模型在线程内创建、执行、释放；请求与音频通道容量为 1。取消通过接收通道关闭直接通知推理循环，无需 Tokio 继续调度；Drop 关闭请求并等待原生线程退出。切换模型须先停止会话、关闭音频接收端，再释放后端，避免重复占用显存。
+
+统一音色管理保存参考 WAV、准确文字、描述及模型身份；模型专用提示由适配器懒编码并缓存。Vox 和 Omni 支持一次性设计参考再克隆。Zip 使用上游完整 Emilia/Jieba/Pypinyin/Cn2An 前端和 patched eSpeak 英文音素，八步 flow matching，Rust mel 与 Vocos ISTFT；不新增 sherpa 推理运行时。
+
+来源与固定 revision：`crates/voxcpm-sys/native/SOURCE.md`、`crates/omnivoice/SOURCE.md`、`src/zipvoice/SOURCE.md`。Vox 代码 MIT、权重 Apache-2.0；Omni 生成器 Apache-2.0，但 tokenizer 使用 BOSON/Higgs/Llama 许可；Zip 的独立 eSpeak 前端为 GPL-3.0-or-later，构建发行包时附对应源码。不得将整个组件集合标作 Apache/MIT。
+
+对照数值 fixture、固定语料、WAV、性能和待验收项见 `dev-notes/tts-model-tiers-acceptance.md`；普通测试不下载大模型。

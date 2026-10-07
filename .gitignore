@@ -24,3 +24,5 @@ espeak-ng-data
 /trn.exe
 /novel-tts.exe
 /.github/scripts/__pycache__/
+/tools/tts/__pycache__/
+/.github/scripts/__pycache__/

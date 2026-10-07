@@ -92,17 +92,19 @@ pub fn key(component: &str, revision: &str) -> String {
     )
 }
 fn runtime_info() -> String {
-    let mut versions: Vec<String> = Vec::new();
-    #[cfg(any(
-        feature = "moss",
-        feature = "alignment",
-        feature = "kokoro",
-        feature = "coreml",
-        feature = "cuda"
-    ))]
-    versions.push(format!("{:?}", ort::info()));
-    #[cfg(feature = "qwen")]
-    versions.push("candle-0.9.2:qwen-711ceee07cad92673f86de8997bdf54c30caa49f".into());
+    let versions: Vec<String> = vec![
+        #[cfg(any(
+            feature = "moss",
+            feature = "alignment",
+            feature = "kokoro",
+            feature = "coreml",
+            feature = "ort-cuda",
+            feature = "zipvoice"
+        ))]
+        format!("{:?}", ort::info()),
+        #[cfg(feature = "qwen")]
+        "candle-0.9.2:qwen-local-v1".into(),
+    ];
     versions.join(";")
 }
 fn path(root: &Path, component: &str, key: &str) -> PathBuf {

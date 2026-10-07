@@ -22,12 +22,22 @@ pub enum ConfigError {
 #[derive(Debug, Clone)]
 pub struct ConfigStore {
     path: PathBuf,
+    defaults: Config,
 }
 
 impl ConfigStore {
     /// Use an explicit path, including an isolated path in tests.
     pub fn new(path: impl Into<PathBuf>) -> Self {
-        Self { path: path.into() }
+        Self {
+            path: path.into(),
+            defaults: Config::default(),
+        }
+    }
+
+    /// Application-selected defaults apply only when no settings file exists.
+    pub fn with_defaults(mut self, defaults: Config) -> Self {
+        self.defaults = defaults;
+        self
     }
 
     /// The legacy path, retained for existing users.
@@ -46,9 +56,20 @@ impl ConfigStore {
     pub fn load(&self) -> Result<Config, ConfigError> {
         match File::open(&self.path) {
             Ok(file) => Ok(serde_json::from_reader(file)?),
-            Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(Config::default()),
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(self.defaults.clone()),
             Err(error) => Err(error.into()),
         }
+    }
+
+    /// Persist the selected defaults on first activation, without rewriting old files.
+    pub fn initialize(&self, capabilities: &Capabilities) -> Result<Config, ConfigError> {
+        let _lock = crate::storage::lock(&self.path.with_extension("json.lock"))?;
+        let config = self.load()?;
+        validate(&config, capabilities)?;
+        if !self.path.exists() {
+            crate::storage::save(&self.path, &config)?;
+        }
+        Ok(config)
     }
 
     /// Commit a patch against the revision last seen by the caller.
@@ -61,6 +82,12 @@ impl ConfigStore {
         let mut config = self.load()?;
         if config.revision != patch.expected_revision {
             return Err(ConfigError::RevisionConflict);
+        }
+        config.model = patch.target_model(&config).map(str::to_owned);
+        if let Some(style) = &patch.style {
+            config.style = (!style.trim().is_empty()).then(|| style.clone());
+        } else if !capabilities.style {
+            config.style = None;
         }
         if let Some(backend) = &patch.backend {
             config.backend.clone_from(backend);
@@ -98,11 +125,18 @@ impl ConfigStore {
 
 /// Validate settings against the actually available backend; never silently reset.
 pub fn validate(config: &Config, capabilities: &Capabilities) -> Result<(), ConfigError> {
-    if config.backend != capabilities.backend {
+    if !capabilities.matches(&config.backend, config.model.as_deref()) {
         return Err(ConfigError::Invalid(format!(
-            "backend {} is unavailable",
-            config.backend
+            "backend {} / model {:?} is unavailable",
+            config.backend, config.model
         )));
+    }
+    if config.style.as_ref().is_some_and(|style| {
+        !capabilities.style || style.trim().is_empty() || style.chars().count() > 200
+    }) {
+        return Err(ConfigError::Invalid(
+            "style is unsupported by this model or exceeds 200 characters".into(),
+        ));
     }
     if !config.volume.is_finite() || !(0.0..=10.0).contains(&config.volume) {
         return Err(ConfigError::Invalid("volume must be 0..10".into()));
@@ -111,6 +145,9 @@ pub fn validate(config: &Config, capabilities: &Capabilities) -> Result<(), Conf
         return Err(ConfigError::Invalid("speed must be 0.5..2".into()));
     }
     if !capabilities.voices.contains(&config.voice) {
+        if capabilities.cloning && capabilities.voices.is_empty() {
+            return Err(ConfigError::Invalid("this model requires a saved reference voice; import or design a voice before selecting it".into()));
+        }
         return Err(ConfigError::Invalid(format!(
             "voice {} is unavailable",
             config.voice
@@ -125,15 +162,130 @@ mod tests {
 
     fn capabilities() -> Capabilities {
         Capabilities {
+            model: None,
+            model_name: String::new(),
             default_voice: "Zf001".into(),
             voice_names: Default::default(),
             backend: "kokoro".into(),
             voices: vec!["Zf001".into()],
             native_streaming: false,
             style: false,
+            compiled_devices: Vec::new(),
             cloning: false,
             pronunciation: false,
         }
+    }
+
+    #[test]
+    fn activation_persists_defaults_once_and_preserves_existing_bytes() {
+        let directory = tempfile::tempdir().unwrap();
+        let path = directory.path().join("config.json");
+        let defaults = Config {
+            backend: "kokoro".into(),
+            voice: "Zf001".into(),
+            tts_device: tts_protocol::Device::Cpu,
+            ..Default::default()
+        };
+        let store = ConfigStore::new(&path).with_defaults(defaults.clone());
+        assert!(!path.exists());
+        assert_eq!(store.initialize(&capabilities()).unwrap(), defaults);
+        let reopened = ConfigStore::new(&path);
+        assert_eq!(reopened.load().unwrap(), defaults);
+        let original = "{\n  \"backend\":\"kokoro\",\"voice\":\"Zf001\",\"tts_device\":\"cpu\",\"future\":true\n}";
+        std::fs::write(&path, original).unwrap();
+        reopened.initialize(&capabilities()).unwrap();
+        assert_eq!(std::fs::read_to_string(&path).unwrap(), original);
+        let absent = ConfigStore::new(directory.path().join("invalid.json"));
+        assert!(absent.initialize(&capabilities()).is_err());
+        assert!(!absent.path().exists());
+    }
+
+    #[test]
+    fn new_model_defaults_preserve_existing_settings() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("config.json");
+        let defaults = Config {
+            backend: "qwen".into(),
+            model: Some("1.7b-customvoice".into()),
+            voice: "uncle_fu".into(),
+            ..Config::default()
+        };
+        let store = ConfigStore::new(&path).with_defaults(defaults.clone());
+        assert_eq!(store.load().unwrap(), defaults);
+        assert!(!path.exists());
+        let original = r#"{"backend":"qwen","voice":"serena","tts_device":"cpu"}"#;
+        std::fs::write(&path, original).unwrap();
+        let existing = store.load().unwrap();
+        assert_eq!(existing.model, None);
+        assert_eq!(existing.voice, "serena");
+        assert_eq!(existing.tts_device, tts_protocol::Device::Cpu);
+        assert_eq!(std::fs::read_to_string(path).unwrap(), original);
+    }
+    #[test]
+    fn speaking_style_is_validated_and_cleared_on_an_unsupported_model() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut caps = capabilities();
+        caps.style = true;
+        let store = ConfigStore::new(dir.path().join("config.json")).with_defaults(Config {
+            backend: "kokoro".into(),
+            voice: "Zf001".into(),
+            ..Default::default()
+        });
+        let changed = store
+            .update(
+                &ConfigPatch {
+                    style: Some("温暖沉稳".into()),
+                    ..Default::default()
+                },
+                &caps,
+            )
+            .unwrap();
+        assert_eq!(changed.style.as_deref(), Some("温暖沉稳"));
+        caps.style = false;
+        assert!(validate(&changed, &caps).is_err());
+        assert!(
+            store
+                .update(
+                    &ConfigPatch {
+                        expected_revision: changed.revision,
+                        ..Default::default()
+                    },
+                    &caps
+                )
+                .unwrap()
+                .style
+                .is_none()
+        );
+    }
+
+    #[test]
+    fn model_identity_is_validated_and_cleared_when_backend_changes() {
+        let dir = tempfile::tempdir().unwrap();
+        let defaults = Config {
+            backend: "qwen".into(),
+            model: Some("1.7b-customvoice".into()),
+            voice: "uncle_fu".into(),
+            ..Config::default()
+        };
+        let store =
+            ConfigStore::new(dir.path().join("config.json")).with_defaults(defaults.clone());
+        let mut qwen = capabilities();
+        qwen.backend = "qwen".into();
+        qwen.model = Some("0.6b-customvoice".into());
+        qwen.voices = vec!["uncle_fu".into()];
+        assert!(validate(&defaults, &qwen).is_err());
+        let changed = store
+            .update(
+                &ConfigPatch {
+                    backend: Some("kokoro".into()),
+                    voice: Some("Zf001".into()),
+                    ..Default::default()
+                },
+                &capabilities(),
+            )
+            .unwrap();
+        assert_eq!(changed.model, None);
+        assert_eq!(changed.backend, "kokoro");
     }
 
     #[test]
@@ -194,12 +346,15 @@ mod tests {
         .unwrap();
         let store = ConfigStore::new(path);
         let voices = Capabilities {
+            model: None,
+            model_name: String::new(),
             default_voice: "Zf001".into(),
             voice_names: Default::default(),
             voices: vec!["Zm009".into()],
             backend: "kokoro".into(),
             native_streaming: false,
             style: false,
+            compiled_devices: Vec::new(),
             cloning: false,
             pronunciation: false,
         };

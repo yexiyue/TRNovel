@@ -1,11 +1,11 @@
 pre-commit:
   jobs:
     - name: test
-      run: cargo test --locked --all-features --workspace --lib --tests --examples
+      run: cargo test --locked --features trnovel/tts,parse-book-source/browser,parse-book-source/js-host,parse-book-source/schema,novel-tts/kokoro,novel-tts/qwen,novel-tts/voxcpm,novel-tts/omnivoice,novel-tts/zipvoice,novel-tts/coreml,novel-tts/ort-cuda,qwen3-tts/profiling --workspace --lib --tests --examples
 
     - name: clippy
-      # run: cargo clippy --all-targets --all-features --workspace -- -D warnings
-      run: cargo clippy --all-targets --all-features --workspace --fix --allow-dirty
+      # run: cargo clippy --all-targets --features trnovel/tts,parse-book-source/browser,parse-book-source/js-host,parse-book-source/schema,novel-tts/kokoro,novel-tts/qwen,novel-tts/voxcpm,novel-tts/omnivoice,novel-tts/zipvoice,novel-tts/coreml,novel-tts/ort-cuda,qwen3-tts/profiling --workspace -- -D warnings
+      run: cargo clippy --all-targets --features trnovel/tts,parse-book-source/browser,parse-book-source/js-host,parse-book-source/schema,novel-tts/kokoro,novel-tts/qwen,novel-tts/voxcpm,novel-tts/omnivoice,novel-tts/zipvoice,novel-tts/coreml,novel-tts/ort-cuda,qwen3-tts/profiling --workspace --fix --allow-dirty
       stage_fixed: true
 
     - name: rustfmt
@@ -13,4 +13,4 @@ pre-commit:
       stage_fixed: true
 
     - name: docs
-      run: cargo doc --no-deps --document-private-items --all-features --workspace --examples
+      run: cargo doc --no-deps --document-private-items --features trnovel/tts,parse-book-source/browser,parse-book-source/js-host,parse-book-source/schema,novel-tts/kokoro,novel-tts/qwen,novel-tts/voxcpm,novel-tts/omnivoice,novel-tts/zipvoice,novel-tts/coreml,novel-tts/ort-cuda,qwen3-tts/profiling --workspace --examples

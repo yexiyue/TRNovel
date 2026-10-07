@@ -7,17 +7,27 @@ pub(super) async fn prepare(
     progress: &mpsc::Sender<Event>,
 ) -> anyhow::Result<(Rc<dyn Backend>, Device, Option<Device>)> {
     let candidate = resources
-        .available_devices(&config.backend)
+        .available_devices_for(&config.backend, config.model.as_deref())
         .into_iter()
         .find(|d| *d != Device::Cpu);
     let mut selected = if config.tts_device == Device::Auto {
-        Device::Cpu
+        resources
+            .available_devices_for(&config.backend, config.model.as_deref())
+            .into_iter()
+            .find(|device| *device == Device::Cpu)
+            .or(candidate)
+            .ok_or_else(|| anyhow::anyhow!("no available device for this model"))?
     } else {
         config.tts_device
     };
     let key = calibration::key(
         "tts",
-        &format!("{}:{}", config.backend, tts_revision(&config.backend)),
+        &format!(
+            "{}:{}:{}",
+            config.backend,
+            config.model.as_deref().unwrap_or("legacy"),
+            tts_revision(config)
+        ),
     );
     let cached = (config.tts_device == Device::Auto)
         .then(|| {
@@ -25,7 +35,7 @@ pub(super) async fn prepare(
                 resources.root(),
                 "tts",
                 &key,
-                &resources.available_devices(&config.backend),
+                &resources.available_devices_for(&config.backend, config.model.as_deref()),
             )
         })
         .flatten();
@@ -33,38 +43,69 @@ pub(super) async fn prepare(
         selected = record.device;
     }
     let mut backend = match resources
-        .prepare_on(&config.backend, progress.clone(), selected)
+        .prepare_model_on(
+            &config.backend,
+            config.model.as_deref(),
+            progress.clone(),
+            selected,
+        )
         .await
     {
         Ok(backend) => backend,
-        Err(error) if config.tts_device == Device::Auto && selected != Device::Cpu => {
+        Err(error)
+            if config.tts_device == Device::Auto
+                && selected != Device::Cpu
+                && resources
+                    .available_devices_for(&config.backend, config.model.as_deref())
+                    .contains(&Device::Cpu) =>
+        {
             selected = Device::Cpu;
             let _ = progress
-                .send(resources.device_status(
+                .send(resources.device_status_for(
                     &config.backend,
+                    config.model.as_deref(),
                     selected,
                     Some(format!("provider initialization failed: {error}")),
                 ))
                 .await;
-            resources.prepare(&config.backend, progress.clone()).await?
+            resources
+                .prepare_model_on(
+                    &config.backend,
+                    config.model.as_deref(),
+                    progress.clone(),
+                    Device::Cpu,
+                )
+                .await?
         }
         Err(error) => return Err(error),
     };
     if config.tts_device == Device::Auto
         && cached.is_none()
-        && (config.backend == "moss" || config.backend == "qwen")
+        && resources
+            .available_devices_for(&config.backend, config.model.as_deref())
+            .contains(&Device::Cpu)
+        && matches!(
+            config.backend.as_str(),
+            "moss" | "qwen" | "voxcpm" | "omnivoice"
+        )
         && let Some(device) = candidate
     {
         let _ = progress
-            .send(resources.device_status(
+            .send(resources.device_status_for(
                 &config.backend,
+                config.model.as_deref(),
                 Device::Cpu,
                 Some("calibrating: 3 warmups + 5 measurements".into()),
             ))
             .await;
         let evaluation = async {
             let accelerated = resources
-                .prepare_on(&config.backend, progress.clone(), device)
+                .prepare_model_on(
+                    &config.backend,
+                    config.model.as_deref(),
+                    progress.clone(),
+                    device,
+                )
                 .await?;
             let cpu = calibration::synthesis(&*backend, &config.voice).await?;
             let gpu = calibration::synthesis(&*accelerated, &config.voice).await?;
@@ -97,15 +138,30 @@ pub(super) async fn prepare(
             )?;
         }
         let _ = progress
-            .send(resources.device_status(&config.backend, selected, Some(reason)))
+            .send(resources.device_status_for(
+                &config.backend,
+                config.model.as_deref(),
+                selected,
+                Some(reason),
+            ))
             .await;
     } else {
         let _ = progress
-            .send(resources.device_status(&config.backend, selected, cached.map(|r| r.reason)))
+            .send(resources.device_status_for(
+                &config.backend,
+                config.model.as_deref(),
+                selected,
+                cached.map(|r| r.reason),
+            ))
             .await;
     }
     #[cfg(feature = "moss")]
-    if config.tts_device == Device::Auto && selected != Device::Cpu && config.backend == "moss" {
+    if config.tts_device == Device::Auto
+        && selected != Device::Cpu
+        && config.backend == "moss"
+        && config.model.as_deref().is_none_or(|id| id == "nano")
+    {
+        drop(backend);
         backend = Rc::new(
             tts_backends::moss::MossBackend::load_with_recovery(
                 resources.root().join("moss"),
@@ -117,9 +173,11 @@ pub(super) async fn prepare(
     }
     #[cfg(feature = "qwen")]
     if config.tts_device == Device::Auto && selected != Device::Cpu && config.backend == "qwen" {
+        drop(backend);
         backend = Rc::new(
             tts_backends::qwen::QwenBackend::load_with_recovery(
-                resources.root().join("qwen"),
+                tts_backends::qwen::models::Model::parse(config.model.as_deref())?
+                    .directory(resources.root()),
                 selected,
                 Some(progress.clone()),
             )
@@ -129,14 +187,37 @@ pub(super) async fn prepare(
 
     Ok((backend, selected, candidate))
 }
-pub(super) fn tts_revision(backend: &str) -> &'static str {
+pub(super) fn tts_revision(config: &Config) -> &'static str {
+    let backend = config.backend.as_str();
+    #[cfg(feature = "zipvoice")]
+    if backend == "zipvoice" {
+        return tts_backends::zipvoice::resources::REVISION;
+    }
+    #[cfg(feature = "voxcpm")]
+    if backend == "voxcpm" {
+        return tts_backends::voxcpm::resources::REVISION;
+    }
+    #[cfg(feature = "omnivoice")]
+    if backend == "omnivoice" {
+        return tts_backends::omnivoice::resources::REVISION;
+    }
+    #[cfg(feature = "moss-candle")]
+    if backend == "moss"
+        && let Some(model) = config.model.as_deref().filter(|id| *id != "nano")
+    {
+        return tts_backends::moss::candle::Mode::parse(model)
+            .expect("validated model")
+            .revision();
+    }
     #[cfg(feature = "moss")]
     if backend == "moss" {
         return tts_backends::moss::resources::REVISION;
     }
     #[cfg(feature = "qwen")]
     if backend == "qwen" {
-        return tts_backends::qwen::resources::REVISION;
+        return tts_backends::qwen::models::Model::parse(config.model.as_deref())
+            .expect("validated model")
+            .revision();
     }
     let _ = backend;
     "kokoro-v1.1-zh"

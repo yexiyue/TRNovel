@@ -49,6 +49,23 @@ pub trait Backend {
     fn capabilities(&self) -> Capabilities;
     /// Primary synthesis boundary. Every successful segment terminates with End.
     fn stream<'a>(&'a self, text: &'a str, voice: &'a str) -> Streaming<'a>;
+    /// Optional per-utterance style; unsupported instructions fail explicitly.
+    fn stream_with_style<'a>(
+        &'a self,
+        text: &'a str,
+        voice: &'a str,
+        style: Option<&'a str>,
+    ) -> Streaming<'a> {
+        if style.is_some_and(|v| !v.trim().is_empty()) {
+            Box::pin(async {
+                Err(BackendError::Unsupported(
+                    "this model does not support speaking style".into(),
+                ))
+            })
+        } else {
+            self.stream(text, voice)
+        }
+    }
     /// Collect a stream for offline export and model comparison.
     fn synthesize<'a>(&'a self, text: &'a str, voice: &'a str) -> Synthesis<'a> {
         Box::pin(async move {

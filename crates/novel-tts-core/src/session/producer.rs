@@ -11,6 +11,7 @@ pub(super) fn spawn(
     source_text: Arc<str>,
     first: Option<crate::text::TextSegment>,
     voice: String,
+    style: Option<String>,
 ) -> (AbortOnDrop, mpsc::Receiver<Result<Item, SessionError>>) {
     let (tx, rx) = mpsc::channel(1);
     let task = AbortOnDrop(tokio::task::spawn_local(async move {
@@ -31,7 +32,9 @@ pub(super) fn spawn(
                 tx.send(Ok(Item::Start(range)))
                     .await
                     .map_err(|_| SessionError::Disconnected)?;
-                let mut audio = backend.stream(&segment.text, &voice).await?;
+                let mut audio = backend
+                    .stream_with_style(&segment.text, &voice, style.as_deref())
+                    .await?;
                 let mut ended = false;
                 let mut generated_seconds = 0.0;
                 while let Some(chunk) = audio.recv().await {

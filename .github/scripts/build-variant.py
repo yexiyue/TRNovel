@@ -5,6 +5,7 @@ from pathlib import Path
 import shutil
 import subprocess
 import sys
+import zipfile
 
 variant = sys.argv[1]
 if variant not in ("basic", "listening", "listening-coreml", "listening-cuda"):
@@ -32,11 +33,14 @@ if variant.startswith("listening"):
     if variant == "listening-coreml":
         if target != "aarch64-apple-darwin":
             raise SystemExit("CoreML distribution requires Apple Silicon")
-        tts_command.extend(["--features", "coreml"])
+        tts_command.extend(["--features", "coreml,metal"])
     elif variant == "listening-cuda":
         if target not in ("x86_64-unknown-linux-gnu", "x86_64-pc-windows-msvc"):
             raise SystemExit("CUDA distribution requires x86_64 Linux or Windows")
-        tts_command.extend(["--features", "cuda"])
+        tts_command.extend(["--features", "ort-cuda,qwen-cuda"])
+    optional = environment.get("TRNOVEL_TTS_FEATURES", "")
+    if optional:
+        tts_command.extend(["--features", optional])
     subprocess.run(tts_command, cwd=root, env=environment, check=True)
     binaries.append("novel-tts")
 output = Path(os.environ.get("TRNOVEL_VARIANT_OUTPUT", Path.cwd()))
@@ -53,3 +57,34 @@ if variant.startswith("listening"):
 
 if variant == "listening-cuda" and not any("onnxruntime_providers_cuda" in path.name for path in output.iterdir()):
     raise SystemExit("CUDA distribution is missing its native ORT provider library; refusing to package a CPU fallback")
+
+if variant.startswith("listening"):
+    notices = output / "tts-notices"
+    notices.mkdir(exist_ok=True)
+    sources = [root / "crates" / "qwen3-tts", root / "crates" / "novel-tts-backends" / "src" / "moss" / "assets"]
+    optional_features = {feature.strip() for feature in environment.get("TRNOVEL_TTS_FEATURES", "").split(",")}
+    if any(feature.startswith("moss-candle") for feature in optional_features):
+        sources.append(root / "crates" / "moss-tts")
+    if any(feature.startswith("omnivoice") for feature in optional_features):
+        sources.append(root / "crates" / "omnivoice")
+    if any(feature.startswith("voxcpm") for feature in optional_features):
+        sources.append(root / "crates" / "voxcpm-sys" / "native")
+    for source in sources:
+        for path in source.rglob("*"):
+            if path.is_file() and (path.name.startswith(("LICENSE", "COPYING")) or path.name in ("SOURCE.md", "NOTICE")):
+                destination = notices / path.relative_to(root)
+                destination.parent.mkdir(parents=True, exist_ok=True)
+                shutil.copy2(path, destination)
+    if "zipvoice" in optional_features:
+        helper = root / "crates" / "novel-tts-backends" / "native" / "zipvoice-phonemizer"
+        # Provide corresponding GPL helper source, including our CMake and API changes.
+        with zipfile.ZipFile(notices / "zipvoice-phonemizer-source.zip", "w", zipfile.ZIP_DEFLATED) as archive:
+            for path in sorted(helper.rglob("*")):
+                if path.is_file():
+                    archive.write(path, path.relative_to(helper))
+        for source in (root / "crates" / "novel-tts-backends" / "src" / "zipvoice",):
+            for path in source.rglob("*"):
+                if path.is_file() and ("LICENSE" in path.name or path.name == "SOURCE.md"):
+                    destination = notices / path.relative_to(root)
+                    destination.parent.mkdir(parents=True, exist_ok=True)
+                    shutil.copy2(path, destination)

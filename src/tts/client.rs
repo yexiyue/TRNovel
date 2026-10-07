@@ -25,7 +25,7 @@ type Pending = Arc<Mutex<HashMap<String, oneshot::Sender<Message>>>>;
 
 #[derive(Debug, Clone)]
 pub enum Received {
-    Message(Message),
+    Message(Box<Message>),
     Disconnected(String),
 }
 
@@ -248,7 +248,7 @@ impl Client {
                         let _ = reply.send(message);
                         continue;
                     }
-                    let _ = notify.send(Received::Message(message));
+                    let _ = notify.send(Received::Message(Box::new(message)));
                 }
                 Ok(())
             }

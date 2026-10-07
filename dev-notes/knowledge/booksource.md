@@ -243,9 +243,9 @@ Qwen ONNX 的 feature_attention_mask 是 Int32；Whisper 前处理 extractor 调
 
 ### Qwen TTS 与强制对齐不同
 
-Qwen TTS 的 Candle 模型在 `.novel-tts/qwen/`，对齐器在 `alignment/qwen/`；关闭对齐只跳过后者。协议 v4 增加 Metal 设备，两个程序同步更新。CLI/TUI 后端切换同时选择新默认音色并重置 TTS 设备为 auto；原始协议调用应提交相容的设备。
+Qwen TTS 的 Candle 模型在 `.novel-tts/qwen/`，对齐器在 `alignment/qwen/`；关闭对齐只跳过后者。协议 v4 增加 Metal，当前 v5 增加模型目录；两个程序同步更新。CLI/TUI 后端切换同时选择新默认音色并重置 TTS 设备为 auto；原始协议调用应提交相容的设备。
 
-StreamingSession::next_chunk 返回 None 不一定是 EOS；必须额外检查 is_done，帧数耗尽时它为 false。Qwen 的流式 codec 单独解码十帧块，因此原生推理成功与边界音质验收分开记录。首版预置音色的声音克隆标志为 false，voices list 按当前后端列出，import/remove 仅限 MOSS。
+StreamingSession::next_chunk 返回 None 不一定是 EOS；必须额外检查 is_done，帧数耗尽时它为 false。Qwen GPU 的流式 codec 使用二十帧块、CPU 十帧；推理成功与边界音质验收分开记录。0.6B CustomVoice 无克隆或风格；1.7B CustomVoice 提供风格；Base 提供渐进克隆和可复用提示。统一 voices list/import/remove/design 按所选模型执行，旧 MOSS 格式保留。
 
 **相关文件**：`crates/novel-tts-backends/src/qwen/`、`crates/novel-tts/src/{preparation.rs,voices.rs}`、`dev-notes/qwen-tts-acceptance.md`。
 
@@ -256,3 +256,33 @@ StreamingSession::next_chunk 返回 None 不一定是 EOS；必须额外检查 i
 缓冲时新片段不能发布开始事件；但已播放的片段仍须处理完成并释放预算许可，否则恢复预取会死锁。RTF 需要按静音裁剪后的实际可播放时长判断，不能仅依据后端原始 PCM 时长。Qwen 的 `NOVEL_TTS_DIAGNOSTICS=1` 分开记录初始化、逐块生成与通道等待。
 
 **相关文件**：`crates/novel-tts-core/src/session/{buffering,playback}.rs`。
+
+### 本地 Qwen CUDA 设备边界
+
+`crates/qwen3-tts` 是本地模型计算库，`novel-tts-backends` 将协议设备映射到 Candle，worker 继续拥有资源校验、Auto 校准和 GPU 失败后的 CPU 重建。`qwen-cuda` 在 Windows/Linux 编入 CUDA；显式选择失败不静默回退，Auto 通过现有完整链路测速选设备。模型、PCM 通道、EOS/帧数上限、检查点与播放边界不变；真实 GPU PCM 和音质验收必须单独记录，不能用成功编译替代。
+
+### 模型选择、音色隔离与取消
+
+协议 v5 的 Config 增加可选 model/style；旧 Qwen None 对应 0.6B，已有后端/音色/设备不变。新文件默认检测 GPU 并选择 Qwen 1.7B CustomVoice 及实际 CUDA/Metal，否则依编译目录选择 CPU MOSS/Kokoro/Qwen 0.6B。不编入稳定后端时须显式指定候选；目录查询不下载模型，实际 Prepare 只下载当前模型。
+
+音色与提示、下载及校准按 backend/model/revision 隔离。阅读器切换模型先 Stop 并释放 manager，再准备新模型；style/voice 更改从未完成片段重建会话。共享 VoiceStore 保存 WAV/准确文字/描述/模型身份，各适配器自己的编码缓存按该身份保存。Qwen 设计音色先 VoiceDesign 短片段，保存后用 Base 克隆。
+
+Omni 和 Zip 首版是 semantic segment PCM，native_streaming=false；不得将整段完成描述为实时流式。原生线程取消直接检查 Sender::is_closed，不能依赖 Tokio 上的监视 future：Backend Drop 的 join 会阻塞该执行器，旧方式可能等完整扩散生成才退出。调用层先销毁音频 receiver 再 Drop 后端，避免 bounded send 与 join 死锁。有效 PCM 加正常 End 才提交完成检查点。
+
+**相关文件**：`crates/novel-tts-core/src/{voices.rs,config.rs,backend.rs}`、`crates/novel-tts/src/voices/`、`src/tts/ui.rs`、`dev-notes/tts-model-tiers-acceptance.md`。
+
+首次 Prepare 或 CLI 实际朗读时 ConfigStore::initialize 在文件锁内保存新默认值；Hello/GetConfig/voices list 保持只读。已有配置逐字保留，不通过初始化重写未知字段。这样 GPU 首次默认成为用户偏好，下一次硬件变化不会悄悄换后端。
+
+### 推理线程在初始化 await 之前就必须有所有者
+
+std::thread::JoinHandle 直接 drop 会脱离线程。后端加载时先构造持有请求 sender 和 JoinHandle 的后端，再 await 初始化 ready，取消准备就会通过后端 Drop 关闭通道并 join；不能 ready 成功后才构造后端，否则取消并立刻切换可能短暂同时保留两套 GPU 权重。已加载模型的取消仍先丢弃 PCM receiver，释放有界发送后再 join。
+
+**相关文件**：`crates/novel-tts-backends/src/{qwen,voxcpm,omnivoice,zipvoice}.rs`。
+
+### MOSS 多种原生模型
+
+MOSS Nano 保留原 ONNX 与音色格式，旧 model=None 不改写；Candle 试用构建目录项增加显式 nano ID，以便从同后端的 Local/Realtime 切回。新模型设备按 model 查询，不能沿用 Nano 的 ORT 设备列表。GPU-only 模式 Auto 只能选择公布 GPU，不能拿未开放的 CPU adapter 做校准或降级。新参考记录走统一 VoiceStore，码本缓存额外检查 codec revision、WAV SHA、帧数和码本数。VoiceGenerator 创建参考一次，后续小说段落复用克隆。
+
+Codec 流式 ring-cache 在当前 chunk 注意力之前覆盖旧 key，与先算完整滑窗再裁缓存不同；需有跨窗口官方数值回归。EOS 和正常 End 不证明语音内容逐字完整。
+
+**相关文件**：`crates/novel-tts-backends/src/moss/candle.rs`、`crates/moss-tts/src/codec.rs`。

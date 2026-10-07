@@ -1,0 +1,26 @@
+[
+  {
+    "path": "encoder.onnx",
+    "url": "https://huggingface.co/k2-fsa/ZipVoice/resolve/4ed45fb6e7e9527b780bef9e097a04bf13fe4e6b/zipvoice_distill/text_encoder.onnx",
+    "size": 17633735,
+    "sha256": "495eca2d5f8a911f5c361bcce5bd55cdd2508ccdd26ce3e9bf1d3c29eb974861"
+  },
+  {
+    "path": "decoder.onnx",
+    "url": "https://huggingface.co/k2-fsa/ZipVoice/resolve/4ed45fb6e7e9527b780bef9e097a04bf13fe4e6b/zipvoice_distill/fm_decoder.onnx",
+    "size": 477534010,
+    "sha256": "4510d4f5f049f14ef80207fca695e13c820e2cea61635f402954950bc62b1e3c"
+  },
+  {
+    "path": "tokens.txt",
+    "url": "https://huggingface.co/k2-fsa/ZipVoice/resolve/4ed45fb6e7e9527b780bef9e097a04bf13fe4e6b/zipvoice_distill/tokens.txt",
+    "size": 2570,
+    "sha256": "ce98c1afc5f7a20c2484dffdd68a1fff0a4a2cc707328833750c4476c37cdbda"
+  },
+  {
+    "path": "vocos.onnx",
+    "url": "https://github.com/k2-fsa/sherpa-onnx/releases/download/vocoder-models/vocos_24khz.onnx",
+    "size": 54157409,
+    "sha256": "bcb3b970e384161c4d634f0bb9e999ff1c471b34c9bc0b1049a5014065ed3cc0"
+  }
+]

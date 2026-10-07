@@ -73,12 +73,15 @@ impl KokoroBackend {
     /// Available stable voice IDs, retaining old configuration spellings.
     pub fn capabilities() -> Capabilities {
         Capabilities {
+            model: None,
+            model_name: String::new(),
             default_voice: "Zf001".into(),
             voice_names: Default::default(),
             backend: "kokoro".into(),
             voices: voices::names(),
             native_streaming: false,
             style: false,
+            compiled_devices: Vec::new(),
             cloning: false,
             pronunciation: false,
         }

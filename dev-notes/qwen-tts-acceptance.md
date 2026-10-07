@@ -47,3 +47,15 @@ Apple M4 Pro、24 GiB 内存，release 构建。固定文本、福叔和随机�
 长段落 Metal 探针：“山风吹得血袍飘荡……”正常 EOS，首 PCM 0.893 s、生成 18.882 s、音频 17.68 s；模型加载 0.606 s。试听与指标在 `target/qwen-acceptance/story-metal.{wav,json}`。这仅验证生成完成，内容与听感仍需人工核对。
 
 VHS 已检查后端 Qwen、Serena 音色切换、Auto → Metal、模型就绪，以及实际 Playing 状态和绿色片段高亮。暂停与退出后检查点保留在完成位置。录制在 `target/qwen-acceptance/vhs/qwen.gif`，可复用脚本为 `docs/tapes/qwen-tts.tape`。
+
+## 本地库与 CUDA 接入（2026-10-07）
+
+推理源码迁入 `crates/qwen3-tts`，来源固定 revision 不变。推理用 tokenizers 禁用 `esaxx_fast`，Windows Qwen + ORT CUDA 构建不再要求 `/MD` 环境变量。增加 `qwen-cuda`，原 ONNX `cuda` feature 改为 `ort-cuda`；GPU 设备目录与加载共享本地设备创建入口。移除上游 Hub、CLI、手写 fused PTX 和 Flash Attention，残差归一化使用 Candle 自带设备算子。
+
+本机 CUDA 12.9 Update 1 已安装到 `D:\dev-tools\cuda\v12.9`，官方组件 SHA-256 全部校验通过。nvcc 12.9.86 与 MSVC 14.44 编译的 `sm_120` 内核在 RTX 5070 实际运行成功，官方 deviceQuery / vectorAdd 通过。`cargo build --locked -j 2 -p novel-tts --no-default-features --features qwen-cuda` 通过，worker 协议探针确认 Qwen `compiled` 与 `available` 均包含 CUDA。日志在 `target/qwen-local-cuda-build.log` 与 `target/cuda-install-check/worker-probe.log`。
+
+初次 CUDA-only 构建产生 LNK4098；默认 MOSS + Qwen CUDA 组合进一步暴露 Candle MOE `/MT` 与 ORT `/MD` 的 LNK2038。将 MSVC x64 编译器目录与 CUDA bin 写入系统 PATH，配置系统 `NVCC_PREPEND_FLAGS=-Xcompiler=/MD` 并重建 candle-kernels 后，无需 PowerShell 激活脚本的 `cargo build --locked -j 2 -p novel-tts -F qwen-cuda` 通过，未产生链接警告。dumpbin 确认 MOE 对象的 RuntimeLibrary 为 MD_DynamicRelease；日志在 `target/qwen-local-cuda-default-build.log`。没有使用 `/NODEFAULTLIB` 屏蔽。
+
+2026-10-07 后续已完成 Windows RTX 5070 的 0.6B/1.7B CustomVoice、Base/VoiceDesign 实际生成、正常 EOS、取消后重试以及 1.7B CustomVoice 30 分钟实际播放。RTF 分别约 0.758、0.716、0.796；30 分钟 RTF 约 0.758，显存未见持续增长。当前协议为 v5，新增模型策略与完整证据见 `tts-model-tiers-acceptance.md`。人工听感、Linux CUDA 与本次新增模型的 macOS Metal 实机仍待验收。OpenSpec 中将这些验收项分别记录，历史 Metal 测量保留为历史数据。
+
+本地 portable feature 集的 workspace lib/tests/examples 回归通过（488 次测试通过，1 次忽略，其中包括既有协议测试对子进程的测试调用）；Clippy `-D warnings`、rustfmt 和 rustdoc `-D warnings` 通过。检查 reader 基础依赖树没有 Candle/ORT/rodio/core，Qwen-only 没有 ORT，esaxx-rs 未启用 cpp。通用 CI/lefthook 改用显式 feature 集；独立 qwen-cuda.yml 使用 CUDA 12.8.1 devel 环境和 CC 120 编译检查，该工作流尚未触发或验证。

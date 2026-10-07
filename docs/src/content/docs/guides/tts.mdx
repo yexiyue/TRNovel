@@ -1,6 +1,6 @@
 ---
 title: 听书模式
-lastUpdated: 2026-10-06
+lastUpdated: 2026-10-07
 sidebar:
     order: 7
     badge:
@@ -8,9 +8,25 @@ sidebar:
         variant: success
 ---
 
-听书由独立的 `novel-tts` 程序处理。阅读器提交章节正文，显示片段高亮，并按正常完成事件续章；显式开启对齐后才异步切换逐句高亮。MOSS、Kokoro 和 Qwen TTS 模型及音频设备保留在听书进程中；默认使用原生 MOSS-TTS-Nano，对齐默认关闭，无需 Python。
+听书由独立的 `novel-tts` 程序处理。阅读器提交章节正文，显示片段高亮，并按正常完成事件续章；显式开启对齐后才异步切换逐句高亮。所有模型及音频设备保留在听书进程中；新用户有可用 GPU 且编入 Qwen 时默认选择 1.7B-CustomVoice，无 GPU 时按已编译的 MOSS、Kokoro、Qwen 0.6B 顺序选择，对齐默认关闭，无需 Python。
 
 ## 从源码构建
+
+MOSS 的 GPU 实验档可增加 `moss-candle-cuda`，提供 `local-1.7b` 和
+`realtime-1.7b` 模型。两者使用统一 Candle，旧 Nano 和音色格式保留。
+当前优先试听 Realtime；Local 尚未达到主力速度要求。
+
+```sh
+cargo build --release -p novel-tts --features qwen-cuda,voxcpm-cuda,omnivoice-cuda,zipvoice,moss-candle-cuda
+novel-tts --backend moss --model realtime-1.7b --tts-device cuda voices design myvoice --name "我的音色" --description "温暖清晰的成年女性普通话"
+novel-tts --backend moss --model realtime-1.7b --voice custom:myvoice --tts-device cuda book.txt
+```
+
+VoiceGenerator 只设计一次短参考，长文复用保存音色。导入参考为 1–10 秒 WAV，
+需要 `--text` 记录对应文字。新模型及共用 codec 存在默认
+`~/.novel-tts/moss/models/<id>/<revision>`；不同模型的音色和编码缓存隔离。
+新模式暂只开放 GPU，CPU 继续用 Nano；CLI 可用 `--model nano --tts-device cpu` 切回。
+Metal 构建入口为 `moss-candle-metal`，外平台实机及人工听感仍未验收。
 
 此次重构的双变体发行与安装渠道仍在验收，可先从 workspace 构建：
 
@@ -41,6 +57,8 @@ cargo build -p novel-tts --no-default-features --features kokoro
 | --- | --- |
 | 模型准备 | Enter 启用，Esc 取消；缺少资源时下载并显示进度 |
 | 语音后端 | ←/→ 选择已编译后端，切换会停止播放并释放旧模型 |
+| 模型 | ←/→ 选择后端内的模型；切换先释放旧模型，能力和音色随之更新 |
+| 朗读风格 | Qwen 1.7B-CustomVoice 可选择风格；CLI `--style` 支持描述 |
 | 音色 | ←/→ 选择预置或已导入音色，显示后端提供的名称 |
 | 播放速度 | ←/→ 调节 0.5..2 倍速 |
 | 音量 | ←/→ 调节 0..10 |
@@ -61,20 +79,42 @@ MOSS 资源保存在 `$HOME/.novel-tts/moss/{tts,codec}`，固定版本共约 76
 
 ### Qwen TTS（Candle）
 
-可选 `qwen` feature 集成原生 Candle 推理，首版为 Qwen3-TTS 0.6B CustomVoice，提供九种预置音色，默认福叔 `uncle_fu`。固定模型约 2.50 GB，按需下载并校验到 `$HOME/.novel-tts/qwen/`。它与 `alignment/qwen/` 的强制对齐模型相互独立。
+可选 `qwen` feature 集成原生 Candle 推理，支持 0.6B/1.7B CustomVoice 与 1.7B Base；已有未声明模型的 Qwen 配置仍使用 0.6B，提供九种预置音色，默认福叔 `uncle_fu`。0.6B 资源约 2.50 GB，1.7B 每种变体约 4.52 GB，仅下载所选模型并校验到 `$HOME/.novel-tts/qwen/`。它与 `alignment/qwen/` 的强制对齐模型相互独立。
 
 ```sh
 # macOS：保留 MOSS，增加 Qwen 与 Metal GPU 支持
 cargo build --release -p novel-tts --features qwen,metal
+# Windows/Linux NVIDIA：只编入 Qwen，编译时需要 CUDA Toolkit
+cargo build --release -p novel-tts --no-default-features --features qwen-cuda
 # 通用 CPU：只编入 Qwen
 cargo build --release -p novel-tts --no-default-features --features qwen
 novel-tts --backend qwen --voice uncle_fu book.txt
 novel-tts --backend qwen voices list
 ```
 
-TUI 按能力目录直接展示 Qwen 与它的音色。CLI/TUI 切换后端时将合成设备重置为 auto，保持阅读位置，由用户重新准备和播放。Qwen 首版支持 CPU/Metal，不支持此适配器的参考音频克隆或 CUDA；MOSS 导入功能不受影响。Metal 与 CoreML 是不同执行路径，请按各后端报告的设备选择。
+TUI 按模型能力展示可用音色；Qwen Base 提供参考音频克隆，1.7B CustomVoice 提供朗读风格。CLI/TUI 切换后端时将合成设备重置为 auto，保持阅读位置，由用户重新准备和播放。Qwen 支持 CPU、Candle CUDA（Windows/Linux）和 Metal（macOS）。Metal 与 CoreML 是不同执行路径，请按各后端报告的设备选择。
 
-上游 Candle 实现仍属实验版本，已固定源码 revision。流式小块的解码边界、长文本覆盖和主观音质需要试听确认，不能以正常 EOS 代替音质验收。
+Candle 实现已纳入本地 `crates/qwen3-tts`，来源 revision 已记录。流式小块的解码边界、长文本覆盖和主观音质需要试听确认，不能以正常 EOS 代替音质验收。
+
+### 其他模型
+
+| 后端 | 模型选项 | 设备 / 输出 | 音色 |
+| --- | --- | --- | --- |
+| VoxCPM2 | `2b-q8_0` | CUDA / Metal / CPU；48kHz 原生流式 | 参考 WAV + 文字克隆，描述设计 |
+| OmniVoice | `0.6b` | CUDA / Metal / CPU；24kHz 语义分段 | 克隆，支持标签描述设计 |
+| ZipVoice-Distill | `distill-int8` / `distill-fp32` | CPU；24kHz 语义分段，默认八步 | 必须导入参考 WAV 与文字 |
+
+```sh
+cargo build --release -p novel-tts --features qwen-cuda,voxcpm-cuda,omnivoice-cuda,zipvoice
+novel-tts --backend qwen --model 1.7b-customvoice --tts-device cuda book.txt
+novel-tts --backend qwen --model 1.7b-base voices design storyteller --name "沉稳男声" --description "沉稳、自然的中文男声"
+novel-tts --backend zipvoice --model distill-int8 voices import narrator --name "我的音色" --text "参考音频中的准确文字" reference.wav
+novel-tts --backend zipvoice --model distill-int8 --voice custom:narrator --tts-device cpu book.txt
+```
+
+VoxCPM2 和 OmniVoice 使用相同的 `voices list/import/remove/design` 入口，阅读器选择已保存音色。设计只生成一次短参考，长文复用克隆音色。模型、revision 和音色缓存相互隔离。OmniVoice tokenizer 附带 BOSON/Higgs/Llama 许可；Zip 英文音素工具使用 GPL-3.0-or-later 的 patched eSpeak，其对应源码及许可随该 feature 发行。
+
+macOS 使用 `metal,voxcpm-metal,omnivoice-metal`。协议版本为 5，旧 worker 会明确提示版本不匹配。Windows RTX 5070 实测与待验收项目记录于仓库 `dev-notes/tts-model-tiers-acceptance.md`。
 
 ## 导入音色
 
@@ -93,7 +133,7 @@ novel-tts voices remove narrator
 
 恢复点由听书程序保存在 `~/.novel/tts/checkpoints/`。正文 SHA-256、来源和 UTF-8 字节坐标必须匹配；正文变化、损坏数据或未知版本会提示错误，可用面板「从章首重播」主动重置。崩溃后可能重复最近未完成片段，不自动开始播放。
 
-听书配置仍是 `~/.novel/tts_config.json`，旧音量、速度、音色、自动播放字段保留。新配置默认 MOSS/Weiguo；已有后端配置保留，旧文件缺少 backend 时解释为 Kokoro。未编译的后端会明确报错，需要用户主动切换。只有听书程序写配置；界面显示保存成功后的快照。配置损坏或修订冲突时不会覆盖原文件，刷新后再主动修改。
+听书配置仍是 `~/.novel/tts_config.json`，旧音量、速度、音色、自动播放字段保留。有可用 GPU 且编入 Qwen 时，新配置选择 1.7B-CustomVoice 和检测到的 CUDA/Metal；否则按 MOSS、Kokoro、Qwen 0.6B 顺序选择 CPU。已有后端配置保留，旧文件缺少 backend 时解释为 Kokoro，旧 Qwen 缺少 model 时解释为 0.6B。未编译的后端会明确报错，需要用户主动切换。只有听书程序写配置；界面显示保存成功后的快照。配置损坏或修订冲突时不会覆盖原文件，刷新后再主动修改。
 
 ## 独立文件朗读
 
@@ -114,13 +154,13 @@ novel-tts --restart book.txt
 # Apple Silicon 的 CoreML 构建
 cargo build --release -p novel-tts --features coreml
 # NVIDIA Linux/Windows 的 CUDA 构建
-cargo build --release -p novel-tts --features cuda
+cargo build --release -p novel-tts --features ort-cuda
 novel-tts --tts-device auto --alignment-device auto book.txt
 ```
 
 默认 auto 独立校准合成与对齐：3 次预热、5 次测量，完整链路至少快 15%、首音频回退不超过 10% 才选加速；还检查并发竞争。GPU 对齐浮点资源约 3.42 GiB，首次校准可触发下载。显式选择不可用设备会报错；自动模式运行失败后切回 CPU 并显示原因，不重播已输出音频。Kokoro 当前只支持 CPU 合成，也可使用 Qwen 对齐。
 
-CoreML 可用并不保证更快或全部算子在 GPU。本机 M4 Pro 的 MOSS 发布构建测量选择 CPU；CUDA 实机验收仍待完成。校准结果保存在模型根目录 calibration-*.json，按硬件、模型和运行库版本区分。各模型目录的 coreml-cache 可删除重建。协议为 v4，阅读器与 worker 必须配套更新。
+CoreML 可用并不保证更快或全部算子在 GPU。本机 M4 Pro 的 MOSS 发布构建测量选择 CPU；CUDA 实机验收仍待完成。校准结果保存在模型根目录 calibration-*.json，按硬件、模型和运行库版本区分。各模型目录的 coreml-cache 可删除重建。协议为 v5，阅读器与 worker 必须配套更新。
 
 ## 可选逐句高亮
 

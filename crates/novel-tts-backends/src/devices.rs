@@ -1,6 +1,6 @@
 //! Provider selection is explicit; registration never implies measured acceleration.
 pub mod calibration;
-#[cfg(any(feature = "coreml", feature = "cuda"))]
+#[cfg(any(feature = "coreml", feature = "ort-cuda"))]
 use ort::execution_providers::ExecutionProvider;
 #[cfg(any(feature = "moss", feature = "alignment", feature = "kokoro"))]
 use ort::session::Session;
@@ -13,7 +13,7 @@ pub fn compiled() -> Vec<Device> {
         Device::Cpu,
         #[cfg(feature = "coreml")]
         Device::Coreml,
-        #[cfg(feature = "cuda")]
+        #[cfg(feature = "ort-cuda")]
         Device::Cuda,
     ]
 }
@@ -26,7 +26,7 @@ pub fn available() -> Vec<Device> {
             Device::Coreml => ort::execution_providers::CoreMLExecutionProvider::default()
                 .is_available()
                 .unwrap_or(false),
-            #[cfg(feature = "cuda")]
+            #[cfg(feature = "ort-cuda")]
             Device::Cuda => {
                 ort::execution_providers::CUDAExecutionProvider::default()
                     .is_available()
@@ -84,7 +84,7 @@ pub fn session(path: &Path, device: Device, cache: &Path) -> anyhow::Result<Sess
             anyhow::bail!("CoreML feature is not compiled");
         }
         Device::Cuda => {
-            #[cfg(feature = "cuda")]
+            #[cfg(feature = "ort-cuda")]
             {
                 builder.with_execution_providers([
                     ort::execution_providers::CUDAExecutionProvider::default()
@@ -92,7 +92,7 @@ pub fn session(path: &Path, device: Device, cache: &Path) -> anyhow::Result<Sess
                         .error_on_failure(),
                 ])?
             }
-            #[cfg(not(feature = "cuda"))]
+            #[cfg(not(feature = "ort-cuda"))]
             anyhow::bail!("CUDA feature is not compiled");
         }
         Device::Metal => anyhow::bail!("Metal is supported by the Candle Qwen adapter, not ORT"),

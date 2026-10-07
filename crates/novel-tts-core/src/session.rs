@@ -79,6 +79,7 @@ struct Job {
     terminal: Rc<Cell<bool>>,
     writes: Arc<PendingWrites>,
     voice: String,
+    style: Option<String>,
     task: Option<AbortOnDrop>,
 }
 
@@ -180,11 +181,13 @@ impl SessionManager {
             writes: writes.clone(),
         };
         let voice = config.voice.clone();
+        let style = config.style.clone();
+        let job_style = style.clone();
         let finished = terminal.clone();
         let final_phase = phase.clone();
         let job_voice = voice.clone();
         let task = tokio::task::spawn_local(async move {
-            let result = runner.run(byte, voice).await;
+            let result = runner.run(byte, voice, style).await;
             if let Err(error) = &result {
                 runner.player.stop();
                 let _ = runner
@@ -225,6 +228,7 @@ impl SessionManager {
             terminal,
             writes,
             voice: job_voice,
+            style: job_style,
             task: Some(AbortOnDrop(task)),
         });
         Ok(())
@@ -285,7 +289,7 @@ impl SessionManager {
             .map_err(|error| SessionError::Invalid(error.to_string()))?;
         if let Some(job) = &self.job
             && !job.terminal.get()
-            && job.voice != config.voice
+            && (job.voice != config.voice || job.style != config.style)
         {
             let paused = job.paused.get();
             let mut request = job.request.clone();
@@ -392,12 +396,15 @@ mod tests {
     impl Backend for FakeBackend {
         fn capabilities(&self) -> Capabilities {
             Capabilities {
+                model: None,
+                model_name: String::new(),
                 default_voice: "Weiguo".into(),
                 voice_names: Default::default(),
                 backend: "moss".into(),
                 voices: vec!["Weiguo".into(), "Zf002".into()],
                 native_streaming: false,
                 style: false,
+                compiled_devices: Vec::new(),
                 cloning: false,
                 pronunciation: false,
             }

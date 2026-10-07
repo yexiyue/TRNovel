@@ -10,14 +10,22 @@ pub(super) async fn calibrate(
     device: &mut Device,
     aligner: &mut Arc<dyn Aligner>,
 ) -> anyhow::Result<()> {
+    if !resources
+        .available_devices_for(&config.backend, config.model.as_deref())
+        .contains(&Device::Cpu)
+    {
+        let _ = progress.send(resources.device_status_for(&config.backend, config.model.as_deref(), *selected, Some("this model has no accepted CPU adapter; concurrent CPU comparison is unavailable".into()))).await;
+        return Ok(());
+    }
     let directory = resources.root().join("alignment/qwen");
-    let mut available = resources.available_devices(&config.backend);
+    let mut available = resources.available_devices_for(&config.backend, config.model.as_deref());
     available.extend(devices::available());
     let joint_key = calibration::key(
         "concurrent",
         &format!(
-            "{}:{}:{selected:?}:{device:?}",
-            super::synthesis::tts_revision(&config.backend),
+            "{}:{}:{}:{selected:?}:{device:?}",
+            config.model.as_deref().unwrap_or("legacy"),
+            super::synthesis::tts_revision(config),
             tts_backends::alignment::resources::REVISION
         ),
     );
@@ -29,7 +37,14 @@ pub(super) async fn calibrate(
                 Some("calibrating concurrent synthesis and alignment".into()),
             ))
             .await;
-        let cpu_backend = resources.prepare(&config.backend, progress.clone()).await?;
+        let cpu_backend = resources
+            .prepare_model_on(
+                &config.backend,
+                config.model.as_deref(),
+                progress.clone(),
+                Device::Cpu,
+            )
+            .await?;
         tts_backends::alignment::resources::prepare(&directory, progress.clone()).await?;
         let cpu_aligner =
             tts_backends::alignment::QwenAligner::load(directory.to_path_buf()).await?;
@@ -88,7 +103,12 @@ pub(super) async fn calibrate(
             )?;
         }
         let _ = progress
-            .send(resources.device_status(&config.backend, *selected, Some(reason.clone())))
+            .send(resources.device_status_for(
+                &config.backend,
+                config.model.as_deref(),
+                *selected,
+                Some(reason.clone()),
+            ))
             .await;
         let _ = progress
             .send(devices::status("alignment", *device, Some(reason)))
@@ -96,14 +116,22 @@ pub(super) async fn calibrate(
     } else if calibration::cached_for(resources.root(), "concurrent", &joint_key, &available)
         .is_some_and(|r| r.device == Device::Cpu)
     {
-        prepared.backend = resources.prepare(&config.backend, progress.clone()).await?;
+        prepared.backend = resources
+            .prepare_model_on(
+                &config.backend,
+                config.model.as_deref(),
+                progress.clone(),
+                Device::Cpu,
+            )
+            .await?;
         tts_backends::alignment::resources::prepare(&directory, progress.clone()).await?;
         *aligner = tts_backends::alignment::QwenAligner::load(directory.to_path_buf()).await?;
         *selected = Device::Cpu;
         *device = Device::Cpu;
         let _ = progress
-            .send(resources.device_status(
+            .send(resources.device_status_for(
                 &config.backend,
+                config.model.as_deref(),
                 Device::Cpu,
                 Some("concurrent calibration rejected accelerator pair".into()),
             ))

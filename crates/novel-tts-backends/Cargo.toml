@@ -11,23 +11,42 @@ repository = "https://github.com/yexiyue/TRNovel"
 default = ["moss", "alignment"]
 alignment = ["dep:ort", "dep:tokenizers", "dep:rustfft", "dep:rubato"]
 moss = ["dep:ort", "dep:sentencepiece-rs", "dep:rand", "dep:hound", "dep:rubato"]
+moss-candle = ["moss", "dep:moss-tts", "dep:candle-core"]
+moss-candle-cuda = ["moss-candle", "moss-tts/cuda"]
+moss-candle-metal = ["moss-candle", "moss-tts/metal"]
 kokoro = ["dep:ort", "dep:kokoro-tts"]
 qwen = ["dep:qwen3-tts", "dep:hound"]
-metal = ["qwen", "dep:candle-metal", "dep:candle-nn-metal", "dep:candle-transformers-metal"]
+metal = ["qwen", "qwen3-tts/metal"]
+qwen-cuda = ["qwen", "qwen3-tts/cuda"]
+voxcpm = ["dep:voxcpm-sys", "dep:hound", "dep:rubato"]
+voxcpm-cuda = ["voxcpm", "voxcpm-sys/cuda"]
+voxcpm-metal = ["voxcpm", "voxcpm-sys/metal"]
+omnivoice = ["dep:omnivoice", "dep:hound", "dep:rubato"]
+omnivoice-cuda = ["omnivoice", "omnivoice/cuda"]
+omnivoice-metal = ["omnivoice", "omnivoice/metal"]
+zipvoice = ["dep:ort", "dep:hound", "dep:rubato", "dep:rustfft", "dep:rand", "dep:rand_distr", "dep:jieba-rs", "dep:unicode-normalization", "dep:regex"]
 coreml = ["dep:ort", "ort/coreml"]
-cuda = ["dep:ort", "ort/cuda"]
+ort-cuda = ["dep:ort", "ort/cuda"]
 
 [dependencies]
+moss-tts = { workspace = true, optional = true }
+candle-core = { workspace = true, optional = true }
+jieba-rs = { version = "0.10", default-features = false, optional = true }
+unicode-normalization = { version = "0.1", optional = true }
+rand_distr = { version = "0.5", optional = true }
+regex = { workspace = true, optional = true }
+omnivoice = { path = "../omnivoice", optional = true }
+voxcpm-sys = { path = "../voxcpm-sys", optional = true }
 qwen3-tts = { workspace = true, optional = true }
 tts-core = { package = "novel-tts-core", path = "../novel-tts-core", version = "0.3.0" }
 tts-protocol = { package = "novel-tts-protocol", path = "../novel-tts-protocol", version = "0.1.0" }
 ort = { workspace = true, optional = true }
 kokoro-tts = { workspace = true, optional = true }
 sentencepiece-rs = { version = "0.2.2", optional = true }
-tokenizers = { version = "0.22.2", default-features = false, features = ["fancy-regex"], optional = true }
-rustfft = { version = "6.4", optional = true }
+tokenizers = { workspace = true, features = ["fancy-regex"], optional = true }
+rustfft = { workspace = true, optional = true }
 rand = { version = "0.9", optional = true }
-hound = { version = "3.5", optional = true }
+hound = { workspace = true, optional = true }
 rubato = { version = "0.16", optional = true }
 anyhow.workspace = true
 serde.workspace = true
@@ -36,12 +55,6 @@ tokio.workspace = true
 dirs.workspace = true
 sha2.workspace = true
 tempfile.workspace = true
-
-[target.'cfg(target_os = "macos")'.dependencies]
-candle-metal = { package = "candle-core", version = "=0.9.2", features = ["metal"], optional = true }
-candle-nn-metal = { package = "candle-nn", version = "=0.9.2", features = ["metal"], optional = true }
-candle-transformers-metal = { package = "candle-transformers", version = "=0.9.2", features = ["metal"], optional = true }
-
 
 [[example]]
 name = "basic"
@@ -74,4 +87,16 @@ required-features = ["moss"]
 
 [[example]]
 name = "qwen"
+required-features = ["qwen"]
+
+[build-dependencies]
+cmake.workspace = true
+cc.workspace = true
+
+[[example]]
+name = "zipvoice"
+required-features = ["zipvoice"]
+
+[[example]]
+name = "native_probe"
 required-features = ["qwen"]

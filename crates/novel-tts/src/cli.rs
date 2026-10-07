@@ -40,7 +40,8 @@ pub async fn run(
         .map_err(|error| anyhow::anyhow!("cannot read UTF-8 file {}: {error}", file.display()))?;
     let canonical = tokio::fs::canonicalize(&file).await?;
     let config = store.load()?;
-    tts_core::config::validate(&config, &resources.capabilities(&config.backend)?)?;
+    let config =
+        store.initialize(&resources.capabilities_for(&config.backend, config.model.as_deref())?)?;
     let (progress, mut preparation) = mpsc::channel(16);
     let settings = config.clone();
     let mut task = tokio::task::spawn_local(async move {

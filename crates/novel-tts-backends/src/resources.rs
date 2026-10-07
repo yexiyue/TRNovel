@@ -7,6 +7,7 @@ use tts_protocol::Event;
 #[derive(Deserialize)]
 pub(crate) struct Resource {
     pub path: String,
+    #[serde(default)]
     pub url: String,
     pub sha256: String,
     pub size: u64,

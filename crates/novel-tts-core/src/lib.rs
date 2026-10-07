@@ -14,6 +14,7 @@ pub mod player;
 pub mod session;
 mod storage;
 pub mod text;
+pub mod voices;
 
 pub use error::{ResourceError, Result};
 pub use player::AudioPlayer;

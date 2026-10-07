@@ -113,7 +113,7 @@ VHS 验收不同 feature 的阅读器时，把构建出的 basic 二进制复制
 
 ### ORT 加速 feature 与模型校验
 
-保留 ort=2.0.0-rc.10。coreml/cuda 仅由听书后端/程序 feature 启用，阅读器始终不链接它们。ORT 自带下载清单选择 CUDA12 的原生分发，Mac 可静态链接 CoreML 框架；跨平台原生运行与 CUDA/cuDNN 依赖必须在对应平台验收。本机 Mac 启用 cuda feature 会下载 CPU 原生包，因此 cargo check 不能证明 CUDA 可用。
+保留 ort=2.0.0-rc.10。coreml/ort-cuda 仅由听书后端/程序 feature 启用，阅读器始终不链接它们。ORT 自带下载清单选择 CUDA12 的原生分发，Mac 可静态链接 CoreML 框架；跨平台原生运行与 CUDA/cuDNN 依赖必须在对应平台验收。本机 Mac 启用 ort-cuda feature 会下载 CPU 原生包，因此 cargo check 不能证明 CUDA 可用。
 
 开发构建将 sha2 单包 opt-level=3，避免每次准备模型时对 GB 级权重执行慢速 debug 校验；保留每次大小与 SHA-256 校验。性能校准应使用 release 构建。多包 cargo build 配合 --bin trn 只构建名为 trn 的程序；更新 worker 必须单独 cargo build -p novel-tts，不能依据阅读器构建完成判断 worker 已更新。
 
@@ -121,15 +121,19 @@ VHS 验收不同 feature 的阅读器时，把构建出的 basic 二进制复制
 
 内置章节数字、中文/英文/特殊标题正则常量在 novel-tts-protocol::headings 共享，protocol 不编译正则、不处理书籍。基础阅读版因此也依赖该轻量 crate，但仍不依赖 TTS core/backends/ORT/rodio。模型诊断 example 明确使用输出目录，真实模型测试通过 TRNOVEL_MOSS_MODEL_DIR 启用。
 
-### Candle Qwen 与平台设备
+### 本地 Candle Qwen 与平台设备
 
-Qwen TTS 使用 Git 钉版 TrevorS/qwen3-tts-rs，首版 0.6B CustomVoice。qwen-only 构建不引入 ORT；阅读器也不引入 Candle。上游尚未发布对应 crates.io 包，后端 crate 独立发布前需要解决该 Git 依赖分发，不能直接照旧发布。
+Qwen 推理源码位于 `crates/qwen3-tts`，来自 TrevorS/qwen3-tts-rs revision `711ceee07cad92673f86de8997bdf54c30caa49f`（MIT）。仅纳入推理库，移除上游 CLI、Hub 下载、Flash Attention 和自定义 PTX；下载/校验、校准、会话与播放仍由既有层管理。Candle core/nn/transformers 统一钉为 0.9.2。
 
-Metal 通过 macOS target-specific 的 candle-core 别名依赖启用，避免全 workspace/all-features Linux 构建启用 Apple 原生依赖；非 Mac 的 metal feature 不报告可用 Metal。不要直接把 qwen3-tts/metal 的全局 feature 转发到所有平台。设备目录由 Registry 按后端提供，对齐仍使用 ORT provider，不能复用 TTS 的 Metal 候选。校准缓存文件名包含 key 摘要，避免切换模型互相覆盖记录。
+**正确做法**：
+- `qwen` 是 CPU 后端；`qwen-cuda` 同时启用 Qwen 和三套 Candle CUDA 算子；`metal` 启用 Candle core/nn 的 Metal 算子，仅在 macOS 构建。`ort-cuda` 独立用于 MOSS/对齐器，不保留旧 `cuda` 别名。
+- GPU feature 经 `tts-candle-platform` 按 target 路由，同一 Candle 0.9.2 同时服务 Qwen 和 Omni。Windows/Linux 的 CUDA 依赖和 macOS Metal 依赖分别生效；Windows all-features 不会编入 Objective-C。CUDA 构建仍需 Toolkit，通用 CI/lefthook 使用 CPU feature 集合，平台 GPU CI 单独启用。
+- `device.rs` 统一设备创建；显式 CUDA 使用 `Device::new_cuda`，避免 `cuda_if_available` 静默返回 CPU。Registry 继续按后端提供编译/可用设备，对齐器使用自己的 ORT provider。
+- CUDA 编译需要 Toolkit/`nvcc`；驱动提供的 `nvidia-smi` 不代替 Toolkit。RTX 5070 的 CC 为 12.0，使用支持 Blackwell 的 Toolkit；无 GPU 构建机显式设置 `CUDA_COMPUTE_CAP`。
+- tokenizers 仅启用推理用 `onig`，不启用训练用 `esaxx_fast`。上游 esaxx-rs 的 `.static_crt(true)` 与 ORT 的 `/MD` 在 Windows 导致 LNK2038/LNK2005；从依赖 feature 源头移除 C++ 加速，不使用 `/NODEFAULTLIB` 或全局 `/MD` workaround。
+- 模型/音色/检查点格式不变；校准实现标识更新为 `qwen-local-v1`，使旧性能缓存失效。
 
-**相关文件**：`crates/novel-tts-backends/src/qwen.rs`、`src/qwen/runtime.rs`、`src/devices/calibration.rs`、后端 Cargo.toml。
-
-- Candle Metal 必须同时启用 core/nn/transformers 的 metal feature。只启用 candle-core 能加载 Qwen 权重，但推理会报 `no metal implementation for rms-norm`；验收必须包含真实 PCM 生成。对应依赖仍仅在 macOS target 启用。
+**相关文件**：`crates/qwen3-tts/README.md`、`crates/novel-tts-backends/src/qwen.rs`、`src/qwen/runtime.rs`、`src/devices/calibration.rs`。
 
 ### 品牌主资产与官网导出
 
@@ -144,3 +148,33 @@ Metal 通过 macOS target-specific 的 candle-core 别名依赖启用，避免�
 首页演示默认加载 WebP 静帧，点击播放才请求对应 GIF；切换演示或暂停时恢复静帧。静帧由 `node docs/scripts/export-landing-posters.mjs` 从现有 VHS 录屏中选帧导出，更新录屏后需重新选择有完整界面的帧。减少动效偏好切换时停止播放；不把 GIF 交给 Astro Image 优化，否则会丢失动画。自定义 Hero 的主标题保留 `_top` ID，供 Starlight 的跳转内容链接定位。
 
 **相关文件**：`docs/src/components/landing/Gallery.astro`、`docs/scripts/export-landing-posters.mjs`。
+
+### 听书基线 fixture 固定 LF
+
+`baseline-segments.json` 保存 narration.txt 的原始 UTF-8 字节坐标；Windows 的 Git autocrlf 会把 LF 改为 CRLF，导致基线偏移逐行增加。`.gitattributes` 将这个 fixture 固定为 `text eol=lf`；真实 CRLF 坐标行为由单独测试验证，不能通过规范化生产输入来掩盖 fixture 的换行差异。
+
+### Windows CUDA Toolkit 本地安装
+
+本机 CUDA 12.9 Update 1 从 NVIDIA 官方 redistrib Windows ZIP 组件安装到 `D:\dev-tools\cuda\v12.9`，逐包按官方 manifest 校验 SHA-256，保留现有显示驱动。包含 nvcc、运行时、数学库、头文件、命令行工具与示例；不安装 Nsight GUI 或 Visual Studio 项目集成。系统环境的 `CUDA_PATH` / `CUDA_PATH_V12_9` 指向该目录，系统 PATH 添加 CUDA `bin` 与 VS 2022 的 x64 MSVC 编译器目录。
+
+**正确做法**：
+- 重开终端或父进程以加载系统环境，CMD/PowerShell 均不需要激活脚本。Rust 自行发现 MSVC 的 linker 不代表 nvcc 可以找到 cl.exe；后者需要编译器目录在 PATH 中，随后 nvcc 自行加载 VS 编译环境。
+- 系统 `NVCC_PREPEND_FLAGS=-Xcompiler=/MD` 使 CUDA host C++ 与 Rust/ORT 使用动态 CRT。Candle 0.9.2 的 MOE 静态库默认按 `/MT` 编译，与默认 MOSS 所需的 ORT `/MD` 组合时发生 LNK2038；配置后先 `cargo clean -p candle-kernels` 重建旧对象。此选项影响使用系统环境的所有 nvcc 调用，不使用 `/NODEFAULTLIB` 掩盖冲突。
+- 初次编译使用 `$env:RAYON_NUM_THREADS = '2'` 和 `cargo build --locked -j 2 -p novel-tts --no-default-features --features qwen-cuda`；Cargo 并行数不能约束 bindgen_cuda 内部的 Rayon 内核编译线程数。
+- nvcc 12.9.86 与本机 MSVC 14.44 配合完成 `sm_120` 内核编译和 RTX 5070 实际执行；官方 deviceQuery / vectorAdd 也通过。该结果证明 Toolkit/驱动工作，不能代替真实 Qwen PCM/EOS 与听感验收。
+
+安装清单和哈希：`D:\dev-tools\cuda\v12.9\installation-manifest.json`；本机使用说明：`D:\dev-tools\cuda\README.txt`。
+
+### 多模型原生 TTS 与 CMake
+
+新增 `crates/voxcpm-sys` 固定 llama.cpp-omni 静态 C ABI，`crates/omnivoice` 只保留标准 Candle 推理。native 依赖只经 worker 引入；阅读器仅使用 protocol。CMake/cc 置于 workspace dependencies。Windows 使用 Ninja 与 cc::windows_registry 得到的 MSVC 环境，无需 CUDA Visual Studio 插件；VS generator 在 ZIP Toolkit 安装中会报 No CUDA toolset。本机 CMake 3.31.6 / Ninja 1.11.1.4 位于 D:/dev-tools/bin。
+
+ZipVoice 复用 ORT，Vocos 输出 mag/x/y，由 Rust ISTFT 恢复 PCM。英文音素使用独立 patched eSpeak 工具，仅在 zipvoice feature 下编译；数据清单每个文件固定大小与 SHA。发行 zipvoice 时 `.github/scripts/build-variant.py` 附 GPL 对应源码、许可与前端数据许可证。Omni tokenizer 权重为 BOSON/Higgs/Llama 条款，不能跟生成器一起标为 Apache；`crates/omnivoice/LICENSE.Higgs-Audio` 保存原始许可。
+
+**相关文件**：`crates/tts-candle-platform/`、`crates/voxcpm-sys/build.rs`、`crates/novel-tts-backends/build.rs`、`.github/workflows/qwen-cuda.yml`。
+
+### MOSS 统一 Candle 试用
+
+`crates/moss-tts` 与 Qwen/Omni 共用 Candle 0.9.2。worker 使用 `moss-candle-cuda` / `moss-candle-metal`，不把推理依赖引入阅读器。CUDA 大模型 BF16、codec F16；VoiceGenerator F16 的真实权重会产生无效 logits。四组权重按官方固定 revision 和 SHA 放用户缓存，7.1 GB codec 共用一次，不按每个生成模型复制。打包可选 feature 时附带 moss-tts LICENSE/NOTICE。CPU 库检查不等于完整大模型 CPU 验收；当前 worker 新模式仅公开 GPU。
+
+**相关文件**：`crates/moss-tts/`、`crates/novel-tts-backends/src/moss/candle/`、`dev-notes/moss-candle-acceptance.md`。

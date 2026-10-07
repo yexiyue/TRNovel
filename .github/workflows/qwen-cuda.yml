@@ -1,0 +1,56 @@
+name: Native TTS CUDA and Metal compilation
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - 'crates/qwen3-tts/**'
+      - 'crates/omnivoice/**'
+      - 'crates/voxcpm-sys/**'
+      - 'crates/tts-candle-platform/**'
+      - 'crates/novel-tts-backends/**'
+      - 'crates/novel-tts/**'
+      - 'Cargo.toml'
+      - 'Cargo.lock'
+      - '.github/workflows/qwen-cuda.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  compile:
+    runs-on: ubuntu-22.04
+    container: nvidia/cuda:12.8.1-devel-ubuntu22.04
+    env:
+      # This runner has a compiler, but no GPU to detect. Target RTX 50 series.
+      CUDA_COMPUTE_CAP: '120'
+    steps:
+      - name: Install host dependencies
+        run: |
+          apt-get update
+          apt-get install -y git curl build-essential pkg-config libasound2-dev libssl-dev python3-pip
+          pip3 install cmake==3.31.6 ninja==1.11.1.4
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
+      - uses: Swatinem/rust-cache@v2
+      - name: Check CUDA implementation
+        run: cargo clippy --locked -p novel-tts --no-default-features --features qwen-cuda,voxcpm-cuda,omnivoice-cuda,zipvoice --all-targets -- -D warnings
+      - name: Link CUDA worker
+        run: cargo build --locked --release -p novel-tts --no-default-features --features qwen-cuda,voxcpm-cuda,omnivoice-cuda,zipvoice
+      # Real-model playback and performance require a separate GPU machine.
+  metal:
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
+      - name: Install native build tools
+        run: brew install cmake ninja pkg-config
+      - uses: Swatinem/rust-cache@v2
+      - name: Check shared Candle and native Metal adapters
+        run: cargo clippy --locked -p novel-tts --no-default-features --features metal,voxcpm-metal,omnivoice-metal,zipvoice --all-targets -- -D warnings
+      - name: Link Metal worker
+        run: cargo build --locked --release -p novel-tts --no-default-features --features metal,voxcpm-metal,omnivoice-metal,zipvoice

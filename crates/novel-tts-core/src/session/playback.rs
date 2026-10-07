@@ -43,7 +43,12 @@ impl Runner {
         Ok(())
     }
 
-    pub(super) async fn run(&self, byte: usize, voice: String) -> Result<(), SessionError> {
+    pub(super) async fn run(
+        &self,
+        byte: usize,
+        voice: String,
+        style: Option<String>,
+    ) -> Result<(), SessionError> {
         self.emit(Event::SessionState {
             state: if self.paused.get() {
                 SessionState::Paused
@@ -84,7 +89,7 @@ impl Runner {
             self.save(segment.start, false).await?;
         }
         let (_producer, mut rx) =
-            super::producer::spawn(self.backend.clone(), self.text.clone(), first, voice);
+            super::producer::spawn(self.backend.clone(), self.text.clone(), first, voice, style);
         struct Marker {
             range: TextRange,
             start: Duration,

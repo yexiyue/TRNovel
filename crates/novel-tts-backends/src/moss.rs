@@ -1,5 +1,7 @@
 //! MOSS-TTS-Nano adapter. CPU inference and voice encoding share one owner thread.
 mod audio;
+#[cfg(feature = "moss-candle")]
+pub mod candle;
 pub mod diagnostics;
 pub mod resources;
 mod runtime;
@@ -26,6 +28,8 @@ pub fn capabilities(directory: &std::path::Path) -> anyhow::Result<Capabilities>
         voices.push(voice.id);
     }
     Ok(Capabilities {
+        model: cfg!(feature = "moss-candle").then(|| "nano".into()),
+        model_name: "MOSS Nano".into(),
         backend: "moss".into(),
         voices,
         default_voice: "Weiguo".into(),
@@ -33,6 +37,7 @@ pub fn capabilities(directory: &std::path::Path) -> anyhow::Result<Capabilities>
         native_streaming: true,
         cloning: true,
         style: false,
+        compiled_devices: Vec::new(),
         pronunciation: false,
     })
 }

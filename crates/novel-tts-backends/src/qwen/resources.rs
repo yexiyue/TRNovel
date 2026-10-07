@@ -4,10 +4,17 @@ pub async fn prepare(
     directory: &std::path::Path,
     progress: tokio::sync::mpsc::Sender<Event>,
 ) -> anyhow::Result<()> {
+    prepare_model(directory, super::models::Model::Custom06, progress).await
+}
+pub async fn prepare_model(
+    directory: &std::path::Path,
+    model: super::models::Model,
+    progress: tokio::sync::mpsc::Sender<Event>,
+) -> anyhow::Result<()> {
     crate::resources::prepare(
         directory,
-        "qwen",
-        serde_json::from_str(include_str!("resources.json"))?,
+        &format!("qwen/{}", model.id()),
+        serde_json::from_str(model.manifest())?,
         progress,
     )
     .await

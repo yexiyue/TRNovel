@@ -14,6 +14,9 @@ use ratatui::{
 use ratatui_kit::prelude::*;
 use tts_protocol::ConfigPatch;
 
+#[cfg(test)]
+mod tests;
+
 #[derive(Props, Default)]
 pub struct TTSManagerProps {
     pub open: bool,
@@ -28,7 +31,12 @@ pub fn TTSManager(props: &TTSManagerProps, mut hooks: Hooks) -> impl Into<AnyEle
         .config
         .as_ref()
         .is_some_and(|config| config.alignment_enabled);
-    let restart_index = if alignment_enabled { 9 } else { 8 };
+    let style_enabled = snapshot
+        .capabilities
+        .as_ref()
+        .is_some_and(|caps| caps.style);
+    let style_index = if alignment_enabled { 10 } else { 9 };
+    let restart_index = style_index + usize::from(style_enabled);
     let release_index = restart_index + 1;
     let theme = hooks.use_component_theme::<AppChromeTheme>();
     let open = props.open;
@@ -95,13 +103,15 @@ pub fn TTSManager(props: &TTSManagerProps, mut hooks: Hooks) -> impl Into<AnyEle
                     }
                 }
                 ListeningSetting(kind:Setting::Backend,is_editing:editing && index.get()==1)
-                ListeningSetting(kind:Setting::Voice,is_editing:editing && index.get()==2)
-                ListeningSetting(kind:Setting::Speed,is_editing:editing && index.get()==3)
-                ListeningSetting(kind:Setting::Volume,is_editing:editing && index.get()==4)
-                ListeningSetting(kind:Setting::AutoPlay,is_editing:editing && index.get()==5)
-                ListeningSetting(kind:Setting::TtsDevice,is_editing:editing && index.get()==6)
-                ListeningSetting(kind:Setting::AlignmentEnabled,is_editing:editing && index.get()==7)
-                if alignment_enabled { ListeningSetting(kind:Setting::AlignmentDevice,is_editing:editing && index.get()==8) }
+                ListeningSetting(kind:Setting::Model,is_editing:editing && index.get()==2)
+                ListeningSetting(kind:Setting::Voice,is_editing:editing && index.get()==3)
+                ListeningSetting(kind:Setting::Speed,is_editing:editing && index.get()==4)
+                ListeningSetting(kind:Setting::Volume,is_editing:editing && index.get()==5)
+                ListeningSetting(kind:Setting::AutoPlay,is_editing:editing && index.get()==6)
+                ListeningSetting(kind:Setting::TtsDevice,is_editing:editing && index.get()==7)
+                ListeningSetting(kind:Setting::AlignmentEnabled,is_editing:editing && index.get()==8)
+                if alignment_enabled { ListeningSetting(kind:Setting::AlignmentDevice,is_editing:editing && index.get()==9) }
+                if style_enabled { ListeningSetting(kind:Setting::Style,is_editing:editing && index.get()==style_index) }
                 View(height:Constraint::Length(3)) {
                     SettingItem(is_editing:editing && index.get()==restart_index) {widget(Line::from("Enter 从本章开头重新播放（忽略恢复点）"))}
                 }
@@ -118,6 +128,8 @@ enum Setting {
     #[default]
     Voice,
     Backend,
+    Model,
+    Style,
     Speed,
     Volume,
     AutoPlay,
@@ -138,6 +150,8 @@ fn ListeningSetting(props: &ListeningSettingProps, hooks: Hooks) -> impl Into<An
     let label = match kind {
         Setting::Voice => "音色",
         Setting::Backend => "语音后端",
+        Setting::Model => "模型",
+        Setting::Style => "朗读风格",
         Setting::Speed => "播放速度",
         Setting::Volume => "音量",
         Setting::AutoPlay => "自动续章",
@@ -149,6 +163,13 @@ fn ListeningSetting(props: &ListeningSettingProps, hooks: Hooks) -> impl Into<An
         || "未连接".to_string(),
         |config| match kind {
             Setting::Backend => config.backend.clone(),
+            Setting::Style => config.style.clone().unwrap_or_else(|| "自然".into()),
+            Setting::Model => snapshot
+                .capabilities
+                .as_ref()
+                .map(|caps| caps.model_name.clone())
+                .filter(|name| !name.is_empty())
+                .unwrap_or_else(|| config.model.clone().unwrap_or_else(|| "默认模型".into())),
             Setting::Voice => snapshot
                 .capabilities
                 .as_ref()
@@ -194,24 +215,66 @@ fn change(context: &TtsContext, kind: Setting, increase: bool) {
     let mut patch = ConfigPatch::default();
     let delta = if increase { 0.1 } else { -0.1 };
     match kind {
-        Setting::Backend => {
-            let current = snapshot
-                .backends
+        Setting::Style => {
+            let choices = [
+                "",
+                "温暖沉稳，适合小说旁白。",
+                "轻松自然，清晰流畅。",
+                "富有感情，突出人物对话。",
+            ];
+            let current = choices
                 .iter()
-                .position(|caps| caps.backend == config.backend)
+                .position(|v| Some(*v) == config.style.as_deref())
                 .unwrap_or(0);
-            if snapshot.backends.is_empty() {
-                return;
-            }
             let next = if increase {
-                (current + 1).min(snapshot.backends.len() - 1)
+                (current + 1).min(choices.len() - 1)
             } else {
                 current.saturating_sub(1)
             };
-            let caps = &snapshot.backends[next];
+            patch.style = Some(choices[next].into());
+        }
+        Setting::Backend | Setting::Model => {
+            let mut seen = std::collections::BTreeSet::new();
+            let choices: Vec<_> = snapshot
+                .backends
+                .iter()
+                .filter(|caps| {
+                    if matches!(kind, Setting::Model) {
+                        caps.backend == config.backend
+                    } else {
+                        seen.insert(&caps.backend)
+                    }
+                })
+                .collect();
+            if choices.is_empty() {
+                return;
+            }
+            let current = choices
+                .iter()
+                .position(|caps| {
+                    if matches!(kind, Setting::Backend) {
+                        caps.backend == config.backend
+                    } else {
+                        caps.matches(&config.backend, config.model.as_deref())
+                    }
+                })
+                .unwrap_or(0);
+            let next = if increase {
+                (current + 1).min(choices.len() - 1)
+            } else {
+                current.saturating_sub(1)
+            };
+            if next == current {
+                return;
+            }
+            let caps = choices[next];
             patch.backend = Some(caps.backend.clone());
+            patch.model = caps.model.clone();
             patch.voice = Some(caps.default_voice.clone());
-            if caps.backend != config.backend {
+            if caps.backend != config.backend
+                || (config.tts_device != tts_protocol::Device::Auto
+                    && !caps.compiled_devices.contains(&config.tts_device))
+            {
                 patch.tts_device = Some(tts_protocol::Device::Auto);
             }
         }

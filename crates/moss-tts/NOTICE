@@ -1,0 +1,10 @@
+MOSS native Candle inference
+Copyright 2026 TRNovel contributors
+
+Ported model equations, message formats, and generation schedules from:
+OpenMOSS/MOSS-TTS, Copyright 2026 OpenMOSS and the HuggingFace Inc. team.
+Revision 934d6826b084c46a0d033402174d5f8ac4ed2519.
+OpenMOSS/MOSS-Audio-Tokenizer, Copyright 2026 OpenMOSS and the HuggingFace Inc. team.
+Revision 8c50ac4c5d7287d2ed6ea20a08c90ca439887d23.
+Both upstream codebases are distributed under the Apache License, Version 2.0.
+The original Python CLI/server/training programs are not included in this crate.

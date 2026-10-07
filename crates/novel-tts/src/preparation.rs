@@ -11,22 +11,51 @@ pub struct Prepared {
 
 #[cfg(all(
     feature = "alignment",
-    any(feature = "moss", feature = "kokoro", feature = "qwen")
+    any(
+        feature = "moss",
+        feature = "kokoro",
+        feature = "qwen",
+        feature = "voxcpm",
+        feature = "omnivoice",
+        feature = "zipvoice"
+    )
 ))]
 mod alignment;
 #[cfg(all(
     feature = "alignment",
-    any(feature = "moss", feature = "kokoro", feature = "qwen")
+    any(
+        feature = "moss",
+        feature = "kokoro",
+        feature = "qwen",
+        feature = "voxcpm",
+        feature = "omnivoice",
+        feature = "zipvoice"
+    )
 ))]
 mod concurrency;
-#[cfg(any(feature = "moss", feature = "kokoro", feature = "qwen"))]
+#[cfg(any(
+    feature = "moss",
+    feature = "kokoro",
+    feature = "qwen",
+    feature = "voxcpm",
+    feature = "omnivoice",
+    feature = "zipvoice"
+))]
 mod synthesis;
 
-#[cfg(any(feature = "moss", feature = "kokoro", feature = "qwen"))]
+#[cfg(any(
+    feature = "moss",
+    feature = "kokoro",
+    feature = "qwen",
+    feature = "voxcpm",
+    feature = "omnivoice",
+    feature = "zipvoice"
+))]
 pub fn validate_device(
     component: &str,
     device: tts_protocol::Device,
     backend: &str,
+    model: Option<&str>,
     resources: &Resources,
 ) -> anyhow::Result<()> {
     if component == "alignment" && !cfg!(feature = "alignment") {
@@ -39,10 +68,12 @@ pub fn validate_device(
     if component == "tts" {
         anyhow::ensure!(
             device == tts_protocol::Device::Auto
-                || resources.available_devices(backend).contains(&device),
+                || resources
+                    .available_devices_for(backend, model)
+                    .contains(&device),
             "device {device:?} is unavailable for {backend}; compiled {:?}, available {:?}",
-            resources.compiled_devices(backend),
-            resources.available_devices(backend)
+            resources.compiled_devices_for(backend, model),
+            resources.available_devices_for(backend, model)
         );
         Ok(())
     } else {
@@ -50,11 +81,24 @@ pub fn validate_device(
     }
 }
 
-#[cfg(any(feature = "moss", feature = "kokoro", feature = "qwen"))]
-pub fn unprepared_device_status(component: &str, backend: &str, resources: &Resources) -> Event {
+#[cfg(any(
+    feature = "moss",
+    feature = "kokoro",
+    feature = "qwen",
+    feature = "voxcpm",
+    feature = "omnivoice",
+    feature = "zipvoice"
+))]
+pub fn unprepared_device_status(
+    component: &str,
+    backend: &str,
+    model: Option<&str>,
+    resources: &Resources,
+) -> Event {
     if component == "tts" {
-        return resources.device_status(
+        return resources.device_status_for(
             backend,
+            model,
             tts_protocol::Device::Auto,
             Some("resources not prepared".into()),
         );
@@ -88,20 +132,41 @@ pub async fn prepare(
     config: Config,
     progress: mpsc::Sender<Event>,
 ) -> anyhow::Result<Prepared> {
-    #[cfg(not(any(feature = "moss", feature = "kokoro", feature = "qwen")))]
+    #[cfg(not(any(
+        feature = "moss",
+        feature = "kokoro",
+        feature = "qwen",
+        feature = "voxcpm",
+        feature = "omnivoice",
+        feature = "zipvoice"
+    )))]
     {
         let _ = (resources, config, progress);
         anyhow::bail!("no synthesis backend is compiled");
     }
-    #[cfg(any(feature = "moss", feature = "kokoro", feature = "qwen"))]
+    #[cfg(any(
+        feature = "moss",
+        feature = "kokoro",
+        feature = "qwen",
+        feature = "voxcpm",
+        feature = "omnivoice",
+        feature = "zipvoice"
+    ))]
     {
-        validate_device("tts", config.tts_device, &config.backend, &resources)?;
+        validate_device(
+            "tts",
+            config.tts_device,
+            &config.backend,
+            config.model.as_deref(),
+            &resources,
+        )?;
         validate_alignment_enabled(config.alignment_enabled)?;
         if config.alignment_enabled {
             validate_device(
                 "alignment",
                 config.alignment_device,
                 &config.backend,
+                config.model.as_deref(),
                 &resources,
             )?;
         }

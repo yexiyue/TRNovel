@@ -1,0 +1,18 @@
+[package]
+name = "tts-candle-platform"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.89"
+license = "MIT"
+description = "Compile-target feature selection for the shared Candle runtime"
+
+[features]
+default = []
+cuda = ["dep:candle-transformers"]
+metal = ["dep:candle-nn"]
+
+[target.'cfg(any(target_os = "windows", target_os = "linux"))'.dependencies]
+candle-transformers = { workspace = true, features = ["cuda"], optional = true }
+
+[target.'cfg(target_os = "macos")'.dependencies]
+candle-nn = { workspace = true, features = ["metal"], optional = true }

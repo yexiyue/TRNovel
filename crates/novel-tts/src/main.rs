@@ -29,6 +29,12 @@ struct Args {
     backend: Option<String>,
     #[arg(long)]
     voice: Option<String>,
+    /// Model ID within the selected backend (see the reader model list).
+    #[arg(long)]
+    model: Option<String>,
+    /// Speaking style for Qwen 1.7B CustomVoice; an empty value clears it.
+    #[arg(long)]
+    style: Option<String>,
     #[arg(long, value_parser = parse_device)]
     tts_device: Option<tts_protocol::Device>,
     #[arg(long, value_parser = parse_device)]
@@ -68,15 +74,47 @@ async fn main() -> anyhow::Result<()> {
         None => tts_core::checkpoint::CheckpointStore::user_default()?,
     };
     let resources = resources::Resources::new(args.model_dir)?;
-    if args.backend.is_some()
-        || args.voice.is_some()
-        || args.tts_device.is_some()
-        || args.alignment_device.is_some()
-        || args.alignment.is_some()
+    let config = if config.path().exists() {
+        config
+    } else {
+        let defaults = match args.backend.as_deref() {
+            Some(backend) => {
+                let caps = resources.capabilities_for(backend, args.model.as_deref())?;
+                tts_protocol::Config {
+                    backend: caps.backend,
+                    model: caps.model,
+                    voice: caps.default_voice,
+                    ..Default::default()
+                }
+            }
+            None => resources.default_config()?,
+        };
+        config.with_defaults(defaults)
+    };
+    if args.command.is_none()
+        && (args.model.is_some()
+            || args.style.is_some()
+            || args.backend.is_some()
+            || args.voice.is_some()
+            || args.tts_device.is_some()
+            || args.alignment_device.is_some()
+            || args.alignment.is_some())
     {
         let current = config.load()?;
         let target = args.backend.as_deref().unwrap_or(&current.backend);
-        #[cfg(any(feature = "moss", feature = "kokoro", feature = "qwen"))]
+        let model = args.model.as_deref().or_else(|| {
+            (target == current.backend)
+                .then_some(current.model.as_deref())
+                .flatten()
+        });
+        #[cfg(any(
+            feature = "moss",
+            feature = "kokoro",
+            feature = "qwen",
+            feature = "voxcpm",
+            feature = "omnivoice",
+            feature = "zipvoice"
+        ))]
         for (component, device) in [
             ("tts", args.tts_device),
             ("alignment", args.alignment_device),
@@ -84,17 +122,17 @@ async fn main() -> anyhow::Result<()> {
         .into_iter()
         .filter_map(|(component, device)| device.map(|device| (component, device)))
         {
-            preparation::validate_device(component, device, target, &resources)?;
+            preparation::validate_device(component, device, target, model, &resources)?;
         }
         preparation::validate_alignment_enabled(
             args.alignment.unwrap_or(current.alignment_enabled),
         )?;
-        let caps = resources.capabilities(target)?;
+        let caps = resources.capabilities_for(target, model)?;
+        let model_changed = resources
+            .capabilities_for(&current.backend, current.model.as_deref())
+            .is_ok_and(|old| old.model != caps.model);
         let voice = args.voice.or_else(|| {
-            args.backend
-                .as_ref()
-                .filter(|id| *id != &current.backend)
-                .map(|_| caps.default_voice.clone())
+            (target != current.backend || model_changed).then(|| caps.default_voice.clone())
         });
         let tts_device = args.tts_device.or_else(|| {
             args.backend
@@ -105,7 +143,9 @@ async fn main() -> anyhow::Result<()> {
         config.update(
             &tts_protocol::ConfigPatch {
                 expected_revision: current.revision,
-                backend: args.backend,
+                backend: args.backend.clone(),
+                model: args.model.clone(),
+                style: args.style.clone(),
                 tts_device,
                 alignment_device: args.alignment_device,
                 alignment_enabled: args.alignment,
@@ -118,7 +158,20 @@ async fn main() -> anyhow::Result<()> {
     tokio::task::LocalSet::new()
         .run_until(async move {
             if let Some(Commands::Voices { command }) = args.command {
-                voices::run(command, resources, &config.load()?.backend).await
+                let mut selection = config.load()?;
+                if let Some(backend) = args.backend {
+                    if backend != selection.backend {
+                        selection.model = None;
+                    }
+                    selection.backend = backend;
+                }
+                if let Some(model) = args.model {
+                    selection.model = Some(model);
+                }
+                if let Some(device) = args.tts_device {
+                    selection.tts_device = device;
+                }
+                voices::run(command, resources, &selection).await
             } else if args.protocol {
                 protocol::run(config, checkpoints, resources).await
             } else {

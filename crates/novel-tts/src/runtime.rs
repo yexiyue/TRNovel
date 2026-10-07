@@ -72,18 +72,34 @@ impl Worker {
     pub fn catalog(&self) -> anyhow::Result<Vec<tts_protocol::Capabilities>> {
         self.resources.catalog()
     }
-    #[cfg(any(feature = "moss", feature = "kokoro", feature = "qwen"))]
+    #[cfg(any(
+        feature = "moss",
+        feature = "kokoro",
+        feature = "qwen",
+        feature = "voxcpm",
+        feature = "omnivoice",
+        feature = "zipvoice"
+    ))]
     pub fn unprepared_device_status(&self, component: &str) -> anyhow::Result<Event> {
+        let config = self.store.load()?;
         Ok(crate::preparation::unprepared_device_status(
             component,
-            &self.store.load()?.backend,
+            &config.backend,
+            config.model.as_deref(),
             &self.resources,
         ))
     }
     pub fn is_preparing(&self) -> bool {
         self.preparing.is_some()
     }
-    #[cfg(any(feature = "moss", feature = "kokoro", feature = "qwen"))]
+    #[cfg(any(
+        feature = "moss",
+        feature = "kokoro",
+        feature = "qwen",
+        feature = "voxcpm",
+        feature = "omnivoice",
+        feature = "zipvoice"
+    ))]
     pub fn has_prepared_model(&self) -> bool {
         self.manager.is_some()
     }
@@ -170,11 +186,21 @@ impl Worker {
                     return Response::error("alignment_unavailable", "config", error);
                 }
                 let target = patch.backend.as_deref().unwrap_or(&old.backend);
-                let caps = match self.resources.capabilities(target) {
+                let caps = match self
+                    .resources
+                    .capabilities_for(target, patch.target_model(&old))
+                {
                     Ok(caps) => caps,
                     Err(error) => return Response::error("backend_unavailable", "config", error),
                 };
-                #[cfg(any(feature = "moss", feature = "kokoro", feature = "qwen"))]
+                #[cfg(any(
+                    feature = "moss",
+                    feature = "kokoro",
+                    feature = "qwen",
+                    feature = "voxcpm",
+                    feature = "omnivoice",
+                    feature = "zipvoice"
+                ))]
                 for (component, device) in [
                     (
                         "tts",
@@ -191,6 +217,7 @@ impl Worker {
                         component,
                         device,
                         target,
+                        patch.target_model(&old),
                         &self.resources,
                     ) {
                         return Response::error("device_unavailable", "config", error);
@@ -207,7 +234,8 @@ impl Worker {
                         return Response::error(code, "config", error);
                     }
                 };
-                if config.backend != old.backend
+                if config.model != old.model
+                    || config.backend != old.backend
                     || config.tts_device != old.tts_device
                     || config.alignment_device != old.alignment_device
                     || config.alignment_enabled != old.alignment_enabled
@@ -253,15 +281,19 @@ impl Worker {
                         Ok(config) => config,
                         Err(error) => return Response::error("config_invalid", "config", error),
                     };
-                    let caps = match self.resources.capabilities(&config.backend) {
+                    let caps = match self
+                        .resources
+                        .capabilities_for(&config.backend, config.model.as_deref())
+                    {
                         Ok(caps) => caps,
                         Err(error) => {
                             return Response::error("backend_unavailable", "model", error);
                         }
                     };
-                    if let Err(error) = tts_core::config::validate(&config, &caps) {
-                        return Response::error("config_invalid", "config", error);
-                    }
+                    let config = match self.store.initialize(&caps) {
+                        Ok(config) => config,
+                        Err(error) => return Response::error("config_invalid", "config", error),
+                    };
                     let resources = self.resources.clone();
                     self.disconnect_progress();
                     let (progress, mut updates) = mpsc::channel(16);

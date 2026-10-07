@@ -1,0 +1,46 @@
+{
+  "version": 1,
+  "generator": {
+    "config": "config.json",
+    "weights": "model.safetensors",
+    "required_prefixes": [
+      "llm",
+      "audio_embeddings",
+      "audio_heads"
+    ],
+    "ignored_keys": [
+      "codebook_layer_offsets"
+    ]
+  },
+  "text_tokenizer": {
+    "tokenizer": "tokenizer.json",
+    "tokenizer_config": "tokenizer_config.json",
+    "metadata": {
+      "chat_template": "chat_template.jinja"
+    }
+  },
+  "audio_tokenizer": {
+    "config": "audio_tokenizer/config.json",
+    "weights": "audio_tokenizer/model.safetensors",
+    "preprocessor_config": "audio_tokenizer/preprocessor_config.json",
+    "required_prefixes": [
+      "semantic_model",
+      "acoustic_encoder",
+      "acoustic_decoder",
+      "quantizer"
+    ],
+    "metadata": {
+      "license": "audio_tokenizer/LICENSE"
+    }
+  },
+  "contracts": {
+    "num_audio_codebooks": 8,
+    "audio_vocab_size": 1025,
+    "audio_mask_id": 1024,
+    "token_id_min": 0,
+    "token_id_max": 1023,
+    "sample_rate": 24000,
+    "hop_length": 960,
+    "frame_rate": 25
+  }
+}

@@ -1,0 +1,121 @@
+//! Semantic-segment synthesis on the shared Candle runtime.
+pub mod design;
+pub mod resources;
+mod runtime;
+use std::path::{Path, PathBuf};
+use tokio::sync::{mpsc, oneshot};
+use tts_core::backend::{Backend, BackendError, Segmentation, Streaming};
+use tts_protocol::{Capabilities, Device};
+pub const MODEL: &str = "0.6b";
+pub fn directory(root: &Path) -> PathBuf {
+    root.join("omnivoice/models")
+        .join(MODEL)
+        .join(resources::REVISION)
+}
+pub fn voice_store(directory: &Path) -> anyhow::Result<tts_core::voices::VoiceStore> {
+    tts_core::voices::VoiceStore::new(directory, "omnivoice", MODEL, resources::REVISION)
+}
+pub fn capabilities(directory: &Path) -> anyhow::Result<Capabilities> {
+    let mut caps = Capabilities {
+        backend: "omnivoice".into(),
+        model: Some(MODEL.into()),
+        model_name: "OmniVoice 0.6B".into(),
+        voices: vec!["narrator".into()],
+        default_voice: "narrator".into(),
+        voice_names: [("narrator".into(), "自然音色（模型默认）".into())].into(),
+        native_streaming: false,
+        cloning: true,
+        style: false,
+        compiled_devices: Vec::new(),
+        pronunciation: false,
+    };
+    for voice in voice_store(directory)?.list()? {
+        caps.voice_names.insert(voice.id.clone(), voice.name);
+        caps.voices.push(voice.id);
+    }
+    Ok(caps)
+}
+pub fn compiled_devices() -> Vec<Device> {
+    vec![
+        Device::Cpu,
+        #[cfg(all(
+            feature = "omnivoice-cuda",
+            any(target_os = "windows", target_os = "linux")
+        ))]
+        Device::Cuda,
+        #[cfg(all(feature = "omnivoice-metal", target_os = "macos"))]
+        Device::Metal,
+    ]
+}
+pub fn available_devices() -> Vec<Device> {
+    compiled_devices()
+        .into_iter()
+        .filter(|device| {
+            runtime::options_device(*device).is_some_and(|device| device.resolve().is_ok())
+        })
+        .collect()
+}
+pub struct OmniBackend {
+    requests: Option<mpsc::Sender<runtime::Request>>,
+    thread: Option<std::thread::JoinHandle<()>>,
+    caps: Capabilities,
+}
+impl OmniBackend {
+    pub async fn load_on(directory: PathBuf, device: Device) -> Result<Self, BackendError> {
+        if !available_devices().contains(&device) {
+            return Err(BackendError::Initialize(format!(
+                "OmniVoice device {device:?} is unavailable"
+            )));
+        }
+        let caps = capabilities(&directory).map_err(|e| BackendError::Initialize(e.to_string()))?;
+        let (requests, jobs) = mpsc::channel(1);
+        let (ready, loaded) = oneshot::channel();
+        let thread = std::thread::Builder::new()
+            .name("omnivoice-inference".into())
+            .spawn(move || runtime::run(directory, device, jobs, ready))
+            .map_err(|e| BackendError::Initialize(e.to_string()))?;
+        // Own the thread before awaiting initialization: cancellation must join it.
+        let backend = Self {
+            requests: Some(requests),
+            thread: Some(thread),
+            caps,
+        };
+        loaded
+            .await
+            .map_err(|_| BackendError::Initialize("Omni inference thread exited".into()))??;
+        Ok(backend)
+    }
+}
+impl Drop for OmniBackend {
+    fn drop(&mut self) {
+        self.requests.take();
+        if let Some(thread) = self.thread.take() {
+            let _ = thread.join();
+        }
+    }
+}
+impl Backend for OmniBackend {
+    fn capabilities(&self) -> Capabilities {
+        self.caps.clone()
+    }
+    fn stream<'a>(&'a self, text: &'a str, voice: &'a str) -> Streaming<'a> {
+        Box::pin(async move {
+            if !self.caps.voices.iter().any(|id| id == voice) || text.trim().is_empty() {
+                return Err(BackendError::Unsupported(
+                    "unknown Omni voice or empty text".into(),
+                ));
+            }
+            let (audio, receiver) = mpsc::channel(1);
+            self.requests
+                .as_ref()
+                .expect("live inference thread")
+                .send(runtime::Request::new(text, voice, audio))
+                .await
+                .map_err(|_| BackendError::Synthesis("Omni inference thread exited".into()))?;
+            Ok(receiver)
+        })
+    }
+    fn segments<'a>(&'a self, source: &'a str) -> Segmentation<'a> {
+        Box::pin(async move { Ok(tts_core::text::preprocess_text(source, 180)) })
+    }
+}

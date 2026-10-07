@@ -245,10 +245,21 @@ fn backend_directory_and_switch_are_lightweight() {
         catalog
             .iter()
             .map(|caps| caps.backend.as_str())
-            .collect::<Vec<_>>(),
+            .fold(Vec::new(), |mut backends, id| {
+                if !backends.contains(&id) {
+                    backends.push(id);
+                }
+                backends
+            }),
         vec![
             "moss",
             "kokoro",
+            #[cfg(feature = "voxcpm")]
+            "voxcpm",
+            #[cfg(feature = "omnivoice")]
+            "omnivoice",
+            #[cfg(feature = "zipvoice")]
+            "zipvoice",
             #[cfg(feature = "qwen")]
             "qwen"
         ]
@@ -261,6 +272,7 @@ fn backend_directory_and_switch_are_lightweight() {
                 expected_revision: revision,
                 backend: Some(backend.into()),
                 voice: Some(voice.into()),
+                tts_device: Some(tts_protocol::Device::Cpu),
                 ..Default::default()
             }),
         );

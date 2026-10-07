@@ -114,14 +114,15 @@ impl Snapshot {
                 self.capabilities = self
                     .backends
                     .iter()
-                    .find(|caps| caps.backend == config.backend)
+                    .find(|caps| caps.matches(&config.backend, config.model.as_deref()))
                     .cloned();
                 self.config = Some(config);
             }
             Event::ConfigChanged(config) => {
                 self.error = None;
                 let switched = self.config.as_ref().is_some_and(|old| {
-                    old.backend != config.backend
+                    old.model != config.model
+                        || old.backend != config.backend
                         || old.tts_device != config.tts_device
                         || old.alignment_device != config.alignment_device
                         || old.alignment_enabled != config.alignment_enabled
@@ -129,7 +130,7 @@ impl Snapshot {
                 self.capabilities = self
                     .backends
                     .iter()
-                    .find(|caps| caps.backend == config.backend)
+                    .find(|caps| caps.matches(&config.backend, config.model.as_deref()))
                     .cloned();
                 self.config = Some(config);
                 if switched {
@@ -293,7 +294,8 @@ enum Delivery {
     Action(QueuedAction),
 }
 fn resource_update(patch: &ConfigPatch) -> bool {
-    patch.backend.is_some()
+    patch.model.is_some()
+        || patch.backend.is_some()
         || patch.tts_device.is_some()
         || patch.alignment_device.is_some()
         || patch.alignment_enabled.is_some()
@@ -621,9 +623,13 @@ impl Actor {
                 let switched = if let Some(config) = &self.view.config {
                     patch.expected_revision = config.revision;
                     patch
-                        .backend
+                        .model
                         .as_ref()
-                        .is_some_and(|backend| backend != &config.backend)
+                        .is_some_and(|model| Some(model) != config.model.as_ref())
+                        || patch
+                            .backend
+                            .as_ref()
+                            .is_some_and(|backend| backend != &config.backend)
                         || patch
                             .tts_device
                             .is_some_and(|device| device != config.tts_device)
@@ -652,7 +658,7 @@ impl Actor {
                     self.pending = None;
                     self.view.state = SessionState::Failed;
                 }
-                self.view.apply(message);
+                self.view.apply(*message);
                 if self.view.model_ready
                     && let Some(request) = self.pending.take()
                 {

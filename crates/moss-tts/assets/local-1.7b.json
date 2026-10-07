@@ -1,0 +1,49 @@
+{
+  "model": "local-1.7b",
+  "repository": "OpenMOSS-Team/MOSS-TTS-Local-Transformer",
+  "revision": "12aa734e4f11a7b3fdf4eb0ad2aa2029675ffc2e",
+  "resources": [
+    {
+      "path": "config.json",
+      "url": "https://huggingface.co/OpenMOSS-Team/MOSS-TTS-Local-Transformer/resolve/12aa734e4f11a7b3fdf4eb0ad2aa2029675ffc2e/config.json",
+      "size": 2212,
+      "sha256": "f1d95405f5a37f95a66197daf4a9f425e45eda4cf0a07784ade54ee40a4700ea"
+    },
+    {
+      "path": "generation_config.json",
+      "url": "https://huggingface.co/OpenMOSS-Team/MOSS-TTS-Local-Transformer/resolve/12aa734e4f11a7b3fdf4eb0ad2aa2029675ffc2e/generation_config.json",
+      "size": 121,
+      "sha256": "a52b5c482438cc48a8bd0ded9b282f6bb5990be8071e944e9cd57e60921b8550"
+    },
+    {
+      "path": "model-00001-of-00002.safetensors",
+      "url": "https://huggingface.co/OpenMOSS-Team/MOSS-TTS-Local-Transformer/resolve/12aa734e4f11a7b3fdf4eb0ad2aa2029675ffc2e/model-00001-of-00002.safetensors",
+      "size": 4999026432,
+      "sha256": "60ec23752c0063ecfafb148d1417d99b7b43c067967652dc90bb9bcb9ea3e243"
+    },
+    {
+      "path": "model-00002-of-00002.safetensors",
+      "url": "https://huggingface.co/OpenMOSS-Team/MOSS-TTS-Local-Transformer/resolve/12aa734e4f11a7b3fdf4eb0ad2aa2029675ffc2e/model-00002-of-00002.safetensors",
+      "size": 1122255376,
+      "sha256": "5045294a3d26c5bbec1dd6a3a6146dc9520cfea35618c5bb80e80a871d8829ad"
+    },
+    {
+      "path": "model.safetensors.index.json",
+      "url": "https://huggingface.co/OpenMOSS-Team/MOSS-TTS-Local-Transformer/resolve/12aa734e4f11a7b3fdf4eb0ad2aa2029675ffc2e/model.safetensors.index.json",
+      "size": 50966,
+      "sha256": "474440fe18124f57b35a63d05a70c0a00029ffd186d7d882b0cba3dd36e09138"
+    },
+    {
+      "path": "tokenizer.json",
+      "url": "https://huggingface.co/OpenMOSS-Team/MOSS-TTS-Local-Transformer/resolve/12aa734e4f11a7b3fdf4eb0ad2aa2029675ffc2e/tokenizer.json",
+      "size": 11422691,
+      "sha256": "cb3c8fa82993d515469c2800cc455bff4aaa3c4fed9da1f2b0c0668c304f335a"
+    },
+    {
+      "path": "tokenizer_config.json",
+      "url": "https://huggingface.co/OpenMOSS-Team/MOSS-TTS-Local-Transformer/resolve/12aa734e4f11a7b3fdf4eb0ad2aa2029675ffc2e/tokenizer_config.json",
+      "size": 5501,
+      "sha256": "87b1f37a4a73e4c4b61637a1446763e8bdea274347f0418cd5c68ead488c8ea4"
+    }
+  ]
+}
