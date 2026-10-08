@@ -325,3 +325,6 @@ TRNovel workspace 只保留阅读器和 parse-book-source；协议通过子模�
 src/paths.rs 统一 ~/.trnovel 路径：config.toml 的 appearance/reader/browser/tts 分节由 ConfigStore 加锁、重新加载并原子替换；keybindings.toml、toc_rules.json 独立；data 保存书源/历史/登录/browser-profile/local/network，cache 保存字体等可重建资源。clear 只删历史、local/network、cache，不触碰配置、书源或登录态。旧目录不读取、不自动搬迁，手工说明在 guides/migration.mdx。
 
 Talechime 独立拥有 ~/.talechime/config.json、checkpoints、resources，AppPaths 位于其 core crate。两个应用固定 cargo-dist 0.32.0、各一份原生 Cargo dist-workspace.toml；旧 generic dist.toml、basic/加速/ARM64 musl 专用脚本已移除。Talechime 标准包 CPU（Windows/Linux），Mac 添加全部 Metal；CUDA 源码与原生编译 CI 保留。三个平台隔离安装检查不下载模型，不视为真实模型试听通过。
+
+发行验证补充：Talechime GNU 构建须用 Ubuntu 24.04（pinned ORT 1.28 静态库依赖新版 glibc/libstdc++）；min-glibc-version = 2.39。Mac 使用 macos-15 / MACOSX_DEPLOYMENT_TARGET=15.0，匹配 Candle 0.11 的 residency set API。设备探测先枚举 Metal GPU，避免无 GPU 的 hosted VM 在 Candle 的 swap_remove(0) 中 panic/abort。Windows 保持动态 CRT。标准包随附源码、Cargo 依赖与 ONNX Runtime 许可证。AppPaths 尊重非空 HOME，Windows 否则使用系统 home；隔离 smoke 不修改真实用户数据。
+

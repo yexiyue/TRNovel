@@ -20,7 +20,7 @@ description: |
 |---|---|
 | `toolchain.md` | 改 Cargo workspace / feature 门控（browser/js/js-host/schema）/ lefthook / CI / 发布（cargo-release/cargo-dist）/ 模块组织（foo.rs 与子模块目录） |
 | `tui-ratatui-kit.md` | 写/改主程序 UI（`src/pages`、`src/components`、`src/hooks`）—— ratatui-kit 的 hooks/组件/路由/键位约定与坑 |
-| `booksource.md` | 改 `crates/parse-book-source`（书源规则 DSL / 反爬 / render-fetcher / 签名 / 番茄）或 `crates/novel-tts-core` / `crates/novel-tts` |
+| `booksource.md` | 改 `crates/parse-book-source`（书源规则 DSL / 反爬 / render-fetcher / 签名 / 番茄）或阅读器的 JSON Lines 听书集成；模型/core 实现在独立 Talechime 仓库 |
 
 **读取方式**：用 Read 工具读对应文件，遵循其中的最佳实践与坑。不确定读哪个时，先 `ls dev-notes/knowledge/` 按文件名判断。
 

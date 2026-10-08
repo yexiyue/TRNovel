@@ -12,7 +12,14 @@ from threading import Thread
 
 
 def run(*args, **kwargs):
-    return subprocess.run(args, check=True, timeout=60, **kwargs)
+    try:
+        return subprocess.run(args, check=True, timeout=60, **kwargs)
+    except subprocess.CalledProcessError as error:
+        if error.stdout:
+            print(error.stdout, file=sys.stderr)
+        if error.stderr:
+            print(error.stderr, file=sys.stderr)
+        raise
 
 
 def main(app, target):

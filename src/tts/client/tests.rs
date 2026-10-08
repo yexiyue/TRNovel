@@ -91,6 +91,9 @@ fn discover_obeys_cli_config_path_precedence_and_reports_missing() {
     assert_eq!(discover(None, None, Some(&path)).unwrap(), program);
     assert!(discover(Some(&missing), Some(&configured), Some(&path)).is_err());
     assert!(discover(None, Some(&missing), Some(&path)).is_err());
+    let (legacy_directory, _legacy_program) = fixture("novel-tts");
+    let legacy_path = std::env::join_paths([legacy_directory.path()]).unwrap();
+    assert!(discover(None, None, Some(&legacy_path)).is_err());
     assert!(
         discover(None, None, None)
             .unwrap_err()
