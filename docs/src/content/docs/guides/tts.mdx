@@ -1,6 +1,6 @@
 ---
 title: 听书模式
-lastUpdated: 2026-10-07
+lastUpdated: 2026-10-08
 sidebar:
     order: 7
     badge:
@@ -8,7 +8,7 @@ sidebar:
         variant: success
 ---
 
-听书由独立的 `novel-tts` 程序处理。阅读器提交章节正文，显示片段高亮，并按正常完成事件续章；显式开启对齐后才异步切换逐句高亮。所有模型及音频设备保留在听书进程中；新用户有可用 GPU 且编入 Qwen 时默认选择 1.7B-CustomVoice，无 GPU 时选择已编译的 MOSS Nano，对齐默认关闭，无需 Python。
+听书由独立项目 [Talechime · 叙铃](https://github.com/yexiyue/talechime) 的 `novel-tts` 兼容程序处理。源码通过固定版本的 Git 子模块集成；先运行 `git submodule update --init --recursive`。阅读器提交章节正文，显示片段高亮，并按正常完成事件续章；显式开启对齐后才异步切换逐句高亮。所有模型及音频设备保留在听书进程中；新用户有可用 GPU 且编入 Qwen 时默认选择 1.7B-CustomVoice，无 GPU 时选择已编译的 MOSS Nano，对齐默认关闭，无需 Python。
 
 ## 从源码构建
 
@@ -17,7 +17,7 @@ MOSS 的 GPU 实验档可增加 `moss-candle-cuda`，提供 `local-1.7b` 和
 当前优先试听 Realtime；Local 尚未达到主力速度要求。
 
 ```sh
-cargo build --release -p novel-tts --features qwen-cuda,voxcpm-cuda,omnivoice-cuda,moss-candle-cuda
+cargo build --release --manifest-path vendor/talechime/Cargo.toml -p talechime --target-dir target --features qwen-cuda,voxcpm-cuda,omnivoice-cuda,moss-candle-cuda
 novel-tts --backend moss --model realtime-1.7b --tts-device cuda voices design myvoice --name "我的音色" --description "温暖清晰的成年女性普通话"
 novel-tts --backend moss --model realtime-1.7b --voice custom:myvoice --tts-device cuda book.txt
 ```
@@ -35,10 +35,11 @@ Metal 构建入口为 `moss-candle-metal`，外平台实机及人工听感仍未
 cargo build -p trnovel --no-default-features
 
 # 听书阅读版及配套程序：两个程序在同一个 target/debug 目录
-cargo build -p trnovel -p novel-tts
+cargo build -p trnovel
+cargo build --manifest-path vendor/talechime/Cargo.toml -p talechime --target-dir target
 
 # 也可只构建独立文件朗读程序
-cargo build -p novel-tts
+cargo build --manifest-path vendor/talechime/Cargo.toml -p talechime --target-dir target
 
 
 ```
@@ -79,16 +80,16 @@ MOSS 资源保存在 `$HOME/.novel-tts/moss/{tts,codec}`，固定版本共约 76
 
 ```sh
 # macOS：保留 MOSS，增加 Qwen 与 Metal GPU 支持
-cargo build --release -p novel-tts --features qwen,metal
+cargo build --release --manifest-path vendor/talechime/Cargo.toml -p talechime --target-dir target --features qwen,metal
 # Windows/Linux NVIDIA：只编入 Qwen，编译时需要 CUDA Toolkit
-cargo build --release -p novel-tts --no-default-features --features qwen-cuda
+cargo build --release --manifest-path vendor/talechime/Cargo.toml -p talechime --target-dir target --no-default-features --features qwen-cuda
 novel-tts --backend qwen --voice uncle_fu book.txt
 novel-tts --backend qwen voices list
 ```
 
 TUI 按模型能力展示可用音色；Qwen Base 提供参考音频克隆，1.7B CustomVoice 提供朗读风格。CLI/TUI 切换后端时将合成设备重置为 auto，保持阅读位置，由用户重新准备和播放。Qwen 支持 CPU、Candle CUDA（Windows/Linux）和 Metal（macOS）。Metal 与 CoreML 是不同执行路径，请按各后端报告的设备选择。
 
-Candle 实现已纳入本地 `crates/qwen3-tts`，来源 revision 已记录。流式小块的解码边界、长文本覆盖和主观音质需要试听确认，不能以正常 EOS 代替音质验收。
+Candle 实现已纳入本地 `vendor/talechime/crates/qwen3-tts`，来源 revision 已记录。流式小块的解码边界、长文本覆盖和主观音质需要试听确认，不能以正常 EOS 代替音质验收。
 
 ### 其他模型
 
@@ -106,7 +107,7 @@ Candle 实现已纳入本地 `crates/qwen3-tts`，来源 revision 已记录。�
 重新导入相同参考 WAV 和文字。实验档不开放 CPU 或 Metal。
 
 ```sh
-cargo build --release -p novel-tts --features qwen-cuda,voxcpm-cuda,omnivoice-cuda
+cargo build --release --manifest-path vendor/talechime/Cargo.toml -p talechime --target-dir target --features qwen-cuda,voxcpm-cuda,omnivoice-cuda
 novel-tts --backend qwen --model 1.7b-customvoice --tts-device cuda book.txt
 novel-tts --backend qwen --model 1.7b-base voices design storyteller --name "沉稳男声" --description "沉稳、自然的中文男声"
 ```
@@ -141,7 +142,7 @@ novel-tts book.txt
 novel-tts --restart book.txt
 ```
 
-仅支持 UTF-8 文本文件。交互终端中空格暂停/继续，s 停止并退出，q/Esc/Ctrl+C 退出；非交互终端不启用原始模式，正文完成后退出。详细的协议、路径覆盖和退出码见仓库 `crates/novel-tts/README.md`。
+仅支持 UTF-8 文本文件。交互终端中空格暂停/继续，s 停止并退出，q/Esc/Ctrl+C 退出；非交互终端不启用原始模式，正文完成后退出。详细的协议、路径覆盖和退出码见仓库 [Talechime README](https://github.com/yexiyue/talechime)。
 
 回退时阅读器与听书程序成对回退，保留配置、模型和检查点；阅读历史及阅读进度格式未改变。
 
@@ -151,9 +152,9 @@ novel-tts --restart book.txt
 
 ```sh
 # Apple Silicon 的 CoreML 构建
-cargo build --release -p novel-tts --features coreml
+cargo build --release --manifest-path vendor/talechime/Cargo.toml -p talechime --target-dir target --features coreml
 # NVIDIA Linux/Windows 的 CUDA 构建
-cargo build --release -p novel-tts --features ort-cuda
+cargo build --release --manifest-path vendor/talechime/Cargo.toml -p talechime --target-dir target --features ort-cuda
 novel-tts --tts-device auto --alignment-device auto book.txt
 ```
 

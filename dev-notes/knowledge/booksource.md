@@ -296,3 +296,20 @@ GGUF 重建的 SentencePiece 与官方实际 `LlamaTokenizerFast` 并非所有�
 实验目录沿用开发验证下载的默认目录，只校验所选资源，不重新下载完整缓存。
 首版只列出已编译 CUDA 的 BF16 实验，设置明确提示待验收；不由入口开放
 推断数值、音质或 30 分钟资格已经通过。模型切换仍先 Stop / 释放，再准备。
+
+
+### Talechime 独立仓库（2026-10-08）
+
+听书已迁至 https://github.com/yexiyue/talechime，固定版本检出在 `vendor/talechime` Git 子模块。
+TRNovel workspace 只保留阅读器和 parse-book-source；协议通过子模块的 talechime-protocol path/version 依赖，Rust 别名 tts_protocol 不变。
+
+**正确做法**：
+- 首次克隆/CI 使用 recursive submodules；旧检出运行 git submodule update --init --recursive。
+- 听书编译使用 --manifest-path vendor/talechime/Cargo.toml -p talechime，与阅读器分开构建；发行脚本共用 target 输出并继续附带 novel-tts 兼容入口。
+- JSON Lines v5、用户配置、模型音色及检查点目录保持不变。新品牌入口为 talechime。
+- 模型库、TTS 工具与历史验收资料由 Talechime 拥有；旧知识条目保留为历史记录，其 crates/novel-tts* 路径应映射到 vendor/talechime/crates/talechime*。
+- 下次 crates.io 发布 TRNovel 前先发布 talechime-protocol 对应版本；path 依赖在 Cargo 打包后会使用 version。
+
+**不要做**：把 TTS workspace 重新加入阅读器 workspace，或仅因改名迁移 ~/.novel 和 ~/.novel-tts 用户数据。
+
+**相关文件**：Cargo.toml、.gitmodules、.github/scripts/build-variant.py、vendor/talechime/SOURCE.md。

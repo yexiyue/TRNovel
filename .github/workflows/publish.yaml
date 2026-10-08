@@ -16,6 +16,8 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
+        with:
+          submodules: recursive
 
       - name: Set up Rust
         uses: dtolnay/rust-toolchain@stable
@@ -48,7 +50,7 @@ jobs:
         run: |
           # 根据前缀确定路径
           case "${{ steps.extract.outputs.prefix }}" in
-            parse-book-source|novel-tts-protocol|novel-tts-core|novel-tts-backends|novel-tts)
+            parse-book-source)
               CRATE_PATH="crates/${{ steps.extract.outputs.prefix }}" ;;
             trnovel) CRATE_PATH="./" ;;
             *) echo "Unknown crate tag prefix" >&2; exit 1 ;;

@@ -10,6 +10,7 @@ variant = sys.argv[1]
 if variant not in ("basic", "listening", "listening-coreml", "listening-cuda"):
     raise SystemExit("variant must be basic, listening, listening-coreml or listening-cuda")
 root = Path(__file__).resolve().parents[2]
+tts_root = root / "vendor" / "talechime"
 target = os.environ.get("CARGO_DIST_TARGET")
 if not target:
     raise SystemExit("CARGO_DIST_TARGET is required")
@@ -28,7 +29,7 @@ subprocess.run(command, cwd=root, env=environment, check=True)
 binaries = ["trnovel", "trn"]
 if variant.startswith("listening"):
     # A separate package-specific build keeps native dependencies out of readers.
-    tts_command = ["cargo", "build", "--locked", "--profile", "dist", "--target", target, "-p", "novel-tts"]
+    tts_command = ["cargo", "build", "--locked", "--profile", "dist", "--target", target, "-p", "talechime", "--manifest-path", str(tts_root / "Cargo.toml")]
     if variant == "listening-coreml":
         if target != "aarch64-apple-darwin":
             raise SystemExit("CoreML distribution requires Apple Silicon")
@@ -60,17 +61,17 @@ if variant == "listening-cuda" and not any("onnxruntime_providers_cuda" in path.
 if variant.startswith("listening"):
     notices = output / "tts-notices"
     notices.mkdir(exist_ok=True)
-    sources = [root / "crates" / "qwen3-tts", root / "crates" / "novel-tts-backends" / "src" / "moss" / "assets"]
+    sources = [tts_root / "crates" / "qwen3-tts", tts_root / "crates" / "talechime-backends" / "src" / "moss" / "assets"]
     optional_features = {feature.strip() for feature in environment.get("TRNOVEL_TTS_FEATURES", "").split(",")}
     if any(feature.startswith("moss-candle") for feature in optional_features):
-        sources.append(root / "crates" / "moss-tts")
+        sources.append(tts_root / "crates" / "moss-tts")
     if any(feature.startswith("omnivoice") for feature in optional_features):
-        sources.append(root / "crates" / "omnivoice")
+        sources.append(tts_root / "crates" / "omnivoice")
     if any(feature.startswith("voxcpm") for feature in optional_features):
-        sources.append(root / "crates" / "voxcpm")
+        sources.append(tts_root / "crates" / "voxcpm")
     for source in sources:
         for path in source.rglob("*"):
             if path.is_file() and (path.name.startswith(("LICENSE", "COPYING")) or path.name in ("SOURCE.md", "NOTICE")):
-                destination = notices / path.relative_to(root)
+                destination = notices / path.relative_to(tts_root)
                 destination.parent.mkdir(parents=True, exist_ok=True)
                 shutil.copy2(path, destination)

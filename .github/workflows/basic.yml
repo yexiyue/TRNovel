@@ -23,6 +23,7 @@ jobs:
     steps:
       - uses: actions/checkout@v6
         with:
+          submodules: recursive
           persist-credentials: false
       - uses: actions/setup-python@v6
         with:

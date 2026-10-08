@@ -12,7 +12,7 @@ Consult applicable proposals in `openspec/changes/` before changing behavior. Hi
 
 ## Project Layout
 
-TRNovel is a Rust 2024 terminal novel reader. The root application builds `trnovel` and `trn`; the workspace libraries are `crates/parse-book-source`, `crates/novel-tts-core` and `crates/novel-tts-protocol`; `crates/novel-tts` builds the independent `novel-tts` CLI. Documentation uses Astro/Starlight in `docs/`.
+TRNovel is a Rust 2024 terminal novel reader. The root application builds `trnovel` and `trn`; the workspace library is `crates/parse-book-source`. TTS lives in the independent Talechime repository, pinned as the `vendor/talechime` Git submodule; its separate workspace builds `talechime` and the compatible `novel-tts` CLI. Initialize submodules before building. Documentation uses Astro/Starlight in `docs/`.
 
 Book sources use structured `trnovel-booksource/v2` JSON and `parse_book_source::Engine`; they do not directly accept Legado book-source JSON. Keep source types, JSON Schema and documentation examples in sync.
 
@@ -35,7 +35,7 @@ cargo fmt --all --check
 RUSTDOCFLAGS="-D warnings" cargo doc --no-deps --document-private-items --all-features --workspace --examples
 
 cargo run -p parse-book-source --features schema --example gen_schema
-cargo run -p novel-tts-backends --example moss
+cargo run --manifest-path vendor/talechime/Cargo.toml -p talechime-backends --example moss
 
 cd docs
 pnpm install

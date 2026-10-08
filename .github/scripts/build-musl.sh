@@ -15,7 +15,7 @@ for variant in basic listening; do
         archive="trnovel-basic-$target"
     else
         cargo build --locked --profile dist --bins -p trnovel
-        cargo build --locked --profile dist -p novel-tts
+        cargo build --locked --profile dist --manifest-path vendor/talechime/Cargo.toml -p talechime
         archive="trnovel-$target"
     fi
     mkdir -p "$output/$archive"

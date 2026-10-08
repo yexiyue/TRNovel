@@ -22,7 +22,7 @@ for variant in basic listening; do
         test ! -e "$archive/novel-tts"
         if "./$archive/trnovel" --help | grep -q -- '--tts-program'; then exit 1; fi
     else
-        version=$(sed -n 's/^pub const PROTOCOL_VERSION: u32 = \([0-9]*\);$/\1/p' /work/crates/novel-tts-protocol/src/lib.rs)
+        version=$(sed -n 's/^pub const PROTOCOL_VERSION: u32 = \([0-9]*\);$/\1/p' /work/vendor/talechime/crates/talechime-protocol/src/lib.rs)
         test -n "$version"
         printf '{"protocol_version":%s,"request_id":"hello","session_id":null,"type":"hello"}\n{"protocol_version":%s,"request_id":"bye","session_id":null,"type":"shutdown"}\n' "$version" "$version" | "./$archive/novel-tts" --protocol > replies.jsonl
         grep -q '"type":"ready"' replies.jsonl

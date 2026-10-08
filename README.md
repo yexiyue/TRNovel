@@ -121,7 +121,7 @@ TRNovel 不直接接受 Legado 书源 JSON。
 
 <img src="assets/brand/mascot-listening.png" alt="小卷戴着耳机听小说" width="180" align="right">
 
-当前源码将听书放在独立的 `novel-tts` 进程中。阅读器负责正文、控制和高亮，听书程序负责模型、合成、播放与恢复点。普通阅读无需加载语音模型。
+听书引擎已拆为独立项目 [Talechime · 叙铃](https://github.com/yexiyue/talechime)，通过固定版本的 `vendor/talechime` Git 子模块集成，并保留 `novel-tts` 兼容入口。首次克隆使用 `git clone --recurse-submodules`，已有检出运行 `git submodule update --init --recursive`。阅读器负责正文、控制和高亮，听书程序负责模型、合成、播放与恢复点。普通阅读无需加载语音模型。
 
 默认后端是 MOSS-TTS-Nano，支持流式合成和 WAV 参考音色导入；Qwen3-TTS、VoxCPM2 与 OmniVoice 可按 feature 编入。Qwen 提供九种预置音色，CPU / Metal 支持取决于构建与平台，主观音质验收仍在进行。
 
@@ -136,13 +136,13 @@ TRNovel 不直接接受 Legado 书源 JSON。
 ```sh
 # 阅读器与配套听书程序
 cargo build --release --locked -p trnovel --bins
-cargo build --release --locked -p novel-tts
+cargo build --release --locked --manifest-path vendor/talechime/Cargo.toml -p talechime --target-dir target
 
 # 基础阅读版：不包含听书入口
 cargo build --release --locked -p trnovel --bins --no-default-features
 
 # 可选 Qwen 后端；macOS 可增加 metal feature
-cargo build --release --locked -p novel-tts --features qwen
+cargo build --release --locked --manifest-path vendor/talechime/Cargo.toml -p talechime --target-dir target --features qwen
 ```
 
 听书时把阅读器与 `novel-tts` 放在同一目录，也可用 `--tts-program <路径>` 指定程序。独立朗读文件：

@@ -300,3 +300,20 @@ CUDA 13 官方 `cuda.lib` 的静态 driver loader 对象带 `/DEFAULTLIB:LIBCMT`
 ### ORT CUDA 预编译包与 Blackwell 架构覆盖
 
 本机 rc.13 Runtime 1.28 CUDA13 provider 中只有 sm75/sm80/sm90a cubin，且没有 PTX；RTX 5070 sm120 的 Nano `/Cast` 实际生成报 `cudaErrorNoKernelImageForDevice`。CUDA 13 安装、驱动可用、EP 注册成功都不能证明模型算子覆盖。用 `cuobjdump --list-elf` 和 `--list-ptx` 检查实际打包 DLL，并保存真实生成错误；不静默降级显式 CUDA，不以升级 Toolkit 修复缺失内核。后续验证匹配的含 Blackwell Runtime/provider 分发或可重复原生构建，不能只替换不匹配的 provider DLL。详见 `dev-notes/ort-rc13-upgrade.md`。
+
+
+### Talechime 独立仓库（2026-10-08）
+
+听书已迁至 https://github.com/yexiyue/talechime，固定版本检出在 `vendor/talechime` Git 子模块。
+TRNovel workspace 只保留阅读器和 parse-book-source；协议通过子模块的 talechime-protocol path/version 依赖，Rust 别名 tts_protocol 不变。
+
+**正确做法**：
+- 首次克隆/CI 使用 recursive submodules；旧检出运行 git submodule update --init --recursive。
+- 听书编译使用 --manifest-path vendor/talechime/Cargo.toml -p talechime，与阅读器分开构建；发行脚本共用 target 输出并继续附带 novel-tts 兼容入口。
+- JSON Lines v5、用户配置、模型音色及检查点目录保持不变。新品牌入口为 talechime。
+- 模型库、TTS 工具与历史验收资料由 Talechime 拥有；旧知识条目保留为历史记录，其 crates/novel-tts* 路径应映射到 vendor/talechime/crates/talechime*。
+- 下次 crates.io 发布 TRNovel 前先发布 talechime-protocol 对应版本；path 依赖在 Cargo 打包后会使用 version。
+
+**不要做**：把 TTS workspace 重新加入阅读器 workspace，或仅因改名迁移 ~/.novel 和 ~/.novel-tts 用户数据。
+
+**相关文件**：Cargo.toml、.gitmodules、.github/scripts/build-variant.py、vendor/talechime/SOURCE.md。

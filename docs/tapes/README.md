@@ -119,7 +119,8 @@ PATH="$(pwd)/../../target/debug:/opt/homebrew/bin:$PATH" vhs basic-ui.tape
 `moss-tts.tape` 验证后端切换、预置音色、模型准备、实际播放高亮与暂停。先构建双后端并准备隔离环境：
 
 ```sh
-cargo build -p trnovel -p novel-tts --features novel-tts/qwen
+cargo build -p trnovel
+cargo build --manifest-path vendor/talechime/Cargo.toml -p talechime --features qwen --target-dir target
 mkdir -p /tmp/trn-moss-demo/home
 cp -R /tmp/trn-demo-home/books /tmp/trn-moss-demo/home/
 # ~/.novel-tts 内需已经有完整 moss/tts 和 moss/codec；复用模型，不复制大权重。
@@ -144,7 +145,7 @@ PATH="$PWD/target/debug:$PATH" vhs docs/tapes/moss-tts.tape
 `qwen-tts.tape` 检查后端与音色切换、实际设备、模型就绪、播放与暂停。使用自编书和隔离 HOME：
 
 ```sh
-cargo build --release -p novel-tts --features qwen,metal
+cargo build --release --manifest-path vendor/talechime/Cargo.toml -p talechime --target-dir target --features qwen,metal
 cargo build -p trnovel --bin trn
 mkdir -p /tmp/trn-qwen-demo/home/books
 # 放入“试听.txt”，包含两个章节、至少二十段短正文。

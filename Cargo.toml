@@ -54,7 +54,7 @@ ratatui-kit-themes = "0.1"
 ratatui-kit-keymap = "0.1"
 textwrap = { version = "0.16.2" }
 tokio-util = { workspace = true, optional = true }
-tts-protocol = { package = "novel-tts-protocol", path = "crates/novel-tts-protocol", version = "0.1.0" }
+tts-protocol = { package = "talechime-protocol", path = "vendor/talechime/crates/talechime-protocol", version = "0.1.0" }
 strum = { version = "0.28", features = ["derive"] }
 swash = "0.2.7"
 zeno = "0.3.3"
@@ -63,30 +63,10 @@ reqwest = { version = "0.13", default-features = false, features = ["rustls"] }
 
 
 [workspace]
-members = ["crates/voxcpm", "crates/moss-tts", "crates/tts-candle-platform", "crates/omnivoice", "crates/voxcpm-sys", "crates/qwen3-tts", "crates/novel-tts-backends", "crates/novel-tts-core", "crates/novel-tts-protocol", "crates/novel-tts", "crates/parse-book-source"]
+exclude = ["vendor/talechime"]
+members = ["crates/parse-book-source"]
 
 [workspace.dependencies]
-windows = { version = "0.54.0", default-features = false }
-moss-tts = { path = "crates/moss-tts" }
-tts-candle-platform = { path = "crates/tts-candle-platform", version = "0.1.0" }
-cmake = "0.1.58"
-cc = "1.2"
-qwen3-tts = { path = "crates/qwen3-tts", version = "0.3.0", default-features = false }
-candle-core = "=0.11.0"
-candle-nn = "=0.11.0"
-candle-transformers = "=0.11.0"
-tokenizers = { version = "0.22.2", default-features = false }
-hound = "3.5"
-rustfft = "6.4"
-tracing = "0.1"
-# API 21 leaves device selection to the application instead of enabling ORT's auto EP policy.
-# Native prebuilt libraries still use the latest ONNX Runtime 1.28.
-# Lax matching permits platform-independent all-features checks; runtime EPs stay explicit.
-ort = { version = "=2.0.0-rc.13", default-features = false, features = [
-    "std", "ndarray", "tracing", "download-binaries", "tls-native", "copy-dylibs",
-    "api-21", "pkg-config", "lax-feature-matching",
-] }
-rodio = { version = "0.21.1", default-features = false, features = ["playback", "wav", "tracing"] }
 reqwest = { version = "0.13", default-features = false, features = ["rustls"] }
 serde = { version = "1.0.228", features = ["derive"] }
 serde_json = "1.0.150"
@@ -109,7 +89,6 @@ tokio = { version = "1.52", features = [
 tokio-util = "0.7.18"
 futures = "0.3.32"
 dirs = "6.0.0"
-sha2 = "0.10.9"
 tempfile = "3.27.0"
 
 [profile.release]
