@@ -313,3 +313,10 @@ TRNovel workspace 只保留阅读器和 parse-book-source；协议通过子模�
 **不要做**：把 TTS workspace 重新加入阅读器 workspace，或仅因改名迁移 ~/.novel 和 ~/.novel-tts 用户数据。
 
 **相关文件**：Cargo.toml、.gitmodules、.github/scripts/build-variant.py、vendor/talechime/SOURCE.md。
+
+### MOSS Metal 初始化同步修复（2026-10-08）
+
+TRNovel 原 TTS 分支的 `c5d7daa` 已同步到 Talechime `137f580`，子模块固定到该版本。
+模型和 codec 加载后分别完成 Metal 设备同步，再报告初始化成功；同步失败走 Initialize 错误，CUDA 路径保持原行为。
+上游 M4 Pro 实测 Realtime 1.7B 恢复非静音流式 PCM、正常播放和取消后复用；Local 1.7B 在 24GB Mac 上仍有初始化 GPU OOM，不能视为已修复可用。
+详细上游验收记录与来源见 `vendor/talechime/dev-notes/moss-macos-streaming.md`；此次同步没有重新执行 macOS 实机试听。
