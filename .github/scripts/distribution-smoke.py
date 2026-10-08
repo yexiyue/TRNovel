@@ -94,7 +94,8 @@ def main(app, target):
         for program in programs:
             binary = str(installed / (program + suffix))
             run(binary, '--version', env=env, cwd=home)
-            help_text = run(binary, '--help', env=env, cwd=home, capture_output=True, text=True).stdout
+            help_text = run(binary, '--help', env=env, cwd=home, capture_output=True,
+                            text=True, encoding='utf-8').stdout
             if app == 'trnovel':
                 assert '--tts-program' in help_text
                 history = home / '.trnovel/data/history.json'
