@@ -24,7 +24,7 @@ mod settings;
 pub use settings::*;
 #[cfg(feature = "tts")]
 fn listening_panel(open: bool, is_editing: bool) -> AnyElement<'static> {
-    element!(crate::tts::ui::TTSManager(open:open,is_editing:is_editing)).into_any()
+    element!(crate::tts::ui::TTSManager(open: open, is_editing: is_editing)).into_any()
 }
 #[cfg(not(feature = "tts"))]
 fn listening_panel(_open: bool, _is_editing: bool) -> AnyElement<'static> {
