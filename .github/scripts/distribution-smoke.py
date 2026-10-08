@@ -36,7 +36,9 @@ def read_without_worker(binary, home, env):
                 text = re.sub(r'\x1b\[[0-?]*[ -/]*[@-~]', '', output.decode('utf-8', errors='replace'))
                 if 'READER_WITHOUT_WORKER' in text:
                     break
-            os.write(master, b'\r')
+            # FileSelect intentionally starts without a selection. Select the
+            # fixture before Enter; repeat while asynchronous scanning finishes.
+            os.write(master, b'j\r')
         else:
             raise AssertionError('Reader did not show local text: ' + output.decode('utf-8', errors='replace'))
         os.write(master, b'q')
