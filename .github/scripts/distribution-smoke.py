@@ -39,13 +39,24 @@ def main(app, target):
         env = dict(os.environ, HOME=str(home), USERPROFILE=str(home))
         for key in ['LD_LIBRARY_PATH', 'DYLD_LIBRARY_PATH', 'CUDA_PATH', 'CUDA_HOME']:
             env.pop(key, None)
+        preserved = [home / '.novel/history.json', home / '.trnovel/config.toml',
+                     home / '.trnovel/data/book_sources.json',
+                     home / '.trnovel/data/source-state/login.json']
+        if app == 'trnovel':
+            for path in preserved:
+                path.parent.mkdir(parents=True, exist_ok=True)
+                path.write_text('sentinel', encoding='utf-8')
         for program in programs:
             binary = str(installed / (program + suffix))
             run(binary, '--version', env=env, cwd=home)
             help_text = run(binary, '--help', env=env, cwd=home, capture_output=True, text=True).stdout
             if app == 'trnovel':
                 assert '--tts-program' in help_text
+                history = home / '.trnovel/data/history.json'
+                history.write_text('clear this record', encoding='utf-8')
                 run(binary, 'clear', env=env, cwd=home)
+                assert not history.exists()
+                assert all(path.read_text() == 'sentinel' for path in preserved)
             else:
                 requests = ''.join(json.dumps(dict(protocol_version=5, request_id=kind,
                     session_id=None, type=kind)) + '\n' for kind in ['hello', 'shutdown'])

@@ -16,7 +16,10 @@ impl AppPaths {
         }
     }
     pub fn user_default() -> io::Result<Self> {
-        dirs::home_dir()
+        std::env::var_os("HOME")
+            .filter(|home| !home.is_empty())
+            .map(PathBuf::from)
+            .or_else(dirs::home_dir)
             .map(|home| Self::from_home(&home))
             .ok_or_else(|| io::Error::new(io::ErrorKind::NotFound, "无法获取用户主目录"))
     }
