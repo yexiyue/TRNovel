@@ -328,3 +328,5 @@ Talechime 独立拥有 ~/.talechime/config.json、checkpoints、resources，AppP
 
 发行验证补充：Talechime GNU 构建须用 Ubuntu 24.04（pinned ORT 1.28 静态库依赖新版 glibc/libstdc++）；min-glibc-version = 2.39。Mac 使用 macos-15 / MACOSX_DEPLOYMENT_TARGET=15.0，匹配 Candle 0.11 的 residency set API。设备探测先枚举 Metal GPU，避免无 GPU 的 hosted VM 在 Candle 的 swap_remove(0) 中 panic/abort。Windows 保持动态 CRT。标准包随附源码、Cargo 依赖与 ONNX Runtime 许可证。AppPaths 尊重非空 HOME，Windows 否则使用系统 home；隔离 smoke 不修改真实用户数据。
 
+隔离 smoke 的注意事项：FileSelect 初始没有选中项，需先 J 再 Enter 打开小说；macOS PTY 在退出时也必须持续读取终端输出，避免缓冲区阻塞最终渲染。Windows 捕获中文帮助时显式使用 UTF-8；冷启动 Cargo 元数据解析允许 600 秒，程序启动和握手仍使用短超时。Unix transport 测试在临时目录编译一次不可变 worker，通过同文件系统的硬链接创建不同名称，避免并行复制可执行文件与 fork/exec 竞争产生 ETXTBSY。
+
