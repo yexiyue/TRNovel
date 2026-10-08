@@ -115,6 +115,7 @@ def main(app, target):
         if app == 'trnovel' and sys.platform != 'win32':
             # The clear assertions deliberately used malformed preserved settings.
             (home / '.trnovel/config.toml').write_text('', encoding='utf-8')
+            (home / '.trnovel/data/book_sources.json').write_text('{"book_sources":[]}', encoding='utf-8')
             read_without_worker(str(installed / 'trnovel'), home, env)
         # Exercise the generated platform installer against local build artifacts.
         # Its supported download override keeps this smoke independent of releases.
