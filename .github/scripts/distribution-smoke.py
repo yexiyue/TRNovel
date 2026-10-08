@@ -1,0 +1,59 @@
+"""Build cargo-dist artifacts and exercise an isolated, model-free installation."""
+import json
+import os
+from pathlib import Path
+import shutil
+import subprocess
+import sys
+import tempfile
+
+
+def run(*args, **kwargs):
+    return subprocess.run(args, check=True, timeout=60, **kwargs)
+
+
+def main(app, target):
+    run('dist', 'generate', '--check')
+    subprocess.run(['dist', 'build', '--artifacts', 'local', '--target', target], check=True)
+    archives = list(Path('target/distrib').glob(f'{app}-{target}.*'))
+    archive = next(path for path in archives if path.suffix == '.zip' or path.name.endswith('.tar.xz'))
+    with tempfile.TemporaryDirectory(prefix='isolated install ') as temporary:
+        base = Path(temporary)
+        shutil.unpack_archive(archive, base / 'install')
+        suffix = '.exe' if sys.platform == 'win32' else ''
+        programs = [app] if app == 'talechime' else ['trnovel', 'trn']
+        installed = next((base / 'install').rglob(app + suffix)).parent
+        files = list((base / 'install').rglob('*'))
+        assert not any(path.name in ['novel-tts', 'novel-tts.exe'] for path in files)
+        assert not any(path.suffix in ['.onnx', '.gguf', '.safetensors'] for path in files)
+        if app == 'trnovel':
+            assert not any('talechime' in path.name or 'onnxruntime' in path.name for path in files)
+        else:
+            assert (installed / 'THIRD_PARTY_LICENSES').is_dir()
+        home = base / 'home'
+        home.mkdir()
+        env = dict(os.environ, HOME=str(home), USERPROFILE=str(home))
+        for key in ['LD_LIBRARY_PATH', 'DYLD_LIBRARY_PATH', 'CUDA_PATH', 'CUDA_HOME']:
+            env.pop(key, None)
+        for program in programs:
+            binary = str(installed / (program + suffix))
+            run(binary, '--version', env=env, cwd=home)
+            help_text = run(binary, '--help', env=env, cwd=home, capture_output=True, text=True).stdout
+            if app == 'trnovel':
+                assert '--tts-program' in help_text
+                run(binary, 'clear', env=env, cwd=home)
+            else:
+                requests = ''.join(json.dumps(dict(protocol_version=5, request_id=kind,
+                    session_id=None, type=kind)) + '\n' for kind in ['hello', 'shutdown'])
+                result = run(binary, '--protocol', input=requests, capture_output=True,
+                    text=True, encoding='utf-8', env=env, cwd=home)
+                messages = [json.loads(line) for line in result.stdout.splitlines()]
+                assert messages[0]['type'] == 'ready' and messages[0]['protocol_version'] == 5
+                assert messages[-1]['type'] == 'accepted'
+        assert not list(home.rglob('*.onnx')), 'Handshake downloaded weights'
+        assert not list(home.rglob('config.json')), 'Handshake persisted configuration'
+    print(f'{app}: isolated archive installation and startup passed for {target}')
+
+
+if __name__ == '__main__':
+    main(*sys.argv[1:])

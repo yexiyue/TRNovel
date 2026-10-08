@@ -4116,6 +4116,8 @@ checksum = "c0e973b34477b7823833469eb0f5a3a60370fef7a453e02d751b59180d0a5a05"
 [[package]]
 name = "talechime-protocol"
 version = "0.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "442e7cf2b26067bcc21574d9ee6672be038359af70587486ea027fabebf345fd"
 dependencies = [
  "serde",
  "serde_json",
@@ -4571,6 +4573,7 @@ dependencies = [
  "throbber-widgets-tui",
  "tokio",
  "tokio-util",
+ "toml",
  "tui-big-text",
  "tui-tree-widget",
  "tui-widget-list",

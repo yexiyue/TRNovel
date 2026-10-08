@@ -8,11 +8,11 @@
 //!   跳空行、限制标题字符数、排除表过滤、卷优先于章、并丢弃以句号结尾的行（正文特征）。
 //! - **多规则竞争**：当存在多条章节规则时，按「有效命中数」（相邻命中间隔足够大）择优，
 //!   自动适配「章 / 节 / 回」等不同计数词的书。
-//! - **可配置**：内置默认规则集作兜底；若 `~/.novel/toc_rules.json` 存在则合并用户规则，
+//! - **可配置**：内置默认规则集作兜底；若 `~/.trnovel/toc_rules.json` 存在则合并用户规则，
 //!   解析失败时安全回退到默认（呼应 issue #49）。
 
 use crate::novel::VolumeMarker;
-use crate::utils::novel_catch_dir;
+use crate::paths::AppPaths;
 use serde::{Deserialize, Serialize};
 
 /// 默认标题最大字符数（超过则视为正文）。
@@ -142,16 +142,16 @@ impl TocRuleSet {
         }
     }
 
-    /// 加载规则集：内置默认 + 合并 `~/.novel/toc_rules.json` 用户规则。
+    /// 加载规则集：内置默认 + 合并 `~/.trnovel/toc_rules.json` 用户规则。
     ///
     /// 配置文件缺失或解析失败时安全回退到内置默认，绝不 panic。
     pub fn load() -> Self {
         let mut set = Self::builtin();
 
-        let Ok(dir) = novel_catch_dir() else {
+        let Ok(dir) = AppPaths::user_default() else {
             return set;
         };
-        let path = dir.join("toc_rules.json");
+        let path = dir.toc_rules();
         if let Ok(content) = std::fs::read_to_string(&path) {
             set.merge_user_json(&content);
         }

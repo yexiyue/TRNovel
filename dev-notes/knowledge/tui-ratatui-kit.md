@@ -518,3 +518,11 @@ ratatui-kit test-util 可渲染实际设置组件并调用生产设置回调，�
 同后端的模型也可能使用不同推理栈和设备，如 Nano ORT / Local-Realtime Candle。模型选择回调仅在原显式设备不属于目标模型 compiled_devices 时切换为 Auto；兼容设备保留，实际推理显式请求仍不降级。Nano 的显式目录 ID 让 model=None 的旧默认可以被重新选择。
 
 **相关文件**：`src/tts/ui.rs`、`crates/novel-tts-backends/src/lib.rs`。
+
+## 2026-10-08 独立发行与数据归属（当前实现）
+
+本节取代上文的旧路径、子模块及双变体发行指导；历史验收记录保留。TRNovel 只分发 trnovel/trn，默认 tts，使用 crates.io talechime-protocol 0.1.0，JSON Lines v5，不要求应用同版本，不递归检出。worker 顺序：CLI --tts-program → config.toml 的 [tts].program → PATH talechime；无效显式路径不回退，缺 worker 不阻断普通阅读。
+
+src/paths.rs 统一 ~/.trnovel 路径：config.toml 的 appearance/reader/browser/tts 分节由 ConfigStore 加锁、重新加载并原子替换；keybindings.toml、toc_rules.json 独立；data 保存书源/历史/登录/browser-profile/local/network，cache 保存字体等可重建资源。clear 只删历史、local/network、cache，不触碰配置、书源或登录态。旧目录不读取、不自动搬迁，手工说明在 guides/migration.mdx。
+
+Talechime 独立拥有 ~/.talechime/config.json、checkpoints、resources，AppPaths 位于其 core crate。两个应用固定 cargo-dist 0.32.0、各一份原生 Cargo dist-workspace.toml；旧 generic dist.toml、basic/加速/ARM64 musl 专用脚本已移除。Talechime 标准包 CPU（Windows/Linux），Mac 添加全部 Metal；CUDA 源码与原生编译 CI 保留。三个平台隔离安装检查不下载模型，不视为真实模型试听通过。

@@ -4,7 +4,7 @@ use std::{
     path::PathBuf,
 };
 
-use crate::{Result, utils::novel_catch_dir};
+use crate::{Result, paths::AppPaths};
 use parse_book_source::BookSource;
 use serde::{Deserialize, Serialize};
 
@@ -19,9 +19,7 @@ pub struct BookSourceCache {
 
 impl BookSourceCache {
     pub fn get_cache_file_path() -> Result<PathBuf> {
-        Ok(PathBuf::new()
-            .join(novel_catch_dir()?)
-            .join("book_sources.json"))
+        Ok(AppPaths::user_default()?.book_sources())
     }
 
     pub fn load() -> Result<Self> {
@@ -49,7 +47,9 @@ impl BookSourceCache {
     }
 
     pub fn save(&self) -> Result<()> {
-        let file = File::create(Self::get_cache_file_path()?)?;
+        let path = Self::get_cache_file_path()?;
+        std::fs::create_dir_all(path.parent().expect("data directory"))?;
+        let file = File::create(path)?;
         serde_json::to_writer_pretty(file, self)?;
         Ok(())
     }

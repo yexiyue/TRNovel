@@ -59,27 +59,21 @@ impl Drop for Connection {
     }
 }
 
-/// Explicit paths fail directly. Otherwise prefer the reader's directory over PATH.
+/// CLI override, configured path, then PATH. Invalid overrides fail directly.
 pub fn discover(
     explicit: Option<&Path>,
-    executable: &Path,
+    configured: Option<&Path>,
     search_path: Option<&std::ffi::OsStr>,
 ) -> anyhow::Result<PathBuf> {
-    if let Some(path) = explicit {
+    if let Some(path) = explicit.or(configured) {
         anyhow::ensure!(is_program(path), "听书程序路径不可用: {}", path.display());
         return Ok(path.into());
     }
     let name = if cfg!(windows) {
-        "novel-tts.exe"
+        "talechime.exe"
     } else {
-        "novel-tts"
+        "talechime"
     };
-    if let Some(directory) = executable.parent() {
-        let path = directory.join(name);
-        if is_program(&path) {
-            return Ok(path);
-        }
-    }
     if let Some(paths) = search_path {
         for directory in std::env::split_paths(paths) {
             let path = directory.join(name);
@@ -89,9 +83,10 @@ pub fn discover(
         }
     }
     Err(anyhow::anyhow!(
-        "未找到 novel-tts；安装听书版或通过 --tts-program 指定程序路径"
+        "未找到 Talechime；请独立安装后加入 PATH，或用 --tts-program / [tts].program 指定路径。安装说明: https://github.com/yexiyue/talechime#installation"
     ))
 }
+
 fn is_program(path: &Path) -> bool {
     if !path.is_file() {
         return false;

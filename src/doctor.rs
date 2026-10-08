@@ -20,7 +20,14 @@ pub async fn run(path: &Path) {
     // 带浏览器构建:渲染型 op(`render-fetcher`,如番茄搜索)才能真正验证(headless 渲染 +
     // CDP 拦截);非渲染 op 不开浏览器(EscalatingFetcher 仅在 render/撞挑战时才启动)。
     // 探测不到浏览器(CI/沙箱)→ None,等同纯 reqwest:渲染 op 优雅降级标 ✗。
-    let browser = BrowserFetcher::detect(BrowserOptions::default());
+    let paths = match crate::paths::AppPaths::user_default() {
+        Ok(paths) => paths,
+        Err(error) => return print_config_error("数据目录不可用", error),
+    };
+    let browser = BrowserFetcher::detect(BrowserOptions {
+        profile_dir: paths.browser_profile(),
+        ..BrowserOptions::default()
+    });
     let engine = match Engine::with_browser_assist(source, browser) {
         Ok(e) => e,
         Err(e) => return print_config_error("构建引擎失败", e),

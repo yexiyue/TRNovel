@@ -97,7 +97,7 @@ trnovel doctor <书源.json>
 
 ### `import` (`-i`)
 
-导入书源：把书源 JSON（本地文件或 URL）写入 `~/.novel/book_sources.json`，使其在网络小说（`-n`）里可直接选用。
+导入书源：把书源 JSON（本地文件或 URL）写入 `~/.trnovel/data/book_sources.json`，使其在网络小说（`-n`）里可直接选用。
 按 `url` + `name` 去重（同名覆盖，便于反复迭代同一书源）。是「AI 生成 → `doctor` 校验 → 导入即用」闭环的最后一步。
 
 用法:

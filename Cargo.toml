@@ -54,7 +54,9 @@ ratatui-kit-themes = "0.1"
 ratatui-kit-keymap = "0.1"
 textwrap = { version = "0.16.2" }
 tokio-util = { workspace = true, optional = true }
-tts-protocol = { package = "talechime-protocol", path = "vendor/talechime/crates/talechime-protocol", version = "0.1.0" }
+tts-protocol = { package = "talechime-protocol", version = "0.1.0" }
+toml = { workspace = true }
+tempfile = { workspace = true }
 strum = { version = "0.28", features = ["derive"] }
 swash = "0.2.7"
 zeno = "0.3.3"
@@ -63,7 +65,6 @@ reqwest = { version = "0.13", default-features = false, features = ["rustls"] }
 
 
 [workspace]
-exclude = ["vendor/talechime"]
 members = ["crates/parse-book-source"]
 
 [workspace.dependencies]
@@ -90,6 +91,7 @@ tokio-util = "0.7.18"
 futures = "0.3.32"
 dirs = "6.0.0"
 tempfile = "3.27.0"
+toml = "0.9"
 
 [profile.release]
 lto = true
@@ -100,10 +102,10 @@ panic = "abort"
 [profile.dist]
 inherits = "release"
 
-# Distribution variants are configured in dist-workspace.toml and dist.toml.
+# Distribution is configured in dist-workspace.toml.
 
 [dev-dependencies]
-tempfile.workspace = true
+
 ratatui-kit = { version = "0.10.3", features = ["test-util"] }
 
 # Model integrity checks must remain practical in development builds.

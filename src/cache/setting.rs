@@ -1,19 +1,18 @@
 use crate::Result;
-use crate::utils::novel_catch_dir;
+use crate::config::ConfigStore;
 use ratatui_kit::Palette;
 use ratatui_kit_themes::{IntoKitPalette, ThemeName, terminal_background};
 use serde::{Deserialize, Serialize};
-use std::{fs::File, io::ErrorKind, path::PathBuf};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
+#[serde(default, rename_all = "snake_case")]
 pub struct AppearanceConfig {
     pub theme_slug: String,
     pub background: BackgroundMode,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
+#[serde(rename_all = "snake_case")]
 pub enum BackgroundMode {
     Theme,
     Terminal,
@@ -22,21 +21,11 @@ pub enum BackgroundMode {
 impl AppearanceConfig {
     const DEFAULT_THEME: ThemeName = ThemeName::TokyoNight;
 
-    pub fn path() -> Result<PathBuf> {
-        Ok(novel_catch_dir()?.join("appearance.json"))
-    }
-
     pub fn load() -> Result<Self> {
-        match File::open(Self::path()?) {
-            Ok(file) => Ok(serde_json::from_reader(file).unwrap_or_default()),
-            Err(error) if error.kind() == ErrorKind::NotFound => Ok(Self::default()),
-            Err(error) => Err(error.into()),
-        }
+        Ok(ConfigStore::user_default()?.load()?.appearance)
     }
-
     pub fn save(&self) -> Result<()> {
-        let file = File::create(Self::path()?)?;
-        serde_json::to_writer_pretty(file, self)?;
+        ConfigStore::user_default()?.update(|config| config.appearance = self.clone())?;
         Ok(())
     }
 
@@ -67,9 +56,9 @@ impl Default for AppearanceConfig {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
+#[serde(rename_all = "snake_case")]
 pub struct ReaderDisplayConfig {
-    /// Follow actual played text; retained across basic and listening builds.
+    /// Follow actual played text; saved in the reader section of config.toml.
     #[serde(default = "default_show_title")]
     pub follow_tts: bool,
     #[serde(default = "default_show_title")]
@@ -90,10 +79,6 @@ impl ReaderDisplayConfig {
     /// 翻页重叠行数上限。再大就会把「翻一页」压成「滚几行」,属配置错误而非偏好。
     const PAGE_OVERLAP_MAX: u16 = 10;
 
-    pub fn path() -> Result<PathBuf> {
-        Ok(novel_catch_dir()?.join("reader-display.json"))
-    }
-
     /// 给定可见行数下的翻页步长:整屏减去重叠行数。
     ///
     /// 步长不落盘,每次按当前视口现算 → 终端尺寸变化后自动跟随;重叠 ≥ 视口时
@@ -113,23 +98,14 @@ impl ReaderDisplayConfig {
         self.page_overlap = self.page_overlap.saturating_sub(1);
     }
 
-    pub fn load() -> Result<Self> {
-        match File::open(Self::path()?) {
-            Ok(file) => {
-                let mut config: Self = serde_json::from_reader(file).unwrap_or_default();
-                // 手改 JSON 是唯一能产生越界值的入口,在此归一 → 之后全程直接读字段,
-                // 且下次 save() 写回的也是规范值(读侧兜底会让脏值永远留在磁盘上)。
-                config.page_overlap = config.page_overlap.min(Self::PAGE_OVERLAP_MAX);
-                Ok(config)
-            }
-            Err(error) if error.kind() == ErrorKind::NotFound => Ok(Self::default()),
-            Err(error) => Err(error.into()),
-        }
+    pub(crate) fn normalize(&mut self) {
+        self.page_overlap = self.page_overlap.min(Self::PAGE_OVERLAP_MAX);
     }
-
+    pub fn load() -> Result<Self> {
+        Ok(ConfigStore::user_default()?.load()?.reader)
+    }
     pub fn save(&self) -> Result<()> {
-        let file = File::create(Self::path()?)?;
-        serde_json::to_writer_pretty(file, self)?;
+        ConfigStore::user_default()?.update(|config| config.reader = *self)?;
         Ok(())
     }
 }
@@ -183,9 +159,9 @@ mod tests {
     }
 
     #[test]
-    fn legacy_config_without_page_overlap_takes_default() {
-        // 旧版本写出的文件只有 showTitle;缺字段走默认,既有字段不受影响。
-        let config: ReaderDisplayConfig = serde_json::from_str(r#"{"showTitle": false}"#).unwrap();
+    fn partial_config_without_page_overlap_takes_default() {
+        // 旧版本写出的文件只有 show_title;缺字段走默认,既有字段不受影响。
+        let config: ReaderDisplayConfig = serde_json::from_str(r#"{"show_title": false}"#).unwrap();
 
         assert!(!config.show_title);
         assert_eq!(config.page_overlap, 2);
@@ -198,13 +174,13 @@ mod tests {
 
         // 显式开启必须能被读回来,不能被 default 压回关。
         let config: ReaderDisplayConfig =
-            serde_json::from_str(r#"{"paragraphSpacing": true}"#).unwrap();
+            serde_json::from_str(r#"{"paragraph_spacing": true}"#).unwrap();
         assert!(config.paragraph_spacing);
     }
 
     #[test]
     fn follow_defaults_on_and_round_trips_off() {
-        let legacy: ReaderDisplayConfig = serde_json::from_str(r#"{"showTitle":false}"#).unwrap();
+        let legacy: ReaderDisplayConfig = serde_json::from_str(r#"{"show_title":false}"#).unwrap();
         assert!(legacy.follow_tts);
         let config = ReaderDisplayConfig {
             follow_tts: false,

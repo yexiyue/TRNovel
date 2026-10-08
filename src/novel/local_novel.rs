@@ -108,7 +108,7 @@ impl Novel for LocalNovel {
     async fn request_toc(&self) -> Result<(Vec<Self::Chapter>, Vec<VolumeMarker>)> {
         let path = self.path.clone();
         let encoding = self.encoding;
-        // 加载规则集（内置默认 + ~/.novel/toc_rules.json）。
+        // 加载规则集（内置默认 + ~/.trnovel/toc_rules.json）。
         let rules = TocRuleSet::load();
 
         let file = File::open(path).await?;

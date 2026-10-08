@@ -4,7 +4,7 @@
 //! (见 OpenSpec change `browser-fetcher` 的 design D8/D12)。
 //!
 //! 授权两级:
-//! - **设置开关**:`~/.novel/browser_assist.on` 标记(「总是允许」),由书源管理页 B 键或弹窗「总是」写入;
+//! - **设置开关**:`~/.trnovel/browser_assist.on` 标记(「总是允许」),由书源管理页 B 键或弹窗「总是」写入;
 //! - **首次弹窗**:未设标记时,撞挑战会弹模态问「本次 / 总是 / 拒绝」。
 //!
 //! 关键:授权决定存于**模块级会话缓存**(非随某次取页 future 存活),`authorize` 以轮询等待。
@@ -55,31 +55,18 @@ fn cached_decision() -> Option<AuthDecision> {
 
 // ───────────────────────── 持久化:「总是允许」标记 ─────────────────────────
 
-fn flag_path() -> Option<std::path::PathBuf> {
-    crate::utils::novel_catch_dir()
-        .ok()
-        .map(|d| d.join("browser_assist.on"))
-}
-
 /// 是否已「总是允许」浏览器辅助验证。
 pub fn always_allowed() -> bool {
-    flag_path().map(|p| p.exists()).unwrap_or(false)
+    crate::config::ConfigStore::user_default()
+        .and_then(|store| store.load())
+        .is_ok_and(|config| config.browser.always_allow)
 }
 
-/// 设置 / 取消「总是允许」(供书源管理页 B 键开关与弹窗「总是」使用)。
+/// 设置 / 取消「总是允许」，保留其他配置分节。
 pub fn set_always_allowed(on: bool) -> std::io::Result<()> {
-    let Some(p) = flag_path() else {
-        return Ok(());
-    };
-    if on {
-        if let Some(dir) = p.parent() {
-            std::fs::create_dir_all(dir)?;
-        }
-        std::fs::write(&p, b"on")?;
-    } else if p.exists() {
-        std::fs::remove_file(&p)?;
-    }
-    Ok(())
+    crate::config::ConfigStore::user_default()
+        .and_then(|store| store.update(|config| config.browser.always_allow = on))
+        .map_err(std::io::Error::other)
 }
 
 // ───────────────────────── 全局浏览器提示原子 + UI 回调 ─────────────────────────
@@ -163,8 +150,8 @@ pub fn build_engine(source: BookSource) -> parse_book_source::Result<Engine> {
         Engine::new(source)?
     } else {
         let mut opts = BrowserOptions::default();
-        if let Ok(dir) = crate::utils::novel_catch_dir() {
-            opts.profile_dir = dir.join("browser-profile");
+        if let Ok(dir) = crate::paths::AppPaths::user_default() {
+            opts.profile_dir = dir.browser_profile();
         }
         opts.total_timeout = Duration::from_secs(90);
         opts.ui = browser_ui();

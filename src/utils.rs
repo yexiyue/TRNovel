@@ -1,19 +1,6 @@
 use anyhow::{Result, anyhow};
 use chrono::DateTime;
-use std::path::{Path, PathBuf};
-
-/// 获取小说缓存目录
-pub fn novel_catch_dir() -> Result<PathBuf> {
-    let home = dirs::home_dir().ok_or(anyhow!("无法获取用户主目录"))?;
-
-    let novel_catch_path = PathBuf::new().join(&home).join(".novel");
-
-    if !novel_catch_path.exists() {
-        std::fs::create_dir(&novel_catch_path)?;
-    }
-
-    Ok(novel_catch_path)
-}
+use std::path::Path;
 
 pub fn get_path_md5<T: AsRef<Path>>(path: T) -> Result<String> {
     let md5 = md5::compute(path.as_ref().canonicalize()?.to_string_lossy().as_bytes());

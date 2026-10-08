@@ -1,5 +1,5 @@
 //! 阅读设置浮层:把阅读行为偏好(`ReaderDisplayConfig`)搬到 TUI 里可视化调整,
-//! 用户不必手改 `~/.novel/reader-display.json`。
+//! 用户不必手改 `~/.trnovel/config.toml` 的 reader 分节。
 //!
 //! 只改 `READER_DISPLAY` atom,落盘由 `ReadNovel` 的防抖 effect 统一负责——面板与
 //! `v` 键(切换标题)走同一条写盘路径,不会出现两套时序。

@@ -17,7 +17,7 @@ TRNovel 在打开本地 `.txt` 小说时，会用一套**目录规则集**自动
 
 ## 自定义规则文件
 
-在配置目录下新建 `~/.novel/toc_rules.json`。该文件存在时，其规则会**追加**到内置默认规则之上；文件缺失或格式错误时，自动回退到内置默认（不影响阅读）。
+在配置目录下新建 `~/.trnovel/toc_rules.json`。该文件存在时，其规则会**追加**到内置默认规则之上；文件缺失或格式错误时，自动回退到内置默认（不影响阅读）。
 
 字段对齐 [Legado](https://github.com/gedoor/legado) 的 `TxtTocRule`，正则采用 [`fancy-regex`](https://docs.rs/fancy-regex) 语法（**支持前后向断言**，可直接粘贴 Legado 社区规则）。
 

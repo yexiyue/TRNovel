@@ -63,7 +63,6 @@ jobs:
           fi
           [[ "$tag" =~ ^trnovel-v[0-9]+\.[0-9]+\.[0-9]+$ ]]
           gh release download "$tag" --pattern trnovel-npm-package.tar.gz --dir npm
-          gh release download "$tag" --pattern trnovel-basic-npm-package.tar.gz --dir npm
       - name: Validate or publish package
         env:
           PLAN: ${{ inputs.plan }}

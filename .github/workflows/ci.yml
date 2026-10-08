@@ -6,6 +6,7 @@ on:
       - main
       - develop
   pull_request:
+  workflow_dispatch:
 
 jobs:
   test:
@@ -14,12 +15,10 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
-        with:
-          submodules: recursive
       - name: Install dependencies
         run: |
           sudo apt-get update
-          sudo apt install libasound2-dev libssl-dev pkg-config cmake ninja-build
+          sudo apt install libssl-dev pkg-config cmake ninja-build
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
@@ -32,12 +31,10 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
-        with:
-          submodules: recursive
       - name: Install dependencies
         run: |
           sudo apt-get update
-          sudo apt install libasound2-dev libssl-dev pkg-config cmake ninja-build
+          sudo apt install libssl-dev pkg-config cmake ninja-build
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
         with:
@@ -52,12 +49,10 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
-        with:
-          submodules: recursive
       - name: Install dependencies
         run: |
           sudo apt-get update
-          sudo apt install libasound2-dev libssl-dev pkg-config cmake ninja-build
+          sudo apt install libssl-dev pkg-config cmake ninja-build
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
         with:
@@ -72,12 +67,10 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
-        with:
-          submodules: recursive
       - name: Install dependencies
         run: |
           sudo apt-get update
-          sudo apt install libasound2-dev libssl-dev pkg-config cmake ninja-build
+          sudo apt install libssl-dev pkg-config cmake ninja-build
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2

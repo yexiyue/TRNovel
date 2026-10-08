@@ -171,12 +171,9 @@ impl Default for BrowserOptions {
     }
 }
 
-/// 默认 profile 目录:`~/.novel/browser-profile`(与 app 的 `~/.novel` 对齐)。
+/// Standalone library default; applications should supply their owned profile path.
 fn default_profile_dir() -> PathBuf {
-    match std::env::var_os("HOME").or_else(|| std::env::var_os("USERPROFILE")) {
-        Some(home) => PathBuf::from(home).join(".novel").join("browser-profile"),
-        None => std::env::temp_dir().join("trnovel-browser-profile"),
-    }
+    std::env::temp_dir().join("parse-book-source-browser-profile")
 }
 
 /// 探测系统已装的 Chromium 系浏览器,返回可执行路径;找不到返回 `None`。

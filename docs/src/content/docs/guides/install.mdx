@@ -30,32 +30,11 @@ import { Tabs, TabItem } from "@astrojs/starlight/components";
     </TabItem>
 </Tabs>
 
-默认听书包包含 `trnovel`、`trn` 和同目录的 `novel-tts`。阅读器按需启动听书程序，模型独立下载。
+TRNovel 只分发 `trnovel`、`trn`，默认提供听书界面。听书需独立安装 [Talechime](https://github.com/yexiyue/talechime#installation)。新流程尚未创建正式应用 release tag；旧 basic、捆绑 worker、加速与 ARM64 musl 专用包停止更新。
 
-本次重构的双变体发行尚未发布；以下基础版渠道在新版本发布后可用。现有正式版本仍使用原安装方式。
-
-## 基础版（不含听书程序）
-
-```bash
-curl --proto '=https' --tlsv1.2 -LsSf https://github.com/yexiyue/TRNovel/releases/latest/download/trnovel-basic-installer.sh | sh
-# 或 npm / Homebrew
-npm i -g @trnovel/trnovel-basic
-brew install yexiyue/tap/trnovel-basic
-```
-
-Windows 使用 `trnovel-basic-installer.ps1`：
-
-```powershell
-powershell -ExecutionPolicy Bypass -c "irm https://github.com/yexiyue/TRNovel/releases/latest/download/trnovel-basic-installer.ps1 | iex"
-```
-
-基础版和听书版提供同名的阅读器命令。切换包管理器变体时先卸载当前变体；Homebrew 公式声明两者冲突。基础版没有听书面板或活动听书键位，不删除旧配置、模型或检查点。
-
-Shell 默认安装到 `~/.cargo/bin`，可设置 `TRNOVEL_INSTALL_DIR`；基础 PowerShell 安装器支持 `-InstallDir`，安装后将该目录加入 PATH。
+首轮支持 Apple Silicon macOS、x86_64 Linux GNU、x86_64 Windows MSVC。Shell / PowerShell 默认安装到 Cargo bin 目录；安装后确认该目录在 PATH 中。
 
 ## 包管理器安装
-
-独立 `novel-tts` CLI 需在本次重构发布后安装；此前同名 crate 是库。当前请使用下方 workspace 源码构建命令。
 
 如果您已安装 Rust 或 Node.js 环境，可通过以下命令快速安装 TRNovel：
 
@@ -63,7 +42,6 @@ Shell 默认安装到 `~/.cargo/bin`，可设置 `TRNOVEL_INSTALL_DIR`；基础 
     <TabItem value="cargo" label="cargo" icon="seti:rust">
         ```bash title="使用 Cargo 安装"
         cargo install trnovel
-        cargo install novel-tts
         ```
     </TabItem>
     <TabItem value="pnpm" label="pnpm" icon="pnpm">
@@ -86,7 +64,7 @@ trnovel -h
 
 ## 手动下载二进制文件
 
-也可前往 [GitHub Releases](https://github.com/yexiyue/TRNovel/releases/latest) 页面，根据平台下载预编译的压缩包（`.tar.gz` / `.zip`），解压后将可执行文件添加到系统 PATH 环境变量中。
+也可前往 [GitHub Releases](https://github.com/yexiyue/TRNovel/releases/latest) 页面，根据平台下载预编译的压缩包（`.tar.xz` / `.zip`），解压后将可执行文件添加到系统 PATH 环境变量中。
 
 :::caution[注意]
 手动下载的用户需确保将可执行文件正确添加到 PATH 环境变量中，否则将无法在命令行中直接使用 trnovel 命令。
@@ -96,14 +74,11 @@ trnovel -h
 ## 从当前源码构建
 
 ```bash
-cargo build --locked -p trnovel --bins
-cargo build --locked -p novel-tts
-# 基础版（两种构建都不把模型或音频库链接进阅读器）
-cargo build --locked -p trnovel --bins --no-default-features
+git clone https://github.com/yexiyue/TRNovel.git
+cd TRNovel
+cargo build --release --locked -p trnovel --bins
 ```
 
-听书版把三个可执行文件放在同一目录；也可用 `--tts-program <路径>` 指定独立程序。两种 Mac 架构、Linux GNU x64 和 Windows MSVC x64 使用相应压缩包。Windows 保持动态 CRT，Linux 听书程序需要 ALSA，阅读器无需 ALSA/ONNX Runtime。
+无需递归检出。Talechime 独立安装或在它自己的仓库构建。worker 查找顺序为 `--tts-program` → `[tts].program` → PATH 中的 `talechime`；指定路径无效直接报错，不自动下载、更新或回退旧名称。
 
-ARM64 musl 通过单独 Alpine 构建提供 `trnovel-basic-aarch64-unknown-linux-musl.tar.gz` 和 `trnovel-aarch64-unknown-linux-musl.tar.gz`。两者均动态链接 musl/OpenSSL/libstdc++；听书包额外需要 ALSA 与支持 API 22 的 ONNX Runtime。通用安装器不选择 musl 制品。
-
-回退时用上一版对应变体的压缩包整体替换可执行文件。保持默认数据目录，勿把新旧协议程序混放；遇到主版本不兼容会报告握手失败，阅读功能仍可用。
+数据目录已更新，旧文件不读取、不自动搬迁，见[手工搬迁](/TRNovel/guides/migration/)。回退应用时使用对应旧版二进制和备份目录；协议主版本不匹配只影响听书。

@@ -195,9 +195,9 @@ async fn load_font(src: &str) -> Result<Vec<u8>> {
     }
 }
 
-/// 确保基准字体存在(缓存到 `~/.novel/gen-fontmap/`),首次自动下载 Noto。
+/// 确保基准字体存在(缓存到 `~/.trnovel/gen-fontmap/`),首次自动下载 Noto。
 async fn ensure_noto() -> Result<Vec<u8>> {
-    let dir = crate::utils::novel_catch_dir()?.join("gen-fontmap");
+    let dir = crate::paths::AppPaths::user_default()?.fontmap();
     let path: PathBuf = dir.join("NotoSansCJKsc-Regular.otf");
     if path.exists() {
         return Ok(std::fs::read(&path)?);

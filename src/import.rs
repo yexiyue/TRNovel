@@ -1,4 +1,4 @@
-//! `import` 子命令:把书源 JSON(本地文件或 URL)导入 `~/.novel/book_sources.json`,
+//! `import` 子命令:把书源 JSON(本地文件或 URL)导入 `~/.trnovel/data/book_sources.json`,
 //! 使 AI 生成、经 `doctor` 验证过的书源**直接可用**于网络小说(无需进 TUI 手动导入)。
 //!
 //! 闭环:探站生成 → `trn doctor` 验证 → `trn import` 导入 → 在网络小说里选用。
@@ -35,7 +35,7 @@ pub async fn run(source: &str) {
 
     let path = BookSourceCache::get_cache_file_path()
         .map(|p| p.display().to_string())
-        .unwrap_or_else(|_| "~/.novel/book_sources.json".into());
+        .unwrap_or_else(|_| "~/.trnovel/data/book_sources.json".into());
     println!("✓ 已导入 {} 个书源 → {path}", names.len());
     for n in &names {
         println!("  - {n}");

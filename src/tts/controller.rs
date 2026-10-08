@@ -451,9 +451,17 @@ impl Actor {
             return Ok(());
         }
         self.release().await;
+        let configured = if self.path.is_none() {
+            crate::config::ConfigStore::user_default()?
+                .load()?
+                .tts
+                .program
+        } else {
+            None
+        };
         let path = discover(
             self.path.as_deref(),
-            &std::env::current_exe()?,
+            configured.as_deref(),
             std::env::var_os("PATH").as_deref(),
         )?;
         let (client, ready) = Client::connect(&path).await?;

@@ -17,15 +17,13 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
-        with:
-          submodules: recursive
 
       - name: Set up Rust
         uses: dtolnay/rust-toolchain@stable
       - name: Install dependencies
         run: |
           sudo apt-get update
-          sudo apt install libasound2-dev
+          sudo apt install libssl-dev pkg-config
 
       - name: Extract crate prefix and version from tag
         id: extract
@@ -63,24 +61,4 @@ jobs:
 
           cd "$CRATE_PATH"
           ls
-          cargo publish --token "$CARGO_REGISTRY_TOKEN"
-
-  bootstrap-talechime-secrets:
-    if: github.event_name == 'workflow_dispatch'
-    runs-on: ubuntu-latest
-    permissions:
-      contents: read
-    steps:
-      - name: Configure Talechime publishing credentials
-        env:
-          GH_TOKEN: ${{ secrets.TALECHIME_BOOTSTRAP_TOKEN }}
-          CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
-          HOMEBREW_TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
-        shell: bash
-        run: |
-          set -eu
-          test -n "$GH_TOKEN"
-          test -n "$CARGO_REGISTRY_TOKEN"
-          test -n "$HOMEBREW_TAP_TOKEN"
-          printf '%s' "$CARGO_REGISTRY_TOKEN" | gh secret set CARGO_REGISTRY_TOKEN --repo yexiyue/talechime
-          printf '%s' "$HOMEBREW_TAP_TOKEN" | gh secret set HOMEBREW_TAP_TOKEN --repo yexiyue/talechime
+          cargo publish --locked

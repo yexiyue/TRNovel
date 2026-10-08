@@ -75,11 +75,28 @@ async fn crash_requires_an_explicit_new_connection() {
 }
 
 #[test]
-fn explicit_missing_path_fails_without_falling_back() {
-    let (_directory, program) = fixture("novel-tts");
-    let executable = program.with_file_name("trnovel");
-    assert!(discover(Some(&program.with_file_name("missing")), &executable, None).is_err());
-    assert_eq!(discover(None, &executable, None).unwrap(), program);
+fn discover_obeys_cli_config_path_precedence_and_reports_missing() {
+    let (directory, program) = fixture("talechime");
+    let (_other, configured) = fixture("configured");
+    let path = std::env::join_paths([directory.path()]).unwrap();
+    let missing = directory.path().join("missing");
+    assert_eq!(
+        discover(Some(&program), Some(&configured), Some(&path)).unwrap(),
+        program
+    );
+    assert_eq!(
+        discover(None, Some(&configured), Some(&path)).unwrap(),
+        configured
+    );
+    assert_eq!(discover(None, None, Some(&path)).unwrap(), program);
+    assert!(discover(Some(&missing), Some(&configured), Some(&path)).is_err());
+    assert!(discover(None, Some(&missing), Some(&path)).is_err());
+    assert!(
+        discover(None, None, None)
+            .unwrap_err()
+            .to_string()
+            .contains("https://github.com/yexiyue/talechime")
+    );
 }
 
 #[tokio::test]

@@ -1,0 +1,53 @@
+---
+title: 新版目录与手工搬迁
+lastUpdated: 2026-10-08
+---
+
+TRNovel 统一发布 `trnovel`、`trn`，默认提供听书界面。Talechime 独立安装；basic、捆绑 worker、加速包及 ARM64 musl 专用包停止更新。已有旧文件保持原样，新程序不读取旧目录，不自动搬迁。
+
+## 目录归属
+
+| 应用 | 路径 | 内容 |
+| --- | --- | --- |
+| TRNovel | `~/.trnovel/config.toml` | 外观、阅读偏好、浏览器许可、worker 路径 |
+| TRNovel | `~/.trnovel/keybindings.toml`、`toc_rules.json` | 快捷键和目录规则 |
+| TRNovel | `~/.trnovel/data/` | 书源、历史、登录态、浏览器 profile、local/network 阅读记录 |
+| TRNovel | `~/.trnovel/cache/` | 可重建字体等资源 |
+| Talechime | `~/.talechime/config.json` | 听书配置 |
+| Talechime | `~/.talechime/checkpoints/` | 听书恢复点 |
+| Talechime | `~/.talechime/resources/` | 模型、音色、编码缓存、校准资源 |
+
+`trnovel clear` 仅删除 `data/history.json`、`data/local/`、`data/network/` 和 `cache/`，保留其他文件，也不触碰 Talechime 数据。
+
+## 手工搬迁
+
+先退出两边程序并备份旧目录。在新目录中不存在同名文件时复制以下内容；已有新数据时先人工合并，避免覆盖。
+
+1. 把 `~/.novel/` 内的 `book_sources.json`、`history.json`、`source-state/`、`browser-profile/`、`local/`、`network/` 复制到 `~/.trnovel/data/`。
+2. 把旧 `keybindings.toml`、`toc_rules.json` 复制到 `~/.trnovel/`。字体 `gen-fontmap/` 可复制到 `~/.trnovel/cache/`，也可重新生成。
+3. 旧外观与阅读 JSON 需手工转换为下方 TOML；将 `themeSlug`、`followTts`、`showTitle`、`pageOverlap`、`paragraphSpacing` 分别改为对应 snake_case 字段。旧 `browser_assist.on` 若存在且仍希望总是允许，设置 `always_allow = true`。不要把旧 JSON 直接改扩展名。
+4. 把 `~/.novel/tts_config.json` 复制为 `~/.talechime/config.json`，把 `~/.novel/tts/checkpoints/` 的内容复制到 `~/.talechime/checkpoints/`。若旧配置使用已退休的 Kokoro/ZipVoice，手工选择 `backend: "moss"`、`model: "nano"`、可用音色和 CPU，或直接重新设置；新版不自动迁移退休后端。
+5. 把旧 `~/.novel-tts/` **内容整体**复制到 `~/.talechime/resources/`，保留 `moss/`、`qwen/`、`voxcpm/`、`alignment/` 等所有相对结构，避免产生 `resources/.novel-tts/` 这一额外层。已完整下载的资源会校验复用。
+
+```toml
+[appearance]
+theme_slug = "tokyo-night"
+background = "terminal"
+
+[reader]
+follow_tts = true
+show_title = true
+page_overlap = 2
+paragraph_spacing = false
+
+[browser]
+always_allow = false
+
+[tts]
+# 不填则从 PATH 查找 talechime；Windows 建议使用单引号避免反斜杠转义。
+# program = 'D:\tools\talechime.exe'
+```
+
+缺少分节或字段使用默认值。保存一个分节会保留其余分节，使用文件锁与原子替换；损坏的 TOML 会报错，不被静默覆盖。`page_overlap` 限制为 0–10。
+
+两个应用通过 JSON Lines v5 握手，各自应用版本无需相同；协议不匹配时升级相应程序。缺少 Talechime 仅影响听书，普通阅读仍可使用。旧文件确认无用后由用户自行删除。

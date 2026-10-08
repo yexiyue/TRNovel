@@ -1,4 +1,4 @@
-use crate::utils::novel_catch_dir;
+use crate::paths::AppPaths;
 use anyhow::Result;
 use serde::{Deserialize, Serialize};
 use std::{fs::File, path::PathBuf};
@@ -19,7 +19,7 @@ pub struct History {
 impl History {
     const MAX_LEN: usize = 100;
     pub fn get_cache_file_path() -> Result<PathBuf> {
-        Ok(PathBuf::new().join(novel_catch_dir()?).join("history.json"))
+        Ok(AppPaths::user_default()?.history())
     }
 
     pub fn load() -> Result<Self> {
@@ -33,7 +33,9 @@ impl History {
     }
 
     pub fn save(&self) -> Result<()> {
-        let file = File::create(Self::get_cache_file_path()?)?;
+        let path = Self::get_cache_file_path()?;
+        std::fs::create_dir_all(path.parent().expect("data directory"))?;
+        let file = File::create(path)?;
         serde_json::to_writer_pretty(file, self)?;
         Ok(())
     }

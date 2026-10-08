@@ -30,7 +30,7 @@ import { Aside } from "@astrojs/starlight/components";
 
 滚动与翻页读到**章末**时不会直接跳章:底部先提示「已到本章末尾」,再按一次才进入下一章,防止最后一行没看完手滑跳走。章首向上同理。
 
-以上按键均可在 `~/.novel/keybindings.toml` 中[自定义](/TRNovel/guides/keybindings/)(v0.15.0+)。
+以上按键均可在 `~/.trnovel/keybindings.toml` 中[自定义](/TRNovel/guides/keybindings/)(v0.15.0+)。
 
 <Aside type="tip">
 记不住键位?任意页面按 `i` 即可呼出当前模式支持的全部快捷键。
@@ -52,7 +52,7 @@ import { Aside } from "@astrojs/starlight/components";
 
 ## 阅读设置
 
-阅读模式按 `O` 打开阅读设置面板,`↑/↓` 选择条目、`←/→` 调整,改动即时生效并自动保存到 `~/.novel/reader-display.json`:
+阅读模式按 `O` 打开阅读设置面板,`↑/↓` 选择条目、`←/→` 调整,改动即时生效并自动保存到 `~/.trnovel/config.toml` 的 `[reader]`:
 
 ![阅读设置](../../../assets/guides/reader-settings.gif)
 
@@ -72,7 +72,7 @@ import { Aside } from "@astrojs/starlight/components";
 
 ## 跟随朗读
 
-听书版默认开启“跟随朗读”。实际播放的片段进入窗口底部两行或移出窗口时，阅读器会滚动，将片段起始位置放在上方约三分之一处；片段仍在安全区域时不移动。无需开启逐句对齐。
+阅读器默认开启“跟随朗读”。实际播放的片段进入窗口底部两行或移出窗口时，阅读器会滚动，将片段起始位置放在上方约三分之一处；片段仍在安全区域时不移动。无需开启逐句对齐。
 
 手动滚动、翻页、跳到开头/结尾或进入正文搜索后，底栏显示“自由浏览”，窗口保持在手动位置。按 `f` 回到当前朗读位置并恢复跟随；自定义键位后以帮助和底栏显示的键为准。暂停或缓冲期间也可以用该操作定位，但不会启动播放。
 

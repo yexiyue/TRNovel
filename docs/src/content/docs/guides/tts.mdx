@@ -8,7 +8,7 @@ sidebar:
         variant: success
 ---
 
-听书由独立项目 [Talechime · 叙铃](https://github.com/yexiyue/talechime) 的 `novel-tts` 兼容程序处理。源码通过固定版本的 Git 子模块集成；先运行 `git submodule update --init --recursive`。阅读器提交章节正文，显示片段高亮，并按正常完成事件续章；显式开启对齐后才异步切换逐句高亮。所有模型及音频设备保留在听书进程中；新用户有可用 GPU 且编入 Qwen 时默认选择 1.7B-CustomVoice，无 GPU 时选择已编译的 MOSS Nano，对齐默认关闭，无需 Python。
+听书由独立安装的 [Talechime · 叙铃](https://github.com/yexiyue/talechime#installation) 处理。TRNovel 默认提供听书 UI，仅链接轻量协议库，通过 JSON Lines v5 与 worker 通信；两边应用版本无需相同。普通阅读无需安装 worker。标准包提供 Nano、对齐与 Qwen / VoxCPM / OmniVoice；Apple Silicon 增加 Metal 和 MOSS Candle Metal，Windows/Linux 使用 CPU。CUDA 通过源码构建使用。
 
 ## 从源码构建
 
@@ -17,34 +17,26 @@ MOSS 的 GPU 实验档可增加 `moss-candle-cuda`，提供 `local-1.7b` 和
 当前优先试听 Realtime；Local 尚未达到主力速度要求。
 
 ```sh
-cargo build --release --manifest-path vendor/talechime/Cargo.toml -p talechime --target-dir target --features qwen-cuda,voxcpm-cuda,omnivoice-cuda,moss-candle-cuda
-novel-tts --backend moss --model realtime-1.7b --tts-device cuda voices design myvoice --name "我的音色" --description "温暖清晰的成年女性普通话"
-novel-tts --backend moss --model realtime-1.7b --voice custom:myvoice --tts-device cuda book.txt
+cargo build --release --manifest-path ../talechime/Cargo.toml -p talechime --target-dir target --features qwen-cuda,voxcpm-cuda,omnivoice-cuda,moss-candle-cuda
+talechime --backend moss --model realtime-1.7b --tts-device cuda voices design myvoice --name "我的音色" --description "温暖清晰的成年女性普通话"
+talechime --backend moss --model realtime-1.7b --voice custom:myvoice --tts-device cuda book.txt
 ```
 
 VoiceGenerator 只设计一次短参考，长文复用保存音色。导入参考为 1–10 秒 WAV，
 需要 `--text` 记录对应文字。新模型及共用 codec 存在默认
-`~/.novel-tts/moss/models/<id>/<revision>`；不同模型的音色和编码缓存隔离。
+`~/.talechime/moss/models/<id>/<revision>`；不同模型的音色和编码缓存隔离。
 新模式暂只开放 GPU，CPU 继续用 Nano；CLI 可用 `--model nano --tts-device cpu` 切回。
 Metal 构建入口为 `moss-candle-metal`，外平台实机及人工听感仍未验收。
 
-此次重构的双变体发行与安装渠道仍在验收，可先从 workspace 构建：
+在 TRNovel 仓库构建阅读器，Talechime 在它自己的仓库独立构建。使用同级检出时：
 
 ```sh
-# 基础阅读版：没有听书面板、播放键位和听书原生依赖
-cargo build -p trnovel --no-default-features
-
-# 听书阅读版及配套程序：两个程序在同一个 target/debug 目录
-cargo build -p trnovel
-cargo build --manifest-path vendor/talechime/Cargo.toml -p talechime --target-dir target
-
-# 也可只构建独立文件朗读程序
-cargo build --manifest-path vendor/talechime/Cargo.toml -p talechime --target-dir target
-
-
+cargo build --locked -p trnovel --bins
+cargo build --locked --manifest-path ../talechime/Cargo.toml -p talechime --features qwen,voxcpm,omnivoice
+trnovel --tts-program ../talechime/target/debug/talechime
 ```
 
-阅读器查找 `novel-tts` 的顺序为 `--tts-program <路径>`、阅读器同目录、PATH。明确路径无效时会直接提示；缺少程序不影响普通阅读。
+查找顺序为 `--tts-program <路径>`、`~/.trnovel/config.toml` 的 `[tts].program`、PATH 中的 `talechime`。明确路径无效直接报错；缺少程序会显示安装链接，不影响普通阅读，不自动安装或更新。数据搬迁见[迁移指南](/TRNovel/guides/migration/)。
 
 ## 听书设置
 
@@ -70,26 +62,26 @@ cargo build --manifest-path vendor/talechime/Cargo.toml -p talechime --target-di
 
 按播放键 `P` 或在准备行按 Enter 才会加载模型，并下载缺少资源。下载可取消、续传；半文件保留，服务器忽略 Range 时重头下载。
 
-MOSS 资源保存在 `$HOME/.novel-tts/moss/{tts,codec}`，固定版本共约 763 MB，下载后校验大小和 SHA-256。损坏文件会隔离，下次准备重新下载。支持原生流式播放，输出 48kHz 双声道 PCM；按自然段合并上下文，跳过装饰分隔行，裁剪块边界静音。对齐与播放使用同一份处理后的 PCM。
+MOSS 资源保存在 `$HOME/.talechime/moss/{tts,codec}`，固定版本共约 763 MB，下载后校验大小和 SHA-256。损坏文件会隔离，下次准备重新下载。支持原生流式播放，输出 48kHz 双声道 PCM；按自然段合并上下文，跳过装饰分隔行，裁剪块边界静音。对齐与播放使用同一份处理后的 PCM。
 
 `--model-dir` 覆盖包含各后端子目录的公共根目录。
 
 ### Qwen TTS（Candle）
 
-可选 `qwen` feature 集成原生 Candle 推理，支持 0.6B/1.7B CustomVoice 与 1.7B Base；已有未声明模型的 Qwen 配置仍使用 0.6B，提供九种预置音色，默认福叔 `uncle_fu`。0.6B 资源约 2.50 GB，1.7B 每种变体约 4.52 GB，仅下载所选模型并校验到 `$HOME/.novel-tts/qwen/`。它与 `alignment/qwen/` 的强制对齐模型相互独立。
+可选 `qwen` feature 集成原生 Candle 推理，支持 0.6B/1.7B CustomVoice 与 1.7B Base；已有未声明模型的 Qwen 配置仍使用 0.6B，提供九种预置音色，默认福叔 `uncle_fu`。0.6B 资源约 2.50 GB，1.7B 每种变体约 4.52 GB，仅下载所选模型并校验到 `$HOME/.talechime/qwen/`。它与 `alignment/qwen/` 的强制对齐模型相互独立。
 
 ```sh
 # macOS：保留 MOSS，增加 Qwen 与 Metal GPU 支持
-cargo build --release --manifest-path vendor/talechime/Cargo.toml -p talechime --target-dir target --features qwen,metal
+cargo build --release --manifest-path ../talechime/Cargo.toml -p talechime --target-dir target --features qwen,metal
 # Windows/Linux NVIDIA：只编入 Qwen，编译时需要 CUDA Toolkit
-cargo build --release --manifest-path vendor/talechime/Cargo.toml -p talechime --target-dir target --no-default-features --features qwen-cuda
-novel-tts --backend qwen --voice uncle_fu book.txt
-novel-tts --backend qwen voices list
+cargo build --release --manifest-path ../talechime/Cargo.toml -p talechime --target-dir target --no-default-features --features qwen-cuda
+talechime --backend qwen --voice uncle_fu book.txt
+talechime --backend qwen voices list
 ```
 
 TUI 按模型能力展示可用音色；Qwen Base 提供参考音频克隆，1.7B CustomVoice 提供朗读风格。CLI/TUI 切换后端时将合成设备重置为 auto，保持阅读位置，由用户重新准备和播放。Qwen 支持 CPU、Candle CUDA（Windows/Linux）和 Metal（macOS）。Metal 与 CoreML 是不同执行路径，请按各后端报告的设备选择。
 
-Candle 实现已纳入本地 `vendor/talechime/crates/qwen3-tts`，来源 revision 已记录。流式小块的解码边界、长文本覆盖和主观音质需要试听确认，不能以正常 EOS 代替音质验收。
+Candle 实现已纳入本地 `Talechime 仓库的 crates/qwen3-tts`，来源 revision 已记录。流式小块的解码边界、长文本覆盖和主观音质需要试听确认，不能以正常 EOS 代替音质验收。
 
 ### 其他模型
 
@@ -101,15 +93,15 @@ Candle 实现已纳入本地 `vendor/talechime/crates/qwen3-tts`，来源 revisi
 
 编入 `voxcpm-cuda` 后，可在阅读器的 VoxCPM 后端“模型”行选择
 “原始 BF16（实验）”；默认仍为 Q8，已有选择保留。实验模型约 4.96 GB，
-保存在 `~/.novel-tts/voxcpm/models/2b-bf16/<revision>`，已有完整缓存直接校验复用。
+保存在 `~/.talechime/voxcpm/models/2b-bf16/<revision>`，已有完整缓存直接校验复用。
 数值对照、人工听感和长期稳定性仍有待验收项，设置面板会显示提示。
 音色按模型隔离；要比较同一音色，可用 `--model 2b-bf16 voices import`
 重新导入相同参考 WAV 和文字。实验档不开放 CPU 或 Metal。
 
 ```sh
-cargo build --release --manifest-path vendor/talechime/Cargo.toml -p talechime --target-dir target --features qwen-cuda,voxcpm-cuda,omnivoice-cuda
-novel-tts --backend qwen --model 1.7b-customvoice --tts-device cuda book.txt
-novel-tts --backend qwen --model 1.7b-base voices design storyteller --name "沉稳男声" --description "沉稳、自然的中文男声"
+cargo build --release --manifest-path ../talechime/Cargo.toml -p talechime --target-dir target --features qwen-cuda,voxcpm-cuda,omnivoice-cuda
+talechime --backend qwen --model 1.7b-customvoice --tts-device cuda book.txt
+talechime --backend qwen --model 1.7b-base voices design storyteller --name "沉稳男声" --description "沉稳、自然的中文男声"
 ```
 
 VoxCPM2 和 OmniVoice 使用相同的 `voices list/import/remove/design` 入口，阅读器选择已保存音色。设计只生成一次短参考，长文复用克隆音色。模型、revision 和音色缓存相互隔离。OmniVoice tokenizer 附带 BOSON/Higgs/Llama 许可。
@@ -119,27 +111,27 @@ macOS 使用 `metal,voxcpm-metal,omnivoice-metal`。协议版本为 5，旧 work
 ## 导入音色
 
 ```sh
-novel-tts voices list
-novel-tts voices import narrator --name "我的朗读音色" reference.wav
-novel-tts --backend moss --voice custom:narrator book.txt
-novel-tts voices remove narrator
+talechime voices list
+talechime voices import narrator --name "我的朗读音色" reference.wav
+talechime --backend moss --voice custom:narrator book.txt
+talechime voices remove narrator
 ```
 
-参考音频使用 1..30 秒非静音 mono/stereo WAV，内部重采样和编码，保存到 `~/.novel-tts/moss/voices/`。播放只读取缓存，不重复编码。重复 ID 拒绝覆盖，删除仅限自定义音色。导入后重新连接听书程序以刷新 TUI 音色目录。首版通过 CLI 管理音色，TUI 只选择音色。
+参考音频使用 1..30 秒非静音 mono/stereo WAV，内部重采样和编码，保存到 `~/.talechime/moss/voices/`。播放只读取缓存，不重复编码。重复 ID 拒绝覆盖，删除仅限自定义音色。导入后重新连接听书程序以刷新 TUI 音色目录。首版通过 CLI 管理音色，TUI 只选择音色。
 
 ## 播放与恢复
 
 在阅读模式按 `P` 播放/暂停，`+`/`-` 调音量。切章停止旧会话并过滤迟到事件；搜索高亮优先。暂停保留位置，停止保留模型，释放资源关闭程序。只有当前章节正常播放完成才能触发自动续章，最后一章结束后复位。
 
-恢复点由听书程序保存在 `~/.novel/tts/checkpoints/`。正文 SHA-256、来源和 UTF-8 字节坐标必须匹配；正文变化、损坏数据或未知版本会提示错误，可用面板「从章首重播」主动重置。崩溃后可能重复最近未完成片段，不自动开始播放。
+恢复点由听书程序保存在 `~/.talechime/checkpoints/`。正文 SHA-256、来源和 UTF-8 字节坐标必须匹配；正文变化、损坏数据或未知版本会提示错误，可用面板「从章首重播」主动重置。崩溃后可能重复最近未完成片段，不自动开始播放。
 
-听书配置仍是 `~/.novel/tts_config.json`，旧音量、速度、音色、自动播放字段保留。有可用 GPU 且编入 Qwen 时，新配置选择 1.7B-CustomVoice 和检测到的 CUDA/Metal；否则选择 CPU MOSS Nano。旧 Kokoro、ZipVoice 及缺少 backend 的配置在 worker 启动时迁移为 MOSS Nano 默认音色并选择 CPU，保留其他偏好及未知字段，修订号递增一次；其他后端配置保留，旧 Qwen 缺少 model 时解释为 0.6B。未编译的后端会明确报错，需要用户主动切换。只有听书程序写配置；界面显示保存成功后的快照。配置损坏或修订冲突时不会覆盖原文件，刷新后再主动修改。
+听书配置仍是 `~/.talechime/config.json`，旧音量、速度、音色、自动播放字段保留。有可用 GPU 且编入 Qwen 时，新配置选择 1.7B-CustomVoice 和检测到的 CUDA/Metal；否则选择 CPU MOSS Nano。已退休后端不再自动迁移，需手工选择当前支持的模型。未编译的后端会明确报错，需要用户主动切换。只有听书程序写配置；界面显示保存成功后的快照。配置损坏或修订冲突时不会覆盖原文件，刷新后再主动修改。
 
 ## 独立文件朗读
 
 ```sh
-novel-tts book.txt
-novel-tts --restart book.txt
+talechime book.txt
+talechime --restart book.txt
 ```
 
 仅支持 UTF-8 文本文件。交互终端中空格暂停/继续，s 停止并退出，q/Esc/Ctrl+C 退出；非交互终端不启用原始模式，正文完成后退出。详细的协议、路径覆盖和退出码见仓库 [Talechime README](https://github.com/yexiyue/talechime)。
@@ -148,14 +140,14 @@ novel-tts --restart book.txt
 
 ## 逐句对齐与 GPU
 
-显式开启逐句高亮后，CPU 使用 Qwen3-ForcedAligner-0.6B 的 Q4 ONNX，约 0.99 GiB，准备资源时按需下载至 `~/.novel-tts/alignment/qwen/` 并校验。音频立即播放；后台对齐成功后切换逐句高亮，迟到结果不会倒退。缺少资源、失败、超时或任务积压时显示“片段高亮”并继续朗读。暂停保留高亮，恢复后继续按原始 PCM 帧位置推进；倍速不改变句子时间线。
+显式开启逐句高亮后，CPU 使用 Qwen3-ForcedAligner-0.6B 的 Q4 ONNX，约 0.99 GiB，准备资源时按需下载至 `~/.talechime/alignment/qwen/` 并校验。音频立即播放；后台对齐成功后切换逐句高亮，迟到结果不会倒退。缺少资源、失败、超时或任务积压时显示“片段高亮”并继续朗读。暂停保留高亮，恢复后继续按原始 PCM 帧位置推进；倍速不改变句子时间线。
 
 ```sh
 # Apple Silicon 的 CoreML 构建
-cargo build --release --manifest-path vendor/talechime/Cargo.toml -p talechime --target-dir target --features coreml
+cargo build --release --manifest-path ../talechime/Cargo.toml -p talechime --target-dir target --features coreml
 # NVIDIA Linux/Windows 的 CUDA 构建
-cargo build --release --manifest-path vendor/talechime/Cargo.toml -p talechime --target-dir target --features ort-cuda
-novel-tts --tts-device auto --alignment-device auto book.txt
+cargo build --release --manifest-path ../talechime/Cargo.toml -p talechime --target-dir target --features ort-cuda
+talechime --tts-device auto --alignment-device auto book.txt
 ```
 
 默认 auto 独立校准合成与对齐：3 次预热、5 次测量，完整链路至少快 15%、首音频回退不超过 10% 才选加速；还检查并发竞争。GPU 对齐浮点资源约 3.42 GiB，首次校准可触发下载。显式选择不可用设备会报错；自动模式运行失败后切回 CPU 并显示原因，不重播已输出音频。
@@ -166,7 +158,7 @@ CoreML 可用并不保证更快或全部算子在 GPU。本机 M4 Pro 的 MOSS �
 
 逐句高亮默认关闭。听书设置中的“逐句高亮”开启后才显示“对齐设备”；首次启用需要额外准备 Qwen 模型。关闭时不会下载、加载或校准对齐模型，使用片段高亮。切换开关会停播并保留续读位置，请重新启用模型后播放。
 
-独立命令可用 `novel-tts --alignment book.txt` 开启，或 `novel-tts --alignment=false book.txt` 关闭。
+独立命令可用 `talechime --alignment book.txt` 开启，或 `talechime --alignment=false book.txt` 关闭。
 
 MOSS 会合并排版单换行，空行、章节标题和装饰分隔线仍形成边界。长输入会按音色时长估算和模型预算切分。若模型超限或推理失败，会明确停止并保留位置，不自动重复已播放内容。模型的正常结束信号不能作为全部文字已经朗读的证明。
 

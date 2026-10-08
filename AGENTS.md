@@ -12,13 +12,13 @@ Consult applicable proposals in `openspec/changes/` before changing behavior. Hi
 
 ## Project Layout
 
-TRNovel is a Rust 2024 terminal novel reader. The root application builds `trnovel` and `trn`; the workspace library is `crates/parse-book-source`. TTS lives in the independent Talechime repository, pinned as the `vendor/talechime` Git submodule; its separate workspace builds `talechime` and the compatible `novel-tts` CLI. Initialize submodules before building. Documentation uses Astro/Starlight in `docs/`.
+TRNovel is a Rust 2024 terminal novel reader. The root application builds `trnovel` and `trn`; the workspace library is `crates/parse-book-source`. TTS is the independently installed Talechime executable, connected via crates.io `talechime-protocol 0.1.0` and JSON Lines v5. No Git submodule is required. Documentation uses Astro/Starlight in `docs/`.
 
 Book sources use structured `trnovel-booksource/v2` JSON and `parse_book_source::Engine`; they do not directly accept Legado book-source JSON. Keep source types, JSON Schema and documentation examples in sync.
 
-The TUI uses ratatui-kit components and hooks. Routes and root providers live in `src/app/`. Process-wide appearance, reader preferences, TTS handles and keybindings live in `src/state.rs` as atoms; caches that rely on `Drop::save` remain owned by the app. Configurable keyboard actions live in `src/keymap/` and load `~/.novel/keybindings.toml`.
+The TUI uses ratatui-kit components and hooks. Routes and root providers live in `src/app/`. Process-wide appearance, reader preferences, TTS handles and keybindings live in `src/state.rs` as atoms; caches that rely on `Drop::save` remain owned by the app. Configurable keyboard actions live in `src/keymap/` and load `~/.trnovel/keybindings.toml`.
 
-Runtime data lives under `~/.novel/`; TTS models live under `~/.novel-tts/`. Preserve existing persisted formats unless a migration is part of the task.
+Paths are centralized in `src/paths.rs`. `~/.trnovel/config.toml` stores appearance/reader/browser/tts sections through the transactional ConfigStore; data lives in `data/`, rebuildable resources in `cache/`. Talechime owns `~/.talechime/`. Never read, migrate or delete legacy homes automatically. `clear` preserves preferences, book sources and login state.
 
 ## Commands
 
@@ -35,7 +35,6 @@ cargo fmt --all --check
 RUSTDOCFLAGS="-D warnings" cargo doc --no-deps --document-private-items --all-features --workspace --examples
 
 cargo run -p parse-book-source --features schema --example gen_schema
-cargo run --manifest-path vendor/talechime/Cargo.toml -p talechime-backends --example moss
 
 cd docs
 pnpm install
@@ -49,12 +48,12 @@ Tests exist in both the application and library crates, plus `tests/`. Optional 
 
 Use Rust 2024 idioms and `rustfmt.toml`. Modules use `foo.rs`, with a same-named directory only when child modules exist, functions and variables use snake_case, and types use PascalCase. Keep shared dependencies in `[workspace.dependencies]`. Avoid unrelated parser, UI-state or cache refactors.
 
-Rust 1.89 or newer is required. Linux builds need ALSA/OpenSSL development libraries and pkg-config. Preserve the pinned ort version and `msvc-crt-static = false`; see toolchain notes before changing native dependencies.
+Rust 1.89 or newer is required. Linux reader builds need OpenSSL development libraries and pkg-config. Preserve the pinned ort version and `msvc-crt-static = false`; see toolchain notes before changing native dependencies.
 
 `lefthook.yaml` runs tests, Clippy, formatting and rustdoc before commits. Honor any explicit user instruction to validate through CI instead of running locally.
 
 ## Releases and Contributions
 
-`release.sh` uses cargo-release and git-cliff. Application tags `trnovel-v*` trigger cargo-dist; crate tags also trigger crates.io publication. Change cargo-dist metadata and regenerate `.github/workflows/trnovel-release.yml` rather than editing the generated workflow. npm uses OIDC Trusted Publishing; Homebrew uses its tap token. ARM64 musl uses a custom Alpine build and requires runtime shared libraries.
+`.github/scripts/release.sh` uses cargo-release and git-cliff. Application tags `trnovel-v*` trigger cargo-dist; crate tags also trigger crates.io publication. Change cargo-dist metadata and regenerate `.github/workflows/trnovel-release.yml` rather than editing the generated workflow. npm uses OIDC Trusted Publishing; Homebrew uses its tap token. Both applications use cargo-dist 0.32.0 and one native Cargo dist-workspace.toml each. Official targets are Apple Silicon macOS, x86_64 Linux GNU and x86_64 Windows MSVC. TRNovel never bundles a worker or audio inference libraries; basic, accelerated and ARM64 musl distribution are retired.
 
 Use Conventional Commit messages. PRs should explain the behavior, scope and validation, with persisted-format or schema impacts when relevant. Include screenshots for visible UI changes.

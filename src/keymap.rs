@@ -1,4 +1,4 @@
-//! 阅读页按键映射:action 枚举、代码内默认表与 `~/.novel/keybindings.toml` 加载。
+//! 阅读页按键映射:action 枚举、代码内默认表与 `~/.trnovel/keybindings.toml` 加载。
 //!
 //! 基于 [`ratatui_kit_keymap`]:一个 `Keymap<A>` 即一个 scope,当前只有 `reader`
 //! (阅读页),后续 scope(shell 键/列表页)由后续变更逐步扩入。配置文件对程序
@@ -106,17 +106,17 @@ fn reader_defaults() -> Keymap<ReaderAction> {
     builder.build()
 }
 
-/// 加载 `~/.novel/keybindings.toml` 并合并到默认表。
+/// 加载 `~/.trnovel/keybindings.toml` 并合并到默认表。
 ///
 /// 返回 `(键位表, 用户可读的中文告警)`。文件不存在 → 默认、无告警;读取失败或
 /// 整体不是合法 TOML → 默认 + 一条告警;条目级问题(非法键位/类型错误/冲突/
 /// 未知操作)由 crate 降级为逐条告警。
 pub fn load_keymap() -> (AppKeymap, Vec<String>) {
     let mut keymap = AppKeymap::default();
-    let Ok(dir) = crate::utils::novel_catch_dir() else {
+    let Ok(dir) = crate::paths::AppPaths::user_default() else {
         return (keymap, Vec::new());
     };
-    let path = dir.join("keybindings.toml");
+    let path = dir.keybindings();
     if !path.exists() {
         return (keymap, Vec::new());
     }

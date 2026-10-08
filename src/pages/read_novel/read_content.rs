@@ -391,7 +391,7 @@ pub fn ReadContent(
     // 翻页步长:整屏减去用户配置的重叠行数,让上一屏末尾的若干行留在新一屏开头作视觉锚点
     // (issue #63)。公式在 ReaderDisplayConfig 上,设置面板展示「每页滚动 M 行」时调同一个。
     let step = reader_display.read().page_step(view);
-    // 按语义 action 分发(键位可经 ~/.novel/keybindings.toml 自定义);
+    // 按语义 action 分发(键位可经 ~/.trnovel/keybindings.toml 自定义);
     // 页面级 action(模式/浮层切换)不在本组件处理,Ignored 交给上层。
     let reader_keymap = hooks.use_atom(&crate::state::KEYMAP).read().reader.clone();
     #[cfg(feature = "tts")]

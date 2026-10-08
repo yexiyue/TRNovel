@@ -1,21 +1,18 @@
-//! per-source 登录态(`SourceState`)的 app 侧持久化(`~/.novel/source-state/{url_md5}.json`)。
+//! per-source 登录态(`SourceState`)的 app 侧持久化(`~/.trnovel/data/source-state/{url_md5}.json`)。
 //!
 //! 库(`parse-book-source`)的 [`SourceState`] 不硬编码 `~/.novel` 路径,保持纯净;
 //! 这里给定路径、做加载时 TTL 清理与落盘(含 unix 0600 权限,见库侧 `state.rs`)。
 //! 登录态(loginHeader / cookies / 加密 loginInfo)由本模块管理,经 `build_engine` 注入每个引擎。
 
-use crate::{
-    Result,
-    utils::{get_md5_string, novel_catch_dir},
-};
+use crate::{Result, utils::get_md5_string};
 use parse_book_source::state::SourceState;
 use std::path::PathBuf;
 
-/// 某书源登录态文件路径(`~/.novel/source-state/{url_md5}.json`)。
+/// 某书源登录态文件路径(`~/.trnovel/data/source-state/{url_md5}.json`)。
 /// 纯路径计算,不做文件系统副作用;建目录由保存方负责(库侧 `SourceState::save` 已建父目录)。
 pub fn source_state_path(source_url: &str) -> Result<PathBuf> {
-    Ok(novel_catch_dir()?
-        .join("source-state")
+    Ok(crate::paths::AppPaths::user_default()?
+        .source_state()
         .join(get_md5_string(source_url))
         .with_extension("json"))
 }

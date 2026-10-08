@@ -2,7 +2,7 @@ use crate::{
     Result,
     errors::Errors,
     novel::{Novel, network_novel::NetworkNovel},
-    utils::{get_md5_string, novel_catch_dir},
+    utils::get_md5_string,
 };
 use parse_book_source::BookListItem;
 use serde::{Deserialize, Serialize};
@@ -34,15 +34,13 @@ impl NetworkNovelCache {
     }
 
     pub fn cache_path<T: Display>(url: T) -> Result<PathBuf> {
-        let novel_catch_dir = PathBuf::new().join(novel_catch_dir()?).join("network");
+        let directory = crate::paths::AppPaths::user_default()?.network();
 
-        if !novel_catch_dir.exists() {
-            std::fs::create_dir_all(&novel_catch_dir)?;
+        if !directory.exists() {
+            std::fs::create_dir_all(&directory)?;
         }
 
-        Ok(novel_catch_dir
-            .join(get_md5_string(url))
-            .with_extension("json"))
+        Ok(directory.join(get_md5_string(url)).with_extension("json"))
     }
 }
 

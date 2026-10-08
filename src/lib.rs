@@ -3,13 +3,13 @@
 use app::App;
 use clap::{Parser, Subcommand};
 use ratatui_kit::{ElementExt, element};
-use std::{env, ffi::OsString, fmt::Debug, fs, path::PathBuf};
-use utils::novel_catch_dir;
+use std::{env, ffi::OsString, fmt::Debug, path::PathBuf};
 
 pub mod app;
 pub mod browser_assist;
 pub mod cache;
 pub mod components;
+pub mod config;
 pub mod doctor;
 pub mod errors;
 pub mod file_list;
@@ -20,6 +20,7 @@ pub mod keymap;
 pub mod login;
 pub mod novel;
 pub mod pages;
+pub mod paths;
 pub mod state;
 pub mod theme;
 #[cfg(feature = "tts")]
@@ -66,7 +67,7 @@ where
     let trnovel = TRNovel::parse_from(args);
 
     if let Some(Commands::Clear) = trnovel.subcommand {
-        fs::remove_dir_all(novel_catch_dir()?)?;
+        paths::AppPaths::user_default()?.clear()?;
         return Ok(());
     }
 
@@ -76,7 +77,7 @@ where
         return Ok(());
     }
 
-    // 导入书源:非 TUI,把书源 JSON(文件/URL)写入 ~/.novel 后退出。
+    // 导入书源:非 TUI,把书源 JSON(文件/URL)写入 ~/.trnovel 后退出。
     if let Some(Commands::Import { source }) = &trnovel.subcommand {
         import::run(source).await;
         return Ok(());
@@ -173,7 +174,7 @@ pub enum Commands {
         path: PathBuf,
     },
 
-    /// 导入书源：把书源 JSON(本地文件或 URL)写入 ~/.novel,使其在网络小说里可用
+    /// 导入书源：把书源 JSON(本地文件或 URL)写入 ~/.trnovel/data/,使其在网络小说里可用
     #[command(short_flag = 'i')]
     Import {
         /// 书源 JSON 文件路径或 URL

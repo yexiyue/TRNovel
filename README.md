@@ -40,7 +40,7 @@ TRNovel 是用 Rust 构建的终端小说阅读器，支持 Windows、macOS 和 
 | 按习惯翻页 | 可配置键位、主题、背景模式和阅读布局 |
 | 读网络小说 | 搜索、分类、详情、目录和正文；结构化 v2 书源 |
 | 制作新书源 | Agent skill 探站生成，`trn doctor` 校验，`trn import` 导入 |
-| 听小说 | 独立 `novel-tts` 程序，MOSS 流式合成与音色导入，可选 Qwen / VoxCPM2 / OmniVoice；正文高亮和跟随朗读 |
+| 听小说 | 独立 `talechime` 程序，MOSS 流式合成与音色导入，可选 Qwen / VoxCPM2 / OmniVoice；正文高亮和跟随朗读 |
 
 <details>
 <summary>看看真实阅读界面</summary>
@@ -71,7 +71,7 @@ npm i -g @trnovel/trnovel
 brew install yexiyue/tap/trnovel
 ```
 
-这些命令安装最新正式版本。主分支中的独立听书程序、Qwen 和双变体打包改动尚待发行；体验当前功能请使用下方源码构建命令。基础版渠道、ARM64 musl / Alpine 的手动安装与运行库要求见[安装文档](https://yexiyue.github.io/TRNovel/guides/install/)。
+这些命令安装最新正式版本。当前源码已统一为默认支持听书的单一阅读器；新发行流程尚未创建应用 release tag，已有正式安装包不会因此改变。旧 basic、捆绑 worker、加速及 ARM64 musl 专用包停止更新。见[安装文档](https://yexiyue.github.io/TRNovel/guides/install/)。
 
 ## 开读
 
@@ -121,35 +121,25 @@ TRNovel 不直接接受 Legado 书源 JSON。
 
 <img src="assets/brand/mascot-listening.png" alt="小卷戴着耳机听小说" width="180" align="right">
 
-听书引擎已拆为独立项目 [Talechime · 叙铃](https://github.com/yexiyue/talechime)，通过固定版本的 `vendor/talechime` Git 子模块集成，并保留 `novel-tts` 兼容入口。首次克隆使用 `git clone --recurse-submodules`，已有检出运行 `git submodule update --init --recursive`。阅读器负责正文、控制和高亮，听书程序负责模型、合成、播放与恢复点。普通阅读无需加载语音模型。
+听书引擎由独立项目 [Talechime · 叙铃](https://github.com/yexiyue/talechime) 提供，需独立安装并加入 PATH。阅读器只依赖 crates.io 的 `talechime-protocol 0.1.0`，通过 JSON Lines v5 通信，无需子模块或相同应用版本。普通阅读无需安装 Talechime。
 
 默认后端是 MOSS-TTS-Nano，支持流式合成和 WAV 参考音色导入；Qwen3-TTS、VoxCPM2 与 OmniVoice 可按 feature 编入。Qwen 提供九种预置音色，CPU / Metal 支持取决于构建与平台，主观音质验收仍在进行。
 
 阅读页默认按 `P` 播放或暂停，`T` 打开听书设置，`f` 回到朗读位置并恢复跟随。手动滚动或搜索会暂时解除跟随；播放失败保留恢复点，等待你主动重试。
 
-模型按需下载到 `~/.novel-tts/`。逐句对齐默认关闭，开启后会准备额外模型。完整说明见[听书指南](https://yexiyue.github.io/TRNovel/guides/tts/)。
+模型按需下载到 `~/.talechime/resources/`。逐句对齐默认关闭，开启后会准备额外模型。完整说明见[听书指南](https://yexiyue.github.io/TRNovel/guides/tts/)。
 
 ## 从源码构建
 
-需要 Rust 1.89 或更新版本。Linux 听书构建需要 ALSA、OpenSSL 开发库和 pkg-config，平台细节见[工具链说明](dev-notes/knowledge/toolchain.md)。
+需要 Rust 1.89 或更新版本。Linux 阅读器需要 OpenSSL 开发库和 pkg-config，Talechime 另需 ALSA 开发库。
 
 ```sh
-# 阅读器与配套听书程序
+git clone https://github.com/yexiyue/TRNovel.git
+cd TRNovel
 cargo build --release --locked -p trnovel --bins
-cargo build --release --locked --manifest-path vendor/talechime/Cargo.toml -p talechime --target-dir target
-
-# 基础阅读版：不包含听书入口
-cargo build --release --locked -p trnovel --bins --no-default-features
-
-# 可选 Qwen 后端；macOS 可增加 metal feature
-cargo build --release --locked --manifest-path vendor/talechime/Cargo.toml -p talechime --target-dir target --features qwen
 ```
 
-听书时把阅读器与 `novel-tts` 放在同一目录，也可用 `--tts-program <路径>` 指定程序。独立朗读文件：
-
-```sh
-./target/release/novel-tts book.txt
-```
+Talechime 的源码构建和独立安装见[项目 README](https://github.com/yexiyue/talechime#installation)。worker 查找顺序为 `--tts-program`、`~/.trnovel/config.toml` 中的 `[tts].program`、PATH 中的 `talechime`。指定路径无效会直接报错；缺少程序显示安装链接，不自动下载或更新。
 
 开发入口与质量检查见 [AGENTS.md](AGENTS.md)。文档站位于 `docs/`：
 
@@ -173,7 +163,7 @@ pnpm dev
 
 TRNovel 不提供或托管小说内容，网络小说由你配置的书源提供。请支持正版，并确认所访问内容及书源符合适用要求。
 
-阅读历史、设置和缓存保存在 `~/.novel/`，语音模型保存在 `~/.novel-tts/`。网络阅读会请求所选站点；模型准备会访问对应下载服务。
+阅读设置保存在 `~/.trnovel/config.toml`，持久数据在 `~/.trnovel/data/`，可重建缓存在 `~/.trnovel/cache/`。Talechime 的配置、恢复点和模型分别位于 `~/.talechime/config.json`、`checkpoints/`、`resources/`。新版不读取或自动迁移旧目录，见[手工搬迁说明](https://yexiyue.github.io/TRNovel/guides/migration/)。网络阅读会请求所选站点；模型准备会访问对应下载服务。
 
 ## License
 

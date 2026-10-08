@@ -77,7 +77,11 @@ pub async fn browser_login(source: BookSource, signal: LoginSignal) -> crate::Re
     if target.is_empty() {
         return Err(anyhow!("该书源未配置 loginUrl,无法浏览器登录").into());
     }
-    let browser = BrowserFetcher::detect(BrowserOptions::default())
+    let options = BrowserOptions {
+        profile_dir: crate::paths::AppPaths::user_default()?.browser_profile(),
+        ..BrowserOptions::default()
+    };
+    let browser = BrowserFetcher::detect(options)
         .ok_or_else(|| anyhow!("未探测到系统浏览器(Chrome/Edge/Brave/…),无法浏览器登录"))?;
     // 复位上次尝试残留的 done/cancel 标志(信号跨重试共享同一 Arc):
     // 残留 cancel 会让重试首轮即判「用户取消」;残留 done 会把未登录空产物当成功落盘。

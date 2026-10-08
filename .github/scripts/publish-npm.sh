@@ -5,7 +5,7 @@ if [[ -n "${PLAN:-}" ]] && jq -e '.announcement_is_prerelease and (.publish_prer
   echo 'Skipping prerelease npm publication.'
   exit 0
 fi
-for variant in trnovel trnovel-basic; do
+for variant in trnovel; do
   package="./npm/$variant-npm-package.tar.gz"
   metadata=$(tar -xOf "$package" package/package.json)
   name=$(jq -er '.name' <<< "$metadata")

@@ -2,7 +2,7 @@ use crate::errors::{Errors, Result};
 use crate::novel::Novel;
 use crate::novel::VolumeMarker;
 use crate::novel::local_novel::LocalNovel;
-use crate::utils::{get_path_md5, novel_catch_dir};
+use crate::utils::get_path_md5;
 
 use serde::{Deserialize, Serialize};
 use std::{
@@ -31,15 +31,13 @@ impl LocalNovelCache {
     }
 
     pub fn cache_path<T: AsRef<Path>>(path: T) -> Result<PathBuf> {
-        let novel_catch_dir = PathBuf::new().join(novel_catch_dir()?).join("local");
+        let directory = crate::paths::AppPaths::user_default()?.local();
 
-        if !novel_catch_dir.exists() {
-            std::fs::create_dir_all(&novel_catch_dir)?;
+        if !directory.exists() {
+            std::fs::create_dir_all(&directory)?;
         }
 
-        Ok(novel_catch_dir
-            .join(get_path_md5(path)?)
-            .with_extension("json"))
+        Ok(directory.join(get_path_md5(path)?).with_extension("json"))
     }
 }
 

@@ -17,6 +17,6 @@ pub static APPEARANCE: Atom<AppearanceConfig> = Atom::new(AppearanceConfig::defa
 /// 阅读显示偏好:与配色外观独立,避免主题切换携带阅读行为状态。
 pub static READER_DISPLAY: Atom<ReaderDisplayConfig> = Atom::new(ReaderDisplayConfig::default);
 
-/// 全应用键位表:启动时从 `~/.novel/keybindings.toml` 合并(见 `crate::keymap`),
+/// 全应用键位表:启动时从 `~/.trnovel/keybindings.toml` 合并(见 `crate::keymap`),
 /// 运行期只读;无配置文件时即内置默认表。
 pub static KEYMAP: Atom<crate::keymap::AppKeymap> = Atom::new(crate::keymap::AppKeymap::default);
