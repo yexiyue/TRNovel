@@ -53,7 +53,7 @@ def read_without_worker(binary, home, env):
 
 def run(*args, **kwargs):
     try:
-        return subprocess.run(args, check=True, timeout=60, **kwargs)
+        return subprocess.run(args, check=True, timeout=kwargs.pop('timeout', 60), **kwargs)
     except subprocess.CalledProcessError as error:
         if error.stdout:
             print(error.stdout, file=sys.stderr)
@@ -63,9 +63,11 @@ def run(*args, **kwargs):
 
 
 def main(app, target):
-    run('dist', 'generate', '--check')
+    # Cargo metadata may fetch uncached dependencies on a fresh Windows runner.
+    # Keep startup/handshake timeouts short, but allow dependency discovery time.
+    run('dist', 'generate', '--check', timeout=600)
     subprocess.run(['dist', 'build', '--artifacts', 'local', '--target', target], check=True)
-    run('dist', 'build', '--artifacts', 'global')
+    run('dist', 'build', '--artifacts', 'global', timeout=600)
     archives = list(Path('target/distrib').glob(f'{app}-{target}.*'))
     archive = next(path for path in archives if path.suffix == '.zip' or path.name.endswith('.tar.xz'))
     with tempfile.TemporaryDirectory(prefix='isolated install ') as temporary:
