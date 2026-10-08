@@ -2,12 +2,12 @@ use super::*;
 use std::sync::OnceLock;
 
 pub(crate) fn fixture(name: &str) -> (tempfile::TempDir, PathBuf) {
-    static COMPILED: OnceLock<PathBuf> = OnceLock::new();
-    let binary = COMPILED.get_or_init(|| {
-        let directory = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("target/tts-client-fixture");
-        std::fs::create_dir_all(&directory).unwrap();
+    static COMPILED: OnceLock<(tempfile::TempDir, PathBuf)> = OnceLock::new();
+    let (_, binary) = COMPILED.get_or_init(|| {
+        // Compile on the same filesystem as the per-test temporary links.
+        let directory = tempfile::tempdir().unwrap();
         let source = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("src/tts/client/fixture.rs");
-        let binary = directory.join(format!("worker{}", std::env::consts::EXE_SUFFIX));
+        let binary = directory.path().join(format!("worker{}", std::env::consts::EXE_SUFFIX));
         assert!(
             std::process::Command::new("rustc")
                 .env(
@@ -22,7 +22,7 @@ pub(crate) fn fixture(name: &str) -> (tempfile::TempDir, PathBuf) {
                 .unwrap()
                 .success()
         );
-        binary
+        (directory, binary)
     });
     let directory = tempfile::Builder::new()
         .prefix("tts path with spaces ")
@@ -31,6 +31,12 @@ pub(crate) fn fixture(name: &str) -> (tempfile::TempDir, PathBuf) {
     let program = directory
         .path()
         .join(format!("{name}{}", std::env::consts::EXE_SUFFIX));
+    // Keep the compiled inode read-only while parallel Unix tests spawn it.
+    // Copying executables can race fork/exec with a writable descriptor from
+    // another test and intermittently fail with ETXTBSY.
+    #[cfg(unix)]
+    std::fs::hard_link(binary, &program).unwrap();
+    #[cfg(not(unix))]
     std::fs::copy(binary, &program).unwrap();
     (directory, program)
 }
