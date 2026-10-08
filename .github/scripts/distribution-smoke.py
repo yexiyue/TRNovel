@@ -9,6 +9,44 @@ import subprocess
 import sys
 import tempfile
 from threading import Thread
+import time
+
+
+def read_without_worker(binary, home, env):
+    """Exercise the actual reader in a Unix pseudo-terminal without a worker PATH."""
+    import fcntl
+    import re
+    import select
+    import struct
+    import termios
+    book = home / 'reading.txt'
+    book.write_text('第一章 测试\n\nREADER_WITHOUT_WORKER\n', encoding='utf-8')
+    master, slave = os.openpty()
+    fcntl.ioctl(slave, termios.TIOCSWINSZ, struct.pack('HHHH', 24, 80, 0, 0))
+    reader_env = dict(env, TERM='xterm-256color', PATH='/usr/bin:/bin:/usr/sbin:/sbin')
+    child = subprocess.Popen([binary, '-l', str(book)], stdin=slave, stdout=slave,
+                             stderr=slave, cwd=home, env=reader_env)
+    os.close(slave)
+    output = b''
+    try:
+        deadline = time.monotonic() + 20
+        while time.monotonic() < deadline:
+            if select.select([master], [], [], 1)[0]:
+                output += os.read(master, 65536)
+                text = re.sub(r'\x1b\[[0-?]*[ -/]*[@-~]', '', output.decode('utf-8', errors='replace'))
+                if 'READER_WITHOUT_WORKER' in text:
+                    break
+            os.write(master, b'\r')
+        else:
+            raise AssertionError('Reader did not show local text: ' + output.decode('utf-8', errors='replace'))
+        os.write(master, b'q')
+        child.wait(timeout=10)
+        assert child.returncode == 0
+    finally:
+        if child.poll() is None:
+            child.kill()
+            child.wait()
+        os.close(master)
 
 
 def run(*args, **kwargs):
@@ -74,6 +112,10 @@ def main(app, target):
                 assert messages[-1]['type'] == 'accepted'
         assert not list(home.rglob('*.onnx')), 'Handshake downloaded weights'
         assert not list(home.rglob('config.json')), 'Handshake persisted configuration'
+        if app == 'trnovel' and sys.platform != 'win32':
+            # The clear assertions deliberately used malformed preserved settings.
+            (home / '.trnovel/config.toml').write_text('', encoding='utf-8')
+            read_without_worker(str(installed / 'trnovel'), home, env)
         # Exercise the generated platform installer against local build artifacts.
         # Its supported download override keeps this smoke independent of releases.
         server = ThreadingHTTPServer(('127.0.0.1', 0), partial(
