@@ -78,3 +78,41 @@ jobs:
         env:
           RUSTDOCFLAGS: -D warnings
         run: cargo doc --no-deps --document-private-items --features trnovel/tts,parse-book-source/browser,parse-book-source/js-host,parse-book-source/schema --workspace --examples
+
+  install:
+    if: github.event_name != 'push'
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: macos-14
+            target: aarch64-apple-darwin
+          - runner: ubuntu-22.04
+            target: x86_64-unknown-linux-gnu
+          - runner: windows-2022
+            target: x86_64-pc-windows-msvc
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.x'
+      - name: Linux dependencies
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y libssl-dev pkg-config
+      - name: Install cargo-dist 0.32.0
+        if: runner.os != 'Windows'
+        shell: bash
+        run: curl --proto '=https' --tlsv1.2 -LsSf https://github.com/axodotdev/cargo-dist/releases/download/v0.32.0/cargo-dist-installer.sh | sh
+      - name: Install cargo-dist 0.32.0 on Windows
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: irm https://github.com/axodotdev/cargo-dist/releases/download/v0.32.0/cargo-dist-installer.ps1 | iex
+      - name: Build and test isolated installation
+        run: python .github/scripts/distribution-smoke.py trnovel ${{ matrix.target }}
+      - uses: actions/upload-artifact@v4
+        with:
+          name: distribution-${{ matrix.target }}
+          path: target/distrib/

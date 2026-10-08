@@ -1,11 +1,14 @@
 """Build cargo-dist artifacts and exercise an isolated, model-free installation."""
 import json
+from functools import partial
+from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 import os
 from pathlib import Path
 import shutil
 import subprocess
 import sys
 import tempfile
+from threading import Thread
 
 
 def run(*args, **kwargs):
@@ -15,6 +18,7 @@ def run(*args, **kwargs):
 def main(app, target):
     run('dist', 'generate', '--check')
     subprocess.run(['dist', 'build', '--artifacts', 'local', '--target', target], check=True)
+    run('dist', 'build', '--artifacts', 'global')
     archives = list(Path('target/distrib').glob(f'{app}-{target}.*'))
     archive = next(path for path in archives if path.suffix == '.zip' or path.name.endswith('.tar.xz'))
     with tempfile.TemporaryDirectory(prefix='isolated install ') as temporary:
@@ -52,7 +56,33 @@ def main(app, target):
                 assert messages[-1]['type'] == 'accepted'
         assert not list(home.rglob('*.onnx')), 'Handshake downloaded weights'
         assert not list(home.rglob('config.json')), 'Handshake persisted configuration'
-    print(f'{app}: isolated archive installation and startup passed for {target}')
+        # Exercise the generated platform installer against local build artifacts.
+        # Its supported download override keeps this smoke independent of releases.
+        server = ThreadingHTTPServer(('127.0.0.1', 0), partial(
+            SimpleHTTPRequestHandler, directory=str(Path('target/distrib').resolve())))
+        thread = Thread(target=server.serve_forever, daemon=True)
+        thread.start()
+        prefix = app.upper()
+        installer_env = dict(env)
+        installer_env.update({
+            f'{prefix}_DOWNLOAD_URL': f'http://127.0.0.1:{server.server_port}',
+            f'{prefix}_UNMANAGED_INSTALL': str(base / 'installer-bin'),
+            'XDG_CONFIG_HOME': str(home / '.config'),
+            'LOCALAPPDATA': str(home / 'AppData/Local'),
+        })
+        try:
+            if sys.platform == 'win32':
+                run('pwsh', '-NoProfile', '-ExecutionPolicy', 'Bypass', '-File',
+                    str(Path(f'target/distrib/{app}-installer.ps1').resolve()), env=installer_env)
+            else:
+                run('sh', str(Path(f'target/distrib/{app}-installer.sh').resolve()), env=installer_env)
+            for program in programs:
+                run(str(base / 'installer-bin' / (program + suffix)), '--version', env=env, cwd=home)
+        finally:
+            server.shutdown()
+            server.server_close()
+            thread.join()
+    print(f'{app}: archive and platform installer passed for {target}')
 
 
 if __name__ == '__main__':
