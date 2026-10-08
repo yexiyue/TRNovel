@@ -42,7 +42,16 @@ def read_without_worker(binary, home, env):
         else:
             raise AssertionError('Reader did not show local text: ' + output.decode('utf-8', errors='replace'))
         os.write(master, b'q')
-        child.wait(timeout=10)
+        # Continue draining terminal restoration output while quitting. macOS
+        # PTY buffers are small enough for a final render to block an unread pipe.
+        deadline = time.monotonic() + 10
+        while child.poll() is None and time.monotonic() < deadline:
+            if select.select([master], [], [], 0.1)[0]:
+                try:
+                    os.read(master, 65536)
+                except OSError:
+                    break  # Slave closed during a normal terminal shutdown.
+        child.wait(timeout=1)
         assert child.returncode == 0
     finally:
         if child.poll() is None:
