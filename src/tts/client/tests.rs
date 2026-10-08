@@ -7,7 +7,9 @@ pub(crate) fn fixture(name: &str) -> (tempfile::TempDir, PathBuf) {
         // Compile on the same filesystem as the per-test temporary links.
         let directory = tempfile::tempdir().unwrap();
         let source = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("src/tts/client/fixture.rs");
-        let binary = directory.path().join(format!("worker{}", std::env::consts::EXE_SUFFIX));
+        let binary = directory
+            .path()
+            .join(format!("worker{}", std::env::consts::EXE_SUFFIX));
         assert!(
             std::process::Command::new("rustc")
                 .env(
