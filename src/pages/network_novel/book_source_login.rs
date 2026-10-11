@@ -5,6 +5,7 @@
 //!
 //! 表单单字段编辑(Up/Down/Tab 切换,password 掩码),Enter 提交。登录态由 [`crate::login`] 落盘。
 
+use crate::app::navigation::UseAppNavigate;
 use crossterm::event::{Event, KeyCode, KeyEventKind};
 use parse_book_source::{BookSource, LoginSignal, source::RowUiType};
 use ratatui::{
@@ -28,7 +29,7 @@ use crate::{
 pub fn BookSourceLogin(mut hooks: Hooks) -> impl Into<AnyElement<'static>> {
     let source = (*hooks.use_route_state::<BookSource>()).clone();
     let theme = hooks.use_component_theme::<AppChromeTheme>();
-    let mut navigate = hooks.use_navigate();
+    let mut navigate = hooks.use_app_navigate();
     // 登录页是独占全屏表单:开一个 blocks_lower 输入层,本页独占输入并自动截断 Layout 的全局键
     // (q/g/b),取代旧的全局 `is_inputting` 标志;离页卸载后该层下一帧自动消失。
     let layer = hooks.use_input_layer(true, true);

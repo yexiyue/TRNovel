@@ -1,4 +1,5 @@
 use super::search::{ChapterSearch, ContentLayout};
+use crate::components::{ActionBar, ActionButton};
 use crate::{
     components::Loading,
     keymap::{ReaderAction, display_first_key},
@@ -113,6 +114,7 @@ pub struct ReadContentProps {
     pub chapter_index: usize,
     pub search: Option<State<ChapterSearch>>,
     pub is_scroll: bool,
+    pub show_actions: bool,
     pub is_loading: bool,
     pub width: u16,
     pub height: u16,
@@ -134,6 +136,17 @@ pub fn ReadContent(
     mut hooks: Hooks,
 ) -> impl Into<AnyElement<'static>> {
     let theme = hooks.use_component_theme::<ReaderTheme>();
+    let size = hooks.use_previous_size();
+    let width = if size.width > 0 {
+        size.width
+    } else {
+        props.width
+    };
+    let height = if size.height > 0 {
+        size.height
+    } else {
+        props.height.saturating_sub(1)
+    };
     let mut reader_display = hooks.use_atom(&crate::state::READER_DISPLAY);
     let mut on_prev = props.on_prev.take();
     let mut on_next = props.on_next.take();
@@ -237,11 +250,11 @@ pub fn ReadContent(
         || {
             Arc::new(ContentLayout::new(
                 &props.content,
-                props.width.saturating_sub(2) as usize,
+                width.saturating_sub(2) as usize,
                 paragraph_spacing,
             ))
         },
-        (props.content.clone(), props.width, paragraph_spacing),
+        (props.content.clone(), width, paragraph_spacing),
     );
     let matches = search.read().matches.clone();
     let selected = search.read().selected;
@@ -268,7 +281,7 @@ pub fn ReadContent(
         },
         (
             props.content.clone(),
-            props.width,
+            width,
             paragraph_spacing,
             search.read().revision,
             selected,
@@ -294,8 +307,9 @@ pub fn ReadContent(
     //   end_scroll 贴底位置(最后一行正好落在屏幕底部)= 章末判定线
     // 旧实现只有一个 `line_count`(实为 end_scroll)同时兼任滚动上限、进度分母与行号分母,
     // 分母含视口高度 → 进度随终端尺寸漂移,且末尾无法留白。
-    let total = paragraph.line_count(props.width.saturating_sub(2));
-    let view = visible_lines(props.height.saturating_sub(u16::from(editing)));
+    let total = paragraph.line_count(width.saturating_sub(2));
+    let can_search = props.is_scroll && !props.is_loading;
+    let view = visible_lines(height);
     let end_scroll = total.saturating_sub(view);
 
     hooks.use_effect(
@@ -306,12 +320,7 @@ pub fn ReadContent(
                 scroll_target.set(ScrollTarget::Ratio(line as f64 / total.max(1) as f64));
             }
         },
-        (
-            search.read().revision,
-            props.width,
-            paragraph_spacing,
-            props.height,
-        ),
+        (search.read().revision, width, paragraph_spacing, height),
     );
 
     let mut current_line = hooks.use_memo(
@@ -332,8 +341,8 @@ pub fn ReadContent(
             (
                 snapshot.state,
                 tts_range.clone(),
-                props.width,
-                props.height,
+                width,
+                height,
                 paragraph_spacing,
             ),
             (total, view, scroll_target.get()),
@@ -395,21 +404,6 @@ pub fn ReadContent(
         },
     );
 
-    let can_search = props.is_scroll && !props.is_loading;
-    let layer = hooks.use_input_layer(editing && can_search, true);
-    let input_content = props.content.clone();
-    hooks.use_event_handler(
-        EventScope::Layer(layer),
-        EventPriority::High,
-        move |event| {
-            if !can_search || !search.read().editing {
-                return EventResult::Ignored;
-            }
-            search.write().handle_input(&event, &input_content);
-            EventResult::Consumed
-        },
-    );
-
     let has_prev = props.has_prev;
     let has_next = props.has_next;
     // 翻页步长:整屏减去用户配置的重叠行数,让上一屏末尾的若干行留在新一屏开头作视觉锚点
@@ -422,165 +416,169 @@ pub fn ReadContent(
     let playback_request = request.clone();
     #[cfg(feature = "tts")]
     let playback_line = tts_range.as_ref().map(|range| layout.match_line(range));
+    let action_handler = Arc::new(std::sync::Mutex::new(move |action| {
+        if !is_scroll {
+            return EventResult::Ignored;
+        }
+        #[cfg(feature = "tts")]
+        if matches!(
+            action,
+            ReaderAction::ScrollUp
+                | ReaderAction::ScrollDown
+                | ReaderAction::PageUp
+                | ReaderAction::PageDown
+                | ReaderAction::GoTop
+                | ReaderAction::GoBottom
+                | ReaderAction::PrevChapter
+                | ReaderAction::NextChapter
+                | ReaderAction::SearchContent
+                | ReaderAction::NextSearchMatch
+                | ReaderAction::PrevSearchMatch
+        ) {
+            follow_suspended.set(true);
+        }
+        // 逐行滚动与整页翻页只差这一个步长,边界行为(全书边界只提示 / 章内边界
+        // 「再按一次」武装 / 二次确认翻章)完全一致,故各自合并为一支单一实现:
+        // 分开写就是把边界语义复制两份,将来加第三种步长(半页)还要再复制一次。
+        let delta = match action {
+            ReaderAction::PageUp | ReaderAction::PageDown => step,
+            _ => 1,
+        };
+        match action {
+            ReaderAction::SearchContent if can_search => {
+                let query = search.read().query.clone();
+                let mut state = search.write();
+                state.draft = tui_input::Input::new(query);
+                state.editing = true;
+                EventResult::Consumed
+            }
+            ReaderAction::NextSearchMatch | ReaderAction::PrevSearchMatch if can_search => {
+                search
+                    .write()
+                    .advance(action == ReaderAction::PrevSearchMatch);
+                EventResult::Consumed
+            }
+            ReaderAction::ClearContentSearch if can_search => {
+                search.set(ChapterSearch::default());
+                EventResult::Consumed
+            }
+            ReaderAction::ScrollUp | ReaderAction::PageUp => {
+                if current_line > 0 {
+                    current_line = current_line.saturating_sub(delta);
+                    scroll_target.set(ScrollTarget::Ratio(current_line as f64 / total as f64));
+                    edge.set(Edge::None);
+                } else if !has_prev {
+                    // 全书第一章的章首:没有上一章可翻,只提示、不武装(再按也不会翻)。
+                    edge.set(Edge::AtFirst);
+                } else if edge.get() == Edge::Prev {
+                    // 已在章首且已武装 → 第二次 ↑ 才翻上一章(落到上一章末尾)。
+                    edge.set(Edge::None);
+                    on_prev(true);
+                } else {
+                    // 首次到章首:只武装并在底部提示,不翻章(防误触)。
+                    edge.set(Edge::Prev);
+                }
+                EventResult::Consumed
+            }
+            ReaderAction::ScrollDown | ReaderAction::PageDown => {
+                // 章末判定线是 end_scroll(最后一行已可见)。翻页可以跨过它落进
+                // 「末尾留白」区,保证每次步长绝对一致;落点上界
+                // (end_scroll-1)+step ≤ total-1,天然不越界,无需额外钳位。
+                // 逐行滚动 delta=1 永远停在 end_scroll,贴底行为与旧版逐帧一致。
+                if current_line < end_scroll {
+                    current_line += delta;
+                    let ratio = current_line as f64 / total as f64;
+                    // 跨过贴底位置 = 进入末尾留白,记下当时的 end_scroll:留白量是视口相关的,
+                    // 换终端尺寸后该位置要退化为贴底而不是原样保留(否则前向键会失效)。
+                    scroll_target.set(if current_line > end_scroll {
+                        ScrollTarget::Overscroll { ratio, end_scroll }
+                    } else {
+                        ScrollTarget::Ratio(ratio)
+                    });
+                    edge.set(Edge::None);
+                } else if !has_next {
+                    // 全书最后一章的章末:没有下一章可翻,只提示、不武装(再按也不会翻)。
+                    edge.set(Edge::AtLast);
+                } else if edge.get() == Edge::Next {
+                    // 已在章末且已武装 → 第二次 ↓ 才翻下一章。
+                    edge.set(Edge::None);
+                    on_next(());
+                } else {
+                    // 首次到章末:只武装并在底部提示,不翻章(防误触)。
+                    edge.set(Edge::Next);
+                }
+                EventResult::Consumed
+            }
+            ReaderAction::PrevChapter => {
+                edge.set(Edge::None);
+                on_prev(false);
+                EventResult::Consumed
+            }
+            ReaderAction::NextChapter => {
+                edge.set(Edge::None);
+                on_next(());
+                EventResult::Consumed
+            }
+            ReaderAction::GoTop => {
+                scroll_target.set(ScrollTarget::Ratio(0.0));
+                edge.set(Edge::None);
+                EventResult::Consumed
+            }
+            ReaderAction::GoBottom => {
+                scroll_target.set(ScrollTarget::ChapterEnd);
+                edge.set(Edge::None);
+                EventResult::Consumed
+            }
+            #[cfg(feature = "tts")]
+            ReaderAction::VolumeUp | ReaderAction::VolumeDown => {
+                if let Some(config) = listening.snapshot.read().config.as_ref() {
+                    let delta = if action == ReaderAction::VolumeUp {
+                        0.1
+                    } else {
+                        -0.1
+                    };
+                    listening.handle.update(tts_protocol::ConfigPatch {
+                        volume: Some((config.volume + delta).clamp(0.0, 10.0)),
+                        ..Default::default()
+                    });
+                }
+                EventResult::Consumed
+            }
+            #[cfg(feature = "tts")]
+            ReaderAction::FollowPlayback if can_search => {
+                reader_display.write().follow_tts = true;
+                follow_suspended.set(false);
+                if let Some(line) = playback_line.and_then(|line| {
+                    super::follow::target(line, current_line, view, end_scroll, true)
+                }) {
+                    scroll_target.set(ScrollTarget::Ratio(line as f64 / total.max(1) as f64));
+                }
+                edge.set(Edge::None);
+                EventResult::Consumed
+            }
+            #[cfg(feature = "tts")]
+            ReaderAction::TogglePlay if can_search => {
+                listening.handle.toggle((*playback_request).clone());
+                EventResult::Consumed
+            }
+            ReaderAction::ToggleTitle => {
+                let mut display = *reader_display.read();
+                display.show_title = !display.show_title;
+                // 只改 atom;落盘由 `ReadNovel` 的防抖 effect 统一负责(单一存盘点,
+                // 与设置面板走同一条路径,避免两套写盘时序)。
+                reader_display.set(display);
+                EventResult::Consumed
+            }
+            _ => EventResult::Ignored,
+        }
+    }));
     hooks.use_keymap_handler(
         EventScope::Current,
         EventPriority::Normal,
         reader_keymap.clone(),
-        move |action, _key| {
-            if !is_scroll {
-                return EventResult::Ignored;
-            }
-            #[cfg(feature = "tts")]
-            if matches!(
-                action,
-                ReaderAction::ScrollUp
-                    | ReaderAction::ScrollDown
-                    | ReaderAction::PageUp
-                    | ReaderAction::PageDown
-                    | ReaderAction::GoTop
-                    | ReaderAction::GoBottom
-                    | ReaderAction::PrevChapter
-                    | ReaderAction::NextChapter
-                    | ReaderAction::SearchContent
-                    | ReaderAction::NextSearchMatch
-                    | ReaderAction::PrevSearchMatch
-            ) {
-                follow_suspended.set(true);
-            }
-            // 逐行滚动与整页翻页只差这一个步长,边界行为(全书边界只提示 / 章内边界
-            // 「再按一次」武装 / 二次确认翻章)完全一致,故各自合并为一支单一实现:
-            // 分开写就是把边界语义复制两份,将来加第三种步长(半页)还要再复制一次。
-            let delta = match action {
-                ReaderAction::PageUp | ReaderAction::PageDown => step,
-                _ => 1,
-            };
-            match action {
-                ReaderAction::SearchContent if can_search => {
-                    let query = search.read().query.clone();
-                    let mut state = search.write();
-                    state.draft = tui_input::Input::new(query);
-                    state.editing = true;
-                    EventResult::Consumed
-                }
-                ReaderAction::NextSearchMatch | ReaderAction::PrevSearchMatch if can_search => {
-                    search
-                        .write()
-                        .advance(action == ReaderAction::PrevSearchMatch);
-                    EventResult::Consumed
-                }
-                ReaderAction::ClearContentSearch if can_search => {
-                    search.set(ChapterSearch::default());
-                    EventResult::Consumed
-                }
-                ReaderAction::ScrollUp | ReaderAction::PageUp => {
-                    if current_line > 0 {
-                        current_line = current_line.saturating_sub(delta);
-                        scroll_target.set(ScrollTarget::Ratio(current_line as f64 / total as f64));
-                        edge.set(Edge::None);
-                    } else if !has_prev {
-                        // 全书第一章的章首:没有上一章可翻,只提示、不武装(再按也不会翻)。
-                        edge.set(Edge::AtFirst);
-                    } else if edge.get() == Edge::Prev {
-                        // 已在章首且已武装 → 第二次 ↑ 才翻上一章(落到上一章末尾)。
-                        edge.set(Edge::None);
-                        on_prev(true);
-                    } else {
-                        // 首次到章首:只武装并在底部提示,不翻章(防误触)。
-                        edge.set(Edge::Prev);
-                    }
-                    EventResult::Consumed
-                }
-                ReaderAction::ScrollDown | ReaderAction::PageDown => {
-                    // 章末判定线是 end_scroll(最后一行已可见)。翻页可以跨过它落进
-                    // 「末尾留白」区,保证每次步长绝对一致;落点上界
-                    // (end_scroll-1)+step ≤ total-1,天然不越界,无需额外钳位。
-                    // 逐行滚动 delta=1 永远停在 end_scroll,贴底行为与旧版逐帧一致。
-                    if current_line < end_scroll {
-                        current_line += delta;
-                        let ratio = current_line as f64 / total as f64;
-                        // 跨过贴底位置 = 进入末尾留白,记下当时的 end_scroll:留白量是视口相关的,
-                        // 换终端尺寸后该位置要退化为贴底而不是原样保留(否则前向键会失效)。
-                        scroll_target.set(if current_line > end_scroll {
-                            ScrollTarget::Overscroll { ratio, end_scroll }
-                        } else {
-                            ScrollTarget::Ratio(ratio)
-                        });
-                        edge.set(Edge::None);
-                    } else if !has_next {
-                        // 全书最后一章的章末:没有下一章可翻,只提示、不武装(再按也不会翻)。
-                        edge.set(Edge::AtLast);
-                    } else if edge.get() == Edge::Next {
-                        // 已在章末且已武装 → 第二次 ↓ 才翻下一章。
-                        edge.set(Edge::None);
-                        on_next(());
-                    } else {
-                        // 首次到章末:只武装并在底部提示,不翻章(防误触)。
-                        edge.set(Edge::Next);
-                    }
-                    EventResult::Consumed
-                }
-                ReaderAction::PrevChapter => {
-                    edge.set(Edge::None);
-                    on_prev(false);
-                    EventResult::Consumed
-                }
-                ReaderAction::NextChapter => {
-                    edge.set(Edge::None);
-                    on_next(());
-                    EventResult::Consumed
-                }
-                ReaderAction::GoTop => {
-                    scroll_target.set(ScrollTarget::Ratio(0.0));
-                    edge.set(Edge::None);
-                    EventResult::Consumed
-                }
-                ReaderAction::GoBottom => {
-                    scroll_target.set(ScrollTarget::ChapterEnd);
-                    edge.set(Edge::None);
-                    EventResult::Consumed
-                }
-                #[cfg(feature = "tts")]
-                ReaderAction::VolumeUp | ReaderAction::VolumeDown => {
-                    if let Some(config) = listening.snapshot.read().config.as_ref() {
-                        let delta = if action == ReaderAction::VolumeUp {
-                            0.1
-                        } else {
-                            -0.1
-                        };
-                        listening.handle.update(tts_protocol::ConfigPatch {
-                            volume: Some((config.volume + delta).clamp(0.0, 10.0)),
-                            ..Default::default()
-                        });
-                    }
-                    EventResult::Consumed
-                }
-                #[cfg(feature = "tts")]
-                ReaderAction::FollowPlayback if can_search => {
-                    reader_display.write().follow_tts = true;
-                    follow_suspended.set(false);
-                    if let Some(line) = playback_line.and_then(|line| {
-                        super::follow::target(line, current_line, view, end_scroll, true)
-                    }) {
-                        scroll_target.set(ScrollTarget::Ratio(line as f64 / total.max(1) as f64));
-                    }
-                    edge.set(Edge::None);
-                    EventResult::Consumed
-                }
-                #[cfg(feature = "tts")]
-                ReaderAction::TogglePlay if can_search => {
-                    listening.handle.toggle((*playback_request).clone());
-                    EventResult::Consumed
-                }
-                ReaderAction::ToggleTitle => {
-                    let mut display = *reader_display.read();
-                    display.show_title = !display.show_title;
-                    // 只改 atom;落盘由 `ReadNovel` 的防抖 effect 统一负责(单一存盘点,
-                    // 与设置面板走同一条路径,避免两套写盘时序)。
-                    reader_display.set(display);
-                    EventResult::Consumed
-                }
-                _ => EventResult::Ignored,
-            }
+        {
+            let handler = action_handler.clone();
+            move |action, _key| handler.lock().unwrap_or_else(|e| e.into_inner())(action)
         },
     );
 
@@ -627,20 +625,7 @@ pub fn ReadContent(
         ),
         Edge::AtLast => "● 已是全书最后一章".to_string(),
         Edge::AtFirst => "● 已是第一章".to_string(),
-        Edge::None => {
-            let state = search.read();
-            if state.query.is_empty() || props.width < 110 {
-                state.status()
-            } else {
-                format!(
-                    "{} · {} / {} 切换 · {} 清除",
-                    state.status(),
-                    display_first_key(&reader_keymap, ReaderAction::NextSearchMatch),
-                    display_first_key(&reader_keymap, ReaderAction::PrevSearchMatch),
-                    display_first_key(&reader_keymap, ReaderAction::ClearContentSearch)
-                )
-            }
-        }
+        Edge::None => search.read().status(),
     };
 
     let show_title = reader_display.read().show_title;
@@ -673,26 +658,61 @@ pub fn ReadContent(
             }
         )
     } else {
-        format!(
-            "按 {} 播放/暂停 · {} 搜索正文",
-            display_first_key(&reader_keymap, ReaderAction::TogglePlay),
-            display_first_key(&reader_keymap, ReaderAction::SearchContent)
-        )
+        String::new()
     };
     #[cfg(not(feature = "tts"))]
-    let listening_footer = format!(
-        "按 {} 搜索正文",
-        display_first_key(&reader_keymap, ReaderAction::SearchContent)
-    );
+    let listening_footer = String::new();
 
-    element!(Border(
+    let action_button = |label: &str, action: ReaderAction, disabled: bool| {
+        element!(ActionButton(
+            key: format!("{action:?}"),
+            label: label.to_owned(),
+            shortcut: crate::keymap::display_keys(&reader_keymap, action),
+            disabled: disabled,
+            on_press: crate::components::action_bar::action_callback(&action_handler, action),
+        ))
+        .into_any()
+    };
+    element!(View {
+    if props.show_actions {
+        crate::components::search_input::SearchInput(
+            value: search.read().query.clone(), placeholder: "搜索本章正文", label: "搜索",
+            is_editing: can_search, open: editing,
+            shortcut: crate::keymap::display_keys(&reader_keymap, ReaderAction::SearchContent),
+            activate_key: Some(ratatui_kit::crossterm::event::KeyCode::Null),
+            on_submit: { let text = props.content.clone(); move |query| { search.write().submit(&text, query); true } },
+            on_close: move |_| search.write().editing = false,
+        )
+        ActionBar(menu: "阅读") {
+            {action_button("‹ 上一章", ReaderAction::PrevChapter, !has_prev || !can_search)}
+            {action_button("下一章 ›", ReaderAction::NextChapter, !has_next || !can_search)}
+            {action_button("搜索正文", ReaderAction::SearchContent, !can_search)}
+            if !search.read().query.is_empty() {
+                {action_button("上一个匹配", ReaderAction::PrevSearchMatch, !can_search)}
+                {action_button("下一个匹配", ReaderAction::NextSearchMatch, !can_search)}
+                {action_button("清除搜索", ReaderAction::ClearContentSearch, !can_search)}
+            }
+
+        }
+        ActionBar(menu: "阅读") {
+            {action_button("‹ 上一页", ReaderAction::PageUp, !can_search)}
+            {action_button("下一页 ›", ReaderAction::PageDown, !can_search)}
+            if cfg!(feature = "tts") {
+                ActionBar(menu: "听书") {
+                {action_button("播放/暂停", ReaderAction::TogglePlay, !can_search)}
+                {action_button("跟随朗读", ReaderAction::FollowPlayback, !can_search)}
+                }
+            }
+        }
+    }
+    Border(
         border_style: theme.border,
         top_title: if show_title {
             Some(Line::from(props.chapter_name.to_string()).style(theme.chapter).centered())
         }else{
             None
         },
-        bottom_title: if show_title {
+        bottom_title: if show_title && !listening_footer.is_empty() {
            Some(Line::from(listening_footer).style(theme.footer).centered())
         }else{
             None
@@ -707,11 +727,6 @@ pub fn ReadContent(
                 scroll: (current_line as u16,0))
             ).into_any()
         } }
-        { if editing && can_search {
-            element!(View(height: Constraint::Length(1), margin: Margin::new(1,0)) {
-                Input(input: search.read().draft.clone(), placeholder: "搜索本章正文 · Enter 提交 / Esc 取消")
-            }).into_any()
-        } else { element!(View(height: Constraint::Length(0))).into_any() } }
         View(
             flex_direction: Direction::Horizontal,
             justify_content: Flex::SpaceBetween,
@@ -731,6 +746,7 @@ pub fn ReadContent(
                 widget(Line::from(format!("{:.2}% {}",props.chapter_percent, current_time.read().clone())).style(theme.progress).right_aligned())
             }
         }
+    }
     })
 }
 

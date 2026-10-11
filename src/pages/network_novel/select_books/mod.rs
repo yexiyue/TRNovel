@@ -1,4 +1,5 @@
 use crate::components::modal::shortcut_info_modal::ShortcutInfoModal;
+use crate::components::{ActionBar, ActionButton};
 use crate::{
     components::{WarningModal, select::Select},
     errors::Errors,
@@ -31,6 +32,7 @@ impl From<ExploreListItem> for ListItem<'_> {
 pub fn SelectBooks(mut hooks: Hooks) -> impl Into<AnyElement<'static>> {
     let mut info_modal_open = hooks.use_state(|| false);
     let book_source = hooks.use_route_state::<BookSource>();
+    let source_name = book_source.name.clone();
     let mut explores = hooks.use_state(std::vec::Vec::new);
     let theme = hooks.use_component_theme::<AppChromeTheme>();
 
@@ -63,6 +65,10 @@ pub fn SelectBooks(mut hooks: Hooks) -> impl Into<AnyElement<'static>> {
             return EventResult::Ignored;
         }
         match key.code {
+            KeyCode::Esc if is_explore_open.get() => {
+                is_explore_open.set(false);
+                EventResult::Consumed
+            }
             KeyCode::Tab => {
                 is_explore_open.set(!is_explore_open.get());
                 EventResult::Consumed
@@ -86,7 +92,24 @@ pub fn SelectBooks(mut hooks: Hooks) -> impl Into<AnyElement<'static>> {
         explores.read().len(),
     );
 
+    let channel_label = current_explore
+        .read()
+        .as_ref()
+        .map(|entry| entry.0.title.clone())
+        .unwrap_or_else(|| "选择频道".into());
+    let layer = hooks.use_input_layer(is_explore_open.get(), true);
+    hooks.use_event_handler(EventScope::Layer(layer), EventPriority::Normal, move |event| {
+        if matches!(event, Event::Key(key) if key.kind == KeyEventKind::Press && matches!(key.code, KeyCode::Esc | KeyCode::Tab)) {
+            is_explore_open.set(false);
+            EventResult::Consumed
+        } else { EventResult::Ignored }
+    });
     element!(View {
+        ActionBar(menu: "频道") {
+            Text(text: source_name)
+            ActionButton(label: format!("频道：{channel_label} ▾"), shortcut: "Tab", disabled: engine_loading.get() || explores.read().len() < 2, on_press: move |_| is_explore_open.set(true))
+            ActionButton(label: "帮助", shortcut: "I", on_press: move |_| info_modal_open.set(true))
+        }
         FindBooks(..FindBooksProps {
                 engine: book_source_engine,
                 current_explore: current_explore.read().clone(),
@@ -119,14 +142,14 @@ pub fn SelectBooks(mut hooks: Hooks) -> impl Into<AnyElement<'static>> {
             height: Constraint::Percentage(70),
             style: Style::default().dim(),
             open: is_explore_open.get(),
-            // 非阻塞浮层:关闭键 Tab 由本页 root handler 处理(toggle is_explore_open);弹窗内 Select
-            // 在 Modal 子树层。背景 FindBooks 已用 `!is_explore_open` 门控,故非阻塞不引入冲突。
-            // 默认 blocks_lower=true 会截断 root → Tab 关不掉抽屉。
-            blocks_lower: false,
+            layer: layer,
         ) {
             View(
                 margin: Margin::new(1,1),
             ){
+                ActionBar {
+                    ActionButton(label: "关闭", shortcut: "Esc / Tab", on_press: move |_| is_explore_open.set(false))
+                }
                 Select<ExploreListItem>(
                     items: explores_list.clone(),
                     state: list_state,

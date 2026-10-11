@@ -1,3 +1,5 @@
+use crate::app::navigation::UseAppNavigate;
+use crate::components::{ActionBar, ActionButton};
 use std::path::PathBuf;
 
 use crate::{
@@ -110,7 +112,7 @@ pub fn SelectHistory(mut hooks: Hooks) -> impl Into<AnyElement<'static>> {
     let theme = hooks.use_component_theme::<AppChromeTheme>();
     let history = hooks.use_context::<State<Option<History>>>();
 
-    let mut navigate = hooks.use_navigate();
+    let mut navigate = hooks.use_app_navigate();
     let mut delete_modal_open = hooks.use_state(|| false);
     let mut info_modal_open = hooks.use_state(|| false);
 
@@ -155,7 +157,12 @@ pub fn SelectHistory(mut hooks: Hooks) -> impl Into<AnyElement<'static>> {
         }
     });
 
-    element!(Fragment{
+    element!(View{
+        ActionBar(menu: "记录") {
+            ActionButton(label: "删除记录", shortcut: "D", disabled: state.read().selected.is_none(), on_press: move |_| delete_modal_open.set(true))
+            ActionButton(label: "帮助", shortcut: "I", on_press: move |_| info_modal_open.set(true))
+        }
+
         ListSelect<(String,HistoryItem)>(
             state: state,
             is_editing: !delete_modal_open.get() && !info_modal_open.get(),

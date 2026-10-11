@@ -1,3 +1,4 @@
+use crate::app::navigation::UseAppNavigate;
 use crate::{
     History,
     components::{KeyShortcutInfo, ShortcutInfoModal},
@@ -16,7 +17,11 @@ use tui_big_text::{BigText, PixelSize};
 const MENU_LEN: usize = 4;
 
 /// 菜单导航:Enter 键与鼠标点击共用同一份目标路由。
-fn navigate_menu(mut navigate: Navigate, local_path: Option<std::path::PathBuf>, index: usize) {
+fn navigate_menu(
+    mut navigate: crate::app::navigation::AppNavigate,
+    local_path: Option<std::path::PathBuf>,
+    index: usize,
+) {
     match index {
         0 => {
             if let Some(path) = &local_path {
@@ -54,7 +59,7 @@ fn HomeMenu(props: &mut HomeMenuProps, mut hooks: Hooks) -> impl Into<AnyElement
         Line::from("本地小说").centered(),
         Line::from("网络小说").centered(),
         Line::from("历史记录").centered(),
-        Line::from("主题设置").centered(),
+        Line::from("全局设置").centered(),
     ])
     .style(theme.text)
     .highlight_style(theme.selected);
@@ -105,7 +110,7 @@ pub fn Home(mut hooks: Hooks) -> impl Into<AnyElement<'static>> {
 
     let theme = hooks.use_component_theme::<AppChromeTheme>();
 
-    let navigate = hooks.use_navigate();
+    let navigate = hooks.use_app_navigate();
     let navigate_for_keys = navigate;
     let local_path_for_keys = local_path.clone();
 
@@ -174,6 +179,9 @@ pub fn Home(mut hooks: Hooks) -> impl Into<AnyElement<'static>> {
                 height:Constraint::Length(2)
             ){
                 widget(info_txt)
+            }
+            crate::components::ActionBar(menu: "更多") {
+                crate::components::ActionButton(label: "帮助", shortcut: "I", on_press: move |_| info_modal_open.set(true))
             }
             HomeMenu(
                 state: state,

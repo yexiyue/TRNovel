@@ -62,6 +62,7 @@ swash = "0.2.7"
 zeno = "0.3.3"
 woff2 = { version = "0.4.0", package = "woff2-patched" }
 reqwest = { version = "0.13", default-features = false, features = ["rustls"] }
+rat-menu = "3.1.1"
 
 
 [workspace]

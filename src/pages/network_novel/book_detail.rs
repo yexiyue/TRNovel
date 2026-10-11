@@ -1,3 +1,5 @@
+use crate::app::navigation::UseAppNavigate;
+use crate::components::{ActionBar, ActionButton};
 use anyhow::anyhow;
 use crossterm::event::{Event, KeyCode, KeyEventKind};
 use parse_book_source::{BookInfo, BookListItem, Engine};
@@ -49,7 +51,7 @@ pub fn BookDetail(mut hooks: Hooks) -> impl Into<AnyElement<'static>> {
     let mut book_info = hooks.use_state(|| None::<BookInfo>);
     let size = hooks.use_previous_size();
     let theme = hooks.use_component_theme::<AppChromeTheme>();
-    let mut navigate = hooks.use_navigate();
+    let mut navigate = hooks.use_app_navigate();
 
     let (book_source_parser, loading, error) = hooks.use_init_state(async move {
         let mut novel = match &(*book_detail_state) {
@@ -78,6 +80,12 @@ pub fn BookDetail(mut hooks: Hooks) -> impl Into<AnyElement<'static>> {
         Ok::<NetworkNovel, Errors>(novel)
     });
 
+    let mut open_book = move || {
+        let novel = book_source_parser.read().clone();
+        if let Some(novel) = novel {
+            navigate.push_with_state("/network-novel", novel);
+        }
+    };
     hooks.use_event_handler(EventScope::Current, EventPriority::Normal, move |event| {
         let Event::Key(key) = event else {
             return EventResult::Ignored;
@@ -87,9 +95,7 @@ pub fn BookDetail(mut hooks: Hooks) -> impl Into<AnyElement<'static>> {
         }
         match key.code {
             KeyCode::Char('l') | KeyCode::Right | KeyCode::Enter => {
-                if let Some(novel) = book_source_parser.read().clone() {
-                    navigate.push_with_state("/network-novel", novel);
-                }
+                open_book();
                 EventResult::Consumed
             }
             _ => EventResult::Ignored,
@@ -144,6 +150,9 @@ pub fn BookDetail(mut hooks: Hooks) -> impl Into<AnyElement<'static>> {
         top_title: Line::from("小说详情").centered().style(theme.title),
         border_style: theme.border,
     ){
+        ActionBar(menu: "小说") {
+            ActionButton(label: "开始阅读", shortcut: "Enter / L / →", disabled: loading.get() || book_source_parser.read().is_none(), on_press: move |_| open_book())
+        }
         {if loading.get(){
             element!(Loading(tip: "加载中...")).into_any()
         }else{

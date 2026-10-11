@@ -7,13 +7,14 @@ use ratatui::{
     widgets::{Block, Row, Table},
 };
 use ratatui_kit::{
-    AnyElement, Handler, Hooks, Props, UseEventHandler, UseTheme, component, element,
+    AnyElement, Handler, Hooks, Props, UseEventHandler, UseInputLayer, UseTheme, component,
+    element,
     prelude::{
         EventOptions, EventPriority, EventResult, EventScope, Modal, ScrollView, Scrollbars, View,
     },
 };
 
-use crossterm::event::{Event, MouseButton, MouseEventKind};
+use crossterm::event::{Event, KeyCode, KeyEvent, KeyEventKind, MouseButton, MouseEventKind};
 
 use crate::theme::AppChromeTheme;
 
@@ -66,8 +67,9 @@ impl From<Vec<(&str, &str)>> for KeyShortcutInfo {
 pub struct ShortcutInfoModalProps {
     pub key_shortcut_info: KeyShortcutInfo,
     pub open: bool,
-    /// 打开时点击任意处关闭(键盘关闭键仍由各页面 root handler 处理)。
-    /// 不传则保持纯展示,点击事件放行。
+    /// Close callback for the button, escape key and scrim.
+    pub close_shortcut: String,
+    pub close_on_key: Handler<'static, KeyEvent, bool>,
     pub on_close: Handler<'static, ()>,
 }
 
@@ -78,26 +80,42 @@ pub fn ShortcutInfoModal(
 ) -> impl Into<AnyElement<'static>> {
     let theme = hooks.use_component_theme::<AppChromeTheme>();
     let open = props.open;
-    let mut on_close = props.on_close.take();
-
-    // 本浮层非阻塞(无输入层),关闭键 i/Esc 在页面 root 层。点击关闭注册为
-    // Low + hit_test=false:任何 Left Down 都能到,又不与页面 Normal 级处理器抢键。
-    // 浮层本身只有静态表格,点击它唯一合理的动作就是关闭。
-    hooks.use_event_handler_with_options(
-        EventScope::Current,
-        EventPriority::Low,
-        EventOptions { hit_test: false },
+    let on_close = std::sync::Arc::new(std::sync::Mutex::new(props.on_close.take()));
+    let mut close_on_key = props.close_on_key.take();
+    let close_shortcut = if props.close_shortcut.is_empty() {
+        "I".to_string()
+    } else {
+        props.close_shortcut.clone()
+    };
+    let layer = hooks.use_input_layer(open, true);
+    hooks.use_event_handler(EventScope::Layer(layer), EventPriority::Normal, {
+        let on_close = on_close.clone();
         move |event| {
-            if open
-                && !on_close.is_default()
-                && let Event::Mouse(m) = event
-                && m.kind == MouseEventKind::Down(MouseButton::Left)
+            if let Event::Key(key) = event
+                && key.kind == KeyEventKind::Press
+                && (key.code == KeyCode::Esc
+                    || if close_on_key.is_default() {
+                        matches!(key.code, KeyCode::Char('i' | 'I'))
+                    } else {
+                        close_on_key(key)
+                    })
             {
-                on_close(());
-                return EventResult::Consumed;
+                on_close.lock().unwrap_or_else(|e| e.into_inner())(());
+                EventResult::Consumed
+            } else {
+                EventResult::Ignored
             }
-            EventResult::Ignored
-        },
+        }
+    });
+
+    hooks.use_event_handler_with_options(
+        EventScope::Layer(layer), EventPriority::Low, EventOptions { hit_test: false },
+        { let on_close = on_close.clone(); move |event| {
+            if open && matches!(event, Event::Mouse(m) if m.kind == MouseEventKind::Down(MouseButton::Left)) {
+                on_close.lock().unwrap_or_else(|e| e.into_inner())(());
+                EventResult::Consumed
+            } else { EventResult::Ignored }
+        } },
     );
 
     let widths = [Constraint::Fill(1), Constraint::Fill(1)];
@@ -118,7 +136,7 @@ pub fn ShortcutInfoModal(
         ("退出程序", "Q / Ctrl + C"),
         ("后退", "B"),
         ("前进", "G"),
-        ("显示/隐藏快捷键信息", "I"),
+        ("显示/隐藏快捷键信息", close_shortcut.as_str()),
     ]);
 
     let global_table = Table::new(global_shortcut_info.rows(), widths)
@@ -137,12 +155,12 @@ pub fn ShortcutInfoModal(
         width:Constraint::Percentage(60),
         height:Constraint::Percentage(50),
         open:props.open,
-        // 非阻塞浮层:本组件不自带 close handler,关闭键 i/Esc 由各页面 root 层 handler 处理。
-        // 若用默认 blocks_lower=true 会截断 root 层 → 帮助浮层一开就再也关不掉(全应用键盘卡死)。
-        // 各页已用 `is_editing: !info_modal_open` 门控背景列表,故非阻塞不会引入背景误响应。
-        blocks_lower: false,
+        layer: layer,
         style:Style::new().dim(),
     ){
+        crate::components::ActionBar {
+            crate::components::ActionButton(label: "关闭帮助", shortcut: format!("Esc / {close_shortcut}"), on_press: move |_| on_close.lock().unwrap_or_else(|e| e.into_inner())(()))
+        }
         ScrollView(margin:Margin::new(1,1),scrollbars:Scrollbars {
             vertical_scrollbar:crate::theme::scrollbar_style(theme.border.not_dim(),theme.title),
             horizontal_scrollbar:crate::theme::scrollbar_style(theme.border.not_dim(),theme.title),

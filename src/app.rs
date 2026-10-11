@@ -1,3 +1,4 @@
+pub mod navigation;
 use std::{sync::Arc, time::Duration};
 
 use futures::FutureExt;
@@ -157,6 +158,7 @@ pub fn App(props: &AppProps, mut hooks: Hooks) -> impl Into<AnyElement<'static>>
                                         let router = element!(RouterProvider(
                                             routes: routes,
                                             index_path: "/home",
+                                            history_length: navigation::HISTORY_LENGTH,
                                             state: RouteState::new(props.trnovel.clone())
                                         ));
                                         #[cfg(feature = "tts")]

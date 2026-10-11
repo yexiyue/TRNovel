@@ -107,6 +107,15 @@ pub fn ThemeSetting(mut hooks: Hooks) -> impl Into<AnyElement<'static>> {
         state
     });
 
+    let mut toggle_background = move |_: ()| {
+        let mut next = appearance.read().clone();
+        next.background = match next.background {
+            BackgroundMode::Theme => BackgroundMode::Terminal,
+            BackgroundMode::Terminal => BackgroundMode::Theme,
+        };
+        let _ = next.save();
+        appearance.set(next);
+    };
     hooks.use_event_handler(EventScope::Current, EventPriority::Normal, move |event| {
         let Event::Key(key) = event else {
             return EventResult::Ignored;
@@ -124,26 +133,28 @@ pub fn ThemeSetting(mut hooks: Hooks) -> impl Into<AnyElement<'static>> {
                 EventResult::Consumed
             }
             KeyCode::Char('t') | KeyCode::Char('T') if !reset_modal_open.get() => {
-                let mut next = appearance.read().clone();
-                next.background = match next.background {
-                    BackgroundMode::Theme => BackgroundMode::Terminal,
-                    BackgroundMode::Terminal => BackgroundMode::Theme,
-                };
-                let _ = next.save();
-                appearance.set(next);
+                toggle_background(());
                 EventResult::Consumed
             }
             _ => EventResult::Ignored,
         }
     });
 
-    element!(Fragment{
+    element!(View{
+        crate::components::ActionBar(menu: "设置") {
+            crate::components::ActionButton(label: if appearance.read().show_header { "顶部栏：显示" } else { "顶部栏：隐藏" }, on_press: move |_| {
+                crate::components::action_bar::toggle_header(appearance);
+            })
+            crate::components::ActionButton(label: "切换背景模式", shortcut: "T", on_press: toggle_background)
+            crate::components::ActionButton(label: "重置外观", shortcut: "D", on_press: move |_| reset_modal_open.set(true))
+            crate::components::ActionButton(label: "帮助", shortcut: "I", on_press: move |_| info_modal_open.set(true))
+        }
         ListSelect<ThemeName>(
             items: themes.to_vec(),
             state: list_state,
-            top_title: Line::from("主题设置").style(theme.title).centered(),
+            top_title: Line::from("全局设置").style(theme.title).centered(),
             bottom_title: Line::from(format!(
-                "当前: {} · 背景: {} · T 切换终端背景",
+                "当前: {} · 背景: {}",
                 current_theme.display_name(),
                 background_label(appearance.read().background),
             ))
@@ -181,7 +192,7 @@ pub fn ThemeSetting(mut hooks: Hooks) -> impl Into<AnyElement<'static>> {
         )
         ConfirmModal(
             title: "重置外观",
-            content: "是否重置为默认主题与背景模式？",
+            content: "是否恢复默认主题、终端背景并显示顶部栏？",
             open: reset_modal_open.get(),
             on_confirm: move |_| {
                 let next = AppearanceConfig::default();

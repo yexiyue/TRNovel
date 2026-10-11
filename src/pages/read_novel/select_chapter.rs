@@ -1,6 +1,6 @@
 use crossterm::event::{Event, KeyCode, KeyEventKind};
 use ratatui::{
-    layout::{Alignment, Constraint, Layout},
+    layout::{Alignment, Constraint},
     text::Line,
     widgets::Block,
 };
@@ -133,7 +133,7 @@ pub fn SelectChapter(
     });
 
     // 鼠标:滚轮滚动视口;点击章节 = 跳转,点击卷 = 选中/切换展开。
-    // 内容区与搜索框按渲染布局切分,精确排除树边框和尾部空白。
+    // 搜索位于共享顶栏；这里仅对目录自身边框内的章节做命中测试。
     hooks.use_pointer(PointerOptions::default(), {
         let on_select = on_select.clone();
         let items = items.clone();
@@ -151,9 +151,7 @@ pub fn SelectChapter(
                     EventResult::Consumed
                 }
                 PointerKind::Click { .. } => {
-                    let areas = Layout::vertical([Constraint::Length(3), Constraint::Fill(1)])
-                        .split(ev.area);
-                    let inner = Block::bordered().inner(areas[1]);
+                    let inner = Block::bordered().inner(ev.area);
                     let hit = tree_item_at_position(&state.read(), &items, inner, ev.position)
                         .and_then(|path| path.last().cloned());
                     match hit {
@@ -180,7 +178,7 @@ pub fn SelectChapter(
 
     element!(View {
         SearchInput(
-            placeholder: "按s搜索章节,以$开头输入数字表示索引",
+            placeholder: "搜索章节（点击输入；$数字跳转章节）",
             on_submit: move |text| {
                 filter_text.set(text);
                 true

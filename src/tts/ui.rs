@@ -20,13 +20,17 @@ mod tests;
 #[derive(Props, Default)]
 pub struct TTSManagerProps {
     pub open: bool,
+    pub layer: Option<InputLayer>,
+    pub on_close: Handler<'static, ()>,
     pub is_editing: bool,
 }
 
 #[component]
-pub fn TTSManager(props: &TTSManagerProps, mut hooks: Hooks) -> impl Into<AnyElement<'static>> {
+pub fn TTSManager(props: &mut TTSManagerProps, mut hooks: Hooks) -> impl Into<AnyElement<'static>> {
     let context = hooks.use_context::<TtsContext>().clone();
     let snapshot = context.snapshot.read().clone();
+    let preparing =
+        snapshot.state == tts_protocol::SessionState::Preparing && !snapshot.model_ready;
     let alignment_enabled = snapshot
         .config
         .as_ref()
@@ -41,7 +45,8 @@ pub fn TTSManager(props: &TTSManagerProps, mut hooks: Hooks) -> impl Into<AnyEle
     let theme = hooks.use_component_theme::<AppChromeTheme>();
     let open = props.open;
     let editing = props.is_editing;
-    let layer = hooks.use_input_layer(open, false);
+    let local_layer = hooks.use_input_layer(open && props.layer.is_none(), true);
+    let layer = props.layer.unwrap_or(local_layer);
     hooks.use_effect(
         {
             let handle = context.handle.clone();
@@ -84,7 +89,7 @@ pub fn TTSManager(props: &TTSManagerProps, mut hooks: Hooks) -> impl Into<AnyEle
                     row if row == release_index => handle.release(),
                     _ => return EventResult::Ignored,
                 },
-                KeyCode::Esc if index.get() == 0 => handle.cancel_prepare(),
+                KeyCode::Esc if index.get() == 0 && preparing => handle.cancel_prepare(),
                 _ => return EventResult::Ignored,
             }
             EventResult::Consumed
@@ -135,7 +140,13 @@ pub fn TTSManager(props: &TTSManagerProps, mut hooks: Hooks) -> impl Into<AnyEle
         };
     element!(Modal(layer:Some(layer),width:Constraint::Percentage(80),height:Constraint::Percentage(80),open:open,blocks_lower:false,margin:Margin::new(1,1),style:Style::default().dim()) {
         View(margin:Margin::new(1,1)) {
-            ScrollView(active:false,state:scroll,scrollbars:Scrollbars {
+            if !props.on_close.is_default() {
+            crate::components::ActionBar {
+                crate::components::ActionButton(label: "关闭听书设置", shortcut: "Esc（准备时先取消）", on_press: props.on_close.take())
+                crate::components::ActionButton(label: "取消准备", shortcut: "Esc（首行）", disabled: !preparing, on_press: { let handle = context.handle.clone(); move |_| handle.cancel_prepare() })
+            }
+        }
+        ScrollView(active:false,state:scroll,scrollbars:Scrollbars {
                 vertical_scrollbar:crate::theme::scrollbar_style(theme.border.not_dim(),theme.title),
                 horizontal_scrollbar:crate::theme::scrollbar_style(theme.border.not_dim(),theme.title),
                 ..Default::default()

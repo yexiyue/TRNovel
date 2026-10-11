@@ -1,3 +1,5 @@
+use crate::app::navigation::UseAppNavigate;
+use crate::components::{ActionBar, ActionButton};
 use crate::{
     components::{WarningModal, list_select::ListSelect, search_input::SearchInput},
     errors::Errors,
@@ -32,7 +34,7 @@ pub fn FindBooks(props: &FindBooksProps, mut hooks: Hooks) -> impl Into<AnyEleme
     let mut page = hooks.use_state(|| 1);
     let page_size = hooks.use_state(|| 20);
     let list_state = hooks.use_state(ListState::default);
-    let mut navigate = hooks.use_navigate();
+    let mut navigate = hooks.use_app_navigate();
     let is_editing = props.is_editing;
 
     // books 先于事件处理器定义,使翻页处理能读「是否到头」(has_more/total_pages 双信号)。
@@ -112,10 +114,18 @@ pub fn FindBooks(props: &FindBooksProps, mut hooks: Hooks) -> impl Into<AnyEleme
         props.current_explore.clone(),
     );
 
+    let at_end = {
+        let value = books.read();
+        value.as_ref().and_then(|b| b.has_more) == Some(false)
+            || value
+                .as_ref()
+                .and_then(|b| b.total_pages)
+                .is_some_and(|m| page.get() >= m)
+    };
     element!(View{
         SearchInput(
-            is_editing: is_editing,
-            placeholder: "按s键搜索书籍, 按tab键切换频道",
+            value: filter_text.read().clone(),            is_editing: is_editing,
+            placeholder: "搜索书籍（点击输入，Enter 搜索）",
             on_submit: move |text| {
                 filter_text.set(text);
                 page.set(1);
@@ -126,6 +136,12 @@ pub fn FindBooks(props: &FindBooksProps, mut hooks: Hooks) -> impl Into<AnyEleme
                 filter_text.set(String::default());
             },
         )
+        ActionBar(menu: "书籍") {
+            ActionButton(label: "‹ 上一页", shortcut: "H / ←", disabled: page.get() <= 1 || loading.get() || !is_editing, on_press: move |_| page.set(page.get().saturating_sub(1).max(1)))
+            Text(text: format!("第 {} 页", page.get()))
+            ActionButton(label: "下一页 ›", shortcut: "L / →", disabled: at_end || loading.get() || props.engine_loading || !is_editing, on_press: move |_| page.set(page.get() + 1))
+            ActionButton(label: "清除搜索", shortcut: "Esc（输入中）", disabled: filter_text.read().is_empty() || !is_editing, on_press: move |_| { filter_text.set(String::new()); page.set(1); })
+        }
         ListSelect<BookListItem>(
             items: books.read().as_ref().map(|b| b.items.clone()).unwrap_or_default(),
             top_title: Line::from(

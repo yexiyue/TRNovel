@@ -1,3 +1,5 @@
+use crate::app::navigation::UseAppNavigate;
+use crate::components::{ActionBar, ActionButton};
 use crossterm::event::{Event, KeyCode, KeyEventKind};
 use parse_book_source::BookSource;
 use ratatui::{
@@ -95,7 +97,7 @@ pub fn SelectBookSource(
     mut hooks: Hooks,
 ) -> impl Into<AnyElement<'static>> {
     let book_source_cache = *hooks.use_context::<State<Option<BookSourceCache>>>();
-    let mut navigate = hooks.use_navigate();
+    let mut navigate = hooks.use_app_navigate();
     let theme = hooks.use_component_theme::<AppChromeTheme>();
     // 默认选中第 0 项:ListState::default() 的 selected 为 None,会导致刚进页面(未按 j/k 前)
     // 没有任何选中项,Enter/L/D 全部静默无反应。给个初始选中,既有可见光标也让快捷键即时可用。
@@ -120,11 +122,35 @@ pub fn SelectBookSource(
         .collect();
 
     let book_sources_keys = book_sources.clone();
+    let selected_source = state
+        .read()
+        .selected
+        .and_then(|i| book_sources.get(i))
+        .cloned();
+    let can_login = selected_source.as_ref().is_some_and(|src| src.has_login());
+    let login = move || {
+        let selected = state.read().selected;
+        if let Some(src) = selected
+            .and_then(|i| book_sources_keys.get(i))
+            .cloned()
+            .filter(|src| src.has_login())
+        {
+            let route = if crate::login::is_logged_in(&src.url) {
+                "/select-books"
+            } else {
+                "/book-source-login"
+            };
+            navigate.push_with_state(route, src);
+        }
+    };
+    let login = std::sync::Arc::new(std::sync::Mutex::new(login));
+    let login_keys = login.clone();
+    let is_editing = props.is_editing;
     hooks.use_event_handler(EventScope::Current, EventPriority::Normal, move |event| {
         let Event::Key(key) = event else {
             return EventResult::Ignored;
         };
-        if key.kind != KeyEventKind::Press {
+        if key.kind != KeyEventKind::Press || !is_editing {
             return EventResult::Ignored;
         }
         match key.code {
@@ -139,16 +165,7 @@ pub fn SelectBookSource(
             // 书源登录(loginUrl/loginUi 非空才有意义):未登录 → 进登录页;
             // 已登录 → 无需重复登录,直接进选书页(「已登录 → 直接进入下一路由」)。
             KeyCode::Char('l') | KeyCode::Char('L') => {
-                if let Some(i) = state.read().selected
-                    && let Some(src) = book_sources_keys.get(i).cloned()
-                    && src.has_login()
-                {
-                    if crate::login::is_logged_in(&src.url) {
-                        navigate.push_with_state("/select-books", src);
-                    } else {
-                        navigate.push_with_state("/book-source-login", src);
-                    }
-                }
+                login_keys.lock().unwrap_or_else(|e| e.into_inner())();
                 EventResult::Consumed
             }
             _ => EventResult::Ignored,
@@ -156,6 +173,10 @@ pub fn SelectBookSource(
     });
 
     element!(View {
+        ActionBar(menu: "书源") {
+            ActionButton(label: "登录书源", shortcut: "L", disabled: !can_login || !props.is_editing, on_press: move |_| login.lock().unwrap_or_else(|e| e.into_inner())())
+            ActionButton(label: "删除书源", shortcut: "D", disabled: selected_source.is_none() || !props.is_editing, on_press: move |_| delete_modal_open.set(true))
+        }
         ListSelect<BookSource>(
             items: book_sources.clone(),
             state: state,

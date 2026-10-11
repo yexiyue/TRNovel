@@ -1,3 +1,4 @@
+use crate::components::{ActionBar, ActionButton};
 use crate::{
     book_source::BookSourceCache,
     components::{WarningModal, multi_list_select::MultiListSelect, search_input::SearchInput},
@@ -117,10 +118,29 @@ pub fn ImportBookSource(
         book_source_url.read().clone(),
     );
 
+    let mut import_sources = move |items: Vec<BookSource>| {
+        if let Some(cache) = book_source_cache.write().as_mut() {
+            for item in items {
+                cache.add_book_source(item);
+            }
+        }
+        selected.write().clear();
+        book_source_url.set(String::new());
+    };
     element!(View {
+        ActionBar(menu: "导入") {
+            ActionButton(label: format!("导入已选（{}）", selected.read().len()), shortcut: "Enter", disabled: selected.read().is_empty() || loading.get() || !is_editing, on_press: move |_| {
+                let items = {
+                    let selected = selected.read();
+                    book_source.read().as_ref().map(|sources| sources.iter().enumerate().filter(|(i, _)| selected.contains(i)).map(|(_, source)| source.clone()).collect()).unwrap_or_default()
+                };
+                import_sources(items);
+            })
+        }
+
         SearchInput(
             value: book_source_url.read().clone(),
-            placeholder: "按s输入书源地址 (支持 http, https, file)",
+            placeholder: "书源 URL 或本地路径（点击输入，Enter 加载）",
             is_editing: is_editing,
             validate:|value:String|{
                 if value.starts_with("http")
@@ -161,17 +181,7 @@ pub fn ImportBookSource(
                     theme,
                 }.into(),4)
             },
-            on_select: move|items:Vec<BookSource>|{
-                if let Some(book_source_cache)=book_source_cache.write().as_mut(){
-                    for item in items{
-                        book_source_cache.add_book_source(item);
-                    }
-                }
-                // 导入成功后清空地址框与选中集:否则地址框仍留着上次的 URL/路径(光标在末尾),
-                // 再按 s 输入下一个书源会拼接到旧地址后面变成非法地址,导致连续导入失败。
-                selected.write().clear();
-                book_source_url.set(String::new());
-            }
+            on_select: move |items| import_sources(items),
         )
         WarningModal(
             tip: format!("解析失败:{:?}", error.read().as_ref()),

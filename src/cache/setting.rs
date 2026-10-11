@@ -9,6 +9,7 @@ use serde::{Deserialize, Serialize};
 pub struct AppearanceConfig {
     pub theme_slug: String,
     pub background: BackgroundMode,
+    pub show_header: bool,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -51,6 +52,7 @@ impl Default for AppearanceConfig {
         Self {
             theme_slug: Self::DEFAULT_THEME.slug().to_string(),
             background: BackgroundMode::Terminal,
+            show_header: true,
         }
     }
 }
@@ -144,10 +146,28 @@ mod tests {
     use ratatui::style::Color;
 
     #[test]
+    fn existing_appearance_config_keeps_header_visible() {
+        let config: AppearanceConfig = toml::from_str("theme_slug = 'tokyo-night'").unwrap();
+        assert!(config.show_header);
+    }
+
+    #[test]
+    fn hidden_header_preference_round_trips() {
+        let config = AppearanceConfig {
+            show_header: false,
+            ..Default::default()
+        };
+        let restored: AppearanceConfig =
+            toml::from_str(&toml::to_string(&config).unwrap()).unwrap();
+        assert!(!restored.show_header);
+    }
+
+    #[test]
     fn unknown_theme_slug_falls_back_to_default_theme() {
         let config = AppearanceConfig {
             theme_slug: "missing-theme".to_string(),
             background: BackgroundMode::Terminal,
+            show_header: true,
         };
 
         assert_eq!(config.theme_name(), AppearanceConfig::DEFAULT_THEME);
@@ -223,6 +243,7 @@ mod tests {
         let config = AppearanceConfig {
             theme_slug: ThemeName::Dracula.slug().to_string(),
             background: BackgroundMode::Terminal,
+            show_header: true,
         };
 
         let palette = config.palette();

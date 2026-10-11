@@ -1,3 +1,4 @@
+use crate::components::{ActionBar, ActionButton};
 use crate::{
     History,
     components::{KeyShortcutInfo, Loading, ShortcutInfoModal, WarningModal},
@@ -23,11 +24,21 @@ use tokio::time::{Duration, sleep};
 mod settings;
 pub use settings::*;
 #[cfg(feature = "tts")]
-fn listening_panel(open: bool, is_editing: bool) -> AnyElement<'static> {
-    element!(crate::tts::ui::TTSManager(open: open, is_editing: is_editing)).into_any()
+fn listening_panel(
+    open: bool,
+    is_editing: bool,
+    layer: InputLayer,
+    mut on_close: Handler<'static, ()>,
+) -> AnyElement<'static> {
+    element!(crate::tts::ui::TTSManager(open: open, is_editing: is_editing, layer: layer, on_close: on_close.take())).into_any()
 }
 #[cfg(not(feature = "tts"))]
-fn listening_panel(_open: bool, _is_editing: bool) -> AnyElement<'static> {
+fn listening_panel(
+    _open: bool,
+    _is_editing: bool,
+    _layer: InputLayer,
+    _on_close: Handler<'static, ()>,
+) -> AnyElement<'static> {
     use ratatui::layout::Constraint;
 
     // An empty Fragment inherits default layout constraints and takes reader space.
@@ -65,6 +76,13 @@ where
     // 也不必在每个入口手写「关掉另一个」。信息浮层是叠在面板之上的层,保持独立。
     let mut panel = hooks.use_state(|| Panel::None);
     let (width, height) = hooks.use_terminal_size();
+    let size = hooks.use_previous_size();
+    let reader_height = if size.height > 0 {
+        size.height
+    } else {
+        height.saturating_sub(1)
+    };
+    let viewport_lines = visible_lines(reader_height);
 
     let mut content_loading = hooks.use_state(|| false);
     let mut info_modal_open = hooks.use_state(|| false);
@@ -222,45 +240,59 @@ where
 
     // 页面级 action(模式/浮层切换)在此分发;正文滚动等 action 由 ReadContent 处理。
     let reader_keymap = hooks.use_atom(&crate::state::KEYMAP).read().reader.clone();
+    let panel_open = panel.get() != Panel::None && is_read_mode.get();
+    let panel_layer = hooks.use_input_layer(panel_open, true);
+    let page_scope = if panel_open {
+        EventScope::Layer(panel_layer)
+    } else {
+        EventScope::Current
+    };
+    hooks.use_event_handler(EventScope::Layer(panel_layer), EventPriority::Normal, move |event| {
+        if panel_open && matches!(event, ratatui_kit::crossterm::event::Event::Key(key) if key.kind == ratatui_kit::crossterm::event::KeyEventKind::Press && key.code == ratatui_kit::crossterm::event::KeyCode::Esc) {
+            panel.set(Panel::None);
+            EventResult::Consumed
+        } else { EventResult::Ignored }
+    });
+    let mut page_action = move |action| match action {
+        ReaderAction::ToggleReadMode => {
+            is_read_mode.set(!is_read_mode.get());
+            EventResult::Consumed
+        }
+        ReaderAction::ToggleInfo => {
+            info_modal_open.set(!info_modal_open.get());
+            EventResult::Consumed
+        }
+        ReaderAction::ToggleTts | ReaderAction::ToggleReaderSettings
+            if !info_modal_open.get()
+                && (action != ReaderAction::ToggleTts || cfg!(feature = "tts")) =>
+        {
+            let target = if action == ReaderAction::ToggleTts {
+                Panel::Tts
+            } else {
+                Panel::ReaderSettings
+            };
+            // 面板只在阅读模式(is_read_mode)渲染。若在章节选择模式按下入口键,直接切到
+            // 阅读模式并打开,避免「状态翻转了却无 UI」的死输入,以及之后 Tab 进阅读模式时
+            // 面板意外已开的状态错位。
+            if is_read_mode.get() {
+                panel.set(if panel.get() == target {
+                    Panel::None
+                } else {
+                    target
+                });
+            } else {
+                is_read_mode.set(true);
+                panel.set(target);
+            }
+            EventResult::Consumed
+        }
+        _ => EventResult::Ignored,
+    };
     hooks.use_keymap_handler(
-        EventScope::Current,
+        page_scope,
         EventPriority::Normal,
         reader_keymap.clone(),
-        move |action, _key| match action {
-            ReaderAction::ToggleReadMode => {
-                is_read_mode.set(!is_read_mode.get());
-                EventResult::Consumed
-            }
-            ReaderAction::ToggleInfo => {
-                info_modal_open.set(!info_modal_open.get());
-                EventResult::Consumed
-            }
-            ReaderAction::ToggleTts | ReaderAction::ToggleReaderSettings
-                if !info_modal_open.get()
-                    && (action != ReaderAction::ToggleTts || cfg!(feature = "tts")) =>
-            {
-                let target = if action == ReaderAction::ToggleTts {
-                    Panel::Tts
-                } else {
-                    Panel::ReaderSettings
-                };
-                // 面板只在阅读模式(is_read_mode)渲染。若在章节选择模式按下入口键,直接切到
-                // 阅读模式并打开,避免「状态翻转了却无 UI」的死输入,以及之后 Tab 进阅读模式时
-                // 面板意外已开的状态错位。
-                if is_read_mode.get() {
-                    panel.set(if panel.get() == target {
-                        Panel::None
-                    } else {
-                        target
-                    });
-                } else {
-                    is_read_mode.set(true);
-                    panel.set(target);
-                }
-                EventResult::Consumed
-            }
-            _ => EventResult::Ignored,
-        },
+        move |action, _key| page_action(action),
     );
 
     if loading.get() {
@@ -287,13 +319,26 @@ where
     let tts_panel = listening_panel(
         panel.get() == Panel::Tts,
         panel.get() == Panel::Tts && !info_modal_open.get(),
+        panel_layer,
+        Handler::from(move |_| panel.set(Panel::None)),
     );
 
-    element!(Fragment {
+    element!(View {
+        ActionBar(menu: "阅读") {
+            ActionButton(label: if is_read_mode.get() { "目录" } else { "返回正文" }, shortcut: display_keys(&reader_keymap, ReaderAction::ToggleReadMode), on_press: move |_| { page_action(ReaderAction::ToggleReadMode); })
+            ActionButton(label: "阅读设置", shortcut: display_keys(&reader_keymap, ReaderAction::ToggleReaderSettings), on_press: move |_| { page_action(ReaderAction::ToggleReaderSettings); })
+            if cfg!(feature = "tts") {
+                ActionBar(menu: "听书") {
+                ActionButton(label: "听书设置", shortcut: display_keys(&reader_keymap, ReaderAction::ToggleTts), on_press: move |_| { page_action(ReaderAction::ToggleTts); })
+                }
+            }
+            ActionButton(label: "帮助", shortcut: display_keys(&reader_keymap, ReaderAction::ToggleInfo), on_press: move |_| { page_action(ReaderAction::ToggleInfo); })
+        }
         { if is_read_mode.get() {
             element!(View{
                 ReadContent(
                     search: search,
+                    show_actions: true,
                     is_scroll: panel.get() == Panel::None && !info_modal_open.get(),
                     width: width,
                     height: height,
@@ -349,10 +394,15 @@ where
                 )
                 Fragment{ {tts_panel} }
                 ReaderSettingsModal(
+                    layer: panel_layer,
+                    on_close: move |_| panel.set(Panel::None),
+                    viewport_lines: viewport_lines,
                     open: panel.get() == Panel::ReaderSettings,
                     is_editing: panel.get() == Panel::ReaderSettings && !info_modal_open.get(),
                 )
                 ShortcutInfoModal(
+                    close_shortcut: display_keys(&reader_keymap, ReaderAction::ToggleInfo),
+                    close_on_key: { let keymap = reader_keymap.clone(); move |key| keymap.action_for(key) == Some(ReaderAction::ToggleInfo) },
                     // 阅读页 action 的键名从 keymap 动态取(重绑后帮助随之更新);
                     // TTS/阅读设置面板内部键(组件自处理,未迁移)保持硬编码。
                     // 整张表只在浮层打开时构建 —— 它含十余次 `describe()` + 字符串拼接,
@@ -451,6 +501,8 @@ where
                     follow_suspended: follow_suspended,
                 )
                 ShortcutInfoModal(
+                    close_shortcut: display_keys(&reader_keymap, ReaderAction::ToggleInfo),
+                    close_on_key: { let keymap = reader_keymap.clone(); move |key| keymap.action_for(key) == Some(ReaderAction::ToggleInfo) },
                     // 目录导航键是 SelectChapter/TreeSelect 内部处理(未迁移),保持硬编码;
                     // 仅模式切换键动态取。同上:只在浮层打开时构建。
                     key_shortcut_info: if !info_modal_open.get() {

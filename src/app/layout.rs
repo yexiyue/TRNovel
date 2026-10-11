@@ -1,19 +1,27 @@
+use crate::app::navigation::UseAppNavigate;
 use crate::{
     Commands, History, HistoryItem, TRNovel, components::BrowserPromptModal,
     pages::network_novel::book_detail::BookDetailState,
 };
 use crossterm::event::{Event, KeyCode, KeyEventKind, KeyModifiers};
 use ratatui_kit::{
-    AnyElement, EventPriority, EventResult, EventScope, Hooks, State, UseContext, UseEffect,
-    UseEventHandler, UseExit, UseRouter, UseState, component, element,
-    prelude::{Fragment, Outlet},
+    AnyElement, EventPriority, EventResult, EventScope, Hooks, State, UseAtom, UseContext,
+    UseEffect, UseEventHandler, UseExit, UseInputLayer, UseRouter, UseState, component, element,
+    prelude::{Outlet, View},
 };
 use std::path::PathBuf;
 
 #[component]
 pub fn Layout(mut hooks: Hooks) -> impl Into<AnyElement<'static>> {
-    let mut navigate = hooks.use_navigate();
+    let mut navigate = hooks.use_app_navigate();
+    let trail = crate::app::navigation::use_trail(&mut hooks);
+    let back = trail.read().back_label();
+    let forward = trail.read().forward_label();
     let mut exit = hooks.use_exit();
+    let mut exit_button = hooks.use_exit();
+    let appearance = hooks.use_atom(&crate::state::APPEARANCE);
+    let show_header = appearance.read().show_header;
+    let chrome_layer = hooks.use_input_layer(true, false);
     let params = hooks.try_use_route_state::<TRNovel>();
     let history = *hooks.use_context::<State<Option<History>>>();
 
@@ -106,8 +114,27 @@ pub fn Layout(mut hooks: Hooks) -> impl Into<AnyElement<'static>> {
             _ => EventResult::Ignored,
         }
     });
-    element!(Fragment {
+    element!(View {
+        View(height: ratatui::layout::Constraint::Length(u16::from(show_header)))
+        crate::components::ActionBar(menu: "更多") {
+            crate::components::ActionButton(label: "全局设置", on_press: move |_| navigate.push("/theme-setting"))
+            crate::components::ActionButton(label: if show_header { "隐藏顶部栏" } else { "显示顶部栏" }, shortcut: "F10 呼出", on_press: move |_| {
+                crate::components::action_bar::toggle_header(appearance);
+            })
+            crate::components::ActionButton(
+                label: forward.map(|name| format!("前进至{name} ›")).unwrap_or_else(|| "前进 ›".into()), shortcut: "G",
+                disabled: forward.is_none(), on_press: move |_| navigate.go(1),
+            )
+            crate::components::ActionButton(label: "退出", shortcut: "Q", on_press: move |_| exit_button())
+        }
         Outlet
+        crate::components::search_input::HeaderSearch(
+            chrome_layer: Some(chrome_layer),
+            back_shortcut: back.map(|name| format!("B · 返回{name}")).unwrap_or_else(|| "B".into()),
+            back_disabled: back.is_none(), on_back: move |_| navigate.go(-1),
+        )
+        crate::components::action_menu::AppMenuPopup
+        crate::components::ActionHint
         BrowserPromptModal
     })
 }

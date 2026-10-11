@@ -1,3 +1,4 @@
+use crate::components::{ActionBar, ActionButton};
 use crossterm::event::{Event, KeyCode, KeyEventKind};
 use ratatui::layout::Direction;
 use ratatui_kit::{
@@ -25,6 +26,13 @@ pub fn BookSourceManager(mut hooks: Hooks) -> impl Into<AnyElement<'static>> {
     });
     let mut info_modal_open = hooks.use_state(|| false);
 
+    let mut browser_allowed = hooks.use_state(crate::browser_assist::always_allowed);
+    let mut toggle_browser = move || {
+        let on = !crate::browser_assist::always_allowed();
+        if crate::browser_assist::set_always_allowed(on).is_ok() {
+            browser_allowed.set(on);
+        }
+    };
     hooks.use_event_handler(EventScope::Current, EventPriority::Normal, move |event| {
         let Event::Key(key) = event else {
             return EventResult::Ignored;
@@ -45,15 +53,20 @@ pub fn BookSourceManager(mut hooks: Hooks) -> impl Into<AnyElement<'static>> {
             // 用 W(Web 浏览器)而非 B:B 是 shell 级后退键(`layout.rs`),同层里页面 Normal
             // 会先于 shell 的 Low 跑并 Consumed,占用 B 会让本页**彻底无法后退**。
             KeyCode::Char('w') | KeyCode::Char('W') => {
-                let on = crate::browser_assist::always_allowed();
-                let _ = crate::browser_assist::set_always_allowed(!on);
+                toggle_browser();
                 EventResult::Consumed
             }
             _ => EventResult::Ignored,
         }
     });
 
-    if only_select.get() {
+    element!(View {
+        ActionBar(menu: "书源") {
+            ActionButton(label: if only_select.get() { "导入书源" } else { "返回书源列表" }, shortcut: "Tab", on_press: move |_| only_select.set(!only_select.get()))
+            ActionButton(label: if browser_allowed.get() { "浏览器辅助：开" } else { "浏览器辅助：关" }, shortcut: "W", on_press: move |_| toggle_browser())
+            ActionButton(label: "帮助", shortcut: "I", on_press: move |_| info_modal_open.set(true))
+        }
+        { if only_select.get() {
         element!(View(
             flex_direction:Direction::Horizontal
         ){
@@ -72,7 +85,7 @@ pub fn BookSourceManager(mut hooks: Hooks) -> impl Into<AnyElement<'static>> {
                 open: info_modal_open.get(),
                 on_close:{let mut open = info_modal_open; move |_: ()| open.set(false)},
             )
-        })
+        }).into_any()
     } else {
         element!(View(
             flex_direction:Direction::Horizontal
@@ -95,6 +108,7 @@ pub fn BookSourceManager(mut hooks: Hooks) -> impl Into<AnyElement<'static>> {
                 open: info_modal_open.get(),
                 on_close:{let mut open = info_modal_open; move |_: ()| open.set(false)},
             )
-        })
-    }
+        }).into_any()
+    } }
+    })
 }

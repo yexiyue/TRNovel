@@ -24,7 +24,7 @@
 
 **不要做**:
 - 阅读正文的滚轮**不要**接入「章末武装 + 二次确认翻章」——滚轮一滚就是一串事件,武装会被同一次滑动立即确认,等于变相跳章;钳到 `[0, end_scroll]` 即可,翻章留给显式按键。
-- `ShortcutInfoModal` 打开时,背景组件(如首页菜单)的鼠标处理器要像键盘一样被 `is_editing` 门控,否则点一下会同时「导航 + 该关的浮层没关」。
+- `ShortcutInfoModal` 自带独占输入层，关闭按钮、Esc、当前帮助快捷键及遮罩点击均在该层处理；背景导航被层栈屏蔽。页面的 `is_editing` 门控仍保留为业务可用性约束。
 
 **相关文件**:`src/lib.rs`(入口)、`src/components/{select,list_select,multi_list_select,file_select,setting_item}.rs`、`src/pages/home.rs`、`src/pages/read_novel/{read_content,select_chapter}.rs`、ratatui-kit `hooks/use_pointer.rs`、本地 skill `../ratatui-kit/skills/ratatui-kit/references/pointer-events.md`
 
@@ -417,7 +417,7 @@ const PANEL_HEIGHT: u16 = ITEM_COUNT as u16 * 3 + 4;
 
 其余三条既有约定仍然适用:
 
-- `blocks_lower: false` —— 否则截断 root 层 handler,面板一开就关不掉(入口键在父级 `ReadNovel` 上)。
+- 阅读设置与听书设置共用 `ReadNovel` 当帧创建的独占 `panel_layer`；页面 action handler 在面板打开时注册到该层，并将层句柄传给面板 `Modal`。关闭按钮与 Esc 在活跃层处理，背景导航不再可点击。
 - 浮层关闭时**在 hooks 全部注册完之后提前返回** `element!(View).into_any()`:组件每帧重跑,提示行的 `describe()` + `format!` 与整棵子树否则会每帧构建一次,而它绝大多数时间不可见。同理 `ShortcutInfoModal` 的快捷键表(十余次 `describe()` + 字符串拼接)要包在 `if info_modal_open.get()` 里再构建。
 - **UX**:数值型条目把派生值同屏展示(`翻页重叠: 2 行(每页滚动 26 行)`)——用户无法凭「2」想象效果,零成本的可解释性。
 
@@ -635,3 +635,77 @@ PointerEvent.position 与 area 共用绘制坐标,嵌套 ScrollView 内为内容
 正文 use_scrollbar 的 content_length、viewport_length、position 和 on_seek 都使用行单位。目录 TreeSelect.scrollbar 使用同源 ScrollbarStyle,active:false 仍允许拖动,仅改变目录视口；拖拽样式优先于悬停。主题集中派生这些样式,ScrollbarStyle 各样式字段是 Style,不是 Option<Style>。
 
 动态 on_seek/active/loading/外部 state 不得改变 Hook 顺序；手写 Component::update 先接 updater 的 context stack。输入层句柄仅当前帧有效,明确归属的指针处理器用 PointerOptions.layer；Cancel 清临时反馈,不提交释放动作。完整参考见 ../ratatui-kit/skills/ratatui-kit/references/pointer-events.md 与线上鼠标指南。
+
+
+## 可见操作入口（2026-10-11）
+
+### 紧凑工具栏、悬停提示与历史导航
+
+`components/action_bar.rs` 的 `ActionButton` 占一行，用 `use_pointer` 左键 Down 激活、Enter/Leave 更新悬停；`layer` 用于输入层内的提交/取消按钮。标签宽度以 Ratatui `Line::width()` 计量并限制为 20 列；完整标签与实际快捷键在悬停时的临时浮层显示，禁用按钮注明不可用。`ActionBar(menu: "分组名")` 不占布局空间，将子按钮注册到共享顶栏菜单；不带 menu 的搜索/弹窗操作条仍按实际宽度分行。常驻顶栏只占一行，返回使用明确的文字按钮，与搜索保留间距，不显示当前页面标题。
+
+框架 0.12 没有公开历史目的地查询 API。`app/navigation.rs` 只记录历史路径标签，路由状态仍交给框架保存；所有应用导航统一用 `UseAppNavigate`，禁止绕过该入口直接 push/go。标签历史与 RouterProvider 共用 `HISTORY_LENGTH = 10`，同步处理后退、前进、容量截断和后退后新建分支。CLI 初始导航也走同一入口，避免返回按钮猜测业务上级。
+
+### 面板与输入层必须同时屏蔽背景键鼠
+
+帮助弹窗自建独占层，并接受 `close_on_key`，阅读页传入当前 keymap 的 ToggleInfo 判定。阅读/听书设置使用父页当帧创建的独占层，页面关闭/切换快捷键在该层注册；不要存储 InputLayer。TTS 首行仅在实际 Preparing 且模型未就绪时将 Esc 解释为取消准备，其余情况交给页面关闭处理器。各面板有可点击关闭入口。
+
+正文搜索编辑层的 High handler 只消费 Key/Paste，鼠标必须返回 Ignored；否则输入层内的搜索/取消按钮也会被吞掉。指针处理器通过 `PointerOptions.layer` 绑定当帧编辑层。搜索结果的上一个、下一个及清除按钮复用键盘语义 action。
+
+### 正文视口包含搜索控件的真实占用
+
+ReadContent 从 `use_previous_size()` 读取自身尺寸；扣除正文边框与状态行，搜索控件不再占正文高度。浮动菜单不计入正文高度，目录预览不注册正文操作。翻页步长、滚动条、章末判定和朗读跟随使用同一 `view`；阅读设置通过 `viewport_lines` 展示对应步长，不能再直接使用全终端高度。
+
+**验收**：`dev-notes/visible-actions/verify.py` 用隔离 HOME、临时小说及仅监听 loopback 的模拟 v2 书源驱动真实 PTY，覆盖鼠标导航、频道、分页边界、本地筛选、正文搜索、自定义帮助键、面板屏蔽以及 40 列布局。真实书站与模型推理不属于这个 UI 验收。
+
+
+### rat-menu 浮动菜单适配（2026-10-11）
+
+使用 crates.io `rat-menu 3.1.1` 的 `PopupMenu` 绘制菜单；菜单项右侧显示当前 keymap 的快捷键，禁用项不可激活。键盘 F10 打开、左右切换分组、上下选择、Enter 执行、Esc 关闭；鼠标悬停选中，菜单展开后可移到其他顶栏分组切换，外部点击只关闭菜单。
+
+**正确做法**：
+- 页面 `ActionBar(menu: ...)` 提供 MenuGroup context，ActionButton 注册标签/快捷键/禁用态并在卸载时删除；最新回调经稳定 Arc<Mutex<Handler>> 更新，不将路由切换前的闭包留在菜单中。
+- `AppMenus` 只渲染顶栏入口。`AppMenuPopup` 放在 Layout 根层，与 Outlet 为兄弟；不能将浮层挂在一行高的顶栏中，否则祖先的绘制裁剪会挡住正文上的浮层。
+- rat-menu 的 PopupMenuState 含 Rc/Cell 焦点字段，不能存入要求 Send + Sync 的 hooks。仅在 widget 绘制阶段临时创建该状态，跨帧保留可发送的选择索引与精确渲染行区域，事件仍由框架当帧独占输入层处理。
+- 输入 handler 使用渲染时的 is_open 快照，避免打开按钮的同一次点击在后续遮罩 handler 中被当成外部点击而立即关闭。
+- 中文正文的宽字符可能跨进浮层左边界。绘制前仅清除边界左侧仍跨入浮层的宽字符头，否则 terminal buffer diff 会把菜单左边框当作宽字符延续列跳过；用真实 PTY 和带中文背景的 buffer 测试验证。
+
+**相关文件**：`src/components/action_menu.rs`、`src/components/action_bar.rs`、`src/app/layout.rs`。
+
+
+### 单行折叠搜索（2026-10-11）
+
+搜索框由页面注册搜索值、校验与提交回调，共享顶栏渲染。关闭时显示搜索入口，编辑时输入框替换菜单；返回文字按钮位于左侧并与搜索分组留出间距，编辑时原位变为「取消」，右侧仅保留「确定」。取消复用 Esc 的搜索关闭语义，不调用路由返回。搜索保持独占输入层，Enter 提交、Esc 收起，校验失败留在编辑态。页面卸载删除注册及活动搜索，避免路由间残留回调。目录的命中区域直接使用自身边框内区域，不能继续扣除原来的三行搜索框。
+
+正文搜索匹配操作收进阅读菜单，默认底部不显示操作提示；实际阅读进度和活动听书状态保留。悬停快捷键使用覆盖内容的临时浮层，不占固定行。
+
+**相关文件**：`src/components/search_input.rs`、`src/app/layout.rs`、`src/pages/read_novel/select_chapter.rs`。
+
+
+**回调保存**：组件的局部状态更新可能复用已被 `Handler::take()` 消费的 props。共享按钮、搜索注册和顶栏返回回调保存在稳定 Arc<Mutex<Handler>> 中，仅在收到非默认 handler 时替换；防止默认占位覆盖已保存的回调。真实 PTY 验收覆盖悬停后点击、搜索收起后返回及输入中鼠标取消。
+
+
+**可选输入层**：`use_input_layer(false, ...)` 仍返回当帧句柄，但该层没有进入活跃栈。左侧导航位置仅在搜索展开时显式绑定搜索层作为取消入口，关闭时传 None 使用当前层；不能始终把该句柄传给按钮，否则关闭搜索后返回按钮会处于未登记层而无法点击。
+
+
+### 顶栏两端布局（2026-10-11）
+
+返回为明确的「‹ 返回」，窄窗口缩为「返回」，与搜索及页面菜单留出间距；「更多」通过弹性空白靠行尾。菜单头命中区域及弹窗锚点同步使用右端位置，不能只移动渲染文本。F10 以菜单序号识别首项，不能再按 start_x 判断；首页只有右侧「更多」时也要能打开。
+
+
+### 弹窗父组件的事件层（2026-10-11）
+
+Modal 只向子树注入输入层。在构造 Modal 的父组件中注册的上下键、滚轮处理器必须显式使用 `EventScope::Layer(layer)`，并把同一句柄传给 Modal；否则独占弹窗会屏蔽自己的父级处理器。阅读设置优先复用阅读页传入的层，独立挂载时创建自己的层。真实 PTY 验收通过上下键及 j/k 切换条目，再左右调整布尔值来确认焦点变化。
+
+
+### 全局隐藏顶栏与临时呼出（2026-10-11）
+
+`AppearanceConfig.show_header` 默认为 true，旧配置通过 serde 默认值兼容；偏好经 ConfigStore 持久化。隐藏时共享顶栏使用非阻塞 Modal 覆盖顶部，不占正文布局行。F10 请求首个菜单，右上角 `⋯` 请求更多菜单；AppMenus 在算出真实锚点后处理请求。临时菜单关闭、动作执行或搜索结束后自动恢复隐藏，不修改持久化偏好。常驻顶栏切换只改变可见行数，阅读进度仍按正文总行数定位。
+
+**绘制与输入顺序分离**：Layout 在正文之前登记非阻塞 chrome 层，HeaderSearch 在 Outlet 之后绘制并复用该句柄。这样浮层不会被正文覆盖，而顶栏按钮仍低于页面帮助/设置输入层。常驻时通过正文之前的一行 spacer 保留空间。不能在正文之前绘制隐藏栏浮层，也不能在正文之后自开顶栏层而绕过页面弹窗。全局设置包含零尺寸菜单注册时用 View 包裹，避免透明 Fragment 继承首个零尺寸子项而让页面消失。
+
+
+### 菜单退出必须消费鼠标释放（2026-10-11）
+
+菜单原先在左键 Down 上立即执行，退出动作会先结束事件循环并恢复终端，随后鼠标 Up 的 SGR 报告进入 shell，显示为 `0;列;行m` 等残留。菜单记录按下项，仅在同一项收到 Up 时执行；键盘 Enter 保持立即执行。切换菜单重置按下项，拖出后松开不执行。
+
+**验证**：真实 PTY 模拟按住退出项，旧二进制在松开前已退出，新版本保持运行直到松开。用接管相同 tty 的输入读取代理验证，旧版本退出后留下 `\x1b[<0;89;4m`，新版本为空。`verify.py` 的退出验收将 Down 与 Up 分开发送，防止连续发送掩盖这类时序问题。

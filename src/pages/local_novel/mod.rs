@@ -1,3 +1,5 @@
+use crate::app::navigation::UseAppNavigate;
+use crate::components::{ActionBar, ActionButton};
 use crate::{
     History,
     components::{
@@ -16,7 +18,7 @@ use std::{env::current_dir, path::PathBuf};
 #[component]
 pub fn SelectFile(mut hooks: Hooks) -> impl Into<AnyElement<'static>> {
     let dir_path = hooks.try_use_route_state::<PathBuf>();
-    let mut navigate = hooks.use_navigate();
+    let mut navigate = hooks.use_app_navigate();
     let theme = hooks.use_component_theme::<AppChromeTheme>();
     let mut path = hooks.use_state(|| dir_path.map(|p| (*p).clone()));
     let mut filter_text = hooks.use_state(String::default);
@@ -71,15 +73,16 @@ pub fn SelectFile(mut hooks: Hooks) -> impl Into<AnyElement<'static>> {
         }
     });
 
-    if loading.get() {
-        return element!(Loading(tip:"搜索小说中...")).into_any();
-    }
-
     element!(Fragment {
         View{
+            ActionBar(menu: "本地") {
+                ActionButton(label: "清除筛选", shortcut: "Esc（输入中）", disabled: filter.is_empty(), on_press: move |_| filter_text.set(String::new()))
+                ActionButton(label: "帮助", shortcut: "I", on_press: move |_| info_modal_open.set(true))
+            }
             SearchInput(
+                label: "路径",
                 value: dir_path.to_string_lossy().to_string(),
-                placeholder: "按s 开始输入小说文件夹路径",
+                placeholder: "小说文件或文件夹路径（点击编辑，Enter 打开）",
                 is_editing: !info_modal_open.get(),
                 validate: |input: String| {
                     let path = PathBuf::from(input);
@@ -106,8 +109,9 @@ pub fn SelectFile(mut hooks: Hooks) -> impl Into<AnyElement<'static>> {
                 },
             )
             SearchInput(
+                label: "搜索",
                 value: filter.clone(),
-                placeholder: "按/搜索小说名称",
+                placeholder: "搜索小说名称（点击输入，Enter 筛选）",
                 activate_key: Some(KeyCode::Char('/')),
                 is_editing: !info_modal_open.get(),
                 clear_on_escape: true,
@@ -119,6 +123,9 @@ pub fn SelectFile(mut hooks: Hooks) -> impl Into<AnyElement<'static>> {
                     filter_text.set(String::default());
                 },
             )
+            if loading.get() {
+                Loading(tip: "扫描小说文件中...")
+            } else {
             FileSelect(
                 is_editing: !info_modal_open.get(),
                 // 筛选态展开全部目录:命中的文件多半在子目录里,折叠着等于没筛。
@@ -134,6 +141,7 @@ pub fn SelectFile(mut hooks: Hooks) -> impl Into<AnyElement<'static>> {
                     "没有匹配的小说，请按/重新搜索，或按Esc清除搜索".to_owned()
                 },
             )
+            }
             WarningModal(
                 tip: format!("加载失败:{:?}", error.read().as_ref()),
                 is_error: error.read().is_some(),

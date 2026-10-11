@@ -24,30 +24,37 @@ const ITEM_COUNT: usize = 3 + cfg!(feature = "tts") as usize;
 
 /// 面板高度:每个条目 3 行(含边框),外加浮层自身的边框与外边距 4 行。
 /// 不够高会把最后一个条目裁掉 —— 条目数变了必须跟着改。
-const PANEL_HEIGHT: u16 = ITEM_COUNT as u16 * 3 + 4;
+const PANEL_HEIGHT: u16 = ITEM_COUNT as u16 * 3 + 5;
 
 #[derive(Props, Default)]
 pub struct ReaderSettingsModalProps {
     pub open: bool,
+    pub layer: Option<InputLayer>,
+    pub on_close: Handler<'static, ()>,
+    pub viewport_lines: Option<usize>,
     pub is_editing: bool,
 }
 
 #[component]
 pub fn ReaderSettingsModal(
-    props: &ReaderSettingsModalProps,
+    props: &mut ReaderSettingsModalProps,
     mut hooks: Hooks,
 ) -> impl Into<AnyElement<'static>> {
     let theme = hooks.use_component_theme::<AppChromeTheme>();
     let reader_keymap = hooks.use_atom(&crate::state::KEYMAP).read().reader.clone();
     let reader_display = hooks.use_atom(&crate::state::READER_DISPLAY);
-    // 正文可见行数与 ReadContent 同源(同一个终端高度),用于把重叠行数换算成实际步长展示。
+    // 阅读页传入扣除工具栏后的实际正文视口。独立挂载时保留终端高度回退。
     let (_, height) = hooks.use_terminal_size();
 
     let mut index = hooks.use_state(|| 0usize);
     let is_open = props.open;
     let is_editing = props.is_editing;
+    // These handlers belong to the modal even though they are registered above its subtree.
+    let own_layer = hooks.use_input_layer(is_open && props.layer.is_none(), true);
+    let layer = props.layer.unwrap_or(own_layer);
+    let scope = EventScope::Layer(layer);
 
-    hooks.use_event_handler(EventScope::Current, EventPriority::Normal, move |event| {
+    hooks.use_event_handler(scope, EventPriority::Normal, move |event| {
         let Event::Key(key) = event else {
             return EventResult::Ignored;
         };
@@ -73,7 +80,7 @@ pub fn ReaderSettingsModal(
     // 鼠标滚轮移动面板焦点:面板开着时整屏滚轮都归面板并消费(背景正文此时
     // is_scroll=false 不响应;消费可避免「浮层没关、正文偷偷滚」)。
     hooks.use_event_handler_with_options(
-        EventScope::Current,
+        scope,
         EventPriority::Low,
         EventOptions { hit_test: false },
         {
@@ -119,7 +126,11 @@ pub fn ReaderSettingsModal(
     let overlap_value = format!(
         "{} 行(每页滚动 {} 行)",
         config.page_overlap,
-        config.page_step(visible_lines(height))
+        config.page_step(
+            props
+                .viewport_lines
+                .unwrap_or_else(|| visible_lines(height))
+        )
     );
     let title_value = if config.show_title { "开" } else { "关" };
     let spacing_value = if config.paragraph_spacing {
@@ -132,13 +143,16 @@ pub fn ReaderSettingsModal(
         width:Constraint::Percentage(60),
         height: Constraint::Length(PANEL_HEIGHT),
         open: is_open,
-        // 非阻塞浮层:关闭键(o)与 Tab/i 都在父级 root handler 上,默认 blocks_lower=true
-        // 会截断 root → 面板一开就关不掉。背景正文已用 is_scroll 门控,不会重复响应。
-        blocks_lower: false,
+        layer: layer,
         margin: Margin::new(1, 1),
         style: Style::default().dim(),
     ) {
         View(margin: Margin::new(1, 1)) {
+            if !props.on_close.is_default() {
+                crate::components::ActionBar {
+                    crate::components::ActionButton(label: "关闭阅读设置", shortcut: "Esc", on_press: props.on_close.take())
+                }
+            }
             Border(
                 border_style: theme.border.not_dim(),
                 top_title: Line::from("阅读设置").centered().style(theme.title),
