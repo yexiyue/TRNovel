@@ -13,12 +13,12 @@ use ratatui::{
 };
 use ratatui_kit::prelude::*;
 use std::collections::HashSet;
-use tui_widget_list::ListBuildContext;
 
 struct ListItem {
     pub book_source: BookSource,
     pub selected: bool,
     pub height_light: bool,
+    pub hovered: bool,
     pub theme: AppChromeTheme,
 }
 
@@ -28,6 +28,10 @@ impl WidgetRef for ListItem {
             Block::bordered()
                 .padding(Padding::horizontal(2))
                 .style(self.theme.highlight)
+        } else if self.hovered {
+            Block::bordered()
+                .padding(Padding::horizontal(2))
+                .style(self.theme.meta_label)
         } else if self.selected {
             Block::bordered()
                 .padding(Padding::horizontal(2))
@@ -45,6 +49,8 @@ impl WidgetRef for ListItem {
             self.theme.text.patch(self.theme.selected)
         } else if self.height_light {
             self.theme.text.patch(self.theme.highlight)
+        } else if self.hovered {
+            self.theme.text.patch(self.theme.meta_label)
         } else {
             self.theme.text
         };
@@ -145,12 +151,13 @@ pub fn ImportBookSource(
             ).centered(),
             loading_tip:"解析中...".to_string(),
             items: book_source.read().clone().unwrap_or_default(),
-            render_item:move|ctx:&ListBuildContext|{
+            render_item:move|ctx:&VirtualItemContext|{
                 let book_source=book_source.read().clone().unwrap_or_default();
                 (ListItem{
                     book_source: book_source[ctx.index].clone(),
                     selected: selected.read().contains(&ctx.index),
                     height_light: ctx.is_selected,
+                    hovered: ctx.is_hovered,
                     theme,
                 }.into(),4)
             },

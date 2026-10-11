@@ -112,6 +112,7 @@ pub fn SelectBooks(mut hooks: Hooks) -> impl Into<AnyElement<'static>> {
                 ("搜索书籍", "S"),
             ],
             open: info_modal_open.get(),
+            on_close:{let mut open = info_modal_open; move |_: ()| open.set(false)},
         )
         Modal(
             width: Constraint::Length(30),

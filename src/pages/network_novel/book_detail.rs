@@ -151,6 +151,8 @@ pub fn BookDetail(mut hooks: Hooks) -> impl Into<AnyElement<'static>> {
                 gap:1,
                 scrollbars: Scrollbars {
                     vertical_scrollbar_visibility: ScrollbarVisibility::Always,
+                    vertical_scrollbar: crate::theme::scrollbar_style(theme.border, theme.title),
+                    horizontal_scrollbar: crate::theme::scrollbar_style(theme.border, theme.title),
                     ..Default::default()
                 }
             ){

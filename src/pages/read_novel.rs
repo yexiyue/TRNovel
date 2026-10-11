@@ -409,6 +409,7 @@ where
                         }
                     },
                     open: info_modal_open.get(),
+                    on_close:{let mut open = info_modal_open; move |_: ()| open.set(false)},
                 )
             })
         }else{
@@ -464,6 +465,7 @@ where
                         ])
                     },
                     open: info_modal_open.get(),
+                    on_close:{let mut open = info_modal_open; move |_: ()| open.set(false)},
                 )
             })
         } }

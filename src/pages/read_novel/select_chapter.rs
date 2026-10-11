@@ -1,13 +1,17 @@
 use crossterm::event::{Event, KeyCode, KeyEventKind};
 use ratatui::{
-    layout::{Alignment, Constraint},
+    layout::{Alignment, Constraint, Layout},
     text::Line,
-    widgets::{Block, Scrollbar},
+    widgets::Block,
 };
-use ratatui_kit::prelude::*;
+use ratatui_kit::{components::tree_select::tree_item_at_position, prelude::*};
+use std::{cell::RefCell, rc::Rc};
 use tui_tree_widget::{TreeItem, TreeState};
 
 use crate::{components::search_input::SearchInput, novel::VolumeMarker, theme::AppChromeTheme};
+
+/// 滚轮一格滚动的行数,与常见终端编辑器的默认步长一致。
+const WHEEL_LINES: usize = 3;
 
 /// 章节项：`(标题, 扁平章节索引)`。扁平索引同时是它在章节列表中的位置。
 #[derive(Default, Clone)]
@@ -85,42 +89,88 @@ pub fn SelectChapter(
         ),
     );
 
-    let mut on_select = props.on_select.take();
+    // 键盘与鼠标两个闭包共享同一个回调(Handler 不 Clone,经 Rc<RefCell> 转发)。
+    let on_select = Rc::new(RefCell::new(props.on_select.take()));
 
-    hooks.use_event_handler(EventScope::Current, EventPriority::Normal, move |event| {
-        let Event::Key(key) = event else {
-            return EventResult::Ignored;
-        };
-        if key.kind != KeyEventKind::Press || !is_editing {
-            return EventResult::Ignored;
-        }
-        match key.code {
-            KeyCode::Char('h') | KeyCode::Left => {
-                state.write().key_left();
-                EventResult::Consumed
+    hooks.use_event_handler(EventScope::Current, EventPriority::Normal, {
+        let on_select = on_select.clone();
+        move |event| {
+            let Event::Key(key) = event else {
+                return EventResult::Ignored;
+            };
+            if key.kind != KeyEventKind::Press || !is_editing {
+                return EventResult::Ignored;
             }
-            KeyCode::Char('j') | KeyCode::Down => {
-                state.write().key_down();
-                EventResult::Consumed
-            }
-            KeyCode::Char('k') | KeyCode::Up => {
-                state.write().key_up();
-                EventResult::Consumed
-            }
-            KeyCode::Char('l') | KeyCode::Right | KeyCode::Enter => {
-                let selected = state.read().selected().last().cloned();
-                match selected {
-                    // 选中章节叶子 → 沿用既有「按扁平索引设置当前章节」逻辑
-                    Some(TocId::Chapter(idx)) => on_select(idx),
-                    // 卷节点 → 展开/收起
-                    Some(TocId::Volume(_)) => {
-                        state.write().toggle_selected();
-                    }
-                    None => {}
+            match key.code {
+                KeyCode::Char('h') | KeyCode::Left => {
+                    state.write().key_left();
+                    EventResult::Consumed
                 }
-                EventResult::Consumed
+                KeyCode::Char('j') | KeyCode::Down => {
+                    state.write().key_down();
+                    EventResult::Consumed
+                }
+                KeyCode::Char('k') | KeyCode::Up => {
+                    state.write().key_up();
+                    EventResult::Consumed
+                }
+                KeyCode::Char('l') | KeyCode::Right | KeyCode::Enter => {
+                    let selected = state.read().selected().last().cloned();
+                    match selected {
+                        // 选中章节叶子 → 沿用既有「按扁平索引设置当前章节」逻辑
+                        Some(TocId::Chapter(idx)) => (on_select.borrow_mut())(idx),
+                        // 卷节点 → 展开/收起
+                        Some(TocId::Volume(_)) => {
+                            state.write().toggle_selected();
+                        }
+                        None => {}
+                    }
+                    EventResult::Consumed
+                }
+                _ => EventResult::Ignored,
             }
-            _ => EventResult::Ignored,
+        }
+    });
+
+    // 鼠标:滚轮滚动视口;点击章节 = 跳转,点击卷 = 选中/切换展开。
+    // 内容区与搜索框按渲染布局切分,精确排除树边框和尾部空白。
+    hooks.use_pointer(PointerOptions::default(), {
+        let on_select = on_select.clone();
+        let items = items.clone();
+        move |ev| {
+            if !is_editing {
+                return EventResult::Ignored;
+            }
+            match ev.kind {
+                PointerKind::ScrollUp if !is_empty => {
+                    state.write().scroll_up(WHEEL_LINES);
+                    EventResult::Consumed
+                }
+                PointerKind::ScrollDown if !is_empty => {
+                    state.write().scroll_down(WHEEL_LINES);
+                    EventResult::Consumed
+                }
+                PointerKind::Click { .. } => {
+                    let areas = Layout::vertical([Constraint::Length(3), Constraint::Fill(1)])
+                        .split(ev.area);
+                    let inner = Block::bordered().inner(areas[1]);
+                    let hit = tree_item_at_position(&state.read(), &items, inner, ev.position)
+                        .and_then(|path| path.last().cloned());
+                    match hit {
+                        Some(TocId::Chapter(idx)) => {
+                            state.write().click_at(ev.position);
+                            (on_select.borrow_mut())(idx);
+                            EventResult::Consumed
+                        }
+                        Some(TocId::Volume(_)) => {
+                            state.write().click_at(ev.position);
+                            EventResult::Consumed
+                        }
+                        None => EventResult::Ignored,
+                    }
+                }
+                _ => EventResult::Ignored,
+            }
         }
     });
 
@@ -168,12 +218,17 @@ pub fn SelectChapter(
             }
         } else {
             TreeSelect<TocId>(
+                // 章节导航/确认由本组件处理;框架仍负责渲染和悬停。
+                active: false,
                 style: theme.text,
                 highlight_style: theme.selected,
+                // 悬停行样式:框架默认是 surface 底色,TRNovel 的 palette surface 为 Reset
+                //(透明底)肉眼不可见,显式用应用统一的 highlight(accent + BOLD)。
+                hover_style: theme.highlight,
                 state: state,
                 default_selection: default_selection,
                 items: items.clone(),
-                scrollbar: Scrollbar::default(),
+                scrollbar: crate::theme::scrollbar_style(theme.border, theme.highlight),
                 block: border,
             )
         }

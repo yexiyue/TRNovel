@@ -12,12 +12,13 @@ use ratatui::{
 };
 use ratatui_kit::prelude::*;
 use ratatui_kit_themes::{IntoKitPalette, ThemeName};
-use tui_widget_list::{ListBuildContext, ListState};
+use tui_widget_list::ListState;
 
 #[derive(Debug, Clone, Copy)]
 struct ThemeListItem {
     name: ThemeName,
     selected: bool,
+    hovered: bool,
     current: bool,
     theme: AppChromeTheme,
 }
@@ -32,6 +33,8 @@ impl WidgetRef for ThemeListItem {
     fn render_ref(&self, area: ratatui::prelude::Rect, buf: &mut ratatui::prelude::Buffer) {
         let style = if self.selected {
             self.theme.selected
+        } else if self.hovered {
+            self.theme.text.add_modifier(Modifier::BOLD)
         } else if self.current {
             self.theme.highlight.add_modifier(Modifier::BOLD)
         } else {
@@ -146,11 +149,12 @@ pub fn ThemeSetting(mut hooks: Hooks) -> impl Into<AnyElement<'static>> {
             ))
             .style(theme.meta_label)
             .centered(),
-            render_item:move|ctx:&ListBuildContext|{
+            render_item:move|ctx:&VirtualItemContext|{
                 let name = themes[ctx.index];
                 (ThemeListItem {
                     name,
                     selected: ctx.is_selected,
+                    hovered: ctx.is_hovered,
                     current: name == current_theme,
                     theme,
                 }.into(),4)
@@ -173,6 +177,7 @@ pub fn ThemeSetting(mut hooks: Hooks) -> impl Into<AnyElement<'static>> {
                 ("重置外观", "D"),
             ]),
             open: info_modal_open.get(),
+            on_close:{let mut open = info_modal_open; move |_: ()| open.set(false)},
         )
         ConfirmModal(
             title: "重置外观",

@@ -1,10 +1,10 @@
 //! Listening settings compose ordinary reader widgets and protocol snapshots.
 use super::TtsContext;
 use crate::{
-    components::{AdjustableSettingItem, SettingItem},
+    components::{AdjustableSettingItem, SettingItem, setting_item::focus_row},
     theme::AppChromeTheme,
 };
-use crossterm::event::{Event, KeyCode, KeyEventKind};
+use crossterm::event::{Event, KeyCode, KeyEventKind, MouseEventKind};
 use ratatui::{
     layout::{Constraint, Margin},
     style::Style,
@@ -90,6 +90,37 @@ pub fn TTSManager(props: &TTSManagerProps, mut hooks: Hooks) -> impl Into<AnyEle
             EventResult::Consumed
         }
     });
+
+    // 鼠标滚轮移动面板焦点。面板开着时整屏滚轮都归面板并消费 —— 背景正文此时
+    // is_scroll=false 本就不响应,消费掉还能挡住「浮层没关、正文却在偷偷滚」的错乱感。
+    hooks.use_event_handler_with_options(
+        EventScope::Layer(layer),
+        EventPriority::Low,
+        EventOptions { hit_test: false },
+        {
+            let mut index = index;
+            move |event| {
+                if !open {
+                    return EventResult::Ignored;
+                }
+                let Event::Mouse(m) = event else {
+                    return EventResult::Ignored;
+                };
+                match m.kind {
+                    MouseEventKind::ScrollDown => {
+                        index.set((index.get() + 1).min(release_index));
+                        EventResult::Consumed
+                    }
+                    MouseEventKind::ScrollUp => {
+                        index.set(index.get().saturating_sub(1));
+                        EventResult::Consumed
+                    }
+                    _ => EventResult::Ignored,
+                }
+            }
+        },
+    );
+
     let status = snapshot
         .error
         .clone()
@@ -104,27 +135,44 @@ pub fn TTSManager(props: &TTSManagerProps, mut hooks: Hooks) -> impl Into<AnyEle
         };
     element!(Modal(layer:Some(layer),width:Constraint::Percentage(80),height:Constraint::Percentage(80),open:open,blocks_lower:false,margin:Margin::new(1,1),style:Style::default().dim()) {
         View(margin:Margin::new(1,1)) {
-            ScrollView(active:false,state:scroll,block:Block::bordered().border_style(theme.border.not_dim()).title_top(Line::from("听书设置").centered().style(theme.title))) {
+            ScrollView(active:false,state:scroll,scrollbars:Scrollbars {
+                vertical_scrollbar:crate::theme::scrollbar_style(theme.border.not_dim(),theme.title),
+                horizontal_scrollbar:crate::theme::scrollbar_style(theme.border.not_dim(),theme.title),
+                ..Default::default()
+            },block:Block::bordered().border_style(theme.border.not_dim()).title_top(Line::from("听书设置").centered().style(theme.title))) {
                 View(height:Constraint::Length(4)) {
-                    SettingItem(is_editing:editing && index.get()==0,top_title:"Enter 启用模型 / Esc 取消准备".to_string()) {
+                    SettingItem(
+                        is_editing:editing && index.get()==0,
+                        top_title:"Enter 启用模型 / Esc 取消准备".to_string(),
+                        on_click:{let mut index = index; move |_: ()| index.set(0)},
+                        on_activate:{let handle = context.handle.clone(); move |_: ()| handle.prepare()},
+                    ) {
                         widget(Text::from(status))
                     }
                 }
-                ListeningSetting(kind:Setting::Backend,is_editing:editing && index.get()==1)
-                ListeningSetting(kind:Setting::Model,is_editing:editing && index.get()==2)
-                ListeningSetting(kind:Setting::Voice,is_editing:editing && index.get()==3)
-                ListeningSetting(kind:Setting::Speed,is_editing:editing && index.get()==4)
-                ListeningSetting(kind:Setting::Volume,is_editing:editing && index.get()==5)
-                ListeningSetting(kind:Setting::AutoPlay,is_editing:editing && index.get()==6)
-                ListeningSetting(kind:Setting::TtsDevice,is_editing:editing && index.get()==7)
-                ListeningSetting(kind:Setting::AlignmentEnabled,is_editing:editing && index.get()==8)
-                if alignment_enabled { ListeningSetting(kind:Setting::AlignmentDevice,is_editing:editing && index.get()==9) }
-                if style_enabled { ListeningSetting(kind:Setting::Style,is_editing:editing && index.get()==style_index) }
+                ListeningSetting(kind:Setting::Backend,is_editing:editing && index.get()==1,on_click:focus_row(index,1))
+                ListeningSetting(kind:Setting::Model,is_editing:editing && index.get()==2,on_click:focus_row(index,2))
+                ListeningSetting(kind:Setting::Voice,is_editing:editing && index.get()==3,on_click:focus_row(index,3))
+                ListeningSetting(kind:Setting::Speed,is_editing:editing && index.get()==4,on_click:focus_row(index,4))
+                ListeningSetting(kind:Setting::Volume,is_editing:editing && index.get()==5,on_click:focus_row(index,5))
+                ListeningSetting(kind:Setting::AutoPlay,is_editing:editing && index.get()==6,on_click:focus_row(index,6))
+                ListeningSetting(kind:Setting::TtsDevice,is_editing:editing && index.get()==7,on_click:focus_row(index,7))
+                ListeningSetting(kind:Setting::AlignmentEnabled,is_editing:editing && index.get()==8,on_click:focus_row(index,8))
+                if alignment_enabled { ListeningSetting(kind:Setting::AlignmentDevice,is_editing:editing && index.get()==9,on_click:focus_row(index,9)) }
+                if style_enabled { ListeningSetting(kind:Setting::Style,is_editing:editing && index.get()==style_index,on_click:focus_row(index,style_index)) }
                 View(height:Constraint::Length(3)) {
-                    SettingItem(is_editing:editing && index.get()==restart_index) {widget(Line::from("Enter 从本章开头重新播放（忽略恢复点）"))}
+                    SettingItem(
+                        is_editing:editing && index.get()==restart_index,
+                        on_click:focus_row(index,restart_index),
+                        on_activate:{let handle = context.handle.clone(); move |_: ()| handle.restart()},
+                    ) {widget(Line::from("Enter 从本章开头重新播放（忽略恢复点）"))}
                 }
                 View(height:Constraint::Length(3)) {
-                    SettingItem(is_editing:editing && index.get()==release_index) {widget(Line::from("Enter 停播并释放模型、音频和子进程"))}
+                    SettingItem(
+                        is_editing:editing && index.get()==release_index,
+                        on_click:focus_row(index,release_index),
+                        on_activate:{let handle = context.handle.clone(); move |_: ()| handle.release()},
+                    ) {widget(Line::from("Enter 停播并释放模型、音频和子进程"))}
                 }
             }
         }
@@ -149,9 +197,15 @@ enum Setting {
 struct ListeningSettingProps {
     kind: Setting,
     is_editing: bool,
+    /// 点击聚焦到本行(面板焦点索引)。
+    on_click: Handler<'static, ()>,
 }
+
 #[component]
-fn ListeningSetting(props: &ListeningSettingProps, hooks: Hooks) -> impl Into<AnyElement<'static>> {
+fn ListeningSetting(
+    props: &mut ListeningSettingProps,
+    hooks: Hooks,
+) -> impl Into<AnyElement<'static>> {
     let context = hooks.use_context::<TtsContext>().clone();
     let snapshot = context.snapshot.read();
     let kind = props.kind;
@@ -212,6 +266,7 @@ fn ListeningSetting(props: &ListeningSettingProps, hooks: Hooks) -> impl Into<An
         AdjustableSettingItem(is_editing:props.is_editing,label:label.to_string(),value:value,
             on_decrease:move |_| change(&decrease,kind,false),
             on_increase:move |_| change(&context,kind,true),
+            on_click:props.on_click.take(),
         )
     })
 }

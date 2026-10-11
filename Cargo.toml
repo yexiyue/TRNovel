@@ -49,7 +49,7 @@ thiserror = { workspace = true }
 tokio = { workspace = true }
 futures = { workspace = true }
 dirs = { workspace = true }
-ratatui-kit = { version = "0.10.3", features = ["full"] }
+ratatui-kit = { version = "0.12.0", features = ["full"] }
 ratatui-kit-themes = "0.1"
 ratatui-kit-keymap = "0.1"
 textwrap = { version = "0.16.2" }
@@ -106,7 +106,7 @@ inherits = "release"
 
 [dev-dependencies]
 
-ratatui-kit = { version = "0.10.3", features = ["test-util"] }
+ratatui-kit = { version = "0.12.0", features = ["test-util"] }
 
 # Model integrity checks must remain practical in development builds.
 [profile.dev.package.sha2]

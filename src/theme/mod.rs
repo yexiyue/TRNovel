@@ -77,3 +77,22 @@ impl Default for ReaderTheme {
         Self::from_palette(&Palette::default())
     }
 }
+
+/// 目录、文件树和正文共用细轨道与强调色反馈。
+pub(crate) fn scrollbar_style(
+    border: Style,
+    accent: Style,
+) -> ratatui_kit::prelude::ScrollbarStyle<'static> {
+    ratatui_kit::prelude::ScrollbarStyle {
+        style: border,
+        hover_style: accent.add_modifier(Modifier::BOLD),
+        drag_style: accent.add_modifier(Modifier::BOLD | Modifier::REVERSED),
+        symbols: Some(ratatui::symbols::scrollbar::Set {
+            thumb: "┃",
+            track: "│",
+            begin: "▴",
+            end: "▾",
+        }),
+        ..Default::default()
+    }
+}

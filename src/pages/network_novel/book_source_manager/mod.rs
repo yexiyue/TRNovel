@@ -70,6 +70,7 @@ pub fn BookSourceManager(mut hooks: Hooks) -> impl Into<AnyElement<'static>> {
                     ("浏览器辅助验证 开/关", "W"),
                 ],
                 open: info_modal_open.get(),
+                on_close:{let mut open = info_modal_open; move |_: ()| open.set(false)},
             )
         })
     } else {
@@ -92,6 +93,7 @@ pub fn BookSourceManager(mut hooks: Hooks) -> impl Into<AnyElement<'static>> {
                     ("浏览器辅助验证 开/关", "W"),
                 ],
                 open: info_modal_open.get(),
+                on_close:{let mut open = info_modal_open; move |_: ()| open.set(false)},
             )
         })
     }

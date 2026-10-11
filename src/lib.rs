@@ -2,7 +2,7 @@
 
 use app::App;
 use clap::{Parser, Subcommand};
-use ratatui_kit::{ElementExt, element};
+use ratatui_kit::{ElementExt, RunOptions, element};
 use std::{env, ffi::OsString, fmt::Debug, path::PathBuf};
 
 pub mod app;
@@ -102,7 +102,11 @@ where
         listening,
     };
 
-    element!(App(..props)).fullscreen().await?;
+    // 鼠标捕获:组件侧的 use_pointer/use_click/use_hover 都要求入口启用;
+    // 按住 Shift 时多数终端仍可走本地选择。
+    element!(App(..props))
+        .fullscreen_with(RunOptions { mouse: true })
+        .await?;
 
     Ok(())
 }

@@ -1,6 +1,7 @@
 use crate::{
     components::{
         Loading,
+        list_select::pointer_item_index,
         list_view::{ListView, RenderItem},
     },
     theme::AppChromeTheme,
@@ -11,7 +12,7 @@ use ratatui::{
     widgets::Block,
 };
 use ratatui_kit::prelude::*;
-use std::collections::HashSet;
+use std::{cell::RefCell, collections::HashSet, rc::Rc};
 use tui_widget_list::ListState;
 
 #[derive(Props)]
@@ -65,16 +66,20 @@ where
     let selected = props.state.unwrap_or(selected);
 
     let is_empty = props.items.is_empty();
+    let item_count = props.items.len();
+    let interactive = props.is_editing && !props.loading && !is_empty;
+
+    // 键盘与鼠标两个闭包共享同一个回调(Handler 不 Clone,经 Rc<RefCell> 转发)。
+    let on_select = Rc::new(RefCell::new(props.on_select.take()));
 
     hooks.use_event_handler(EventScope::Current, EventPriority::Normal, {
-        let is_editing = props.is_editing;
-        let mut on_select = props.on_select.take();
+        let on_select = on_select.clone();
         let data = props.items.clone();
         move |event| {
             let Event::Key(key) = event else {
                 return EventResult::Ignored;
             };
-            if key.kind != KeyEventKind::Press || !is_editing {
+            if key.kind != KeyEventKind::Press || !interactive {
                 return EventResult::Ignored;
             }
             match key.code {
@@ -87,7 +92,8 @@ where
                     EventResult::Consumed
                 }
                 KeyCode::Char('\n') | KeyCode::Char(' ') => {
-                    if let Some(item) = state.read().selected {
+                    let cursor = state.read().selected;
+                    if let Some(item) = cursor.filter(|index| *index < item_count) {
                         let is_included = selected.read().contains(&item);
                         if is_included {
                             selected.write().remove(&item);
@@ -114,8 +120,44 @@ where
                             .filter_map(|&i| data.get(i).cloned())
                             .collect()
                     };
-                    on_select(selected_items);
+                    (on_select.borrow_mut())(selected_items);
                     EventResult::Consumed
+                }
+                _ => EventResult::Ignored,
+            }
+        }
+    });
+
+    // 鼠标:滚轮移动光标(j/k 同义);点击条目 = 移动光标并切换勾选(空格同义)。
+    // 确认仍是 Enter —— 鼠标多选的惯例是勾选,最后确认交给键盘或双击留给将来。
+    hooks.use_pointer(PointerOptions::default(), {
+        move |ev| {
+            if !interactive {
+                return EventResult::Ignored;
+            }
+            match ev.kind {
+                PointerKind::ScrollUp => {
+                    state.write().previous();
+                    EventResult::Consumed
+                }
+                PointerKind::ScrollDown => {
+                    state.write().next();
+                    EventResult::Consumed
+                }
+                PointerKind::Click { .. } => {
+                    let hit = pointer_item_index(&state.read(), ev, item_count, interactive);
+                    if let Some(index) = hit {
+                        state.write().select(Some(index));
+                        let checked = selected.read().contains(&index);
+                        if checked {
+                            selected.write().remove(&index);
+                        } else {
+                            selected.write().insert(index);
+                        }
+                        EventResult::Consumed
+                    } else {
+                        EventResult::Ignored
+                    }
                 }
                 _ => EventResult::Ignored,
             }
@@ -170,7 +212,7 @@ where
     element!(ListView(
         state: state,
         block: border,
-        render_item: props.render_item.take(),
+        render_item: std::mem::take(&mut props.render_item),
         item_count: props.items.len(),
     ))
     .into_any()

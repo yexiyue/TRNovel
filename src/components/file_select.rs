@@ -2,16 +2,21 @@ use crossterm::event::{Event, KeyCode, KeyEventKind};
 use ratatui::{
     layout::{Alignment, Constraint},
     text::Line,
-    widgets::{Block, Scrollbar},
+    widgets::Block,
 };
-use ratatui_kit::prelude::*;
+use ratatui_kit::{components::tree_select::tree_item_at_position, prelude::*};
 use std::{
+    cell::RefCell,
     hash::{DefaultHasher, Hash, Hasher},
     path::PathBuf,
+    rc::Rc,
 };
 use tui_tree_widget::{TreeItem, TreeState};
 
 use crate::theme::AppChromeTheme;
+
+/// 滚轮一格滚动的行数,与常见终端编辑器的默认步长一致。
+const WHEEL_LINES: usize = 3;
 
 #[derive(Default, Props)]
 pub struct FileSelectProps {
@@ -55,10 +60,12 @@ pub fn FileSelect(props: &mut FileSelectProps, mut hooks: Hooks) -> impl Into<An
         (fingerprint, expand_all),
     );
 
-    let mut on_select = props.on_select.take();
+    // 键盘与鼠标两个闭包共享同一个回调(Handler 不 Clone,经 Rc<RefCell> 转发)。
+    let on_select = Rc::new(RefCell::new(props.on_select.take()));
 
     hooks.use_event_handler(EventScope::Current, EventPriority::Normal, {
         let is_editing = props.is_editing;
+        let on_select = on_select.clone();
         move |event| {
             let Event::Key(key) = event else {
                 return EventResult::Ignored;
@@ -84,10 +91,50 @@ pub fn FileSelect(props: &mut FileSelectProps, mut hooks: Hooks) -> impl Into<An
                     if let Some(path) = res {
                         state.write().toggle_selected();
                         if path.is_file() {
-                            on_select(path);
+                            (on_select.borrow_mut())(path);
                         }
                     }
                     EventResult::Consumed
+                }
+                _ => EventResult::Ignored,
+            }
+        }
+    });
+
+    // 鼠标:滚轮滚动视口(树行数多,滚视口比逐项移动光标更符合直觉);
+    // 点击 = 选中节点,点已选中的目录 = 切换展开,点文件 = 直接打开(on_select)。
+    // 精确命中节点的可见行,排除边框及视口尾部空白。
+    hooks.use_pointer(PointerOptions::default(), {
+        let is_editing = props.is_editing;
+        let on_select = on_select.clone();
+        let items = props.items.clone();
+        move |ev| {
+            if !is_editing {
+                return EventResult::Ignored;
+            }
+            match ev.kind {
+                PointerKind::ScrollUp => {
+                    state.write().scroll_up(WHEEL_LINES);
+                    EventResult::Consumed
+                }
+                PointerKind::ScrollDown => {
+                    state.write().scroll_down(WHEEL_LINES);
+                    EventResult::Consumed
+                }
+                PointerKind::Click { .. } => {
+                    let inner = Block::bordered().inner(ev.area);
+                    let hit = tree_item_at_position(&state.read(), &items, inner, ev.position)
+                        .and_then(|path| path.last().cloned());
+                    match hit {
+                        Some(path) => {
+                            state.write().click_at(ev.position);
+                            if path.is_file() {
+                                (on_select.borrow_mut())(path);
+                            }
+                            EventResult::Consumed
+                        }
+                        None => EventResult::Ignored,
+                    }
                 }
                 _ => EventResult::Ignored,
             }
@@ -127,11 +174,15 @@ pub fn FileSelect(props: &mut FileSelectProps, mut hooks: Hooks) -> impl Into<An
     }
 
     element!(TreeSelect<PathBuf>(
+        // 文件导航/确认由业务处理;框架仍负责渲染和悬停。
+        active: false,
         style: theme.text,
         highlight_style: theme.selected,
+        // 同 select_chapter:默认 surface 底色在本应用 palette 下不可见,显式指定。
+        hover_style: theme.highlight,
         state: state,
         items: props.items.clone(),
-        scrollbar: Scrollbar::default(),
+        scrollbar: crate::theme::scrollbar_style(theme.border, theme.highlight),
         block: border,
     ))
     .into_any()

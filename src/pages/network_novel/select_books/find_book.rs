@@ -12,7 +12,7 @@ use ratatui::{
     widgets::{Block, Padding, Paragraph, Widget, WidgetRef, Wrap},
 };
 use ratatui_kit::prelude::*;
-use tui_widget_list::{ListBuildContext, ListState};
+use tui_widget_list::ListState;
 
 #[derive(Props)]
 pub struct FindBooksProps {
@@ -160,11 +160,12 @@ pub fn FindBooks(props: &FindBooksProps, mut hooks: Hooks) -> impl Into<AnyEleme
             } else {
                 "搜索中..."
             },
-            render_item: move |context:&ListBuildContext| {
+            render_item: move |context:&VirtualItemContext| {
                 let list=books.read().as_ref().map(|b| b.items.clone()).unwrap_or_default();
                 (FindBookItem {
                     book_list_item: list[context.index].clone(),
                     selected: context.is_selected,
+                    hovered: context.is_hovered,
                     theme,
                 }.into(),8)
             },
@@ -193,6 +194,7 @@ pub fn FindBooks(props: &FindBooksProps, mut hooks: Hooks) -> impl Into<AnyEleme
 pub struct FindBookItem {
     pub book_list_item: BookListItem,
     pub selected: bool,
+    pub hovered: bool,
     pub theme: AppChromeTheme,
 }
 
@@ -204,6 +206,10 @@ impl WidgetRef for FindBookItem {
             Block::bordered()
                 .padding(Padding::horizontal(2))
                 .style(self.theme.selected)
+        } else if self.hovered {
+            Block::bordered()
+                .padding(Padding::horizontal(2))
+                .style(self.theme.highlight)
         } else {
             Block::bordered().padding(Padding::horizontal(2))
         };
@@ -213,6 +219,8 @@ impl WidgetRef for FindBookItem {
 
         let text_style = if self.selected {
             self.theme.text.patch(self.theme.selected)
+        } else if self.hovered {
+            self.theme.text.patch(self.theme.highlight)
         } else {
             self.theme.text
         };

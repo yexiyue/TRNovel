@@ -150,6 +150,7 @@ pub fn SelectFile(mut hooks: Hooks) -> impl Into<AnyElement<'static>> {
                     ("搜索小说名称", "/")
                 ],
                 open: info_modal_open.get(),
+                on_close:{let mut open = info_modal_open; move |_: ()| open.set(false)},
             )
         }
     })

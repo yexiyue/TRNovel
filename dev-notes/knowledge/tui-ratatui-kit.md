@@ -2,7 +2,91 @@
 
 ## 概览
 
-主程序 UI 基于 `ratatui-kit`（一个 React-like 的 ratatui 封装,外部依赖、已升 0.30）。覆盖 hooks 的求值时机坑、键位约定、路由。`src/pages`、`src/components`、`src/hooks`。
+主程序 UI 基于 `ratatui-kit`(一个 React-like 的 ratatui 封装,外部依赖,已升 0.12,使用 crates.io 正式发布包)。覆盖 hooks 的求值时机坑、键位约定、路由与指针交互。`src/pages`、`src/components`、`src/hooks`。
+
+## 鼠标 / 指针事件(0.11 起)
+
+### 指针交互总则:入口开捕获、use_pointer 做行映射、Handler 共享用 Rc
+
+入口 `src/lib.rs` 必须 `element!(App(..)).fullscreen_with(RunOptions { mouse: true })`,否则 debug 下注册指针 hook 即断言、release 下静默不投递。组件侧四个语义 hook:`use_click`(Down+Up 合成)、`use_hover`(布尔悬停)、`use_drag`(Start/Move/End/Cancel)、`use_pointer(PointerOptions, |PointerEvent| -> EventResult)`(完整流,自定义消费/放行)。列表类交互用 `use_pointer`:滚轮(ScrollUp/Down)移动选中或滚动视口,`PointerKind::Click` 做行→条目映射后走 Enter 同一套回调。
+
+**行→索引映射各用各的现成 API,别手算**:
+- `tui_widget_list::ListState::hit_test(x, y) -> Option<Hit::Item(index)>`(变高条目、边框、截断首项都算对;`Hit::Area` = 点在空白,应 Ignored)。
+- `tui_tree_widget::TreeState::rendered_at(pos) -> Option<&[Identifier]>`(上一帧渲染记录)+ `click_at(pos)`(点已选节点 = 切换展开,点新节点 = 选中)。
+- ratatui `ListState::offset()`(getter,0.30 起字段私有):单行条目 `index = offset + (y - area.y - 1)`(边框占 1 行)。
+
+**Handler 键盘/鼠标两闭包共享**:`Handler` 不 Clone,`props.on_select.take()` 后用 `Rc<RefCell<Handler>>` 各 clone 一份进两个闭包,调用处 `(on_select.borrow_mut())(item)`。
+
+**正确做法**:
+- 指针 hook 与其它 hook 一样必须无条件注册(组件 early-return 空态/加载态之前注册好)。
+- 组件的 `is_editing` 门控对鼠标同样生效(`if !is_editing { return Ignored }`),浮层打开时背景组件不抢鼠标。
+- 滚轮移动「选中」的列表(ListSelect/Select/菜单)与滚轮滚动「视口」的树/正文(FileSelect/SelectChapter/ReadContent)是两种语义,按交互对象选。
+
+**不要做**:
+- 阅读正文的滚轮**不要**接入「章末武装 + 二次确认翻章」——滚轮一滚就是一串事件,武装会被同一次滑动立即确认,等于变相跳章;钳到 `[0, end_scroll]` 即可,翻章留给显式按键。
+- `ShortcutInfoModal` 打开时,背景组件(如首页菜单)的鼠标处理器要像键盘一样被 `is_editing` 门控,否则点一下会同时「导航 + 该关的浮层没关」。
+
+**相关文件**:`src/lib.rs`(入口)、`src/components/{select,list_select,multi_list_select,file_select,setting_item}.rs`、`src/pages/home.rs`、`src/pages/read_novel/{read_content,select_chapter}.rs`、ratatui-kit `hooks/use_pointer.rs`、本地 skill `../ratatui-kit/skills/ratatui-kit/references/pointer-events.md`
+
+### 树节点精确命中
+
+`TreeState::rendered_at` 返回指针上方最近的已渲染节点,视口尾部空白也会得到最后节点。文件/目录鼠标确认须用框架 `tree_item_at_position(state, items, inner, position)` 精确映射实际可见行,再调用 `click_at` 保留选中/展开语义。章节选择外层还有三行搜索框,先按同一布局切出树区域,然后取边框内区。`TreeSelect`/`VirtualList` 的 `active` 只关闭内置导航,悬停视觉仍由框架提供。
+
+**相关文件**:`src/components/file_select.rs`、`src/pages/read_novel/select_chapter.rs`。
+
+### 同层鼠标分发次序:z-order → priority → 绘制序倒排 —— 层内 High 处理器会吃掉子组件的鼠标
+
+鼠标事件在活跃层内按 `(z-order 降序, priority 降序, draw_seq 降序, 注册序)` 投递。**priority 排在绘制序之前**:框架 `ConfirmModal`/`AlertModal` 曾把层处理器注册为 `High` 且对非键盘事件一律 `Consumed`,导致弹窗按钮收不到点击、点遮罩也关不掉。**已在 ratatui-kit 0.12.0 修复并发布**:键盘处理器只 match `Key`、其余 Ignored;按钮子组件带 `use_pointer`(左键 Down 触发 + 悬停高亮);遮罩关闭走 `Low + hit_test:false`(ConfirmModal 点外 = on_cancel,AlertModal 点外 = on_close)。TRNovel 当前依赖 `ratatui-kit = "0.12.0"`,临时 `[patch.crates-io]` 已移除；themes/keymap 的框架类型统一解析到正式包。
+
+自建浮层的同款模式见 `ShortcutInfoModal`(点击关闭)与 `TTSManager`/`ReaderSettingsModal`(滚轮移焦点):遮罩级处理器用 `use_event_handler_with_options(Layer/Current, Low, EventOptions { hit_test: false })`,只 match 鼠标分支、其余 Ignored,不与 Normal 级子组件抢事件。
+
+**判别**:同层「父级键盘 handler 正常、子组件鼠标失灵」→ 查父 handler 是否 `High` 且 else 分支吞了非键盘事件。
+
+**相关文件**:ratatui-kit `input/mod.rs`(dispatch 排序)、`components/{confirm,alert}_modal.rs`(修复);TRNovel `Cargo.toml`(正式依赖)、`src/components/modal/shortcut_info_modal.rs`、`src/tts/ui.rs`、`src/pages/read_novel/settings/mod.rs`
+
+### 设置面板的鼠标协议:点击聚焦、已聚焦再点才调整/激活
+
+`SettingItem` 增加了 `on_click`(点击 = 聚焦本行)与 `on_activate`(已聚焦再点 = 执行该行 Enter 动作);`AdjustableSettingItem` 增加 `on_click`,已聚焦后点击**左半 = on_decrease、右半 = on_increase**。两步式(先聚焦后调整)让「点哪儿都是先聚焦」,不会误改值;接线用 `components::setting_item::focus_row(index, row)` 构造聚焦回调。面板级滚轮(移动焦点索引)注册在 `Low + hit_test:false` 且门控 `open`,整屏滚轮都归面板并消费,避免背景正文在浮层下偷偷滚动。
+
+**相关文件**:`src/components/setting_item.rs`(`focus_row`)、`src/tts/ui.rs`、`src/pages/read_novel/settings/mod.rs`
+
+### 框架内置组件的鼠标行为矩阵与「match scrutinee 死锁」复发
+
+本地 ratatui-kit 的全部交互组件已接鼠标(悬停高亮/点击选中/滚轮,见 `../ratatui-kit/skills/ratatui-kit/references/pointer-events.md` 的矩阵):Select/MultiSelect/Table 悬停行高亮(默认 `surface 底 + BOLD` —— 默认 palette 的 surface 是 Reset,单靠底色不可见)+ 点击选中并确认 + 滚轮移选中;TreeSelect 悬停整行高亮(`hover_style`;上游无逐行样式 API,组件渲染后按「`flatten` + `TreeItem::height` + `get_offset`」折叠的精确行表给 buffer 打补丁,多行条目/滚动截断都对 —— **不要用逐行扫 `rendered_at` 代替**,它对内容下方任意 y 都返回末条,行高会虚增)+ 点叶子确认/点分支展开 + 滚轮滚视口;VirtualList 悬停经 `VirtualItemContext::is_hovered` 传给 `render_item` 自绘(签名已从 `&ListBuildContext` 改为 `&VirtualItemContext`,后者 `Deref` 到上游上下文)+ 点击/滚轮;Input 受控 `on_seek`、SearchInput 点击激活/定位光标;三个模态点击关闭。悬停跟踪都要 `PointerOptions { track_move: true, .. }`(默认不投递 Move/Enter/Leave)。**条件注册模式**:内置指针 hook 都先查 `pointer_enabled(&hooks)`(未开鼠标捕获的应用不注册、不触发 debug 断言;`mouse_enabled` 进程内不变,分支跨帧稳定)。
+
+**业务列表使用薄包装**:普通 `src/components/select.rs` 委托框架 `Select`,只映射主题与业务 props;`list_view.rs` 委托 `VirtualList<WidgetWrapper>`,共享框架的布局、渲染、命中与悬停,不再自写 `Component`。列表的 `active:false` 只关闭框架键盘/点击/滚轮动作,悬停仍作为视觉反馈工作;`ListSelect`/`MultiListSelect` 保留业务确认与点击勾选。`ListView` 挂载时记录外部已有游标为默认值,避免底层初始化清掉业务设定的初始选中。
+
+**泛型包装的 Element 构造**:目前 `element!(KitSelect<T>(...))` 在泛型函数体内会生成引用外层 `T` 的局部 `type Props`,触发 E0401。该包装直接构造 `Element::<KitSelect<T>> { key: ElementKey::decl(0), props: KitSelectProps { ... } }`;这个声明 key 在包装的唯一子节点范围内稳定。具体类型的调用点仍正常使用 `element!`。
+
+**业务树保留文件/章节协议**:`FileSelect` 的文件系统过滤与展开策略、`SelectChapter` 的卷/章解析属于业务,两者使用 `TreeSelect(active:false)` 关闭底层导航,由自身 handler 管理键鼠动作。框架悬停不受 `active` 门控,`hover_style` 仍需显式映射到 `theme.highlight`。直接开启 `active:true` 会同时启用两套导航处理器,改变 Right/Enter 等业务动作。
+
+**TreeSelect 悬停样式要显式传**:框架默认 `hover_style` 是 `surface 底 + BOLD`,TRNovel 的 palette surface 为 Reset(透明底)→ 肉眼不可见,表现为「目录树没有 hover」。`select_chapter.rs`(小说目录)与 `file_select.rs`(本地文件树)都补了 `hover_style: theme.highlight`(accent + BOLD,与列表页悬停语言一致)。同类坑:凡是「组件默认主题的 surface 底色」在本应用 palette 下都不可见,覆盖样式优先用 `AppChromeTheme` 的现成槽位。
+
+**`match state.read().hit_test(..) { .. state.write() .. }` = 死锁,又中招一次**:match/if-let 的 scrutinee 临时量读 guard 存活到**整个块结束**,块内写同一 State → parking_lot 永久阻塞、TUI 冻结(0% CPU 挂死,不是 panic)。这次在框架 VirtualList 和 TRNovel 的 ListSelect/MultiListSelect 同时踩中(表现为测试挂起)——**先 `let hit = state.read().hit_test(..);` 收成值再 match**。框架其余点击点(`let index = state.read().offset() + row;`)是 let 语句、guard 在分号处已释放,安全。
+
+**相关文件**:ratatui-kit `components/{select,multi_select,tree_select,virtual_list,table,input,search_input,shortcut_info_modal}.rs`、`hooks/{use_pointer,use_hover_row}.rs`(pointer_enabled 断言 + 回归测试);TRNovel `src/components/{list_select,multi_list_select,list_view,file_select}.rs`(框架薄包装;file_select 悬停样式)、`src/pages/read_novel/select_chapter.rs`(目录悬停样式)
+
+### TextArea 全新实现(tui-input + 自研软换行,textarea feature)
+
+旧 `TextArea` 因上游 tui-textarea 钉死 ratatui ^0.29 而离线;本地 ratatui-kit 已**完全重写**(不参考旧组件):底层用 `tui_input::Input` 做编辑状态(值 + 字符光标),软换行自研(`pub fn wrap_rows(value, width)` 贪心折行,空白不触发断点、断点空白不进任何一行,超宽词硬切,宽字符按显示列计)。关键语义:
+
+- **显示行导航**:Up/Down 在软换行产生的显示行间移动(保持列),Home/End 落显示行首/尾;字母键留给打字(**不绑 hjkl**,与 Select 系不同);Ctrl/Alt 组合放行给上层快捷键。
+- **Enter**:multiline = 插入 `\n`,单行 = 触发 `on_submit(text)`(提交后清空由调用方做)。
+- **点击定位**:聚焦时点击把光标放到 (显示行, 列),停在被点字符**之前**(tmux 约定,与 Input 的 `on_seek` 一致);宽字符按显示列命中。
+- **受控模式**:值在外部 State,`on_change` 回灌 `value` prop;内部经 effect 比对同步(外部值 ≠ 当前值才重置 `Input`,避免打字时丢光标 —— 与 SearchInput 同模式)。
+- **滚动跟随**:渲染帧把 `wrap_rows` 布局 + scroll 写进 `TextAreaShared`(Rc 共享给键盘/鼠标闭包,滞后一帧,与框架其它指针映射一致),光标出视口时滚动补齐。
+
+**相关文件**:ratatui-kit `components/textarea.rs`(`wrap_rows`/`cursor_position`/`cursor_index` 纯函数可单测,10 个测试含挂载交互)、`examples/components/textarea.rs`;feature `textarea = ["tui-input", "unicode-width"]` 已并入 `full`
+
+### 滚动条拖拽:框架 ScrollView 自带;自绘内容用框架 use_scrollbar hook
+
+本地 ratatui-kit 的 `ScrollView` 滚动条已支持拖拽(抓住滑块拖动 / 点滑轨空白滑块跳到指针处),几何由每帧渲染回填(内部 `ScrollbarGeometry`/`AxisGeometry`,复刻 ratatui `part_lengths` 的四舍五入除法,反算端点精确到 0/max)。**拖拽注册有条件**:仅应用启用鼠标捕获时注册(`use_pointer` 未启用会 debug 断言;`mouse_enabled` 进程内不变,条件分支跨帧稳定不违反 hook 顺序),且**不受 `active` 门控**——抓滑块是明确的滚动意图,与键/轮的「活跃」语义无关。交互滚动条用 `ScrollbarStyle` 持有样式、符号与 `arrows` 开关，绘制和命中共用箭头长度；不再直接传 ratatui `Scrollbar`，避免 orientation 重置自定义符号。
+
+阅读页的滚动条已迁到**框架 `ratatui_kit::UseScrollbar::use_scrollbar`**(本地 `use_scrollbar_with_drag` 已删除):`ScrollbarOptions { content_length: total, viewport_length: view, position: current_line, .. }` + `on_seek` 回调,单位直接是行(旧版「两个入参同除组件高度」的页单位 hack 不再需要),滑轨两端精确映射 0/`end_scroll`,滑块数学与 ScrollView 同源(`AxisGeometry`)。旧 `src/hooks/use_scrollbar.rs` 已删除:它把选中索引当滚动偏移、再转成页单位,并不表示真实视口。普通列表委托框架 `Select` 的布局与选中显示;自绘正文才接滚动条 Hook。
+
+**坑**:拖拽途中的 Drag 事件经指针捕获可能落在滑轨列之外,换算要**只按主轴坐标**并钳进可用段(框架 `AxisGeometry::along_clamped`),不能因列不匹配回退或忽略——否则拖出滑轨列内容会跳到底部或拖拽失灵。
+
+**相关文件**:ratatui-kit `hooks/use_scrollbar.rs`(框架 hook)、`components/scroll_view/{scrollbars,mod}.rs`(`AxisGeometry`/拖拽)、`examples/components/custom_scrollbar.rs`(接入示例);TRNovel `src/pages/read_novel/read_content.rs`(接线)
 
 ## Hooks 求值时机
 
@@ -204,7 +288,7 @@ end_scroll = total - view                        贴底位置 = 章末判定线
 - **钳位必须用 `end_scroll` 而不是 `total - 1`**:比例是与视口无关的,换终端尺寸/重排后 `ratio * total` 可能落在贴底位置**之下** → 屏幕停在「最后一屏再往下」,`current_line < end_scroll` 恒假使前向滚动/翻页当场失效、误报章末、连按还跳章。旧实现的值域天然 ⊆ `[0, end_scroll]`,新公式没有这个不变量,要显式钳。
 - **末尾留白是视口局部的视觉状态**,不能当普通比例存:留白量由当时的 `total`/`view` 决定,故 `ScrollTarget::Overscroll { ratio, end_scroll }` 记下产生它的 `end_scroll`,解析时不匹配就退化为贴底;落盘只存比例(重开回到合法位置)。
 - **切章一定要重置** `scroll_target`:`on_next`/`on_prev`/**`on_select`(目录选章)** 三处都要——漏一处就会让新章沿用上一章的比例,短章节里直接落到贴底之下。
-- `use_scrollbar` 的 content_length 传**最大滚动位置**(`end_scroll`)而非 `total`:它内部把两个入参同除以组件高度,传 `total` 会让 position 恒小于 content_len、滑块永远到不了底。
+- 框架 `use_scrollbar` 传内容总行数 `total`、可见行数 `view` 和当前行偏移，框架统一推导最大偏移 `total - view`；不要沿用已删除旧 Hook 的页单位换算。
 - 底部行号的分子取**最后可见行** `(current_line + view).min(total)`:读到章末显示 `121/121` 而不是 `104/121`(读完了只报 86%)。
 - **「章末」是意图不是比例,用 `ScrollTarget { Ratio(f64), ChapterEnd }` 而非在 f64 里塞哨兵**：`GoBottom` 与「顶部 ↑ 翻回上一章」发出的是意图,落盘写回的是位置,两者共用一个 `State<f64>` 就只能靠取值区间(`>= 1.0`)区分 —— 那个「用户写回的值必然 < 1.0」的不变量横跨三处表达式,靠注释维持。拆成两个变体后 `resolve(total, end_scroll)` 是唯一解析点,f64 只在持久化边界转换(`from_ratio`/`as_ratio`,`ChapterEnd` 编码为 1.0)。
 - 章末判定用 `current_line >= end_scroll`（最后一行已可见），**不是**「滚动到上限」——两者在末尾留白后不再等价。
@@ -410,7 +494,7 @@ children 透传:`{ &mut props.children }` 会因生命周期 `'1 must outlive 's
 - **deps 约束变了**:`use_effect`/`use_async_effect`/`use_effect_state` 的 deps 从 `D: Hash` 改为 **`D: PartialEq + Unpin + 'static`**（按相等比较 + 跨帧存储）。自定义包装 hook（`use_init_state`/`use_debounce_effect`）与做 deps 的类型（如 `ExploreListItem`）都要补 `PartialEq`。deps 里别写 `&x.clone()`（临时值借用),直接传 owned。
 - **`SendBlock` 已移除**:0.7 `Component: Any + Unpin`（砍了 Send+Sync bounds）。手写 Component 里 `pub block: SendBlock` → `pub block: Option<Block<'static>>`,调用点 `block: some_block` 由宏自动 `Some`。
 - **`widget(expr)` 要 `for<'a> &'a T: Widget`**（按引用渲染 + Clone + Unpin）。只实现按值 `Widget` 的第三方 widget 会报 `&T: Widget not satisfied`。**首选升级该 widget crate**:`tui-big-text` 0.8.4→0.8.7 即补了 `&BigText: Widget`,`widget(big_txt)` 直接可用,无需自写 `impl Widget for &Wrapper` 适配层。
-- **模态/选择/搜索内置组件**:框架 0.7 的 `ConfirmModal`/`AlertModal`/`SearchInput` 自带独占输入层。当时项目自定义同名组件改成「薄主题适配层」;0.10 主题重构后不再用旧 `UseThemeConfig`,应改读内置组件主题或项目 `ComponentTheme`。`Select`/`ListView`/`TreeSelect`/`MultiSelect` 的滚动条/loading/虚拟化内置缺,保留项目渲染只迁内部事件。
+- **模态/选择/搜索内置组件**:框架 0.7 的 `ConfirmModal`/`AlertModal`/`SearchInput` 自带独占输入层。当时项目自定义同名组件改成「薄主题适配层」;0.10 主题重构后不再用旧 `UseThemeConfig`,应改读内置组件主题或项目 `ComponentTheme`。旧版本曾因滚动条/loading/虚拟化缺失保留项目渲染;当前普通 `Select` 和低层 `ListView` 已改薄包装,empty/loading/多选确认仍在业务外壳。
 
 ### 全局 store → Atom（change `global-state-to-atom`）
 
@@ -511,6 +595,8 @@ ReadNovel 的内容加载 effect 仅依赖 current_chapter。首次进入目录�
 
 ratatui-kit test-util 可渲染实际设置组件并调用生产设置回调，对接隔离配置的真实 worker；中文宽字符的第二个空 cell 不属于文本。此类回归覆盖组件和协议，不等同于物理终端按键验收。
 
+升级 ratatui-kit 时同步更新普通依赖和启用 `test-util` 的开发依赖，避免测试与应用解析出两个版本、导致组件和框架类型不一致。
+
 **相关文件**：`src/tts/ui.rs`、`src/tts/ui/tests.rs`。
 
 ### 模型切换与编译设备
@@ -526,3 +612,26 @@ ratatui-kit test-util 可渲染实际设置组件并调用生产设置回调，�
 src/paths.rs 统一 ~/.trnovel 路径：config.toml 的 appearance/reader/browser/tts 分节由 ConfigStore 加锁、重新加载并原子替换；keybindings.toml、toc_rules.json 独立；data 保存书源/历史/登录/browser-profile/local/network，cache 保存字体等可重建资源。clear 只删历史、local/network、cache，不触碰配置、书源或登录态。旧目录不读取、不自动搬迁，手工说明在 guides/migration.mdx。
 
 Talechime 独立拥有 ~/.talechime/config.json、checkpoints、resources，AppPaths 位于其 core crate。两个应用固定 cargo-dist 0.32.0、各一份原生 Cargo dist-workspace.toml；旧 generic dist.toml、basic/加速/ARM64 musl 专用脚本已移除。Talechime 标准包 CPU（Windows/Linux），Mac 添加全部 Metal；CUDA 源码与原生编译 CI 保留。三个平台隔离安装检查不下载模型，不视为真实模型试听通过。
+### 目录与正文滚动条共用交互外观
+
+目录/文件树传 `ScrollbarStyle`,由框架负责拖拽,不使用仅绘制的第三方 Scrollbar。`active:false` 只让业务接管导航,不关闭滚动条拖动。目录拖动改变树视口,不切换阅读章节。
+
+`theme::scrollbar_style` 统一细轨道、强调色悬停和反色抓取态,目录与正文共用；双栏下捕获始终绑定按下的滚动条,指针拖入另一栏不会驱动另一栏。
+
+
+### 加载画面不能复用列表命中缓存
+
+VirtualList 切换成 Loading/空态后,外层 ListSelect/MultiListSelect 仍挂载,第三方 ListState.hit_test 保留上一帧条目区域。键盘和鼠标 handler 必须共同检查非加载且列表非空,命中索引还要按当前 items.len 校验,避免加载期间激活隐藏条目或列表缩短后误选旧数据。
+
+小说详情、听书设置和快捷键帮助的 ScrollView 也共用 theme::scrollbar_style,保持与目录/正文相同的悬停和抓取反馈。
+
+
+### ratatui-kit 0.12 的坐标与受控悬停契约
+
+PointerEvent.position 与 area 共用绘制坐标,嵌套 ScrollView 内为内容缓冲坐标。screen_position、原始 Event::Mouse、use_click 的 Click.position 与 use_drag 的位置使用终端绝对坐标。widget hit_test 使用同一绘制缓冲的 position,不要再次添加滚动偏移；普通命中由框架映射并裁剪,拖拽捕获仍可拖出区域。
+
+自绘目录用 use_hover_row 返回的状态渲染悬停,框架在绘制后核对最新条目映射；滚动、resize 和层变化不要求再次移动鼠标。命中闭包先排除加载/空态,按当前 items.len 校验索引,不要依赖第三方 widget 留下的旧 hit table。悬停仅值变化时写 state。
+
+正文 use_scrollbar 的 content_length、viewport_length、position 和 on_seek 都使用行单位。目录 TreeSelect.scrollbar 使用同源 ScrollbarStyle,active:false 仍允许拖动,仅改变目录视口；拖拽样式优先于悬停。主题集中派生这些样式,ScrollbarStyle 各样式字段是 Style,不是 Option<Style>。
+
+动态 on_seek/active/loading/外部 state 不得改变 Hook 顺序；手写 Component::update 先接 updater 的 context stack。输入层句柄仅当前帧有效,明确归属的指针处理器用 PointerOptions.layer；Cancel 清临时反馈,不提交释放动作。完整参考见 ../ratatui-kit/skills/ratatui-kit/references/pointer-events.md 与线上鼠标指南。

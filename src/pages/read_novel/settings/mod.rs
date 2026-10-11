@@ -4,7 +4,7 @@
 //! 只改 `READER_DISPLAY` atom,落盘由 `ReadNovel` 的防抖 effect 统一负责——面板与
 //! `v` 键(切换标题)走同一条写盘路径,不会出现两套时序。
 
-use crossterm::event::{Event, KeyCode, KeyEventKind};
+use crossterm::event::{Event, KeyCode, KeyEventKind, MouseEventKind};
 use ratatui::{
     layout::{Constraint, Margin},
     style::Style,
@@ -13,7 +13,7 @@ use ratatui::{
 use ratatui_kit::prelude::*;
 
 use crate::{
-    components::AdjustableSettingItem,
+    components::{AdjustableSettingItem, setting_item::focus_row},
     keymap::{ReaderAction, display_first_key},
     pages::read_novel::visible_lines,
     theme::AppChromeTheme,
@@ -70,6 +70,36 @@ pub fn ReaderSettingsModal(
         }
     });
 
+    // 鼠标滚轮移动面板焦点:面板开着时整屏滚轮都归面板并消费(背景正文此时
+    // is_scroll=false 不响应;消费可避免「浮层没关、正文偷偷滚」)。
+    hooks.use_event_handler_with_options(
+        EventScope::Current,
+        EventPriority::Low,
+        EventOptions { hit_test: false },
+        {
+            let mut index = index;
+            move |event| {
+                if !is_open {
+                    return EventResult::Ignored;
+                }
+                let Event::Mouse(m) = event else {
+                    return EventResult::Ignored;
+                };
+                match m.kind {
+                    MouseEventKind::ScrollDown => {
+                        index.set((index.get() + 1).min(ITEM_COUNT - 1));
+                        EventResult::Consumed
+                    }
+                    MouseEventKind::ScrollUp => {
+                        index.set(index.get().saturating_sub(1));
+                        EventResult::Consumed
+                    }
+                    _ => EventResult::Ignored,
+                }
+            }
+        },
+    );
+
     // hooks 全部注册完再提前返回:关闭时不构建面板内容(提示行的 describe + format!
     // 与整棵子树每帧都会被求值一次,而它绝大多数时间不可见)。
     if !is_open {
@@ -121,6 +151,7 @@ pub fn ReaderSettingsModal(
                         value: overlap_value,
                         on_decrease: move |_| reader_display.write().decrease_page_overlap(),
                         on_increase: move |_| reader_display.write().increase_page_overlap(),
+                        on_click: focus_row(index, 0),
                     )
                 }
                 View(height: Constraint::Length(3)) {
@@ -132,6 +163,7 @@ pub fn ReaderSettingsModal(
                         value: title_value.to_string(),
                         on_decrease: move |_| reader_display.write().show_title = false,
                         on_increase: move |_| reader_display.write().show_title = true,
+                        on_click: focus_row(index, 1),
                     )
                 }
                 View(height: Constraint::Length(3)) {
@@ -142,10 +174,11 @@ pub fn ReaderSettingsModal(
                         value: spacing_value.to_string(),
                         on_decrease: move |_| reader_display.write().paragraph_spacing = false,
                         on_increase: move |_| reader_display.write().paragraph_spacing = true,
+                        on_click: focus_row(index, 2),
                     )
                 }
                 Fragment {
-                    {follow_setting(reader_display, index.get() == 3 && is_editing)}
+                    {follow_setting(reader_display, index, index.get() == 3 && is_editing)}
                 }
             }
         }
@@ -156,6 +189,7 @@ pub fn ReaderSettingsModal(
 #[cfg(feature = "tts")]
 fn follow_setting(
     config: AtomState<crate::ReaderDisplayConfig>,
+    index: ratatui_kit::State<usize>,
     editing: bool,
 ) -> AnyElement<'static> {
     let value = if config.read().follow_tts {
@@ -166,10 +200,15 @@ fn follow_setting(
     element!(View(height: Constraint::Length(3)) {
         AdjustableSettingItem(is_editing: editing, label: "跟随朗读:".to_string(), value: value.to_string(),
             on_decrease: move |_| config.write().follow_tts = false,
-            on_increase: move |_| config.write().follow_tts = true)
+            on_increase: move |_| config.write().follow_tts = true,
+            on_click: focus_row(index, 3))
     }).into_any()
 }
 #[cfg(not(feature = "tts"))]
-fn follow_setting(_: AtomState<crate::ReaderDisplayConfig>, _: bool) -> AnyElement<'static> {
+fn follow_setting(
+    _: AtomState<crate::ReaderDisplayConfig>,
+    _: ratatui_kit::State<usize>,
+    _: bool,
+) -> AnyElement<'static> {
     element!(Fragment).into_any()
 }

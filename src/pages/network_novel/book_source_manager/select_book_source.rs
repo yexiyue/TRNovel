@@ -6,7 +6,7 @@ use ratatui::{
     widgets::{Block, Padding, Widget, WidgetRef},
 };
 use ratatui_kit::prelude::*;
-use tui_widget_list::{ListBuildContext, ListState};
+use tui_widget_list::ListState;
 
 use crate::{
     book_source::BookSourceCache,
@@ -17,6 +17,7 @@ use crate::{
 pub struct BookSourceListItem {
     pub book_source: BookSource,
     pub selected: bool,
+    pub hovered: bool,
     /// 该书源是否已登录(per-source 状态存有有效 cookie/loginHeader)。
     pub logged_in: bool,
     pub theme: AppChromeTheme,
@@ -30,12 +31,18 @@ impl WidgetRef for BookSourceListItem {
             Block::bordered()
                 .padding(Padding::horizontal(2))
                 .style(self.theme.selected)
+        } else if self.hovered {
+            Block::bordered()
+                .padding(Padding::horizontal(2))
+                .style(self.theme.highlight)
         } else {
             Block::bordered().padding(Padding::horizontal(2))
         };
 
         let text_style = if self.selected {
             self.theme.text.patch(self.theme.selected)
+        } else if self.hovered {
+            self.theme.text.patch(self.theme.highlight)
         } else {
             self.theme.text
         };
@@ -163,11 +170,12 @@ pub fn SelectBookSource(
             top_title: Line::from("选择书源 (回车确认)").style(theme.title).centered(),
             render_item:{
                 let logged_in=logged_in.clone();
-                move |context: &ListBuildContext| {
+                move |context: &VirtualItemContext| {
                     let item = &book_sources[context.index];
                     (BookSourceListItem{
                         book_source: item.clone(),
                         selected: context.is_selected,
+                        hovered: context.is_hovered,
                         logged_in: logged_in.get(context.index).copied().unwrap_or(false),
                         theme,
                     }.into(), 5)

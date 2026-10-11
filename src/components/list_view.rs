@@ -1,13 +1,8 @@
 use ratatui::widgets::{Widget, WidgetRef};
-use ratatui::{
-    style::Style,
-    widgets::{Block, Clear},
-};
+use ratatui::{style::Style, widgets::Block};
 use ratatui_kit::prelude::*;
 use std::{ops::Deref, sync::Arc};
-use tui_widget_list::{
-    ListBuildContext, ListBuilder, ListState, ListView as TuiListView, ScrollAxis,
-};
+use tui_widget_list::{ListState, ScrollAxis};
 
 #[derive(Clone)]
 pub struct WidgetWrapper {
@@ -39,57 +34,10 @@ impl Deref for WidgetWrapper {
     }
 }
 
-/// 默认渲染占位:0.30 起 ratatui 的 owned `Clear` 不再实现 `WidgetRef`,
-/// 这里用自有类型实现 `WidgetRef`(渲染时消费式渲染 `Clear`)。
-#[derive(Clone, Copy)]
-struct ClearWidget;
-
-impl WidgetRef for ClearWidget {
-    fn render_ref(&self, area: ratatui::layout::Rect, buf: &mut ratatui::buffer::Buffer) {
-        Clear.render(area, buf);
-    }
-}
-
-#[allow(clippy::type_complexity)]
-pub struct RenderItem<'a>(
-    bool,
-    Box<dyn Fn(&ListBuildContext) -> (WidgetWrapper, u16) + Sync + Send + 'a>,
-);
-
-impl<'a> RenderItem<'a> {
-    pub fn call(&self, ctx: &ListBuildContext) -> (WidgetWrapper, u16) {
-        (self.1)(ctx)
-    }
-
-    pub fn is_default(&self) -> bool {
-        self.0
-    }
-
-    pub fn take(&mut self) -> Self {
-        std::mem::take(self)
-    }
-}
-
-impl<'a> Default for RenderItem<'a> {
-    fn default() -> Self {
-        Self(
-            true,
-            Box::new(|_ctx: &ListBuildContext| (ClearWidget.into(), 0)),
-        )
-    }
-}
-
-impl<F> From<F> for RenderItem<'_>
-where
-    F: Fn(&ListBuildContext) -> (WidgetWrapper, u16) + Sync + Send + 'static,
-{
-    fn from(f: F) -> Self {
-        Self(false, Box::new(f))
-    }
-}
+pub type RenderItem<'a> = RenderVirtualItem<'a, WidgetWrapper>;
 
 #[derive(Default, Props)]
-pub struct ListView {
+pub struct ListViewProps {
     pub state: Option<State<ListState>>,
     pub scroll_axis: ScrollAxis,
     pub style: Style,
@@ -100,59 +48,23 @@ pub struct ListView {
     pub item_count: usize,
 }
 
-impl Component for ListView {
-    type Props<'a>
-        = ListView
-    where
-        Self: 'a;
-    fn new(props: &Self::Props<'_>) -> Self {
-        Self {
-            state: props.state,
-            scroll_axis: props.scroll_axis,
-            style: props.style,
-            block: props.block.clone(),
-            scroll_padding: props.scroll_padding,
-            infinite_scrolling: props.infinite_scrolling,
-            render_item: Default::default(),
-            item_count: props.item_count,
-        }
-    }
-
-    fn update(
-        &mut self,
-        props: &mut Self::Props<'_>,
-        _hooks: ratatui_kit::Hooks,
-        _updater: &mut ratatui_kit::ComponentUpdater,
-    ) {
-        *self = Self {
-            state: props.state,
-            scroll_axis: props.scroll_axis,
-            style: props.style,
-            block: props.block.clone(),
-            scroll_padding: props.scroll_padding,
-            infinite_scrolling: props.infinite_scrolling,
-            render_item: props.render_item.take(),
-            item_count: props.item_count,
-        }
-    }
-
-    fn draw(&mut self, drawer: &mut ratatui_kit::ComponentDrawer<'_, '_>) {
-        let render_item = self.render_item.take();
-
-        let list_builder = ListBuilder::new(|ctx: &ListBuildContext| render_item.call(ctx));
-
-        let mut list = TuiListView::new(list_builder, self.item_count)
-            .style(self.style)
-            .infinite_scrolling(self.infinite_scrolling)
-            .scroll_axis(self.scroll_axis)
-            .scroll_padding(self.scroll_padding);
-
-        if let Some(block) = self.block.as_ref() {
-            list = list.block(block.clone());
-        }
-
-        if let Some(state) = &mut self.state {
-            drawer.render_stateful_widget(list, drawer.area, &mut state.write_no_update());
-        }
-    }
+/// 业务列表只保留渲染适配;键盘、点击确认/勾选由上层选择组件处理。
+#[component]
+pub fn ListView(props: &mut ListViewProps, mut hooks: Hooks) -> impl Into<AnyElement<'static>> {
+    let local_state = hooks.use_state(ListState::default);
+    let state = props.state.unwrap_or(local_state);
+    // 框架首次挂载会同步 default_index;保留业务已设置的初始游标。
+    let default_index = hooks.use_state(|| state.read().selected).get();
+    element!(VirtualList<WidgetWrapper>(
+        state: state,
+        item_count: props.item_count,
+        active: false,
+        default_index: default_index,
+        render_item: std::mem::take(&mut props.render_item),
+        scroll_axis: props.scroll_axis,
+        style: props.style,
+        block: props.block.clone(),
+        scroll_padding: props.scroll_padding,
+        infinite_scrolling: props.infinite_scrolling,
+    ))
 }

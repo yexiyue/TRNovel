@@ -7,9 +7,13 @@ use ratatui::{
     widgets::{Block, Row, Table},
 };
 use ratatui_kit::{
-    AnyElement, Hooks, Props, UseTheme, component, element,
-    prelude::{Modal, ScrollView, View},
+    AnyElement, Handler, Hooks, Props, UseEventHandler, UseTheme, component, element,
+    prelude::{
+        EventOptions, EventPriority, EventResult, EventScope, Modal, ScrollView, Scrollbars, View,
+    },
 };
+
+use crossterm::event::{Event, MouseButton, MouseEventKind};
 
 use crate::theme::AppChromeTheme;
 
@@ -58,18 +62,44 @@ impl From<Vec<(&str, &str)>> for KeyShortcutInfo {
     }
 }
 
-#[derive(Debug, Clone, Props, Default)]
+#[derive(Props, Default)]
 pub struct ShortcutInfoModalProps {
     pub key_shortcut_info: KeyShortcutInfo,
     pub open: bool,
+    /// 打开时点击任意处关闭(键盘关闭键仍由各页面 root handler 处理)。
+    /// 不传则保持纯展示,点击事件放行。
+    pub on_close: Handler<'static, ()>,
 }
 
 #[component]
 pub fn ShortcutInfoModal(
-    props: &ShortcutInfoModalProps,
-    hooks: Hooks,
+    props: &mut ShortcutInfoModalProps,
+    mut hooks: Hooks,
 ) -> impl Into<AnyElement<'static>> {
     let theme = hooks.use_component_theme::<AppChromeTheme>();
+    let open = props.open;
+    let mut on_close = props.on_close.take();
+
+    // 本浮层非阻塞(无输入层),关闭键 i/Esc 在页面 root 层。点击关闭注册为
+    // Low + hit_test=false:任何 Left Down 都能到,又不与页面 Normal 级处理器抢键。
+    // 浮层本身只有静态表格,点击它唯一合理的动作就是关闭。
+    hooks.use_event_handler_with_options(
+        EventScope::Current,
+        EventPriority::Low,
+        EventOptions { hit_test: false },
+        move |event| {
+            if open
+                && !on_close.is_default()
+                && let Event::Mouse(m) = event
+                && m.kind == MouseEventKind::Down(MouseButton::Left)
+            {
+                on_close(());
+                return EventResult::Consumed;
+            }
+            EventResult::Ignored
+        },
+    );
+
     let widths = [Constraint::Fill(1), Constraint::Fill(1)];
 
     let header = Row::new(vec!["描述", "快捷键"]).style(theme.highlight);
@@ -113,7 +143,11 @@ pub fn ShortcutInfoModal(
         blocks_lower: false,
         style:Style::new().dim(),
     ){
-        ScrollView(margin:Margin::new(1,1)){
+        ScrollView(margin:Margin::new(1,1),scrollbars:Scrollbars {
+            vertical_scrollbar:crate::theme::scrollbar_style(theme.border.not_dim(),theme.title),
+            horizontal_scrollbar:crate::theme::scrollbar_style(theme.border.not_dim(),theme.title),
+            ..Default::default()
+        }){
             View(height:Constraint::Length(key_height+3)){
                 widget(key_table)
             }

@@ -1,11 +1,12 @@
-use crate::{hooks::UseScrollbar, theme::AppChromeTheme};
-use crossterm::event::{Event, KeyCode, KeyEventKind};
+use crate::theme::AppChromeTheme;
 use ratatui::{
-    layout::{Alignment, Constraint},
     text::Line,
-    widgets::{List, ListItem, ListState},
+    widgets::{ListItem, ListState},
 };
-use ratatui_kit::prelude::*;
+use ratatui_kit::{
+    components::{Select as KitSelect, SelectProps as KitSelectProps},
+    prelude::*,
+};
 
 #[derive(Props)]
 pub struct SelectProps<T>
@@ -43,92 +44,29 @@ where
 }
 
 #[component]
-pub fn Select<T>(props: &mut SelectProps<T>, mut hooks: Hooks) -> impl Into<AnyElement<'static>>
+pub fn Select<T>(props: &mut SelectProps<T>, hooks: Hooks) -> impl Into<AnyElement<'static>>
 where
     T: Into<ListItem<'static>> + Sync + Send + Clone + 'static,
 {
-    let state = hooks.use_state(ListState::default);
-    let state = props.state.unwrap_or(state);
-
-    hooks.use_effect(
-        || {
-            state.write().select(props.default_value);
-        },
-        props.default_value,
-    );
-
     let theme = hooks.use_component_theme::<AppChromeTheme>();
-    let is_empty = props.items.is_empty();
-
-    let mut list = List::new(props.items.clone())
-        .style(theme.text)
-        .highlight_style(theme.selected);
-
-    if let Some(highlight_symbol) = props.highlight_symbol {
-        list = list.highlight_symbol(highlight_symbol);
+    Element::<KitSelect<T>> {
+        key: ElementKey::decl(0),
+        props: KitSelectProps {
+            items: std::mem::take(&mut props.items),
+            on_select: props.on_select.take(),
+            state: props.state,
+            top_title: props.top_title.clone(),
+            bottom_title: props.bottom_title.clone(),
+            active: props.is_editing,
+            default_index: props.default_value,
+            empty_message: props.empty_message.clone().into(),
+            highlight_symbol: props.highlight_symbol,
+            style: Some(theme.text),
+            border_style: Some(theme.border),
+            highlight_style: Some(theme.selected),
+            hover_style: Some(theme.highlight),
+            empty_style: Some(theme.empty),
+            ..Default::default()
+        },
     }
-
-    let mut on_select = props.on_select.take();
-
-    hooks.use_scrollbar(list.len(), state.read().selected());
-
-    hooks.use_event_handler(EventScope::Current, EventPriority::Normal, {
-        let items = props.items.clone();
-        let is_editing = props.is_editing;
-        move |event| {
-            let Event::Key(key) = event else {
-                return EventResult::Ignored;
-            };
-            if key.kind != KeyEventKind::Press || !is_editing {
-                return EventResult::Ignored;
-            }
-            match key.code {
-                KeyCode::Char('j') | KeyCode::Down => {
-                    state.write().select_next();
-                    EventResult::Consumed
-                }
-                KeyCode::Char('k') | KeyCode::Up => {
-                    state.write().select_previous();
-                    EventResult::Consumed
-                }
-                KeyCode::Enter => {
-                    if let Some(index) = state.read().selected() {
-                        on_select(items[index].clone());
-                    }
-                    EventResult::Consumed
-                }
-                _ => EventResult::Ignored,
-            }
-        }
-    });
-
-    if is_empty {
-        return element!(
-            Border(
-                top_title: props.top_title.clone(),
-                bottom_title: props.bottom_title.clone(),
-                border_style: theme.border,
-            ){
-                Center(
-                    height:Constraint::Length(5),
-                    width:Constraint::Percentage(50)
-                ){
-                    Text(
-                        text: props.empty_message.clone(),
-                        alignment: Alignment::Center,
-                        style: theme.empty,
-                        wrap: true,
-                    )
-                }
-            }
-        );
-    }
-
-    element!(Border(
-        border_style: theme.border,
-        top_title:props.top_title.clone(),
-        bottom_title:props.bottom_title.clone()
-    ){
-        stateful(list, state)
-    })
 }

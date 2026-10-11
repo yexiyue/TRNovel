@@ -13,11 +13,12 @@ use ratatui::{
     widgets::{Block, Padding, Paragraph, Widget, WidgetRef},
 };
 use ratatui_kit::prelude::*;
-use tui_widget_list::{ListBuildContext, ListState};
+use tui_widget_list::ListState;
 
 pub struct ListItem {
     pub history: HistoryItem,
     pub selected: bool,
+    pub hovered: bool,
     pub theme: AppChromeTheme,
 }
 
@@ -33,6 +34,10 @@ impl WidgetRef for ListItem {
             Block::bordered()
                 .padding(Padding::horizontal(0))
                 .style(self.theme.selected)
+        } else if self.hovered {
+            Block::bordered()
+                .padding(Padding::horizontal(0))
+                .style(self.theme.highlight)
         } else {
             Block::bordered().padding(Padding::horizontal(0))
         };
@@ -47,6 +52,8 @@ impl WidgetRef for ListItem {
 
         let text_color = if self.selected {
             self.theme.text.patch(self.theme.selected)
+        } else if self.hovered {
+            self.theme.text.patch(self.theme.highlight)
         } else {
             self.theme.text
         };
@@ -162,12 +169,13 @@ pub fn SelectHistory(mut hooks: Hooks) -> impl Into<AnyElement<'static>> {
                 )
                 .style(theme.meta_label.not_dim()),
             render_item: {
-                move |context:&ListBuildContext| {
+                move |context:&VirtualItemContext| {
                     let (_, item) = &histories[context.index];
                     (
                         ListItem {
                             history: item.clone(),
                             selected: context.is_selected,
+                            hovered: context.is_hovered,
                             theme,
                         }.into(),
                         5,
@@ -231,6 +239,7 @@ pub fn SelectHistory(mut hooks: Hooks) -> impl Into<AnyElement<'static>> {
                 KeyShortcutInfo::new(data)
             },
             open: info_modal_open.get(),
+            on_close:{let mut open = info_modal_open; move |_: ()| open.set(false)},
         )
     })
 }

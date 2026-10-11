@@ -1,7 +1,6 @@
 use super::search::{ChapterSearch, ContentLayout};
 use crate::{
     components::Loading,
-    hooks::UseScrollbar,
     keymap::{ReaderAction, display_first_key},
     theme::ReaderTheme,
 };
@@ -16,6 +15,9 @@ use ratatui_kit::prelude::*;
 use ratatui_kit_keymap::UseKeymapHandler;
 use std::sync::Arc;
 use std::time::Duration;
+
+/// 鼠标滚轮一格滚动的行数,与常见终端编辑器的默认步长一致。
+const WHEEL_LINES: usize = 3;
 
 /// 章节边界的「再按一次」确认态,防止读到章末/章首时误触 ↓/↑ 直接跳章。
 /// 到边界的首次 ↓/↑ 只武装并在底部状态栏提示,连续第二次才真正翻章;
@@ -367,9 +369,31 @@ pub fn ReadContent(
         tokio::time::sleep(Duration::from_secs(1)).await;
     });
 
-    // 滚动条的 content_length 要传**最大滚动位置**而非总行数:`use_scrollbar` 内部把两个
-    // 入参同除以组件高度,传 total 会让 position 恒小于 content_len、滑块永远到不了底。
-    hooks.use_scrollbar(end_scroll, Some(current_line));
+    // 框架 use_scrollbar hook:渲染 + 拖拽一体,单位就是行(content=total、
+    // viewport=view、position=current_line),滑轨两端精确映射 0/end_scroll。
+    // 在滚动条上点击/拖动 = 定位到对应行(与滚轮一样视为自由浏览:挂起跟随朗读、
+    // 解除章末武装;不参与翻章,翻章留给显式按键)。
+    hooks.use_scrollbar(
+        ScrollbarOptions {
+            content_length: total,
+            viewport_length: view,
+            position: current_line.min(end_scroll),
+            scrollbar: crate::theme::scrollbar_style(theme.border, theme.chapter),
+            ..Default::default()
+        },
+        {
+            let mut scroll_target = scroll_target;
+            let mut edge = edge;
+            #[cfg(feature = "tts")]
+            let mut follow_suspended = follow_suspended;
+            move |line| {
+                scroll_target.set(ScrollTarget::Ratio(line as f64 / total.max(1) as f64));
+                edge.set(Edge::None);
+                #[cfg(feature = "tts")]
+                follow_suspended.set(true);
+            }
+        },
+    );
 
     let can_search = props.is_scroll && !props.is_loading;
     let layer = hooks.use_input_layer(editing && can_search, true);
@@ -559,6 +583,38 @@ pub fn ReadContent(
             }
         },
     );
+
+    // 鼠标滚轮:只在章内滚动,钳到 [0, end_scroll],**不参与翻章** —— 滚轮一滚就是
+    // 一串事件,若沿用键盘的「章末武装 + 二次确认」,一次用力滑动就会武装并立即
+    // 确认,等于变相跳章;章末/章首翻章仍留给显式按键。滚轮视为自由浏览:
+    // 与显式滚动键一样挂起跟随朗读,并解除章末武装提示。
+    hooks.use_pointer(PointerOptions::default(), {
+        let mut scroll_target = scroll_target;
+        let mut edge = edge;
+        let is_loading = props.is_loading;
+        #[cfg(feature = "tts")]
+        let mut follow_suspended = follow_suspended;
+        move |ev| match ev.kind {
+            PointerKind::ScrollUp | PointerKind::ScrollDown if is_scroll && !is_loading => {
+                let line = scroll_target.get().resolve(total, end_scroll);
+                // 与键盘滚动同型:上方向钳到 0、下方向钳到贴底,单支实现避免边界语义抄两份。
+                let next = if matches!(ev.kind, PointerKind::ScrollUp) {
+                    line.saturating_sub(WHEEL_LINES)
+                } else {
+                    (line + WHEEL_LINES).min(end_scroll)
+                };
+                if next != line {
+                    scroll_target.set(ScrollTarget::Ratio(next as f64 / total.max(1) as f64));
+                }
+                // 边界处没有位移也表示自由浏览,必须撤销翻章武装和朗读跟随。
+                edge.set(Edge::None);
+                #[cfg(feature = "tts")]
+                follow_suspended.set(true);
+                EventResult::Consumed
+            }
+            _ => EventResult::Ignored,
+        }
+    });
 
     let footer_status = match edge.get() {
         Edge::Next => format!(
