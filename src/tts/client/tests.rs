@@ -24,6 +24,17 @@ pub(crate) fn fixture(name: &str) -> (tempfile::TempDir, PathBuf) {
                 .unwrap()
                 .success()
         );
+        // Finish the freshly linked executable's first load during fixture
+        // setup, before the transport tests start their handshake deadlines.
+        assert!(
+            std::process::Command::new(&binary)
+                .stdin(std::process::Stdio::null())
+                .stdout(std::process::Stdio::null())
+                .stderr(std::process::Stdio::null())
+                .status()
+                .unwrap()
+                .success()
+        );
         (directory, binary)
     });
     let directory = tempfile::Builder::new()

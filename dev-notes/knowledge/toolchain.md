@@ -340,3 +340,7 @@ Talechime 独立拥有 ~/.talechime/config.json、checkpoints、resources，AppP
 `trn/trnovel tts show/list/setup` 在进入 App 前分派，受 tts feature 门控。show 只读阅读器配置；list/setup 复用 Client 握手/GetConfig/Shutdown，不发送 PrepareModel、UpdateConfig 或 Start。setup 校验目录并使用 ConfigStore 保存待用声音；显式 worker 路径规范化为绝对路径，事务检查原声音/路径未被并发修改。运行中的 App 仍使用自己的声音快照，CLI 保存后须重启读取。无默认 feature 构建不显示 tts 命令。
 
 **相关文件**：src/lib.rs、src/tts/cli.rs、src/tts/cli/tests.rs。
+
+### Cargo 发布包必须排除文档媒体（2026-10-14）
+
+crate 使用 package.include 白名单保留 src、tests、清单/锁文件、说明、许可证和 changelog。文档 GIF、品牌图片与 UI 验收 PNG 不进入 crates.io 源码包；cargo-dist 安装包包含自己的说明与许可，独立于这个白名单。发布前检查实际 .crate 压缩包大小（注册表上限 10 MiB）并验证打包源码，不能仅凭 cargo publish --dry-run 的编译成功推断上传可用。

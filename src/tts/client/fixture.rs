@@ -19,7 +19,10 @@ impl Output {
     }
 }
 fn main() {
-    let program = std::env::current_exe().unwrap().file_stem().unwrap().to_string_lossy().into_owned();
+    // Each test launches a named hard link. Use the invoked path rather than
+    // the OS's executable inode path, which may resolve another alias.
+    let executable = std::path::PathBuf::from(std::env::args_os().next().unwrap());
+    let program = executable.file_stem().unwrap().to_string_lossy().into_owned();
     if program.contains("timeout") {std::thread::sleep(std::time::Duration::from_secs(15));return;}
     if program.contains("logs") {for _ in 0..100 {eprintln!("{}","log".repeat(1024));}}
     let mut out = Output {writer:std::io::stdout(),sequence:0,version:if program.contains("incompatible") {99} else {env!("FIXTURE_PROTOCOL_VERSION").parse().unwrap()}};
@@ -32,7 +35,7 @@ fn main() {
     let mut speed = 1.0;
     let mut device = "auto".to_string();
     let mut preparation_failed = false;
-    let log = std::env::current_exe().unwrap().with_extension("requests.jsonl");
+    let log = executable.with_extension("requests.jsonl");
     for line in std::io::stdin().lock().lines() {
         let line = line.unwrap();
         writeln!(std::fs::OpenOptions::new().create(true).append(true).open(&log).unwrap(),"{line}").unwrap();

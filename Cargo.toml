@@ -10,6 +10,7 @@ license = "MIT"
 keywords = ["CLI", "Terminal", "Novel", "Reader"]
 repository = "https://github.com/yexiyue/TRNovel"
 homepage = "https://yexiyue.github.io/TRNovel"
+include = ["/src/**", "/tests/**", "/Cargo.toml", "/Cargo.lock", "/README.md", "/LICENSE", "/CHANGELOG.md", "/rustfmt.toml"]
 
 [[bin]]
 name = "trnovel"
