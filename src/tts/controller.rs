@@ -1131,7 +1131,7 @@ mod tests {
 
     #[tokio::test]
     async fn cancelling_paused_replay_does_not_pause_a_later_explicit_start() {
-        let (directory, path) = crate::tts::client::tests::fixture("playing-slow");
+        let (directory, path) = crate::tts::client::tests::fixture("playing-cancel-prepare");
         let (handle, task) = Handle::with_store(Some(directory.path().join("reader/config.toml")));
         handle.set_path(Some(path));
         let mut watched = handle.watch();

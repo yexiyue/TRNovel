@@ -55,10 +55,19 @@ fn main() {
                 if program.contains("fail-prepare") && backend == "qwen" && !preparation_failed {
                     preparation_failed = true;
                     out.send(None,None,"error",r#"{"code":"prepare_failed","stage":"prepare","message":"fixture failure","retryable":true}"#);
+                } else if program.contains("cancel-prepare") && backend == "qwen" {
+                    // Deliver readiness only after cancellation, independent
+                    // of scheduler load, to exercise the stale-ready boundary.
                 } else {
                     if program.contains("slow") {std::thread::sleep(std::time::Duration::from_millis(400));}
                     out.send(None,None,"model_ready","null");
                 }
+            }
+            "cancel_prepare" => {
+                if program.contains("cancel-prepare") {
+                    out.send(None,None,"model_ready","null");
+                }
+                out.send(Some(&request),None,"accepted","null");
             }
             "get_progress" => out.send(Some(&request),Some(&session),"progress",r#"{"input_state":"sealed","accepted_end":10,"generated_end":10,"played_end":3,"waiting_for_input":false,"chapter_ready":true}"#),
             "pause" | "resume" => out.send(Some(&request),Some(&session),"session_state",if kind=="pause" {r#"{"state":"paused"}"#} else {r#"{"state":"playing"}"#}),
