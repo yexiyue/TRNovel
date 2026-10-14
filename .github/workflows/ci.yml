@@ -87,8 +87,14 @@ jobs:
         include:
           - runner: macos-14
             target: aarch64-apple-darwin
+          - runner: macos-15-intel
+            target: x86_64-apple-darwin
           - runner: ubuntu-22.04
             target: x86_64-unknown-linux-gnu
+          - runner: ubuntu-22.04
+            target: x86_64-unknown-linux-musl
+          - runner: ubuntu-24.04-arm
+            target: aarch64-unknown-linux-musl
           - runner: windows-2022
             target: x86_64-pc-windows-msvc
     runs-on: ${{ matrix.runner }}
@@ -104,7 +110,7 @@ jobs:
           python-version: '3.x'
       - name: Linux dependencies
         if: runner.os == 'Linux'
-        run: sudo apt-get update && sudo apt-get install -y libssl-dev pkg-config
+        run: sudo apt-get update && sudo apt-get install -y libssl-dev pkg-config musl-tools cmake
       - name: Install cargo-dist 0.32.0
         if: runner.os != 'Windows'
         shell: bash
@@ -115,6 +121,13 @@ jobs:
         run: irm https://github.com/axodotdev/cargo-dist/releases/download/v0.32.0/cargo-dist-installer.ps1 | iex
       - name: Build and test isolated installation
         run: python .github/scripts/distribution-smoke.py trnovel ${{ matrix.target }}
+      - name: Verify static musl executable
+        if: contains(matrix.target, '-musl')
+        env:
+          TARGET: ${{ matrix.target }}
+        run: |
+          readelf -l "target/${TARGET}/dist/trn" > musl-program-headers.txt
+          ! grep 'INTERP' musl-program-headers.txt
       - uses: actions/upload-artifact@v4
         with:
           name: distribution-${{ matrix.target }}

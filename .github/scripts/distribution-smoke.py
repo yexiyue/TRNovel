@@ -146,7 +146,24 @@ def main(app, target):
             'LOCALAPPDATA': str(home / 'AppData/Local'),
         })
         try:
-            if sys.platform == 'win32':
+            if target.endswith('-musl'):
+                # A glibc host prefers the GNU archive. Exercise automatic musl
+                # selection in Alpine, using this same local artifact server.
+                (base / 'installer-bin').mkdir()
+                run('docker', 'run', '--rm', '--network', 'host',
+                    '-v', f'{Path("target/distrib").resolve()}:/artifacts:ro',
+                    '-v', f'{base}:/smoke',
+                    '-e', 'HOME=/smoke/home',
+                    '-e', f'{prefix}_DOWNLOAD_URL=http://127.0.0.1:{server.server_port}',
+                    '-e', f'{prefix}_UNMANAGED_INSTALL=/smoke/installer-bin',
+                    'alpine:3.23', 'sh', '-ec',
+                    f'sh /artifacts/{app}-installer.sh; '
+                    '/smoke/installer-bin/trnovel --version; '
+                    '/smoke/installer-bin/trn --version; '
+                    '/smoke/installer-bin/trn --help >/dev/null; '
+                    '/smoke/installer-bin/trn tts show', timeout=180)
+                assert (base / 'installer-bin/trn').read_bytes() == (installed / 'trn').read_bytes()
+            elif sys.platform == 'win32':
                 run('pwsh', '-NoProfile', '-ExecutionPolicy', 'Bypass', '-File',
                     str(Path(f'target/distrib/{app}-installer.ps1').resolve()), env=installer_env)
             else:

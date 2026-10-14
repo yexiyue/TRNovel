@@ -71,7 +71,7 @@ npm i -g @trnovel/trnovel
 brew install yexiyue/tap/trnovel
 ```
 
-这些命令安装最新正式版本。0.18.0 起统一为默认支持听书界面的单一阅读器，Talechime 独立安装。旧 basic、捆绑 worker、加速及 ARM64 musl 专用包停止更新。见[安装文档](https://yexiyue.github.io/TRNovel/guides/install/)。
+这些命令安装最新正式版本。0.18.0 起统一为默认支持听书界面的单一阅读器，Talechime 独立安装。0.18.2 起恢复 Intel Mac 与 x86_64 / ARM64 musl Linux；旧 basic、捆绑 worker 和加速包停止更新。见[安装文档](https://yexiyue.github.io/TRNovel/guides/install/)。
 
 ## 开读
 

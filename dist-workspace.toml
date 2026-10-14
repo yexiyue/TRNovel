@@ -8,7 +8,7 @@ recursive-tarball = false
 packages = ["trnovel"]
 precise-builds = true
 installers = ["shell", "powershell", "npm", "homebrew"]
-targets = ["aarch64-apple-darwin", "x86_64-unknown-linux-gnu", "x86_64-pc-windows-msvc"]
+targets = ["aarch64-apple-darwin", "x86_64-apple-darwin", "x86_64-unknown-linux-gnu", "x86_64-unknown-linux-musl", "aarch64-unknown-linux-musl", "x86_64-pc-windows-msvc"]
 npm-scope = "@trnovel"
 tag-namespace = "trnovel"
 publish-jobs = ["./publish-npm", "homebrew"]
@@ -22,3 +22,7 @@ pr-run-mode = "plan"
 [dist.dependencies.apt]
 libssl-dev = '*'
 pkg-config = '*'
+
+[dist.github-custom-runners]
+x86_64-apple-darwin = "macos-15-intel"
+aarch64-unknown-linux-musl = "ubuntu-24.04-arm"

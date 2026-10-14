@@ -344,3 +344,11 @@ Talechime 独立拥有 ~/.talechime/config.json、checkpoints、resources，AppP
 ### Cargo 发布包必须排除文档媒体（2026-10-14）
 
 crate 使用 package.include 白名单保留 src、tests、清单/锁文件、说明、许可证和 changelog。文档 GIF、品牌图片与 UI 验收 PNG 不进入 crates.io 源码包；cargo-dist 安装包包含自己的说明与许可，独立于这个白名单。发布前检查实际 .crate 压缩包大小（注册表上限 10 MiB）并验证打包源码，不能仅凭 cargo publish --dry-run 的编译成功推断上传可用。
+
+### TRNovel 恢复 Intel 与静态 musl（2026-10-14）
+
+用户授权在独立阅读器移除原生音频推理依赖后恢复三个目标：x86_64-apple-darwin、x86_64-unknown-linux-musl、aarch64-unknown-linux-musl。它们与原有三个目标共用一份 cargo-dist 0.32.0 原生配置、安装器与 npm 包；不恢复 basic、捆绑 worker 或专用动态 ONNX musl 包。此条取代上文“三平台”和“ARM64 musl 停止发行”的阅读器约束，Talechime 的独立原生推理平台范围不变。
+
+阅读器使用 rustls；完整 musl 依赖树没有 openssl-sys、ort、rodio、Candle 或 Talechime core/backends。openssl-probe 仅探测信任根路径，不链接 OpenSSL。Intel 使用 macos-15-intel，ARM64 musl 使用 ubuntu-24.04-arm，Linux musl 安装 musl-tools。改 dist-workspace.toml 后仍执行 dist generate / generate --check；release workflow 的目标矩阵由 plan 动态计算，因此生成文件可能无需变化。CI 安装检查覆盖六个平台，musl 额外要求无 ELF INTERP 并在 Alpine 中执行 CLI。
+
+新增平台的普通阅读无需 worker；听书仍取决于独立 Talechime 是否支持该平台。不能把阅读器平台恢复写成 Talechime 原生模型推理的支持承诺。

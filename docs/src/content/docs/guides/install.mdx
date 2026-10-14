@@ -1,7 +1,7 @@
 ---
 title: 安装
 description: TRNovel 安装指南
-lastUpdated: 2026-10-06
+lastUpdated: 2026-10-14
 sidebar:
     order: 2
 ---
@@ -30,9 +30,11 @@ import { Tabs, TabItem } from "@astrojs/starlight/components";
     </TabItem>
 </Tabs>
 
-TRNovel 只分发 `trnovel`、`trn`，默认提供听书界面。听书需独立安装 [Talechime](https://github.com/yexiyue/talechime#installation)。0.18.0 起使用统一发行；旧 basic、捆绑 worker、加速与 ARM64 musl 专用包停止更新。
+TRNovel 只分发 `trnovel`、`trn`，默认提供听书界面。听书需独立安装 [Talechime](https://github.com/yexiyue/talechime#installation)。0.18.0 起使用统一发行；旧 basic、捆绑 worker 和加速包停止更新。
 
-首轮支持 Apple Silicon macOS、x86_64 Linux GNU、x86_64 Windows MSVC。Shell / PowerShell 默认安装到 Cargo bin 目录；安装后确认该目录在 PATH 中。
+0.18.2 起支持 Apple Silicon / Intel macOS、x86_64 Linux GNU、x86_64 / ARM64 Linux musl，以及 x86_64 Windows MSVC。musl 包为静态阅读器，不需要 ALSA 或 ONNX Runtime；ARM64 musl 已纳入统一发行。Talechime 的平台范围独立，新增平台可正常阅读，听书仍需要该平台可用的 Talechime。
+
+Shell / PowerShell 默认安装到 Cargo bin 目录；安装后确认该目录在 PATH 中。
 
 ## 包管理器安装
 
@@ -81,4 +83,4 @@ cargo build --release --locked -p trnovel --bins
 
 无需递归检出。Talechime 独立安装或在它自己的仓库构建。worker 查找顺序为 `--tts-program` → `[tts].program` → PATH 中的 `talechime`；指定路径无效直接报错，不自动下载、更新或回退旧名称。
 
-数据目录已更新，旧文件不读取、不自动搬迁，见[手工搬迁](/TRNovel/guides/migration/)。回退应用时使用对应旧版二进制和备份目录；协议主版本不匹配只影响听书。
+数据目录已更新，首次正常启动会自动复制旧数据，保留原文件且不覆盖新版数据，见[自动迁移](/TRNovel/guides/migration/)。回退应用时使用对应旧版二进制和备份目录；协议主版本不匹配只影响听书。
