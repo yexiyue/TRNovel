@@ -153,6 +153,7 @@ pub fn SelectFile(mut hooks: Hooks) -> impl Into<AnyElement<'static>> {
                     ("折叠文件夹", "H / ◄"),
                     ("选择下一个", "J / ▼"),
                     ("选择上一个", "K / ▲"),
+                    ("上/下一页", "PgUp / PgDn"),
                     ("选择小说文件", "Enter"),
                     ("开始输入路径", "S"),
                     ("搜索小说名称", "/")

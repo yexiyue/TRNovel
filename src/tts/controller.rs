@@ -1,10 +1,12 @@
 //! UI-facing actor: starts on explicit actions and filters stale playback events.
+use super::ChapterRequest;
 use super::client::{Client, Received, discover};
+use crate::config::{ConfigStore, SoundConfig};
 use std::{
     path::PathBuf,
     sync::{
         Arc,
-        atomic::{AtomicBool, AtomicU64, Ordering},
+        atomic::{AtomicU64, Ordering},
     },
 };
 use tokio::{
@@ -12,8 +14,7 @@ use tokio::{
     task::JoinHandle,
 };
 use tts_protocol::{
-    Capabilities, Command, Config, ConfigPatch, EndReason, Event, SessionState, SourceId,
-    StartRequest, TextRange,
+    Capabilities, Command, Config, ConfigPatch, EndReason, Event, SessionState, SourceId, TextRange,
 };
 
 fn download_progress(resource: &str, downloaded: u64, total: u64) -> String {
@@ -36,7 +37,10 @@ fn download_progress(resource: &str, downloaded: u64, total: u64) -> String {
 #[derive(Debug, Clone)]
 pub struct Snapshot {
     pub config: Option<Config>,
-    pub capabilities: Option<Capabilities>,
+    pub sound: Option<SoundConfig>,
+    pub playback_sound: Option<SoundConfig>,
+    /// Reader-side chapter strategy applied when the next session starts.
+    pub playback: crate::config::PlaybackPreference,
     pub backends: Vec<Capabilities>,
     pub state: SessionState,
     pub source: Option<SourceId>,
@@ -47,18 +51,21 @@ pub struct Snapshot {
     pub error: Option<String>,
     pub progress: String,
     pub model_ready: bool,
-    pub alignment: String,
+    pub played_end: usize,
     pub buffer: String,
     pub devices: std::collections::BTreeMap<String, (Vec<tts_protocol::Device>, String)>,
     resource_sequence: u64,
     instance: Option<String>,
     session: Option<String>,
+    text: Arc<str>,
 }
 impl Default for Snapshot {
     fn default() -> Self {
         Self {
             config: None,
-            capabilities: None,
+            sound: None,
+            playback_sound: None,
+            playback: Default::default(),
             backends: Vec::new(),
             state: SessionState::Idle,
             source: None,
@@ -69,21 +76,38 @@ impl Default for Snapshot {
             error: None,
             progress: "未启用模型".into(),
             model_ready: false,
-            alignment: "片段高亮".into(),
+            played_end: 0,
             buffer: String::new(),
             devices: Default::default(),
             resource_sequence: 0,
             instance: None,
             session: None,
+            text: Arc::from(""),
         }
     }
 }
 impl Snapshot {
-    pub fn matches(&self, request: &StartRequest) -> bool {
+    pub fn sound_capabilities(&self) -> Option<&Capabilities> {
+        let sound = self.sound.as_ref()?;
+        self.backends
+            .iter()
+            .find(|caps| caps.matches(&sound.backend, sound.model.as_deref()))
+    }
+    pub fn has_pending_sound(&self) -> bool {
+        self.playback_sound
+            .as_ref()
+            .is_some_and(|active| self.sound.as_ref() != Some(active))
+    }
+    fn advance_played(&mut self, byte: usize) {
+        if byte <= self.text.len() && self.text.is_char_boundary(byte) {
+            self.played_end = self.played_end.max(byte);
+        }
+    }
+    pub fn matches(&self, request: &ChapterRequest) -> bool {
         self.source.as_ref() == Some(&request.source)
             && self.text_hash.as_deref() == Some(&request.text_hash)
     }
-    pub fn should_continue(&self, request: &StartRequest, has_next: bool) -> bool {
+    pub fn should_continue(&self, request: &ChapterRequest, has_next: bool) -> bool {
         has_next
             && self.matches(request)
             && self.terminal == Some(EndReason::Completed)
@@ -111,11 +135,6 @@ impl Snapshot {
                 self.devices.insert(component, (compiled, status));
             }
             Event::Config(config) => {
-                self.capabilities = self
-                    .backends
-                    .iter()
-                    .find(|caps| caps.matches(&config.backend, config.model.as_deref()))
-                    .cloned();
                 self.config = Some(config);
             }
             Event::ConfigChanged(config) => {
@@ -124,14 +143,7 @@ impl Snapshot {
                     old.model != config.model
                         || old.backend != config.backend
                         || old.tts_device != config.tts_device
-                        || old.alignment_device != config.alignment_device
-                        || old.alignment_enabled != config.alignment_enabled
                 });
-                self.capabilities = self
-                    .backends
-                    .iter()
-                    .find(|caps| caps.matches(&config.backend, config.model.as_deref()))
-                    .cloned();
                 self.config = Some(config);
                 if switched {
                     self.resource_sequence = message.sequence;
@@ -142,21 +154,8 @@ impl Snapshot {
                     self.terminal = None;
                     self.state = SessionState::Idle;
                     self.progress = "听书设置已切换，请启用模型".into();
-                    self.alignment = "片段高亮".into();
                     for (_, status) in self.devices.values_mut() {
                         *status = "未准备".into();
-                    }
-                }
-                if let Some(id) = message.session_id
-                    && self.session.is_some()
-                    && self.session.as_ref() != Some(&id)
-                {
-                    self.session = Some(id);
-                    self.range = None;
-                    self.buffer.clear();
-                    self.terminal = None;
-                    if self.state != SessionState::Paused {
-                        self.state = SessionState::Generating;
                     }
                 }
             }
@@ -168,19 +167,6 @@ impl Snapshot {
                 downloaded,
                 total,
             } => self.progress = download_progress(&resource, downloaded, total),
-            Event::AlignmentStatus {
-                sentence_highlight,
-                reason,
-            } if message.session_id.is_none() => {
-                self.alignment = if sentence_highlight {
-                    "逐句高亮".into()
-                } else {
-                    reason.map_or_else(
-                        || "片段高亮".into(),
-                        |reason| format!("片段高亮 · {reason}"),
-                    )
-                };
-            }
             Event::ModelReady => {
                 self.error = None;
                 self.model_ready = true;
@@ -208,25 +194,19 @@ impl Snapshot {
                         underruns
                     );
                 }
-                Event::AlignmentStatus {
-                    sentence_highlight,
-                    reason,
-                } => {
-                    self.alignment = if sentence_highlight {
-                        "逐句高亮".into()
-                    } else {
-                        reason.map_or_else(
-                            || "片段高亮".into(),
-                            |reason| format!("片段高亮 · {reason}"),
-                        )
-                    };
-                }
                 Event::SegmentStarted { range, text_hash }
-                | Event::SentenceStarted { range, text_hash }
-                    if self.text_hash.as_deref() == Some(&text_hash) =>
+                    if self.text_hash.as_deref() == Some(&text_hash)
+                        && range.is_valid(&self.text) =>
                 {
                     self.range = Some(range)
                 }
+                Event::SegmentFinished { range, text_hash }
+                    if self.text_hash.as_deref() == Some(&text_hash)
+                        && range.is_valid(&self.text) =>
+                {
+                    self.advance_played(range.end);
+                }
+                Event::Progress(progress) => self.advance_played(progress.played_end),
                 Event::SessionEnded { reason, text_hash }
                     if self.text_hash.as_deref() == Some(&text_hash) && self.terminal.is_none() =>
                 {
@@ -251,7 +231,6 @@ struct HandleInner {
     actions: mpsc::Sender<QueuedAction>,
     controls: watch::Sender<Controls>,
     generation: Arc<AtomicU64>,
-    switching: Arc<AtomicBool>,
     snapshot: watch::Receiver<Snapshot>,
     stop: tokio_util::sync::CancellationToken,
     done: watch::Receiver<bool>,
@@ -267,10 +246,13 @@ enum Action {
     Open,
     Prepare,
     CancelPrepare,
-    Toggle(StartRequest),
-    Chapter(StartRequest, bool),
+    Toggle(ChapterRequest),
+    ToggleCurrent,
+    Chapter(ChapterRequest, bool),
     Stop,
     Restart,
+    RestartFromStart,
+    SetPlayback(crate::config::PlaybackPreference),
     Update(ConfigPatch),
     Incoming(String, Received),
     Release,
@@ -294,19 +276,17 @@ enum Delivery {
     Action(QueuedAction),
 }
 fn resource_update(patch: &ConfigPatch) -> bool {
-    patch.model.is_some()
-        || patch.backend.is_some()
-        || patch.tts_device.is_some()
-        || patch.alignment_device.is_some()
-        || patch.alignment_enabled.is_some()
+    patch.model.is_some() || patch.backend.is_some() || patch.tts_device.is_some()
 }
 
 impl Handle {
     pub fn new() -> (Self, JoinHandle<()>) {
+        Self::with_store(None)
+    }
+    fn with_store(store: Option<PathBuf>) -> (Self, JoinHandle<()>) {
         let (actions, receiver) = mpsc::channel(32);
         let (controls, control_receiver) = watch::channel(Controls::default());
         let generation = Arc::new(AtomicU64::new(0));
-        let switching = Arc::new(AtomicBool::new(false));
         let (snapshot, watched) = watch::channel(Snapshot::default());
         let stop = tokio_util::sync::CancellationToken::new();
         let (finished, done) = watch::channel(false);
@@ -314,7 +294,6 @@ impl Handle {
             receiver,
             controls: control_receiver,
             generation: generation.clone(),
-            switching: switching.clone(),
             releases: 0,
             cancellations: 0,
             observed_generation: 0,
@@ -329,13 +308,14 @@ impl Handle {
             last: None,
             pending: None,
             next_session: 0,
+            store,
+            pending_paused: false,
         };
         (
             Self(Arc::new(HandleInner {
                 actions,
                 controls,
                 generation,
-                switching,
                 snapshot: watched,
                 stop,
                 done,
@@ -381,10 +361,13 @@ impl Handle {
     pub fn cancel_prepare(&self) {
         self.control(Action::CancelPrepare);
     }
-    pub fn toggle(&self, request: StartRequest) {
+    pub fn toggle(&self, request: ChapterRequest) {
         self.send(Action::Toggle(request));
     }
-    pub fn chapter(&self, request: StartRequest, continue_playing: bool) {
+    pub fn toggle_current(&self) {
+        self.send(Action::ToggleCurrent);
+    }
+    pub fn chapter(&self, request: ChapterRequest, continue_playing: bool) {
         self.control(Action::Chapter(request, continue_playing));
     }
     pub fn stop(&self) {
@@ -393,23 +376,14 @@ impl Handle {
     pub fn restart(&self) {
         self.send(Action::Restart);
     }
+    pub fn restart_from_start(&self) {
+        self.send(Action::RestartFromStart);
+    }
+    pub fn set_playback(&self, playback: crate::config::PlaybackPreference) {
+        self.send(Action::SetPlayback(playback));
+    }
     pub fn update(&self, patch: ConfigPatch) {
-        let switching = resource_update(&patch);
-        if switching {
-            if self
-                .0
-                .switching
-                .compare_exchange(false, true, Ordering::SeqCst, Ordering::SeqCst)
-                .is_err()
-            {
-                return;
-            }
-        } else if self.0.switching.load(Ordering::SeqCst) {
-            return;
-        }
-        if !self.send(Action::Update(patch)) && switching {
-            self.0.switching.store(false, Ordering::SeqCst);
-        }
+        self.send(Action::Update(patch));
     }
     pub fn release(&self) {
         self.control(Action::Release);
@@ -432,7 +406,6 @@ struct Actor {
     actions: mpsc::Sender<QueuedAction>,
     controls: watch::Receiver<Controls>,
     generation: Arc<AtomicU64>,
-    switching: Arc<AtomicBool>,
     releases: u64,
     cancellations: u64,
     observed_generation: u64,
@@ -441,24 +414,31 @@ struct Actor {
     client: Option<Client>,
     event_task: Option<JoinHandle<()>>,
     path: Option<PathBuf>,
-    last: Option<StartRequest>,
-    pending: Option<StartRequest>,
+    last: Option<ChapterRequest>,
+    pending: Option<ChapterRequest>,
     next_session: u64,
+    store: Option<PathBuf>,
+    pending_paused: bool,
 }
 impl Actor {
+    fn config_store(&self) -> anyhow::Result<ConfigStore> {
+        self.store
+            .as_ref()
+            .map_or_else(ConfigStore::user_default, |path| {
+                Ok(ConfigStore::new(path.clone()))
+            })
+    }
     async fn connect(&mut self) -> anyhow::Result<()> {
         if self.client.as_ref().is_some_and(Client::is_connected) {
             return Ok(());
         }
         self.release().await;
-        let configured = if self.path.is_none() {
-            crate::config::ConfigStore::user_default()?
-                .load()?
-                .tts
-                .program
-        } else {
-            None
-        };
+        let preferences = self.config_store()?.load()?.tts;
+        let configured = preferences.program;
+        self.view.playback = preferences.playback;
+        if self.view.sound.is_none() {
+            self.view.sound = preferences.sound;
+        }
         let path = discover(
             self.path.as_deref(),
             configured.as_deref(),
@@ -494,6 +474,10 @@ impl Actor {
         }));
         self.client = Some(client);
         self.command(None, Command::GetConfig).await?;
+        if self.view.sound.is_none() {
+            self.view.sound = self.view.config.as_ref().map(SoundConfig::from);
+        }
+        self.view.progress = "未准备模型".into();
         self.view.error = None;
         Ok(())
     }
@@ -506,23 +490,67 @@ impl Actor {
         self.view.apply(response);
         Ok(())
     }
-    async fn begin(&mut self, request: StartRequest) -> anyhow::Result<()> {
+    async fn begin(&mut self, request: ChapterRequest) -> anyhow::Result<()> {
         self.next_session += 1;
         let id = format!("session-{}", self.next_session);
         self.last = Some(request.clone());
-        self.command(Some(id.clone()), Command::Start(request.clone()))
-            .await?;
+        // Preparation may outlive edits to the next-play preferences.
+        let sound = self
+            .view
+            .config
+            .as_ref()
+            .map(SoundConfig::from)
+            .ok_or_else(|| anyhow::anyhow!("声音设置尚未加载"))?;
+        let playback = self.config_store()?.load()?.tts.playback;
+        self.command(
+            Some(id.clone()),
+            Command::Start(Box::new(request.plan(&sound, playback))),
+        )
+        .await?;
         self.view.session = Some(id);
         self.view.source = Some(request.source.clone());
         self.view.text_hash = Some(request.text_hash.clone());
+        self.view.text = Arc::from(request.text.as_str());
+        self.view.played_end = request.resume_byte.unwrap_or(0);
+        self.view.playback_sound = Some(sound);
         self.view.range = None;
         self.view.buffer.clear();
         self.view.terminal = None;
         self.view.error = None;
         self.view.state = SessionState::Generating;
+        if self.pending_paused {
+            self.command(self.view.session.clone(), Command::Pause)
+                .await?;
+            self.view.state = SessionState::Paused;
+        }
+        self.pending_paused = false;
         Ok(())
     }
-    async fn start(&mut self, request: StartRequest) -> anyhow::Result<()> {
+    /// Reopen the last chapter with the staged sound. `from_start` discards the
+    /// confirmed position so comparison listening replays the whole chapter
+    /// and always resumes playback.
+    async fn action_restart(&mut self, from_start: bool) -> anyhow::Result<()> {
+        if let Some(mut request) = self.last.clone() {
+            self.connect().await?;
+            let paused = self.view.state == SessionState::Paused;
+            let current_source = self.view.matches(&request);
+            if current_source && let Some(id) = self.view.session.clone() {
+                self.command(Some(id), Command::GetProgress).await?;
+            }
+            request.resume_byte = Some(if !from_start && current_source {
+                self.view.played_end
+            } else {
+                0
+            });
+            request.restore_checkpoint = false;
+            self.stop().await?;
+            self.pending_paused = paused && !from_start;
+            self.start(request).await?;
+        }
+        Ok(())
+    }
+    async fn start(&mut self, request: ChapterRequest) -> anyhow::Result<()> {
+        self.apply_sound().await?;
         if self.view.model_ready {
             self.begin(request).await
         } else {
@@ -540,6 +568,7 @@ impl Actor {
         self.view.buffer.clear();
         self.view.terminal = None;
         self.view.state = SessionState::Stopped;
+        self.pending_paused = false;
         if self.client.as_ref().is_some_and(Client::is_connected) {
             if preparing {
                 self.command(None, Command::CancelPrepare).await?;
@@ -570,6 +599,100 @@ impl Actor {
         self.view.terminal = None;
         self.view.state = SessionState::Idle;
         self.view.progress = "资源已释放".into();
+        self.view.playback_sound = None;
+        self.pending_paused = false;
+    }
+
+    async fn apply_sound(&mut self) -> anyhow::Result<()> {
+        let sound = self
+            .view
+            .sound
+            .as_ref()
+            .ok_or_else(|| anyhow::anyhow!("声音设置尚未加载"))?;
+        let config = self
+            .view
+            .config
+            .as_ref()
+            .ok_or_else(|| anyhow::anyhow!("听书配置尚未加载"))?;
+        if *sound == SoundConfig::from(config) {
+            return Ok(());
+        }
+        let patch = ConfigPatch {
+            backend: Some(sound.backend.clone()),
+            model: sound.model.clone(),
+            voice: Some(sound.voice.clone()),
+            style: Some(sound.style.clone().unwrap_or_default()),
+            tts_device: Some(sound.device),
+            expected_revision: config.revision,
+            ..Default::default()
+        };
+        self.command(None, Command::UpdateConfig(patch)).await
+    }
+
+    async fn save_sound(&mut self, patch: &ConfigPatch) -> anyhow::Result<()> {
+        let mut sound = self
+            .view
+            .sound
+            .clone()
+            .ok_or_else(|| anyhow::anyhow!("声音设置尚未加载"))?;
+        if let Some(backend) = &patch.backend {
+            if *backend != sound.backend {
+                sound.model = None;
+            }
+            sound.backend.clone_from(backend);
+        }
+        if let Some(model) = &patch.model {
+            sound.model = Some(model.clone());
+        }
+        let caps = self
+            .view
+            .backends
+            .iter()
+            .find(|caps| caps.matches(&sound.backend, sound.model.as_deref()))
+            .ok_or_else(|| anyhow::anyhow!("当前 Talechime 不支持所选模型"))?;
+        if let Some(voice) = &patch.voice {
+            sound.voice.clone_from(voice);
+        }
+        if !caps.voices.contains(&sound.voice) {
+            sound.voice.clone_from(&caps.default_voice);
+        }
+        if let Some(style) = &patch.style {
+            sound.style = (!style.is_empty()).then(|| style.clone());
+        }
+        if !caps.style {
+            sound.style = None;
+        }
+        if let Some(device) = patch.tts_device {
+            sound.device = device;
+        }
+        if sound.device != tts_protocol::Device::Auto
+            && !caps.compiled_devices.contains(&sound.device)
+        {
+            sound.device = tts_protocol::Device::Auto;
+        }
+        let store = self.config_store()?;
+        let saved = sound.clone();
+        tokio::task::spawn_blocking(move || store.update(|config| config.tts.sound = Some(saved)))
+            .await??;
+        self.view.sound = Some(sound);
+        self.view.error = None;
+        Ok(())
+    }
+    async fn action_toggle(&mut self, request: ChapterRequest) -> anyhow::Result<()> {
+        self.connect().await?;
+        if self.view.matches(&request)
+            && self.view.terminal.is_none()
+            && self.view.session.is_some()
+        {
+            let command = if self.view.state == SessionState::Paused {
+                Command::Resume
+            } else {
+                Command::Pause
+            };
+            self.command(self.view.session.clone(), command).await
+        } else {
+            self.start(request).await
+        }
     }
     async fn action(&mut self, action: Action) -> anyhow::Result<bool> {
         match action {
@@ -579,6 +702,11 @@ impl Actor {
             }
             Action::Prepare => {
                 self.connect().await?;
+                anyhow::ensure!(
+                    self.view.session.is_none() || self.view.terminal.is_some(),
+                    "播放中请使用“应用并重播”切换声音"
+                );
+                self.apply_sound().await?;
                 self.view.error = None;
                 if !self.view.model_ready && self.view.session.is_none() {
                     self.view.state = SessionState::Preparing;
@@ -587,6 +715,7 @@ impl Actor {
             }
             Action::CancelPrepare => {
                 self.pending = None;
+                self.pending_paused = false;
                 if self.client.as_ref().is_some_and(Client::is_connected) {
                     self.command(None, Command::CancelPrepare).await?;
                 }
@@ -595,64 +724,51 @@ impl Actor {
                 }
             }
             Action::Toggle(request) => {
-                self.connect().await?;
-                if self.view.matches(&request)
-                    && self.view.terminal.is_none()
-                    && self.view.session.is_some()
-                {
-                    let command = if self.view.state == SessionState::Paused {
-                        Command::Resume
-                    } else {
-                        Command::Pause
-                    };
-                    self.command(self.view.session.clone(), command).await?;
-                } else {
-                    self.start(request).await?;
+                self.action_toggle(request).await?;
+            }
+            Action::ToggleCurrent => {
+                if let Some(request) = self.last.clone() {
+                    // Use the same session identity checks as the reader's P action.
+                    self.action_toggle(request).await?;
                 }
             }
             Action::Chapter(request, continue_playing) => {
                 self.stop().await?;
                 self.last = Some(request.clone());
+                self.view.played_end = 0;
                 if continue_playing && self.client.as_ref().is_some_and(Client::is_connected) {
                     self.start(request).await?;
                 }
             }
             Action::Stop => self.stop().await?,
-            Action::Restart => {
-                if let Some(mut request) = self.last.clone() {
-                    self.connect().await?;
-                    request.resume_byte = Some(0);
-                    request.restore_checkpoint = false;
-                    self.start(request).await?;
-                }
+            Action::Restart => self.action_restart(false).await?,
+            Action::RestartFromStart => self.action_restart(true).await?,
+            Action::SetPlayback(playback) => {
+                let store = self.config_store()?;
+                tokio::task::spawn_blocking(move || {
+                    store.update(|config| config.tts.playback = playback)
+                })
+                .await??;
+                self.view.playback = playback;
+                self.view.error = None;
             }
             Action::Update(mut patch) => {
                 self.connect().await?;
-                let switched = if let Some(config) = &self.view.config {
-                    patch.expected_revision = config.revision;
-                    patch
-                        .model
+                if resource_update(&patch) || patch.voice.is_some() || patch.style.is_some() {
+                    self.save_sound(&patch).await?;
+                }
+                if patch.volume.is_some() || patch.speed.is_some() || patch.auto_play.is_some() {
+                    patch.expected_revision = self
+                        .view
+                        .config
                         .as_ref()
-                        .is_some_and(|model| Some(model) != config.model.as_ref())
-                        || patch
-                            .backend
-                            .as_ref()
-                            .is_some_and(|backend| backend != &config.backend)
-                        || patch
-                            .tts_device
-                            .is_some_and(|device| device != config.tts_device)
-                        || patch
-                            .alignment_device
-                            .is_some_and(|device| device != config.alignment_device)
-                        || patch
-                            .alignment_enabled
-                            .is_some_and(|enabled| enabled != config.alignment_enabled)
-                } else {
-                    false
-                };
-                self.command(None, Command::UpdateConfig(patch)).await?;
-                if switched {
-                    self.pending = None;
+                        .map_or(0, |config| config.revision);
+                    patch.backend = None;
+                    patch.model = None;
+                    patch.voice = None;
+                    patch.style = None;
+                    patch.tts_device = None;
+                    self.command(None, Command::UpdateConfig(patch)).await?;
                 }
             }
             Action::Incoming(instance, Received::Message(message)) => {
@@ -664,6 +780,7 @@ impl Actor {
                     && self.view.state == SessionState::Preparing
                 {
                     self.pending = None;
+                    self.pending_paused = false;
                     self.view.state = SessionState::Failed;
                 }
                 self.view.apply(*message);
@@ -747,7 +864,6 @@ impl Actor {
                     }
                 },
             };
-            let switching = matches!(&delivery,Delivery::Action(QueuedAction {action:Action::Update(patch),..}) if resource_update(patch));
             let result = tokio::select! {
                 biased;
                 _ = stop.cancelled() => break,
@@ -755,6 +871,7 @@ impl Actor {
             };
             if let Err(error) = result {
                 self.pending = None;
+                self.pending_paused = false;
                 self.view.error = Some(error.to_string());
                 if self.view.session.is_none()
                     || self.view.state == SessionState::Preparing
@@ -764,11 +881,7 @@ impl Actor {
                 }
             }
             self.snapshot.send_replace(self.view.clone());
-            if switching {
-                self.switching.store(false, Ordering::SeqCst);
-            }
         }
-        self.switching.store(false, Ordering::SeqCst);
         self.release().await;
         self.finished.send_replace(true);
     }
@@ -798,8 +911,8 @@ mod tests {
     }
     use super::*;
     use tts_protocol::{Message, PROTOCOL_VERSION, text_hash};
-    fn request(chapter: &str) -> StartRequest {
-        StartRequest {
+    fn request(chapter: &str) -> ChapterRequest {
+        ChapterRequest {
             source: SourceId {
                 namespace: "reader".into(),
                 book: "book".into(),
@@ -889,8 +1002,8 @@ mod tests {
     }
     #[tokio::test]
     async fn actor_starts_only_on_explicit_action_and_reuses_worker_across_chapters() {
-        let (_directory, path) = crate::tts::client::tests::fixture("worker");
-        let (handle, task) = Handle::new();
+        let (directory, path) = crate::tts::client::tests::fixture("worker");
+        let (handle, task) = Handle::with_store(Some(directory.path().join("config.toml")));
         let mut watched = handle.watch();
         handle.set_path(Some(path));
         handle.chapter(request("1"), false);
@@ -926,44 +1039,6 @@ mod tests {
         task.await.unwrap();
     }
     #[test]
-    fn alignment_switch_invalidates_timeline_and_resource_updates_are_serialized() {
-        let mut view = Snapshot {
-            instance: Some("worker".into()),
-            config: Some(Config::default()),
-            model_ready: true,
-            session: Some("old".into()),
-            range: Some(TextRange { start: 0, end: 3 }),
-            alignment: "逐句高亮".into(),
-            ..Default::default()
-        };
-        let mut changed = message(
-            "worker",
-            "old",
-            Event::ConfigChanged(Config {
-                alignment_enabled: true,
-                ..Default::default()
-            }),
-        );
-        changed.session_id = None;
-        view.apply(changed);
-        assert!(!view.model_ready);
-        assert!(view.session.is_none() && view.range.is_none());
-        assert_eq!(view.alignment, "片段高亮");
-        assert!(resource_update(&ConfigPatch {
-            alignment_enabled: Some(true),
-            ..Default::default()
-        }));
-        assert!(resource_update(&ConfigPatch {
-            tts_device: Some(tts_protocol::Device::Cpu),
-            ..Default::default()
-        }));
-        assert!(!resource_update(&ConfigPatch {
-            volume: Some(2.0),
-            ..Default::default()
-        }));
-    }
-
-    #[test]
     fn backend_switch_invalidates_model_and_older_resource_events() {
         let mut view = Snapshot {
             instance: Some("worker".into()),
@@ -991,5 +1066,236 @@ mod tests {
         stale.sequence = 9;
         view.apply(stale);
         assert!(!view.model_ready);
+    }
+
+    #[test]
+    fn progress_only_advances_for_current_playback_and_valid_utf8_boundaries() {
+        let mut view = Snapshot {
+            instance: Some("worker".into()),
+            session: Some("current".into()),
+            text_hash: Some(tts_protocol::text_hash("中文🙂")),
+            text: Arc::from("中文🙂"),
+            ..Default::default()
+        };
+        let hash = view.text_hash.clone().unwrap();
+        view.apply(message(
+            "worker",
+            "current",
+            Event::SegmentStarted {
+                range: TextRange { start: 0, end: 10 },
+                text_hash: hash.clone(),
+            },
+        ));
+        assert_eq!(view.played_end, 0);
+        for (session, hash, end) in [
+            ("old", hash.clone(), 10),
+            ("current", "wrong".into(), 10),
+            ("current", hash.clone(), 4),
+        ] {
+            view.apply(message(
+                "worker",
+                session,
+                Event::SegmentFinished {
+                    range: TextRange { start: 0, end },
+                    text_hash: hash,
+                },
+            ));
+            assert_eq!(view.played_end, 0);
+        }
+        view.apply(message(
+            "worker",
+            "current",
+            Event::SegmentFinished {
+                range: TextRange { start: 0, end: 6 },
+                text_hash: hash.clone(),
+            },
+        ));
+        view.apply(message(
+            "worker",
+            "current",
+            Event::SegmentFinished {
+                range: TextRange { start: 0, end: 3 },
+                text_hash: hash,
+            },
+        ));
+        assert_eq!(view.played_end, 6);
+    }
+
+    fn requests(path: &std::path::Path) -> Vec<tts_protocol::Request> {
+        std::fs::read_to_string(path.with_extension("requests.jsonl"))
+            .unwrap()
+            .lines()
+            .map(|line| serde_json::from_str(line).unwrap())
+            .collect()
+    }
+
+    #[tokio::test]
+    async fn cancelling_paused_replay_does_not_pause_a_later_explicit_start() {
+        let (directory, path) = crate::tts::client::tests::fixture("playing-slow");
+        let (handle, task) = Handle::with_store(Some(directory.path().join("reader/config.toml")));
+        handle.set_path(Some(path));
+        let mut watched = handle.watch();
+        handle.toggle(request("1"));
+        wait_for(&mut watched, |view| view.range.is_some()).await;
+        handle.toggle_current();
+        wait_for(&mut watched, |view| view.state == SessionState::Paused).await;
+        handle.update(ConfigPatch {
+            backend: Some("qwen".into()),
+            model: Some("custom".into()),
+            ..Default::default()
+        });
+        wait_for(&mut watched, |view| {
+            view.sound
+                .as_ref()
+                .is_some_and(|sound| sound.backend == "qwen")
+        })
+        .await;
+        handle.restart();
+        wait_for(&mut watched, |view| view.state == SessionState::Preparing).await;
+        handle.cancel_prepare();
+        wait_for(&mut watched, |view| {
+            view.state == SessionState::Idle && view.model_ready
+        })
+        .await;
+        handle.toggle(request("1"));
+        let next = wait_for(&mut watched, |view| view.range.is_some()).await;
+        assert_ne!(next.state, SessionState::Paused);
+        handle.shutdown().await;
+        task.await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn failed_paused_replay_does_not_pause_a_later_explicit_start() {
+        let (directory, path) = crate::tts::client::tests::fixture("playing-fail-prepare");
+        let (handle, task) = Handle::with_store(Some(directory.path().join("config.toml")));
+        handle.set_path(Some(path));
+        let mut watched = handle.watch();
+        handle.toggle(request("1"));
+        wait_for(&mut watched, |view| view.range.is_some()).await;
+        handle.toggle_current();
+        wait_for(&mut watched, |view| view.state == SessionState::Paused).await;
+        handle.update(ConfigPatch {
+            backend: Some("qwen".into()),
+            model: Some("custom".into()),
+            ..Default::default()
+        });
+        wait_for(&mut watched, |view| {
+            view.sound
+                .as_ref()
+                .is_some_and(|sound| sound.backend == "qwen")
+        })
+        .await;
+        handle.restart();
+        wait_for(&mut watched, |view| view.state == SessionState::Failed).await;
+        handle.toggle_current();
+        let next = wait_for(&mut watched, |view| view.range.is_some()).await;
+        assert_ne!(next.state, SessionState::Paused);
+        handle.shutdown().await;
+        task.await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn sound_is_staged_persisted_and_applied_from_played_boundary_preserving_pause() {
+        let (directory, path) = crate::tts::client::tests::fixture("playing");
+        let store = directory.path().join("reader/config.toml");
+        let (handle, task) = Handle::with_store(Some(store.clone()));
+        handle.set_path(Some(path.clone()));
+        let mut watched = handle.watch();
+        handle.toggle(request("1"));
+        wait_for(&mut watched, |view| view.range.is_some()).await;
+        handle.toggle(request("1"));
+        let paused = wait_for(&mut watched, |view| view.state == SessionState::Paused).await;
+        handle.update(ConfigPatch {
+            backend: Some("qwen".into()),
+            model: Some("custom".into()),
+            voice: Some("C".into()),
+            tts_device: Some(tts_protocol::Device::Metal),
+            ..Default::default()
+        });
+        let staged = wait_for(&mut watched, |view| {
+            view.sound
+                .as_ref()
+                .is_some_and(|sound| sound.backend == "qwen")
+        })
+        .await;
+        assert_eq!(staged.session, paused.session);
+        assert_eq!(staged.state, SessionState::Paused);
+        assert_eq!(staged.config.as_ref().unwrap().backend, "moss");
+        assert_eq!(staged.playback_sound.as_ref().unwrap().voice, "A");
+        assert!(staged.has_pending_sound());
+        assert_eq!(
+            ConfigStore::new(store.clone()).load().unwrap().tts.sound,
+            staged.sound
+        );
+        assert!(
+            !requests(&path)
+                .iter()
+                .any(|r| matches!(r.command, Command::UpdateConfig(_)))
+        );
+        handle.update(ConfigPatch {
+            speed: Some(1.3),
+            volume: Some(0.7),
+            ..Default::default()
+        });
+        wait_for(&mut watched, |view| {
+            view.config
+                .as_ref()
+                .is_some_and(|config| config.volume == 0.7 && config.speed == 1.3)
+        })
+        .await;
+        handle.restart();
+        let restarted = wait_for(&mut watched, |view| {
+            view.session != paused.session && view.state == SessionState::Paused
+        })
+        .await;
+        assert_eq!(restarted.played_end, 3);
+        assert!(!restarted.has_pending_sound());
+        assert_eq!(restarted.playback_sound.as_ref().unwrap().backend, "qwen");
+        let starts: Vec<_> = requests(&path)
+            .into_iter()
+            .filter_map(|r| {
+                if let Command::Start(plan) = r.command {
+                    Some(plan)
+                } else {
+                    None
+                }
+            })
+            .collect();
+        assert_eq!(starts.len(), 2);
+        assert!(starts[0].sealed && starts[0].playback == tts_protocol::PlanPlayback::Streaming);
+        assert_eq!(starts[0].voices, vec!["A"]);
+        assert_eq!(starts[0].spans[0].range, TextRange { start: 0, end: 10 });
+        assert_eq!(starts[1].resume_byte, Some(3));
+        assert!(!starts[1].restore_checkpoint);
+        assert_eq!(starts[1].voices, vec!["C"]);
+        handle.restart_from_start();
+        let replayed = wait_for(&mut watched, |view| {
+            view.session != restarted.session && view.state == SessionState::Generating
+        })
+        .await;
+        assert_eq!(replayed.played_end, 0);
+        let starts: Vec<_> = requests(&path)
+            .into_iter()
+            .filter_map(|r| {
+                if let Command::Start(plan) = r.command {
+                    Some(plan)
+                } else {
+                    None
+                }
+            })
+            .collect();
+        assert_eq!(starts.len(), 3);
+        assert_eq!(starts[2].resume_byte, Some(0));
+        assert!(!starts[2].restore_checkpoint);
+        assert_eq!(starts[2].voices, vec!["C"]);
+        handle.shutdown().await;
+        task.await.unwrap();
+        let (next, task) = Handle::with_store(Some(store));
+        next.set_path(Some(path));
+        next.open();
+        let restored = wait_for(&mut next.watch(), |view| view.config.is_some()).await;
+        assert_eq!(restored.sound, staged.sound);
+        next.shutdown().await;
+        task.await.unwrap();
     }
 }

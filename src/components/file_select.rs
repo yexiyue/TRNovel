@@ -36,6 +36,7 @@ pub struct FileSelectProps {
 pub fn FileSelect(props: &mut FileSelectProps, mut hooks: Hooks) -> impl Into<AnyElement<'static>> {
     let state = hooks.use_state(TreeState::default);
     let theme = hooks.use_component_theme::<AppChromeTheme>();
+    let page_lines = usize::from(hooks.use_previous_size().height.saturating_sub(2)).max(1);
 
     let is_empty = props.items.is_empty();
     // 「树变了」用指纹表达,而不是收集全部路径:后者每帧都要递归分配一个
@@ -84,6 +85,18 @@ pub fn FileSelect(props: &mut FileSelectProps, mut hooks: Hooks) -> impl Into<An
                 }
                 KeyCode::Char('k') | KeyCode::Up => {
                     state.write().key_up();
+                    EventResult::Consumed
+                }
+                KeyCode::PageUp => {
+                    state
+                        .write()
+                        .select_relative(|current| current.unwrap_or(0).saturating_sub(page_lines));
+                    EventResult::Consumed
+                }
+                KeyCode::PageDown => {
+                    state.write().select_relative(|current| {
+                        current.map_or(0, |index| index.saturating_add(page_lines))
+                    });
                     EventResult::Consumed
                 }
                 KeyCode::Char('l') | KeyCode::Right | KeyCode::Enter => {

@@ -156,7 +156,7 @@ pub fn ReadContent(
     #[cfg(feature = "tts")]
     let request = hooks.use_memo(
         || {
-            Arc::new(tts_protocol::StartRequest {
+            Arc::new(crate::tts::ChapterRequest {
                 source: tts_protocol::SourceId {
                     namespace: "reader".into(),
                     book: props.book_id.clone(),
@@ -646,7 +646,7 @@ pub fn ReadContent(
             },
             config.map_or(1.0, |value| value.speed),
             config.map_or(1.0, |value| value.volume),
-            snapshot.alignment,
+            "片段高亮",
             snapshot.buffer,
             if reader_display.read().follow_tts && !follow_suspended.get() {
                 "跟随中".into()

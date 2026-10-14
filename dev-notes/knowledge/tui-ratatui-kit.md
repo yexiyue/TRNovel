@@ -607,7 +607,7 @@ ratatui-kit test-util 可渲染实际设置组件并调用生产设置回调，�
 
 ## 2026-10-08 独立发行与数据归属（当前实现）
 
-本节取代上文的旧路径、子模块及双变体发行指导；历史验收记录保留。TRNovel 只分发 trnovel/trn，默认 tts，使用 crates.io talechime-protocol 0.1.0，JSON Lines v5，不要求应用同版本，不递归检出。worker 顺序：CLI --tts-program → config.toml 的 [tts].program → PATH talechime；无效显式路径不回退，缺 worker 不阻断普通阅读。
+本节取代上文的旧路径、子模块及双变体发行指导；历史验收记录保留。TRNovel 只分发 trnovel/trn，默认 tts，使用 crates.io talechime-protocol 0.2.0，JSON Lines v7，不要求应用同版本，不递归检出。worker 顺序：CLI --tts-program → config.toml 的 [tts].program → PATH talechime；无效显式路径不回退，缺 worker 不阻断普通阅读。
 
 src/paths.rs 统一 ~/.trnovel 路径：config.toml 的 appearance/reader/browser/tts 分节由 ConfigStore 加锁、重新加载并原子替换；keybindings.toml、toc_rules.json 独立；data 保存书源/历史/登录/browser-profile/local/network，cache 保存字体等可重建资源。clear 只删历史、local/network、cache，不触碰配置、书源或登录态。旧目录不读取、不自动搬迁，手工说明在 guides/migration.mdx。
 
@@ -709,3 +709,13 @@ Modal 只向子树注入输入层。在构造 Modal 的父组件中注册的上�
 菜单原先在左键 Down 上立即执行，退出动作会先结束事件循环并恢复终端，随后鼠标 Up 的 SGR 报告进入 shell，显示为 `0;列;行m` 等残留。菜单记录按下项，仅在同一项收到 Up 时执行；键盘 Enter 保持立即执行。切换菜单重置按下项，拖出后松开不执行。
 
 **验证**：真实 PTY 模拟按住退出项，旧二进制在松开前已退出，新版本保持运行直到松开。用接管相同 tty 的输入读取代理验证，旧版本退出后留下 `\x1b[<0;89;4m`，新版本为空。`verify.py` 的退出验收将 Down 与 Up 分开发送，防止连续发送掩盖这类时序问题。
+
+### 听书面板与声音列表（2026-10-11）
+
+TTSManager 的听书、声音、高级三个页复用父页当帧输入层。声音列表另开独占层，直接编辑本地 tui_input，不能注册全局 HeaderSearch；字符键用于过滤，箭头用于列表，Esc 只退出列表，下一次 Esc 返回上级。父面板 High handler 处理其自有键，其他键放行。ScrollView(active:false) 配合焦点 scroll_to_index，避免组件吞导航键。
+
+待用能力由 sound_capabilities() 根据阅读器 sound 查目录，不能用正在播放的 worker config 判断新模型的风格、音色和设备。model=None 对应目录第一个默认条目，列表不能把同后端所有模型都标记选中。确认当前条目不提交变更；取消不保存。
+
+**相关文件**：src/tts/ui.rs、src/tts/ui/picker.rs。
+
+声音选择器也须通过稳定 hook 保存关闭回调，避免过滤输入的局部重绘把 `Handler::take()` 后的默认 props 覆盖进去。真实 PTY 验证输入 qwen 后 Esc 返回、再次搜索后 Enter 保存关闭，以及正文不滚动；文档 PNG 由该真实终端缓冲导出。设置行用 Control 枚举表达调整项或动作，避免两个 Option 的无效组合。

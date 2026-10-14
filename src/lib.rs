@@ -18,6 +18,7 @@ pub mod hooks;
 pub mod import;
 pub mod keymap;
 pub mod login;
+mod migration;
 pub mod novel;
 pub mod pages;
 pub mod paths;
@@ -65,9 +66,16 @@ where
     A: Into<OsString> + Clone,
 {
     let trnovel = TRNovel::parse_from(args);
+    migration::startup().await;
+
+    #[cfg(feature = "tts")]
+    if let Some(Commands::Tts { command }) = &trnovel.subcommand {
+        tts::cli::run(command, trnovel.tts_program.as_deref()).await?;
+        return Ok(());
+    }
 
     if let Some(Commands::Clear) = trnovel.subcommand {
-        paths::AppPaths::user_default()?.clear()?;
+        migration::clear(&paths::AppPaths::user_default()?)?;
         return Ok(());
     }
 
@@ -148,6 +156,12 @@ pub struct TRNovel {
 
 #[derive(Debug, Subcommand, Clone, Hash, PartialEq, Eq)]
 pub enum Commands {
+    /// 不进入 TUI，查询和快速配置听书
+    #[cfg(feature = "tts")]
+    Tts {
+        #[command(subcommand)]
+        command: tts::cli::TtsCommand,
+    },
     /// 快速模式，接着上一次阅读的位置继续阅读
     #[command(short_flag = 'q')]
     Quick,

@@ -225,6 +225,30 @@ Qwen ONNX 的 feature_attention_mask 是 Int32；Whisper 前处理 extractor 调
 
 **相关文件**：`crates/novel-tts-core/src/session/playback.rs`、`crates/novel-tts-backends/src/alignment.rs`、`crates/novel-tts/src/preparation.rs`、`dev-notes/continuous-tts-acceptance.md`。
 
+### 跨段续读、每章 seed 与响度对齐（协议 v7 加法字段）
+
+段间「换人感」的根因有两个：真实小说每段之间是空行，worker 旧语义把空行当硬边界，continuation 链在每个段落开头重置（回到静态音色参考）；`seed: None` 走 `SeedPolicy::Auto`，每次合成调用都换新随机种子。
+
+**正确做法**：
+- 协议 `PlanRequest.continuation_boundary`（talechime-protocol 0.3.0 加法字段，缺省 `paragraph` 保持旧行为）由宿主声明断链策略：`scene` 仅标题/装饰线断链、空段落间隔保持接续，`none` 完全不断。阅读器固定传 `scene`（`src/tts.rs` 的 `ChapterRequest::plan`）。
+- 自链续写会随跳数累积音色漂移（实测约 10 句可闻），`continuation_span`（秒，缺省 45）封顶单条链累计时长：预算耗尽后对齐下一个段落间隔重锚静态音色参考，无段落间隔的流在两倍预算处中途重锚。TRNovel 不传该字段，吃 worker 默认；调参用 talechime CLI `--continuation-span`。
+- seed 从 `text_hash` 用 FNV-1a 派生每章固定值；`Pinned` 策略按 hash(seed, 合成序号, attempt) 派生，章内逐段确定但互不相同，重播可复现。
+- 参考音频上限从 15 秒放宽到 20 秒（60 字分段在表达性语速下约 12–15 秒，旧上限会静默丢弃候选断链）。
+- worker 交付侧新增有界响度对齐（`audio/leveling.rs`）：慢基线 + ±3 dB 限幅增益，停顿低于语音门限不跟踪；边界静音只在 ≤-45 dB 整窗裁剪，不会硬切有声波形，无需边缘淡变。
+- talechime-protocol 0.3.0 已发布，TRNovel 使用 crates.io 依赖，不再保留本地或 Git patch，单仓库检出与 CI 可构建。
+- VoxCPM 的「风格 × 续读」组合门禁已于 2026-10-13 按用户要求移除（上游 `(风格)正文` 前缀接在续读转写后会诱发生过早 EOS，真机记录续读段仅 0.96 s）：组合放行交由听感验收，带风格的续读段仍可能明显偏短；风格含括号仍被拒、空白风格归一化不变（`talechime-backends/src/voxcpm.rs` 的 `styled_text`）。
+
+### Qwen Base 克隆音色导入（voices CLI）
+
+`~/.talechime/resources/qwen/models/<base-model>/<rev>/voices/qwen/<model>/<rev>/voice_<id>/` 存 `reference.wav + voice.json`（转写内嵌）；`talechime --backend qwen --model 0.6b-base voices import <id> <wav> --name <名> --text <转写>` 免权重直导，模型专属 prompt 首次合成时缓存。参考硬约束：单声道 8–192 kHz、**1–15 秒**、非静音；转写必须与音频逐字对齐（whisper-small + 人工校正可行；带 BGM 的源不可用，宁可换源）。
+
+**不要做**：不要用过短（<5s）或带配乐/混响的参考；音色按模型+revision 隔离，跨模型不共享。0.6b-base 与 1.7b-base 音色库互相独立。
+HF 直连在本机超时，需走 `127.0.0.1:7890` 代理（`HTTPS_PROXY` 环境变量；worker 的 reqwest 不读系统代理设置），worker 下载无超时会挂死在断流上——大文件用 `curl -C -` 续传循环补齐后让 prepare 只做校验更可靠。
+
+**不要做**：不要在 worker 侧猜测文本布局语义；不要每段重掷 seed；不要在响度对齐里用快时间常数（会在句间停顿抽吸）。
+
+**相关文件**：`src/tts.rs`、`../talechime/crates/talechime-core/src/{continuation.rs,audio/leveling.rs,session/producer.rs}`。
+
 ### MOSS 软换行与可选对齐
 
 单换行是排版信息，不能直接当作独立生成请求或段落尾。MOSS 以空行、装饰线、共享 TOC 标题规则建立硬边界，初始目标 8 秒/预计上限 12 秒。句末闭合引号跟随前句；只清洗合成副本，源范围保持原文 UTF-8。
@@ -323,8 +347,28 @@ TRNovel 原 TTS 分支的 `c5d7daa` 已同步到 Talechime `137f580`，子模块
 
 ## 2026-10-08 独立发行与数据归属（当前实现）
 
-本节取代上文的旧路径、子模块及双变体发行指导；历史验收记录保留。TRNovel 只分发 trnovel/trn，默认 tts，使用 crates.io talechime-protocol 0.1.0，JSON Lines v5，不要求应用同版本，不递归检出。worker 顺序：CLI --tts-program → config.toml 的 [tts].program → PATH talechime；无效显式路径不回退，缺 worker 不阻断普通阅读。
+本节取代上文的旧路径、子模块及双变体发行指导；历史验收记录保留。TRNovel 只分发 trnovel/trn，默认 tts，使用crates.io talechime-protocol 0.3.0，JSON Lines v7，不要求应用同版本，不递归检出。worker 顺序：CLI --tts-program → config.toml 的 [tts].program → PATH talechime；无效显式路径不回退，缺 worker 不阻断普通阅读。
 
-src/paths.rs 统一 ~/.trnovel 路径：config.toml 的 appearance/reader/browser/tts 分节由 ConfigStore 加锁、重新加载并原子替换；keybindings.toml、toc_rules.json 独立；data 保存书源/历史/登录/browser-profile/local/network，cache 保存字体等可重建资源。clear 只删历史、local/network、cache，不触碰配置、书源或登录态。旧目录不读取、不自动搬迁，手工说明在 guides/migration.mdx。
+src/paths.rs 统一 ~/.trnovel 路径：config.toml 的 appearance/reader/browser/tts 分节由 ConfigStore 加锁、重新加载并原子替换；keybindings.toml、toc_rules.json 独立；data 保存书源/历史/登录/browser-profile/local/network，cache 保存字体等可重建资源。clear 只删历史、local/network、cache，不触碰配置、书源或登录态。2026-10-14 用户授权正常启动自动迁移：src/migration.rs 复制普通旧文件、不覆盖新文件并保留原目录，旧 JSON 偏好转 TOML。成功标记与 clear 分类抑制标记留在应用根目录，防止完整或部分迁移后清理的阅读记录被再次导入；损坏项保留并提示重试，路径解析及 help/version 无副作用。说明在 guides/migration.mdx。
 
 Talechime 独立拥有 ~/.talechime/config.json、checkpoints、resources，AppPaths 位于其 core crate。两个应用固定 cargo-dist 0.32.0、各一份原生 Cargo dist-workspace.toml；旧 generic dist.toml、basic/加速/ARM64 musl 专用脚本已移除。Talechime 标准包 CPU（Windows/Linux），Mac 添加全部 Metal；CUDA 源码与原生编译 CI 保留。三个平台隔离安装检查不下载模型，不视为真实模型试听通过。
+
+### v7 单角色计划与待用声音（2026-10-11）
+
+当前实现取代历史 alignment 描述。阅读器提交密封 PlanRequest（Streaming 或 AfterChapterReady），唯一 VoiceSpan 覆盖整章原文；actor 在准备/启动时从已提交 worker config 构造声音快照，准备期间保存的新偏好不改变待启动计划。
+
+模型/设备的 UpdateConfig 会结束 worker 会话，故下一次声音存入阅读器 config.toml 的可选 tts.sound，通过 ConfigStore 事务保存；仅启动、显式应用或停止时准备才提交。Talechime 配置文件仍由其自己拥有，阅读器不直接读取。速度/音量/续章经协议立即更新。
+
+重播前查询 GetProgress，只用有效 UTF-8 played_end；SegmentFinished 可推进本地确认边界。SegmentStarted 只用于高亮，generated_end 不用于恢复。实例/会话/摘要过滤继续保留，旧终止事件不得触发续章。
+
+**相关文件**：src/tts.rs、src/tts/controller.rs、src/config.rs。
+
+### 整章播放策略与章节音频缓存（2026-10-13）
+
+TRNovel `[tts].playback`（streaming/after_chapter_ready）随 config.toml 持久化，启动时应用。Talechime 对封闭整章、byte 0、Pinned seed、回读 Off、不可变预置音色与可信后端资源身份的执行维护 `~/.talechime/cache/chapters`。键覆盖实现与资源 revision、设备、版本、正文摘要、seed、续读、参数和逐段音色风格；播放侧音量/速度不参与。自定义克隆音色、开放计划、续播与回读暂不缓存。
+
+每次执行持有独立临时 spool，成功校验后硬链接原子发布，竞争或缓存失败仍能播放当前结果，淘汰不影响活动句柄。候选持文件锁，正常失败/取消删除；prune 回收无所有者的候选，并按 mtime 把已发布项降至 8 GiB。校验与扫描在阻塞线程执行，纳入 PendingWrites。缓存固定首次成功执行的分段，不因时长估计学习而失效；固定 seed 的重新合成属于尽力复现。
+
+### 重播失败后的暂停状态（2026-10-14）
+
+`pending_paused` 只属于正在准备的显式重播。取消、准备错误与命令失败均清除它，否则用户后续主动播放会继承失败重播的暂停状态。回归使用假 worker 的一次性准备错误验证，不下载模型。

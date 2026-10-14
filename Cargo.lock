@@ -4204,9 +4204,9 @@ checksum = "c0e973b34477b7823833469eb0f5a3a60370fef7a453e02d751b59180d0a5a05"
 
 [[package]]
 name = "talechime-protocol"
-version = "0.1.0"
+version = "0.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "442e7cf2b26067bcc21574d9ee6672be038359af70587486ea027fabebf345fd"
+checksum = "8b196a37456d2f0e6e809526f8645a5dc07c4236d191b72d662e7d572a6b372a"
 dependencies = [
  "serde",
  "serde_json",

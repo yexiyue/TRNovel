@@ -54,7 +54,7 @@ ratatui-kit-themes = "0.1"
 ratatui-kit-keymap = "0.1"
 textwrap = { version = "0.16.2" }
 tokio-util = { workspace = true, optional = true }
-tts-protocol = { package = "talechime-protocol", version = "0.1.0" }
+tts-protocol = { package = "talechime-protocol", version = "0.3.0" }
 toml = { workspace = true }
 tempfile = { workspace = true }
 strum = { version = "0.28", features = ["derive"] }

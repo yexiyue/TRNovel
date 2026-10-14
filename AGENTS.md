@@ -12,13 +12,13 @@ Consult applicable proposals in `openspec/changes/` before changing behavior. Hi
 
 ## Project Layout
 
-TRNovel is a Rust 2024 terminal novel reader. The root application builds `trnovel` and `trn`; the workspace library is `crates/parse-book-source`. TTS is the independently installed Talechime executable, connected via crates.io `talechime-protocol 0.1.0` and JSON Lines v5. No Git submodule is required. Documentation uses Astro/Starlight in `docs/`.
+TRNovel is a Rust 2024 terminal novel reader. The root application builds `trnovel` and `trn`; the workspace library is `crates/parse-book-source`. TTS is the independently installed Talechime executable, connected via crates.io `talechime-protocol 0.3.0` and JSON Lines v7. No Git submodule is required. Documentation uses Astro/Starlight in `docs/`.
 
 Book sources use structured `trnovel-booksource/v2` JSON and `parse_book_source::Engine`; they do not directly accept Legado book-source JSON. Keep source types, JSON Schema and documentation examples in sync.
 
 The TUI uses ratatui-kit components and hooks. Routes and root providers live in `src/app/`. Process-wide appearance, reader preferences, TTS handles and keybindings live in `src/state.rs` as atoms; caches that rely on `Drop::save` remain owned by the app. Configurable keyboard actions live in `src/keymap/` and load `~/.trnovel/keybindings.toml`.
 
-Paths are centralized in `src/paths.rs`. `~/.trnovel/config.toml` stores appearance/reader/browser/tts sections through the transactional ConfigStore; data lives in `data/`, rebuildable resources in `cache/`. Talechime owns `~/.talechime/`. Never read, migrate or delete legacy homes automatically. `clear` preserves preferences, book sources and login state.
+Paths are centralized in `src/paths.rs`. `~/.trnovel/config.toml` stores appearance/reader/browser/tts sections through the transactional ConfigStore; data lives in `data/`, rebuildable resources in `cache/`. Talechime owns `~/.talechime/`. Explicit startup migration in `src/migration.rs` imports regular legacy `.novel` files without replacing new files or deleting originals; path resolution remains pure. Help/version do not migrate. Migration and clear markers survive `clear`, including partial migration retries; `clear` preserves preferences, book sources and login state.
 
 ## Commands
 
@@ -28,6 +28,9 @@ cargo run -- -l <PATH>
 cargo run -- -n
 cargo run -- -q
 cargo run -- -H
+cargo run -- tts show
+cargo run -- tts list
+cargo run -- tts setup --program ../talechime/target/release/talechime
 
 cargo test --locked --all-features --workspace --lib --tests --examples
 cargo clippy --all-targets --all-features --workspace -- -D warnings

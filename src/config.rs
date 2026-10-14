@@ -27,6 +27,42 @@ pub struct BrowserConfig {
 #[serde(default)]
 pub struct TtsConfig {
     pub program: Option<PathBuf>,
+    /// Reader-owned preferences applied only when starting a listening session.
+    pub sound: Option<SoundConfig>,
+    /// Chapter playback strategy; applied when a session starts, never mid-play.
+    #[serde(default)]
+    pub playback: PlaybackPreference,
+}
+
+/// Reader-side playback strategy for whole chapters.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum PlaybackPreference {
+    #[default]
+    Streaming,
+    AfterChapterReady,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct SoundConfig {
+    pub backend: String,
+    pub model: Option<String>,
+    pub voice: String,
+    pub style: Option<String>,
+    #[serde(default)]
+    pub device: tts_protocol::Device,
+}
+
+impl From<&tts_protocol::Config> for SoundConfig {
+    fn from(config: &tts_protocol::Config) -> Self {
+        Self {
+            backend: config.backend.clone(),
+            model: config.model.clone(),
+            voice: config.voice.clone(),
+            style: config.style.clone(),
+            device: config.tts_device,
+        }
+    }
 }
 
 pub struct ConfigStore {
@@ -51,6 +87,16 @@ impl ConfigStore {
     /// Lock, reload and change one section before atomically replacing the file.
     /// Never write a cached snapshot of unrelated preferences.
     pub fn update(&self, change: impl FnOnce(&mut AppConfig)) -> anyhow::Result<()> {
+        self.try_update(|config| {
+            change(config);
+            Ok(())
+        })
+    }
+    /// Reject a stale or invalid edit while holding the lock, before writing.
+    pub fn try_update(
+        &self,
+        change: impl FnOnce(&mut AppConfig) -> anyhow::Result<()>,
+    ) -> anyhow::Result<()> {
         let parent = self
             .path
             .parent()
@@ -64,7 +110,7 @@ impl ConfigStore {
             .open(self.path.with_extension("lock"))?;
         lock.lock()?;
         let mut config = self.load()?;
-        change(&mut config);
+        change(&mut config)?;
         config.reader.normalize();
         let mut temporary = tempfile::NamedTempFile::new_in(parent)?;
         temporary.write_all(toml::to_string_pretty(&config)?.as_bytes())?;

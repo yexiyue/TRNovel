@@ -176,7 +176,8 @@ impl Client {
                     && message.request_id.as_deref() == Some("hello")
                     && !message.instance_id.is_empty()
                     && matches!(message.event, Event::Ready(_)),
-                "听书程序不兼容或握手失败: {:?}",
+                "听书程序不兼容或握手失败；需要协议 v{}，请升级 Talechime: {:?}",
+                PROTOCOL_VERSION,
                 message.event
             );
             Ok::<_, anyhow::Error>(message)

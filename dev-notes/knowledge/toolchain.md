@@ -320,9 +320,9 @@ TRNovel workspace 只保留阅读器和 parse-book-source；协议通过子模�
 
 ## 2026-10-08 独立发行与数据归属（当前实现）
 
-本节取代上文的旧路径、子模块及双变体发行指导；历史验收记录保留。TRNovel 只分发 trnovel/trn，默认 tts，使用 crates.io talechime-protocol 0.1.0，JSON Lines v5，不要求应用同版本，不递归检出。worker 顺序：CLI --tts-program → config.toml 的 [tts].program → PATH talechime；无效显式路径不回退，缺 worker 不阻断普通阅读。
+本节取代上文的旧路径、子模块及双变体发行指导；历史验收记录保留。TRNovel 只分发 trnovel/trn，默认 tts，使用crates.io talechime-protocol 0.3.0，JSON Lines v7，不要求应用同版本，不递归检出。worker 顺序：CLI --tts-program → config.toml 的 [tts].program → PATH talechime；无效显式路径不回退，缺 worker 不阻断普通阅读。
 
-src/paths.rs 统一 ~/.trnovel 路径：config.toml 的 appearance/reader/browser/tts 分节由 ConfigStore 加锁、重新加载并原子替换；keybindings.toml、toc_rules.json 独立；data 保存书源/历史/登录/browser-profile/local/network，cache 保存字体等可重建资源。clear 只删历史、local/network、cache，不触碰配置、书源或登录态。旧目录不读取、不自动搬迁，手工说明在 guides/migration.mdx。
+src/paths.rs 统一 ~/.trnovel 路径：config.toml 的 appearance/reader/browser/tts 分节由 ConfigStore 加锁、重新加载并原子替换；keybindings.toml、toc_rules.json 独立；data 保存书源/历史/登录/browser-profile/local/network，cache 保存字体等可重建资源。clear 只删历史、local/network、cache，不触碰配置、书源或登录态。2026-10-14 用户授权正常启动自动迁移：src/migration.rs 复制普通旧文件、不覆盖新文件并保留原目录，旧 JSON 偏好转 TOML。成功标记与 clear 分类抑制标记留在应用根目录，防止完整或部分迁移后清理的阅读记录被再次导入；损坏项保留并提示重试，路径解析及 help/version 无副作用。说明在 guides/migration.mdx。
 
 Talechime 独立拥有 ~/.talechime/config.json、checkpoints、resources，AppPaths 位于其 core crate。两个应用固定 cargo-dist 0.32.0、各一份原生 Cargo dist-workspace.toml；旧 generic dist.toml、basic/加速/ARM64 musl 专用脚本已移除。Talechime 标准包 CPU（Windows/Linux），Mac 添加全部 Metal；CUDA 源码与原生编译 CI 保留。三个平台隔离安装检查不下载模型，不视为真实模型试听通过。
 
@@ -330,3 +330,13 @@ Talechime 独立拥有 ~/.talechime/config.json、checkpoints、resources，AppP
 
 隔离 smoke 的注意事项：FileSelect 初始没有选中项，需先 J 再 Enter 打开小说；macOS PTY 在退出时也必须持续读取终端输出，避免缓冲区阻塞最终渲染。Windows 捕获中文帮助时显式使用 UTF-8；冷启动 Cargo 元数据解析允许 600 秒，程序启动和握手仍使用短超时。Unix transport 测试在临时目录编译一次不可变 worker，通过同文件系统的硬链接创建不同名称，避免并行复制可执行文件与 fork/exec 竞争产生 ETXTBSY。
 
+
+### v7 协议依赖（2026-10-11）
+
+阅读器升级到 talechime-protocol 0.3.0 / JSON Lines v7。0.3.0 已发布，使用注册表依赖，干净检出无需兄弟目录。仅该轻量 crate 改变，不引入 talechime/core/backends/native 音频库。旧 v5 worker 不兼容，需独立升级；应用版本号仍无需一致。基础构建保留协议中的目录标题常量和声音偏好类型。
+
+### 非 TUI 听书配置（2026-10-12）
+
+`trn/trnovel tts show/list/setup` 在进入 App 前分派，受 tts feature 门控。show 只读阅读器配置；list/setup 复用 Client 握手/GetConfig/Shutdown，不发送 PrepareModel、UpdateConfig 或 Start。setup 校验目录并使用 ConfigStore 保存待用声音；显式 worker 路径规范化为绝对路径，事务检查原声音/路径未被并发修改。运行中的 App 仍使用自己的声音快照，CLI 保存后须重启读取。无默认 feature 构建不显示 tts 命令。
+
+**相关文件**：src/lib.rs、src/tts/cli.rs、src/tts/cli/tests.rs。

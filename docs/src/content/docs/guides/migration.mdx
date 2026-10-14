@@ -1,9 +1,9 @@
 ---
-title: 新版目录与手工搬迁
-lastUpdated: 2026-10-08
+title: 新版目录与自动迁移
+lastUpdated: 2026-10-14
 ---
 
-TRNovel 统一发布 `trnovel`、`trn`，默认提供听书界面。Talechime 独立安装；basic、捆绑 worker、加速包及 ARM64 musl 专用包停止更新。已有旧文件保持原样，新程序不读取旧目录，不自动搬迁。
+TRNovel 统一发布 `trnovel`、`trn`，默认提供听书界面。Talechime 独立安装；basic、捆绑 worker、加速包及 ARM64 musl 专用包停止更新。TRNovel 0.18.0 正常启动会把旧阅读数据复制到新版目录，保留旧文件，不覆盖已有新文件；`--help`、`--version` 不执行迁移。
 
 ## 目录归属
 
@@ -19,15 +19,43 @@ TRNovel 统一发布 `trnovel`、`trn`，默认提供听书界面。Talechime �
 
 `trnovel clear` 仅删除 `data/history.json`、`data/local/`、`data/network/` 和 `cache/`，保留其他文件，也不触碰 Talechime 数据。
 
-## 手工搬迁
+## 阅读数据自动迁移
 
-先退出两边程序并备份旧目录。在新目录中不存在同名文件时复制以下内容；已有新数据时先人工合并，避免覆盖。
+正常启动（包括 `clear` 和非 TUI 命令）在命令解析后执行迁移，复制下面的阅读数据。
+迁移持有文件锁，各文件在目标目录暂存后原子发布；只导入普通文件，不跟随符号链接。
+新目录已有同名文件时保留新文件并提示。已有 `config.toml` 整体优先，不合并旧偏好。
+
+| 旧 `~/.novel/` 文件 | 新 `~/.trnovel/` 路径 |
+| --- | --- |
+| `book_sources.json`、`history.json` | `data/` |
+| `source-state/`、`browser-profile/`、`local/`、`network/` | `data/` 下同名目录 |
+| `keybindings.toml`、`toc_rules.json` | 根目录 |
+| `gen-fontmap/` | `cache/gen-fontmap/` |
+| `appearance.json`、`reader-display.json`、`browser_assist.on` | 转换为 `config.toml` 对应分节 |
+
+旧 `themeSlug`、`showHeader`、`followTts`、`showTitle`、`pageOverlap`、`paragraphSpacing`
+转换为 snake_case 字段，`page_overlap` 限制为 0–10。普通 `browser_assist.on` 标记转换为
+`browser.always_allow = true`。缺少的偏好使用默认值，不把旧 JSON 直接改扩展名。
+
+成功后根目录保存 `.legacy-migration-v1`，后续启动不再重复导入。
+损坏 JSON、不可读取或无法写入的文件在 stderr 提示，保留源文件并继续启动，之后可重试。
+`clear` 在删除前另保存 `.legacy-reading-cleared-v1`：即使迁移只部分成功，已清除的旧历史、
+local/network 和字体缓存也不会在下次启动重新导入；失败的偏好、书源和登录数据仍可重试。
+这两个标记不会被 `clear` 删除。
+
+## 旧文件手工检查
+
+遇到冲突或迁移错误时，先退出两边程序并备份旧目录。下面的映射也可用于手工检查；已有新数据时先人工合并，避免覆盖。
 
 1. 把 `~/.novel/` 内的 `book_sources.json`、`history.json`、`source-state/`、`browser-profile/`、`local/`、`network/` 复制到 `~/.trnovel/data/`。
 2. 把旧 `keybindings.toml`、`toc_rules.json` 复制到 `~/.trnovel/`。字体 `gen-fontmap/` 可复制到 `~/.trnovel/cache/`，也可重新生成。
 3. 旧外观与阅读 JSON 需手工转换为下方 TOML；将 `themeSlug`、`followTts`、`showTitle`、`pageOverlap`、`paragraphSpacing` 分别改为对应 snake_case 字段。旧 `browser_assist.on` 若存在且仍希望总是允许，设置 `always_allow = true`。不要把旧 JSON 直接改扩展名。
-4. 把 `~/.novel/tts_config.json` 复制为 `~/.talechime/config.json`，把 `~/.novel/tts/checkpoints/` 的内容复制到 `~/.talechime/checkpoints/`。若旧配置使用已退休的 Kokoro/ZipVoice，手工选择 `backend: "moss"`、`model: "nano"`、可用音色和 CPU，或直接重新设置；新版不自动迁移退休后端。
+4. Talechime 0.4.1 使用默认路径启动时，自动转换 `~/.novel/tts_config.json` 到 `~/.talechime/config.json`；已有新配置整体保留。可用旧模型设置经校验保留；退休或缺失后端改为当前构建选择的默认模型、音色和设备，保留音量、语速、自动续章及未知字段并提示。检查点从 `~/.novel/tts/checkpoints/` 导入，保持原文摘要与字节坐标；损坏内容保留源文件并提示。
 5. 把旧 `~/.novel-tts/` **内容整体**复制到 `~/.talechime/resources/`，保留 `moss/`、`qwen/`、`voxcpm/`、`alignment/` 等所有相对结构，避免产生 `resources/.novel-tts/` 这一额外层。已完整下载的资源会校验复用。
+
+Talechime 的检查点和模型资源在实际准备或音色操作时迁移，协议 Hello 不搬运大模型。
+自动迁移同样保留源、持锁、无覆盖发布并记录标记。显式指定 `--config`、`--model-dir`
+或 `--checkpoint-dir` 时跳过整套自动迁移，便于隔离运行和自行管理目录。
 
 ```toml
 [appearance]
@@ -51,4 +79,4 @@ always_allow = false
 
 缺少分节或字段使用默认值。保存一个分节会保留其余分节，使用文件锁与原子替换；损坏的 TOML 会报错，不被静默覆盖。`page_overlap` 限制为 0–10。
 
-两个应用通过 JSON Lines v5 握手，各自应用版本无需相同；协议不匹配时升级相应程序。缺少 Talechime 仅影响听书，普通阅读仍可使用。旧文件确认无用后由用户自行删除。
+两个应用通过 JSON Lines v7 握手，各自应用版本无需相同；TRNovel 0.18.0 听书需 Talechime 0.4.0 或兼容的 v7 worker，旧 v5 worker 不兼容。缺少 Talechime 仅影响听书，普通阅读仍可使用。旧文件确认无用后由用户自行删除。

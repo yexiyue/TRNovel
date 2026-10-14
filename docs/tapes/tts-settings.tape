@@ -1,6 +1,6 @@
 # TRNovel 文档演示 · 听书设置页
 # 录制(从本目录):  vhs tts-settings.tape
-# 阅读页按 T 打开听书设置;模型未下载时显示下载入口与各项参数。
+# 阅读页按 T 打开听书面板，浏览模型目录不会下载或加载模型。
 # 真机上模型下载 + 播放高亮见 tts-play.tape。
 
 Output "../src/assets/guides/tts-settings.gif"
@@ -34,9 +34,23 @@ Type "t"
 Sleep 1200ms
 Screenshot "/tmp/verify-tts-1.png"
 
-# 上下浏览各项参数
+# 进入声音设置，再打开可搜索模型列表
 Down  Sleep 500ms
 Down  Sleep 500ms
 Down  Sleep 500ms
+Down  Sleep 500ms
+Down  Sleep 500ms
+Enter
+Sleep 800ms
+Enter
+Sleep 800ms
+Type "qwen"
+Sleep 800ms
 Screenshot "/tmp/verify-tts-2.png"
+Escape
+Sleep 500ms
+Down
+Enter
+Sleep 800ms
+Escape
 Sleep 500ms

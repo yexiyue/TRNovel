@@ -71,7 +71,7 @@ npm i -g @trnovel/trnovel
 brew install yexiyue/tap/trnovel
 ```
 
-这些命令安装最新正式版本。当前源码已统一为默认支持听书的单一阅读器；新发行流程尚未创建应用 release tag，已有正式安装包不会因此改变。旧 basic、捆绑 worker、加速及 ARM64 musl 专用包停止更新。见[安装文档](https://yexiyue.github.io/TRNovel/guides/install/)。
+这些命令安装最新正式版本。0.18.0 起统一为默认支持听书界面的单一阅读器，Talechime 独立安装。旧 basic、捆绑 worker、加速及 ARM64 musl 专用包停止更新。见[安装文档](https://yexiyue.github.io/TRNovel/guides/install/)。
 
 ## 开读
 
@@ -121,13 +121,24 @@ TRNovel 不直接接受 Legado 书源 JSON。
 
 <img src="assets/brand/mascot-listening.png" alt="小卷戴着耳机听小说" width="180" align="right">
 
-听书引擎由独立项目 [Talechime · 叙铃](https://github.com/yexiyue/talechime) 提供，需独立安装并加入 PATH。阅读器只依赖 crates.io 的 `talechime-protocol 0.1.0`，通过 JSON Lines v5 通信，无需子模块或相同应用版本。普通阅读无需安装 Talechime。
+听书引擎由独立项目 [Talechime · 叙铃](https://github.com/yexiyue/talechime) 提供，需独立安装并加入 PATH。阅读器只依赖 crates.io 的轻量 `talechime-protocol 0.3.0`，通过 JSON Lines v7 通信，无需子模块或相同应用版本。普通阅读无需安装 Talechime。
 
 默认后端是 MOSS-TTS-Nano，支持流式合成和 WAV 参考音色导入；Qwen3-TTS、VoxCPM2 与 OmniVoice 可按 feature 编入。Qwen 提供九种预置音色，CPU / Metal 支持取决于构建与平台，主观音质验收仍在进行。
 
 阅读页默认按 `P` 播放或暂停，`T` 打开听书设置，`f` 回到朗读位置并恢复跟随。手动滚动或搜索会暂时解除跟随；播放失败保留恢复点，等待你主动重试。
 
-模型按需下载到 `~/.talechime/resources/`。逐句对齐默认关闭，开启后会准备额外模型。完整说明见[听书指南](https://yexiyue.github.io/TRNovel/guides/tts/)。
+模型按需下载到 `~/.talechime/resources/`，高亮按实际播放片段推进。完整说明见[听书指南](https://yexiyue.github.io/TRNovel/guides/tts/)。
+
+也可以不进入 TUI，直接查询和配置听书：
+
+```sh
+trn tts show
+trn tts list --backend moss --model nano-candle
+trn tts setup --program ../talechime/target/release/talechime
+trn tts setup --backend moss --model nano-candle --voice Yuewen --device cpu
+```
+
+查询和设置不下载模型；声音偏好保存为下次播放使用，已运行的阅读器需重启读取。
 
 ## 从源码构建
 

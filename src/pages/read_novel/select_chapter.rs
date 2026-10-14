@@ -57,6 +57,7 @@ pub fn SelectChapter(
 ) -> impl Into<AnyElement<'static>> {
     let mut filter_text = hooks.use_state(String::default);
     let theme = hooks.use_component_theme::<AppChromeTheme>();
+    let page_lines = usize::from(hooks.use_previous_size().height.saturating_sub(2)).max(1);
 
     // 树状态只持有展开/光标;「定位到当前章节」交给 TreeSelect 的 `default_selection`。
     let state = hooks.use_state(TreeState::<TocId>::default);
@@ -112,6 +113,18 @@ pub fn SelectChapter(
                 }
                 KeyCode::Char('k') | KeyCode::Up => {
                     state.write().key_up();
+                    EventResult::Consumed
+                }
+                KeyCode::PageUp => {
+                    state
+                        .write()
+                        .select_relative(|current| current.unwrap_or(0).saturating_sub(page_lines));
+                    EventResult::Consumed
+                }
+                KeyCode::PageDown => {
+                    state.write().select_relative(|current| {
+                        current.map_or(0, |index| index.saturating_add(page_lines))
+                    });
                     EventResult::Consumed
                 }
                 KeyCode::Char('l') | KeyCode::Right | KeyCode::Enter => {

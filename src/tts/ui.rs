@@ -1,19 +1,18 @@
-//! Listening settings compose ordinary reader widgets and protocol snapshots.
-use super::TtsContext;
+//! Playback controls and staged single-voice preferences.
+use super::{Snapshot, TtsContext};
 use crate::{
     components::{AdjustableSettingItem, SettingItem, setting_item::focus_row},
+    config::SoundConfig,
     theme::AppChromeTheme,
 };
 use crossterm::event::{Event, KeyCode, KeyEventKind, MouseEventKind};
 use ratatui::{
-    layout::{Constraint, Margin},
-    style::Style,
-    text::{Line, Text},
-    widgets::Block,
+    layout::{Constraint, Direction},
+    text::Line,
 };
 use ratatui_kit::prelude::*;
-use tts_protocol::ConfigPatch;
-
+use tts_protocol::{ConfigPatch, Device, SessionState};
+mod picker;
 #[cfg(test)]
 mod tests;
 
@@ -24,27 +23,242 @@ pub struct TTSManagerProps {
     pub on_close: Handler<'static, ()>,
     pub is_editing: bool,
 }
-
+#[derive(Clone, Copy, PartialEq, Eq, Default)]
+enum Panel {
+    #[default]
+    Playback,
+    Sound,
+    Advanced,
+}
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum PickerKind {
+    Model,
+    Voice,
+}
+#[derive(Clone, Copy)]
+enum Setting {
+    Speed,
+    Volume,
+    AutoPlay,
+    Playback,
+    Style,
+    Device,
+}
+#[derive(Clone, Copy)]
+enum Action {
+    Playback,
+    Sound,
+    Advanced,
+    Back,
+    Pick(PickerKind),
+    Apply,
+    ApplyFromStart,
+    Prepare,
+    Release,
+    CancelPrepare,
+}
+struct Row {
+    label: &'static str,
+    value: String,
+    control: Control,
+}
+#[derive(Clone, Copy)]
+enum Control {
+    Setting(Setting),
+    Action(Action),
+}
+impl Row {
+    fn action(label: &'static str, value: impl Into<String>, action: Action) -> Self {
+        Self {
+            label,
+            value: value.into(),
+            control: Control::Action(action),
+        }
+    }
+    fn setting(label: &'static str, value: String, setting: Setting) -> Self {
+        Self {
+            label,
+            value,
+            control: Control::Setting(setting),
+        }
+    }
+}
+fn sound_label(snapshot: &Snapshot, sound: Option<&SoundConfig>) -> String {
+    let Some(sound) = sound else {
+        return "尚未连接".into();
+    };
+    let caps = snapshot
+        .backends
+        .iter()
+        .find(|caps| caps.matches(&sound.backend, sound.model.as_deref()));
+    let model = caps
+        .map(|caps| caps.model_name.as_str())
+        .filter(|name| !name.is_empty())
+        .unwrap_or(sound.model.as_deref().unwrap_or(&sound.backend));
+    let voice = caps
+        .and_then(|caps| caps.voice_names.get(&sound.voice))
+        .unwrap_or(&sound.voice);
+    format!("{model} · {voice}")
+}
+fn rows(snapshot: &Snapshot, panel: Panel) -> Vec<Row> {
+    let config = snapshot.config.as_ref();
+    let sound = snapshot.sound.as_ref();
+    match panel {
+        Panel::Playback => vec![
+            Row::action(
+                "播放控制",
+                match snapshot.state {
+                    SessionState::Paused => "继续播放",
+                    SessionState::Preparing => "取消准备",
+                    SessionState::Generating | SessionState::Buffering | SessionState::Playing => {
+                        "暂停播放"
+                    }
+                    _ => "使用阅读页 P 开始朗读",
+                },
+                if snapshot.state == SessionState::Preparing {
+                    Action::CancelPrepare
+                } else {
+                    Action::Playback
+                },
+            ),
+            Row::setting(
+                "播放速度",
+                format!("{:.1}x", config.map_or(1.0, |c| c.speed)),
+                Setting::Speed,
+            ),
+            Row::setting(
+                "音量",
+                format!("{:.1}x", config.map_or(1.0, |c| c.volume)),
+                Setting::Volume,
+            ),
+            Row::setting(
+                "自动续章",
+                if config.is_some_and(|c| c.auto_play) {
+                    "开启"
+                } else {
+                    "关闭"
+                }
+                .into(),
+                Setting::AutoPlay,
+            ),
+            Row::setting(
+                "播放策略",
+                match snapshot.playback {
+                    crate::config::PlaybackPreference::Streaming => "流式播放",
+                    crate::config::PlaybackPreference::AfterChapterReady => "整章生成后播放",
+                }
+                .into(),
+                Setting::Playback,
+            ),
+            Row::action("声音设置", sound_label(snapshot, sound), Action::Sound),
+        ],
+        Panel::Sound => {
+            let mut result = vec![
+                Row::action(
+                    "模型",
+                    snapshot
+                        .sound_capabilities()
+                        .map_or("尚未连接".into(), |caps| {
+                            format!("{} · {}", caps.backend, caps.model_name)
+                        }),
+                    Action::Pick(PickerKind::Model),
+                ),
+                Row::action(
+                    "音色",
+                    sound
+                        .and_then(|s| {
+                            snapshot
+                                .sound_capabilities()
+                                .and_then(|caps| caps.voice_names.get(&s.voice))
+                        })
+                        .cloned()
+                        .or_else(|| sound.map(|s| s.voice.clone()))
+                        .unwrap_or_else(|| "尚未连接".into()),
+                    Action::Pick(PickerKind::Voice),
+                ),
+            ];
+            if snapshot.sound_capabilities().is_some_and(|caps| caps.style) {
+                result.push(Row::setting(
+                    "朗读风格",
+                    sound
+                        .and_then(|s| s.style.clone())
+                        .unwrap_or_else(|| "自然".into()),
+                    Setting::Style,
+                ));
+            }
+            result.extend([
+                Row::action(
+                    "应用并重播",
+                    "从最后确认播放的位置应用新声音",
+                    Action::Apply,
+                ),
+                Row::action(
+                    "从头重听",
+                    "应用当前声音，从本章开头重新播放（对照试音用）",
+                    Action::ApplyFromStart,
+                ),
+                Row::action("高级设置", "设备 · 模型准备 · 释放资源", Action::Advanced),
+                Row::action("返回听书面板", "已保存的声音用于下一次播放", Action::Back),
+            ]);
+            result
+        }
+        Panel::Advanced => vec![
+            Row::setting(
+                "合成设备",
+                format!("{:?}", sound.map_or(Device::Auto, |s| s.device)),
+                Setting::Device,
+            ),
+            Row::action("模型准备", "停止状态下准备下次使用的模型", Action::Prepare),
+            Row::action("取消准备", "停止下载或加载", Action::CancelPrepare),
+            Row::action("释放资源", "停播并关闭 Talechime 子进程", Action::Release),
+            Row::action("返回声音设置", "", Action::Back),
+        ],
+    }
+}
+fn activate(
+    context: &TtsContext,
+    action: Action,
+    mut panel: State<Panel>,
+    mut picker: State<Option<PickerKind>>,
+    mut index: State<usize>,
+) {
+    match action {
+        Action::Sound => {
+            panel.set(Panel::Sound);
+            index.set(0);
+        }
+        Action::Advanced => {
+            panel.set(Panel::Advanced);
+            index.set(0);
+        }
+        Action::Back => {
+            panel.set(if panel.get() == Panel::Advanced {
+                Panel::Sound
+            } else {
+                Panel::Playback
+            });
+            index.set(0);
+        }
+        Action::Pick(kind) => picker.set(Some(kind)),
+        Action::Apply => context.handle.restart(),
+        Action::ApplyFromStart => context.handle.restart_from_start(),
+        Action::Prepare => context.handle.prepare(),
+        Action::CancelPrepare => context.handle.cancel_prepare(),
+        Action::Release => context.handle.release(),
+        Action::Playback => context.handle.toggle_current(),
+    }
+}
 #[component]
 pub fn TTSManager(props: &mut TTSManagerProps, mut hooks: Hooks) -> impl Into<AnyElement<'static>> {
     let context = hooks.use_context::<TtsContext>().clone();
     let snapshot = context.snapshot.read().clone();
-    let preparing =
-        snapshot.state == tts_protocol::SessionState::Preparing && !snapshot.model_ready;
-    let alignment_enabled = snapshot
-        .config
-        .as_ref()
-        .is_some_and(|config| config.alignment_enabled);
-    let style_enabled = snapshot
-        .capabilities
-        .as_ref()
-        .is_some_and(|caps| caps.style);
-    let style_index = if alignment_enabled { 10 } else { 9 };
-    let restart_index = style_index + usize::from(style_enabled);
-    let release_index = restart_index + 1;
+    let mut panel = hooks.use_state(Panel::default);
+    let mut picker = hooks.use_state(|| None::<PickerKind>);
+    let mut index = hooks.use_state(|| 0usize);
+    let scroll = hooks.use_state(ScrollViewState::default);
     let theme = hooks.use_component_theme::<AppChromeTheme>();
     let open = props.open;
-    let editing = props.is_editing;
+    let editing = props.is_editing && picker.get().is_none();
     let local_layer = hooks.use_input_layer(open && props.layer.is_none(), true);
     let layer = props.layer.unwrap_or(local_layer);
     hooks.use_effect(
@@ -53,24 +267,25 @@ pub fn TTSManager(props: &mut TTSManagerProps, mut hooks: Hooks) -> impl Into<An
             move || {
                 if open {
                     handle.open();
+                } else {
+                    panel.set(Panel::Playback);
+                    picker.set(None);
+                    index.set(0);
                 }
             }
         },
         open,
     );
-    let mut index = hooks.use_state(|| 0usize);
-    hooks.use_effect(
-        move || index.set(index.get().min(release_index)),
-        release_index,
-    );
-    let scroll = hooks.use_state(ScrollViewState::default);
+    let items = rows(&snapshot, panel.get());
+    let last = items.len().saturating_sub(1);
+    hooks.use_effect(move || index.set(index.get().min(last)), last);
     let (_, height) = hooks.use_terminal_size();
     hooks.use_effect(
         move || scroll.write().scroll_to_index(index.get()),
-        (index.get(), height),
+        (index.get(), panel.get(), height),
     );
     hooks.use_event_handler(EventScope::Layer(layer), EventPriority::High, {
-        let handle = context.handle.clone();
+        let context = context.clone();
         move |event| {
             let Event::Key(key) = event else {
                 return EventResult::Ignored;
@@ -79,207 +294,103 @@ pub fn TTSManager(props: &mut TTSManagerProps, mut hooks: Hooks) -> impl Into<An
                 return EventResult::Ignored;
             }
             match key.code {
-                KeyCode::Down | KeyCode::Char('j') => {
-                    index.set((index.get() + 1).min(release_index))
-                }
+                KeyCode::Down | KeyCode::Char('j') => index.set((index.get() + 1).min(last)),
                 KeyCode::Up | KeyCode::Char('k') => index.set(index.get().saturating_sub(1)),
-                KeyCode::Enter => match index.get() {
-                    0 => handle.prepare(),
-                    row if row == restart_index => handle.restart(),
-                    row if row == release_index => handle.release(),
-                    _ => return EventResult::Ignored,
-                },
-                KeyCode::Esc if index.get() == 0 && preparing => handle.cancel_prepare(),
+                KeyCode::Enter => {
+                    let action = rows(&context.snapshot.read(), panel.get())
+                        .get(index.get())
+                        .map(|row| row.control);
+                    if let Some(Control::Action(action)) = action {
+                        activate(&context, action, panel, picker, index);
+                    }
+                }
+                KeyCode::Esc if panel.get() != Panel::Playback => {
+                    activate(&context, Action::Back, panel, picker, index)
+                }
                 _ => return EventResult::Ignored,
             }
             EventResult::Consumed
         }
     });
-
-    // 鼠标滚轮移动面板焦点。面板开着时整屏滚轮都归面板并消费 —— 背景正文此时
-    // is_scroll=false 本就不响应,消费掉还能挡住「浮层没关、正文却在偷偷滚」的错乱感。
     hooks.use_event_handler_with_options(
         EventScope::Layer(layer),
         EventPriority::Low,
         EventOptions { hit_test: false },
-        {
-            let mut index = index;
-            move |event| {
-                if !open {
-                    return EventResult::Ignored;
-                }
-                let Event::Mouse(m) = event else {
-                    return EventResult::Ignored;
-                };
-                match m.kind {
-                    MouseEventKind::ScrollDown => {
-                        index.set((index.get() + 1).min(release_index));
-                        EventResult::Consumed
-                    }
-                    MouseEventKind::ScrollUp => {
-                        index.set(index.get().saturating_sub(1));
-                        EventResult::Consumed
-                    }
-                    _ => EventResult::Ignored,
-                }
+        move |event| {
+            if !open || !editing {
+                return EventResult::Ignored;
             }
+            match event {
+                Event::Mouse(mouse) if mouse.kind == MouseEventKind::ScrollDown => {
+                    index.set((index.get() + 1).min(last))
+                }
+                Event::Mouse(mouse) if mouse.kind == MouseEventKind::ScrollUp => {
+                    index.set(index.get().saturating_sub(1))
+                }
+                _ => return EventResult::Ignored,
+            }
+            EventResult::Consumed
         },
     );
-
+    let title = match panel.get() {
+        Panel::Playback => "听书",
+        Panel::Sound => "声音设置",
+        Panel::Advanced => "声音设置 / 高级",
+    };
     let status = snapshot
         .error
         .clone()
-        .unwrap_or_else(|| format!("{} · {}", snapshot.progress, snapshot.alignment));
-    let status =
-        if snapshot.capabilities.as_ref().is_some_and(|caps| {
-            caps.backend == "voxcpm" && caps.model.as_deref() == Some("2b-bf16")
-        }) {
-            format!("实验模型 · 数值与长期稳定性验收待完成\n{status}")
-        } else {
-            status
-        };
-    element!(Modal(layer:Some(layer),width:Constraint::Percentage(80),height:Constraint::Percentage(80),open:open,blocks_lower:false,margin:Margin::new(1,1),style:Style::default().dim()) {
-        View(margin:Margin::new(1,1)) {
-            if !props.on_close.is_default() {
-            crate::components::ActionBar {
-                crate::components::ActionButton(label: "关闭听书设置", shortcut: "Esc（准备时先取消）", on_press: props.on_close.take())
-                crate::components::ActionButton(label: "取消准备", shortcut: "Esc（首行）", disabled: !preparing, on_press: { let handle = context.handle.clone(); move |_| handle.cancel_prepare() })
-            }
-        }
-        ScrollView(active:false,state:scroll,scrollbars:Scrollbars {
-                vertical_scrollbar:crate::theme::scrollbar_style(theme.border.not_dim(),theme.title),
-                horizontal_scrollbar:crate::theme::scrollbar_style(theme.border.not_dim(),theme.title),
-                ..Default::default()
-            },block:Block::bordered().border_style(theme.border.not_dim()).title_top(Line::from("听书设置").centered().style(theme.title))) {
-                View(height:Constraint::Length(4)) {
-                    SettingItem(
-                        is_editing:editing && index.get()==0,
-                        top_title:"Enter 启用模型 / Esc 取消准备".to_string(),
-                        on_click:{let mut index = index; move |_: ()| index.set(0)},
-                        on_activate:{let handle = context.handle.clone(); move |_: ()| handle.prepare()},
-                    ) {
-                        widget(Text::from(status))
+        .unwrap_or_else(|| format!("{} · {}", state_label(snapshot.state), snapshot.progress));
+    let status_height = status.lines().count().clamp(1, 3) as u16;
+    let current = if snapshot.playback_sound.is_none() {
+        "未开始朗读".into()
+    } else {
+        sound_label(&snapshot, snapshot.playback_sound.as_ref())
+    };
+    element!(Modal(open:open, layer:Some(layer), width:Constraint::Percentage(85), height:Constraint::Percentage(85)) {
+        Border(top_title:Line::from(title), bottom_title:Line::from("↑/↓ 选择 · ←/→ 调整 · Enter 打开/执行 · Esc 返回"), border_style:theme.border) {
+            View(flex_direction:Direction::Vertical) {
+                View(height:Constraint::Length(status_height), flex_direction:Direction::Horizontal) {
+                    View(width:Constraint::Fill(1)) { Text(text:status, style:if snapshot.error.is_some() { theme.highlight } else { theme.text }) }
+                    crate::components::ActionButton(label:"关闭", on_press:props.on_close.take())
+                }
+                View(height:Constraint::Length(1)) { Text(text:format!("当前声音：{current}")) }
+                View(height:Constraint::Length(1)) { Text(text:if snapshot.has_pending_sound() { "已保存新声音，下次播放生效；应用并重播可立即切换" } else { "声音设置保存到下次播放；速度、音量、续章立即生效" }, style:theme.empty) }
+                if !snapshot.buffer.is_empty() { View(height:Constraint::Length(1)) { Text(text:snapshot.buffer.clone()) } }
+                if snapshot.sound_capabilities().is_some_and(|caps| caps.backend == "voxcpm" && caps.model.as_deref() == Some("2b-bf16")) {
+                    View(height:Constraint::Length(1)) { Text(text:"实验模型 · 数值与长期稳定性验收待完成", style:theme.highlight) }
+                }
+                ScrollView(state:scroll, scrollbars:Scrollbars { vertical_scrollbar:crate::theme::scrollbar_style(theme.border,theme.title), ..Default::default() }, active:false) {
+                    for (row_index, row) in items.into_iter().enumerate() {
+                        View(key:row_index, height:Constraint::Length(3)) {
+                            if let Control::Setting(kind) = row.control {
+                                AdjustableSettingItem(label:row.label, value:row.value, is_editing:editing && index.get()==row_index,
+                                    on_click:focus_row(index,row_index),
+                                    on_decrease:{let context=context.clone(); move |_| change(&context,kind,false)},
+                                    on_increase:{let context=context.clone(); move |_| change(&context,kind,true)})
+                            } else {
+                                SettingItem(top_title:row.label, is_editing:editing && index.get()==row_index, on_click:focus_row(index,row_index),
+                                    on_activate:{let context=context.clone(); move |_| {if let Control::Action(action)=row.control {activate(&context,action,panel,picker,index);}}}) { Text(text:row.value) }
+                            }
+                        }
                     }
                 }
-                ListeningSetting(kind:Setting::Backend,is_editing:editing && index.get()==1,on_click:focus_row(index,1))
-                ListeningSetting(kind:Setting::Model,is_editing:editing && index.get()==2,on_click:focus_row(index,2))
-                ListeningSetting(kind:Setting::Voice,is_editing:editing && index.get()==3,on_click:focus_row(index,3))
-                ListeningSetting(kind:Setting::Speed,is_editing:editing && index.get()==4,on_click:focus_row(index,4))
-                ListeningSetting(kind:Setting::Volume,is_editing:editing && index.get()==5,on_click:focus_row(index,5))
-                ListeningSetting(kind:Setting::AutoPlay,is_editing:editing && index.get()==6,on_click:focus_row(index,6))
-                ListeningSetting(kind:Setting::TtsDevice,is_editing:editing && index.get()==7,on_click:focus_row(index,7))
-                ListeningSetting(kind:Setting::AlignmentEnabled,is_editing:editing && index.get()==8,on_click:focus_row(index,8))
-                if alignment_enabled { ListeningSetting(kind:Setting::AlignmentDevice,is_editing:editing && index.get()==9,on_click:focus_row(index,9)) }
-                if style_enabled { ListeningSetting(kind:Setting::Style,is_editing:editing && index.get()==style_index,on_click:focus_row(index,style_index)) }
-                View(height:Constraint::Length(3)) {
-                    SettingItem(
-                        is_editing:editing && index.get()==restart_index,
-                        on_click:focus_row(index,restart_index),
-                        on_activate:{let handle = context.handle.clone(); move |_: ()| handle.restart()},
-                    ) {widget(Line::from("Enter 从本章开头重新播放（忽略恢复点）"))}
-                }
-                View(height:Constraint::Length(3)) {
-                    SettingItem(
-                        is_editing:editing && index.get()==release_index,
-                        on_click:focus_row(index,release_index),
-                        on_activate:{let handle = context.handle.clone(); move |_: ()| handle.release()},
-                    ) {widget(Line::from("Enter 停播并释放模型、音频和子进程"))}
-                }
             }
         }
+        if let Some(kind) = picker.get() { picker::SoundPicker(kind:Some(kind), on_close:move |_| picker.set(None)) }
     })
 }
-
-#[derive(Clone, Copy, Default)]
-enum Setting {
-    #[default]
-    Voice,
-    Backend,
-    Model,
-    Style,
-    Speed,
-    Volume,
-    AutoPlay,
-    TtsDevice,
-    AlignmentDevice,
-    AlignmentEnabled,
-}
-#[derive(Props, Default)]
-struct ListeningSettingProps {
-    kind: Setting,
-    is_editing: bool,
-    /// 点击聚焦到本行(面板焦点索引)。
-    on_click: Handler<'static, ()>,
-}
-
-#[component]
-fn ListeningSetting(
-    props: &mut ListeningSettingProps,
-    hooks: Hooks,
-) -> impl Into<AnyElement<'static>> {
-    let context = hooks.use_context::<TtsContext>().clone();
-    let snapshot = context.snapshot.read();
-    let kind = props.kind;
-    let label = match kind {
-        Setting::Voice => "音色",
-        Setting::Backend => "语音后端",
-        Setting::Model => "模型",
-        Setting::Style => "朗读风格",
-        Setting::Speed => "播放速度",
-        Setting::Volume => "音量",
-        Setting::AutoPlay => "自动续章",
-        Setting::TtsDevice => "合成设备",
-        Setting::AlignmentDevice => "对齐设备",
-        Setting::AlignmentEnabled => "逐句高亮",
-    };
-    let value = snapshot.config.as_ref().map_or_else(
-        || "未连接".to_string(),
-        |config| match kind {
-            Setting::Backend => config.backend.clone(),
-            Setting::Style => config.style.clone().unwrap_or_else(|| "自然".into()),
-            Setting::Model => snapshot
-                .capabilities
-                .as_ref()
-                .map(|caps| caps.model_name.clone())
-                .filter(|name| !name.is_empty())
-                .unwrap_or_else(|| config.model.clone().unwrap_or_else(|| "默认模型".into())),
-            Setting::Voice => snapshot
-                .capabilities
-                .as_ref()
-                .and_then(|caps| caps.voice_names.get(&config.voice))
-                .cloned()
-                .unwrap_or_else(|| config.voice.clone()),
-            Setting::Speed => format!("{:.1}x", config.speed),
-            Setting::Volume => format!("{:.1}x", config.volume),
-            Setting::AutoPlay => config.auto_play.to_string(),
-            Setting::AlignmentEnabled => if config.alignment_enabled {
-                "开启"
-            } else {
-                "关闭（片段高亮）"
-            }
-            .into(),
-            Setting::TtsDevice | Setting::AlignmentDevice => {
-                let (component, requested) = if matches!(kind, Setting::TtsDevice) {
-                    ("tts", config.tts_device)
-                } else {
-                    ("alignment", config.alignment_device)
-                };
-                snapshot.devices.get(component).map_or_else(
-                    || format!("{requested:?}"),
-                    |(_, status)| format!("{requested:?} → {status}"),
-                )
-            }
-        },
-    );
-    drop(snapshot);
-    let decrease = context.clone();
-    element!(View(height:Constraint::Length(3)) {
-        AdjustableSettingItem(is_editing:props.is_editing,label:label.to_string(),value:value,
-            on_decrease:move |_| change(&decrease,kind,false),
-            on_increase:move |_| change(&context,kind,true),
-            on_click:props.on_click.take(),
-        )
-    })
+fn state_label(state: SessionState) -> &'static str {
+    match state {
+        SessionState::Idle => "待播放",
+        SessionState::Preparing => "准备中",
+        SessionState::Generating => "生成中",
+        SessionState::Buffering => "缓冲中",
+        SessionState::Playing => "播放中",
+        SessionState::Paused => "已暂停",
+        SessionState::Stopped => "已停止",
+        SessionState::Failed => "失败",
+    }
 }
 fn change(context: &TtsContext, kind: Setting, increase: bool) {
     let snapshot = context.snapshot.read();
@@ -289,6 +400,24 @@ fn change(context: &TtsContext, kind: Setting, increase: bool) {
     let mut patch = ConfigPatch::default();
     let delta = if increase { 0.1 } else { -0.1 };
     match kind {
+        Setting::Speed => {
+            patch.speed = Some(((config.speed + delta) * 10.0).round().clamp(5.0, 20.0) / 10.0)
+        }
+        Setting::Volume => {
+            patch.volume = Some(((config.volume + delta) * 10.0).round().clamp(0.0, 100.0) / 10.0)
+        }
+        Setting::AutoPlay => patch.auto_play = Some(increase),
+        Setting::Playback => {
+            // Reader-owned plan preference; it applies when a session starts.
+            let next = if increase {
+                crate::config::PlaybackPreference::AfterChapterReady
+            } else {
+                crate::config::PlaybackPreference::Streaming
+            };
+            drop(snapshot);
+            context.handle.set_playback(next);
+            return;
+        }
         Setting::Style => {
             let choices = [
                 "",
@@ -296,9 +425,14 @@ fn change(context: &TtsContext, kind: Setting, increase: bool) {
                 "轻松自然，清晰流畅。",
                 "富有感情，突出人物对话。",
             ];
+            let value = snapshot
+                .sound
+                .as_ref()
+                .and_then(|sound| sound.style.as_deref())
+                .unwrap_or("");
             let current = choices
                 .iter()
-                .position(|v| Some(*v) == config.style.as_deref())
+                .position(|choice| *choice == value)
                 .unwrap_or(0);
             let next = if increase {
                 (current + 1).min(choices.len() - 1)
@@ -307,102 +441,29 @@ fn change(context: &TtsContext, kind: Setting, increase: bool) {
             };
             patch.style = Some(choices[next].into());
         }
-        Setting::Backend | Setting::Model => {
-            let mut seen = std::collections::BTreeSet::new();
-            let choices: Vec<_> = snapshot
-                .backends
-                .iter()
-                .filter(|caps| {
-                    if matches!(kind, Setting::Model) {
-                        caps.backend == config.backend
-                    } else {
-                        seen.insert(&caps.backend)
-                    }
-                })
-                .collect();
-            if choices.is_empty() {
-                return;
+        Setting::Device => {
+            let mut choices = vec![Device::Auto];
+            if let Some(caps) = snapshot.sound_capabilities() {
+                choices.extend(
+                    caps.compiled_devices
+                        .iter()
+                        .copied()
+                        .filter(|d| *d != Device::Auto),
+                );
             }
-            let current = choices
-                .iter()
-                .position(|caps| {
-                    if matches!(kind, Setting::Backend) {
-                        caps.backend == config.backend
-                    } else {
-                        caps.matches(&config.backend, config.model.as_deref())
-                    }
-                })
-                .unwrap_or(0);
+            let value = snapshot
+                .sound
+                .as_ref()
+                .map_or(Device::Auto, |sound| sound.device);
+            let current = choices.iter().position(|d| *d == value).unwrap_or(0);
             let next = if increase {
                 (current + 1).min(choices.len() - 1)
             } else {
                 current.saturating_sub(1)
             };
-            if next == current {
-                return;
-            }
-            let caps = choices[next];
-            patch.backend = Some(caps.backend.clone());
-            patch.model = caps.model.clone();
-            patch.voice = Some(caps.default_voice.clone());
-            if caps.backend != config.backend
-                || (config.tts_device != tts_protocol::Device::Auto
-                    && !caps.compiled_devices.contains(&config.tts_device))
-            {
-                patch.tts_device = Some(tts_protocol::Device::Auto);
-            }
-        }
-        Setting::Voice => {
-            let Some(capabilities) = &snapshot.capabilities else {
-                return;
-            };
-            let voices = &capabilities.voices;
-            if voices.is_empty() {
-                return;
-            }
-            let current = voices
-                .iter()
-                .position(|voice| voice == &config.voice)
-                .unwrap_or(0);
-            let next = if increase {
-                (current + 1).min(voices.len() - 1)
-            } else {
-                current.saturating_sub(1)
-            };
-            patch.voice = Some(voices[next].clone());
-        }
-        Setting::Speed => {
-            patch.speed = Some(((config.speed + delta) * 10.0).round().clamp(5.0, 20.0) / 10.0)
-        }
-        Setting::Volume => {
-            patch.volume = Some(((config.volume + delta) * 10.0).round().clamp(0.0, 100.0) / 10.0)
-        }
-        Setting::AutoPlay => patch.auto_play = Some(increase),
-        Setting::AlignmentEnabled => patch.alignment_enabled = Some(increase),
-        Setting::TtsDevice | Setting::AlignmentDevice => {
-            let (component, current) = if matches!(kind, Setting::TtsDevice) {
-                ("tts", config.tts_device)
-            } else {
-                ("alignment", config.alignment_device)
-            };
-            let mut choices = vec![tts_protocol::Device::Auto];
-            if let Some((compiled, _)) = snapshot.devices.get(component) {
-                choices.extend(compiled.iter().copied());
-            } else {
-                choices.push(tts_protocol::Device::Cpu);
-            }
-            let current = choices.iter().position(|d| *d == current).unwrap_or(0);
-            let next = if increase {
-                (current + 1).min(choices.len() - 1)
-            } else {
-                current.saturating_sub(1)
-            };
-            if matches!(kind, Setting::TtsDevice) {
-                patch.tts_device = Some(choices[next]);
-            } else {
-                patch.alignment_device = Some(choices[next]);
-            }
+            patch.tts_device = Some(choices[next]);
         }
     }
+    drop(snapshot);
     context.handle.update(patch);
 }
