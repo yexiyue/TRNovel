@@ -18,7 +18,7 @@ Book sources use structured `trnovel-booksource/v2` JSON and `parse_book_source:
 
 The TUI uses ratatui-kit components and hooks. Routes and root providers live in `src/app/`. Process-wide appearance, reader preferences, TTS handles and keybindings live in `src/state.rs` as atoms; caches that rely on `Drop::save` remain owned by the app. Configurable keyboard actions live in `src/keymap/` and load `~/.trnovel/keybindings.toml`.
 
-Paths are centralized in `src/paths.rs`. `~/.trnovel/config.toml` stores appearance/reader/browser/tts sections through the transactional ConfigStore; data lives in `data/`, rebuildable resources in `cache/`. Talechime owns `~/.talechime/`. Explicit startup migration in `src/migration.rs` imports regular legacy `.novel` files without replacing new files or deleting originals; path resolution remains pure. Help/version do not migrate. Migration and clear markers survive `clear`, including partial migration retries; `clear` preserves preferences, book sources and login state.
+Paths are centralized in `src/paths.rs`. `~/.trnovel/config.toml` stores appearance/reader/browser/tts sections through the transactional ConfigStore; data lives in `data/`, rebuildable resources in `cache/`. Talechime owns `~/.talechime/`. Migration of legacy `.novel` files (`src/migration.rs`) is consent-gated: normal startup only stats markers and asks in-app on first run (`src/migration/ui.rs`); `trn migrate` is the explicit interface (`--yes` runs headless). It never replaces new files or deletes originals, and path resolution remains pure. Help/version and non-TUI subcommands do not migrate. Migration, clear and declined markers survive `clear`, including partial migration retries; `clear` preserves preferences, book sources and login state.
 
 ## Commands
 
@@ -28,6 +28,7 @@ cargo run -- -l <PATH>
 cargo run -- -n
 cargo run -- -q
 cargo run -- -H
+cargo run -- migrate --yes
 cargo run -- tts show
 cargo run -- tts list
 cargo run -- tts setup --program ../talechime/target/release/talechime

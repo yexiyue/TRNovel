@@ -6,7 +6,7 @@ use ratatui::{style::Style, widgets::Borders};
 use ratatui_kit::{
     AnyElement, Context, Hooks, Props, UseAtom, UseFuture, UseState, UseTerminalSize, component,
     element,
-    prelude::{Border, ContextProvider, Fragment, PaletteProvider, RouteState, RouterProvider},
+    prelude::{Border, ContextProvider, PaletteProvider, RouteState, RouterProvider},
     routes,
 };
 use tokio::sync::Notify;
@@ -81,6 +81,10 @@ pub fn App(props: &AppProps, mut hooks: Hooks) -> impl Into<AnyElement<'static>>
             }
         });
 
+        // 迁移门控:待迁移时先弹首启询问,用户决定(迁移完成或跳过)后再加载缓存,
+        // 保证历史/书源读到的是迁移后的数据;任何迁移结果都不阻断启动。
+        crate::migration::ui::gate_and_wait().await;
+
         match (move || {
             let history = History::load()?;
             history_state.write().replace(history);
@@ -145,13 +149,14 @@ pub fn App(props: &AppProps, mut hooks: Hooks) -> impl Into<AnyElement<'static>>
         )
         .into_any()
     } else {
-        element!(Fragment{
-            {if loading.get() {
-                element!(Loading(tip:"加载缓存中...")).into_any()
-            } else {
-                element!(
-                    PaletteProvider(palette: palette){
-                        Border(style: Style::new().bg(palette.bg), borders: Borders::NONE){
+        element!(
+            PaletteProvider(palette: palette){
+                Border(style: Style::new().bg(palette.bg), borders: Borders::NONE){
+                    {if loading.get() {
+                        // 门控期间缓存尚未加载,文案保持中性。
+                        element!(Loading(tip:"启动中...")).into_any()
+                    } else {
+                        element!(
                             ContextProvider(value:Context::owned(history_state)){
                                 ContextProvider(value:Context::owned(book_sources_catch_state)){
                                     { {
@@ -167,17 +172,19 @@ pub fn App(props: &AppProps, mut hooks: Hooks) -> impl Into<AnyElement<'static>>
                                     } }
                                 }
                             }
-                            WarningModal(
-                                tip: keymap_warnings.read().clone().unwrap_or_default(),
-                                is_error: false,
-                                open: keymap_warnings.read().is_some(),
-                                on_close: move |_: ()| { keymap_warnings.write().take(); },
-                            )
-                        }
-                    }
-                ).into_any()
-            }}
-        })
+                        ).into_any()
+                    }}
+                    // 迁移弹窗常驻挂载:询问/进度/汇总期间覆盖在加载屏或路由之上。
+                    crate::migration::ui::MigrationModal
+                    WarningModal(
+                        tip: keymap_warnings.read().clone().unwrap_or_default(),
+                        is_error: false,
+                        open: keymap_warnings.read().is_some(),
+                        on_close: move |_: ()| { keymap_warnings.write().take(); },
+                    )
+                }
+            }
+        )
         .into_any()
     }
 }

@@ -11,6 +11,119 @@ fn write(home: &Path, relative: &str, bytes: &str) {
 }
 
 #[test]
+fn status_transitions_cover_pending_done_and_declined() {
+    let home = tempfile::tempdir().unwrap();
+    let paths = AppPaths::from_home(home.path());
+    assert_eq!(status_at(&paths), Status::NotNeeded);
+    write(home.path(), ".novel/history.json", HISTORY);
+    assert_eq!(status_at(&paths), Status::Pending);
+    // 拒绝标记优先于重新询问。
+    publish_declined(&paths).unwrap();
+    assert_eq!(status_at(&paths), Status::Declined);
+    fs::remove_file(paths.root().join(DECLINED)).unwrap();
+    assert_eq!(status_at(&paths), Status::Pending);
+    assert!(migrate(&paths).unwrap().is_empty());
+    assert_eq!(status_at(&paths), Status::Done);
+    // clear 不触碰根级标记:拒绝与完成决定都存活。
+    clear(&paths).unwrap();
+    assert_eq!(status_at(&paths), Status::Done);
+    publish_declined(&paths).unwrap();
+    clear(&paths).unwrap();
+    assert_eq!(status_at(&paths), Status::Done);
+    assert!(paths.root().join(DECLINED).is_file());
+}
+
+#[test]
+fn survey_counts_only_regular_files_and_pending_entries() {
+    let home = tempfile::tempdir().unwrap();
+    let paths = AppPaths::from_home(home.path());
+    write(home.path(), ".novel/history.json", HISTORY);
+    write(home.path(), ".novel/local/a.json", LOCAL);
+    write(home.path(), ".novel/tts/ignored.json", LOCAL);
+    let (items, files, bytes) = pending_survey(&paths);
+    assert_eq!(items, 2);
+    assert_eq!(files, 2);
+    assert_eq!(bytes, (HISTORY.len() + LOCAL.len()) as u64);
+}
+
+#[test]
+fn events_report_counts_without_per_file_paths() {
+    let home = tempfile::tempdir().unwrap();
+    let paths = AppPaths::from_home(home.path());
+    write(home.path(), ".novel/history.json", HISTORY);
+    write(home.path(), ".novel/local/a.json", LOCAL);
+    write(
+        home.path(),
+        ".trnovel/data/history.json",
+        "new history wins",
+    );
+    let mut scan = None;
+    let mut copied = 0;
+    let mut kept = 0;
+    let mut skipped = 0;
+    let outcome = run(&paths, &AtomicBool::new(false), &mut |event| match event {
+        Event::Scan { .. } => scan = Some(event),
+        Event::Copied { .. } => copied += 1,
+        Event::Kept => kept += 1,
+        Event::Skipped => skipped += 1,
+        Event::Item { .. } => {}
+    });
+    assert_eq!(outcome, Outcome::Done);
+    assert!(matches!(
+        scan,
+        Some(Event::Scan {
+            items: 2,
+            files: 2,
+            ..
+        })
+    ));
+    assert_eq!(copied, 1);
+    assert_eq!(kept, 1);
+    assert_eq!(skipped, 0);
+    assert_eq!(
+        fs::read_to_string(paths.history()).unwrap(),
+        "new history wins"
+    );
+    assert!(paths.local().join("a.json").is_file());
+}
+
+#[test]
+fn cooperative_cancel_keeps_partial_copies_retryable() {
+    let home = tempfile::tempdir().unwrap();
+    let paths = AppPaths::from_home(home.path());
+    for index in 0..8 {
+        write(home.path(), &format!(".novel/local/{index}.json"), LOCAL);
+    }
+    // 首个文件拷贝后立即取消:停止后续拷贝、不发布完成标记。
+    let cancel = AtomicBool::new(false);
+    let outcome = run(&paths, &cancel, &mut |event| {
+        if matches!(event, Event::Copied { .. }) {
+            cancel.store(true, Ordering::SeqCst);
+        }
+    });
+    assert_eq!(outcome, Outcome::Cancelled);
+    assert!(!paths.root().join(MARKER).exists());
+    let copied = fs::read_dir(paths.local()).unwrap().count();
+    assert!(
+        (1..8).contains(&copied),
+        "partial copy expected, got {copied}"
+    );
+    // 续迁:已拷贝文件按「保留已有」计数,不重复拷贝,最终完成。
+    let mut kept = 0;
+    assert_eq!(
+        run(&paths, &AtomicBool::new(false), &mut |event| {
+            if matches!(event, Event::Kept) {
+                kept += 1;
+            }
+        }),
+        Outcome::Done
+    );
+    assert_eq!(kept, copied);
+    assert!(paths.root().join(MARKER).is_file());
+    assert_eq!(fs::read_dir(paths.local()).unwrap().count(), 8);
+}
+
+#[test]
 fn startup_imports_legacy_fields_and_preserves_old_files() {
     let home = tempfile::tempdir().unwrap();
     let paths = AppPaths::from_home(home.path());

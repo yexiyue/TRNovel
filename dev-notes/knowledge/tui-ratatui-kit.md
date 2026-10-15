@@ -719,3 +719,18 @@ TTSManager 的听书、声音、高级三个页复用父页当帧输入层。声
 **相关文件**：src/tts/ui.rs、src/tts/ui/picker.rs。
 
 声音选择器也须通过稳定 hook 保存关闭回调，避免过滤输入的局部重绘把 `Handler::take()` 后的默认 props 覆盖进去。真实 PTY 验证输入 qwen 后 Esc 返回、再次搜索后 Enter 保存关闭，以及正文不滚动；文档 PNG 由该真实终端缓冲导出。设置行用 Control 枚举表达调整项或动作，避免两个 Option 的无效组合。
+
+### 启动期「门控 + 全局弹窗」模式:App 初始化 future 等待用户决定后再加载缓存(2026-10-15,change `migration-consent-ui`)
+
+迁移从「TUI 前同步整体拷贝」改为同意门控。可复用的接线模式:
+
+- **门控**:App 的 `use_future` 里先 `spawn_blocking` 做 stat 级检查,需用户决定时写进程级 `Atom<Session>`(Ask/Running/Finished 状态机,BROWSER_PROMPT 同模式),再 `DECIDED.notified().await`(模块级 `LazyLock<Notify>`;tokio 的 `Notify::new` **不是 const**),决定方(弹窗回调)notify 后 future 继续加载缓存——保证「迁移后才加载缓存」,且弹窗覆盖在 Loading 屏期间也常驻挂载(PaletteProvider/Border 提到 loading 分支之外,弹窗与 WarningModal 同为兄弟节点)。
+- **进度**:引擎在 `spawn_blocking` 里跑,事件闭包折叠成小快照后整只 `Atom::set`(每文件一次,只唤醒订阅组件);取消用共享 `Arc<AtomicBool>` 在文件边界协作检查,Esc 置位,取消不发布完成标记、已拷贝文件靠 noclobber 成为下次的「保留已有」。
+- **一套视图两个宿主**:`MigrationView`(纯渲染,props 收 owned Session——element! 要求 'static,**先 `props.session.clone()` 再 match**,分支里的借用一律转 owned String,否则 E0521)被 `MigrationModal`(应用内,Modal+独占输入层,handler 用 `EventScope::Layer(layer)`)+ `MigrationRoot`(独立全屏,use_future 检查状态、use_exit 退出)复用。
+- **别在集成测试里起全屏 TUI**:无 TTY 会挂;`trn migrate --yes` 无头路径才是可自动化的端到端入口,真实 PTY 用 `script -q /dev/null` 加延时按键序列冒烟。
+
+**按钮/Gauge 与鼠标**:迁移视图的进度条用 ratatui `Gauge`(`widget()` 桥接,label 接受 `Into<Span>` 即 String;ratatui-widgets 0.3.2 的 Gauge 按值实现 `Widget` 且 `Clone`,适配器约束满足)。迁移按钮用私有 `MigrationButton`,描边和悬停强调对齐框架 `ConfirmModal` 的 `ConfirmButton`;询问页把焦点保存在 `Session::Ask.start_selected`,左右键切换、Enter 执行当前项,Y/N 仍可直接执行对应操作。鼠标悬停由 `use_hover` 提供;选中或悬停时使用强调色与粗体,左键 Down 触发。**作为 Modal/根的子组件自动落在宿主输入层,无需 PointerOptions.layer**(只有「handler 注册在层子树之外」才需要手动绑层,如父组件的遮罩处理器)。**独立全屏根(不经 App 树的 `element!(...).fullscreen_with`)没有 PaletteProvider,`use_palette()` 回退框架默认色板——根上要自己包 `PaletteProvider`(读 `APPEARANCE` Atom 的 `palette()`)**。`widget(...)` 是 element! 宏语法,不是可导入项。
+
+**PTY 冒烟脚本模式**(本次 `/tmp/migration_ui_smoke.py`,参照 verify.py 的 Session):pyte 重建屏幕后 `locate` 文本定位、SGR 序列 `[<0;列;行M` 点击;按钮定位要用边框特征串,否则会匹配到正文里同词;纯文本 dump 里 CJK 行与 ASCII 行的列对齐不可信(宽字符单 cell 双显示列),核对几何要用 cell 列坐标,别看拼接文本;pyte cell 的 fg/bg/bold 可直接断言描边色与悬停状态。
+
+**相关文件**:src/migration.rs(引擎:status/Event/Outcome/协作取消/目录 fsync 批量化)、src/migration/ui.rs(Session Atom/门控/视图/Gauge/按钮)、src/app.rs(门控接入)、src/lib.rs(`Commands::Migrate`)、tests/migration_startup.rs。

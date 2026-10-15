@@ -66,7 +66,23 @@ where
     A: Into<OsString> + Clone,
 {
     let trnovel = TRNovel::parse_from(args);
-    migration::startup().await;
+    // 迁移不再在启动时静默执行:正常启动由应用内首启弹窗门控(src/app.rs),
+    // 显式入口是 `trn migrate`(交互界面)与 `trn migrate --yes`(无头)。
+    if let Some(Commands::Migrate { yes }) = &trnovel.subcommand {
+        if *yes {
+            let code = tokio::task::spawn_blocking(crate::migration::ui::run_headless)
+                .await
+                .unwrap_or(1);
+            if code != 0 {
+                std::process::exit(code);
+            }
+        } else {
+            element!(crate::migration::ui::MigrationRoot)
+                .fullscreen_with(RunOptions { mouse: true })
+                .await?;
+        }
+        return Ok(());
+    }
 
     #[cfg(feature = "tts")]
     if let Some(Commands::Tts { command }) = &trnovel.subcommand {
@@ -165,6 +181,14 @@ pub enum Commands {
     /// 快速模式，接着上一次阅读的位置继续阅读
     #[command(short_flag = 'q')]
     Quick,
+
+    /// 迁移旧版 ~/.novel 阅读数据到 ~/.trnovel（交互式进度界面）
+    #[command(short_flag = 'm')]
+    Migrate {
+        /// 跳过界面，直接迁移并打印摘要（脚本或无终端环境）
+        #[arg(short, long)]
+        yes: bool,
+    },
 
     /// 清空历史记录和小说缓存
     #[command(short_flag = 'c')]

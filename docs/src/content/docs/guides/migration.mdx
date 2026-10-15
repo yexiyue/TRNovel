@@ -1,9 +1,9 @@
 ---
-title: 新版目录与自动迁移
-lastUpdated: 2026-10-14
+title: 新版目录与数据迁移
+lastUpdated: 2026-10-15
 ---
 
-TRNovel 统一发布 `trnovel`、`trn`，默认提供听书界面。Talechime 独立安装；basic、捆绑 worker 和加速包停止更新。0.18.2 起 Intel Mac 与 x86_64 / ARM64 musl Linux 纳入统一阅读器发行。TRNovel 0.18.0 正常启动会把旧阅读数据复制到新版目录，保留旧文件，不覆盖已有新文件；`--help`、`--version` 不执行迁移。
+TRNovel 统一发布 `trnovel`、`trn`，默认提供听书界面。Talechime 独立安装；basic、捆绑 worker 和加速包停止更新。0.18.2 起 Intel Mac 与 x86_64 / ARM64 musl Linux 纳入统一阅读器发行。TRNovel 0.18.3 起迁移改为**首次运行询问 + 显式命令**：检测到旧阅读数据时应用内弹窗展示规模并询问，同意后在进度界面内完成；也可随时运行 `trn migrate`。`--help`、`--version` 与其他非 TUI 子命令不执行迁移。
 
 ## 目录归属
 
@@ -17,13 +17,17 @@ TRNovel 统一发布 `trnovel`、`trn`，默认提供听书界面。Talechime �
 | Talechime | `~/.talechime/checkpoints/` | 听书恢复点 |
 | Talechime | `~/.talechime/resources/` | 模型、音色、编码缓存、校准资源 |
 
-`trnovel clear` 仅删除 `data/history.json`、`data/local/`、`data/network/` 和 `cache/`，保留其他文件，也不触碰 Talechime 数据。
+`trnovel clear` 仅删除 `data/history.json`、`data/local/`、`data/network/` 和 `cache/`，保留其他文件，也不触碰 Talechime 数据。clear 不触发迁移。
 
-## 阅读数据自动迁移
+## 阅读数据迁移
 
-正常启动（包括 `clear` 和非 TUI 命令）在命令解析后执行迁移，复制下面的阅读数据。
+迁移入口有两个：
+
+- **首次运行询问**：正常启动检测到 `~/.novel` 且未完成迁移时，应用在启动界面上弹出询问，展示条目数、文件数与总大小。可用左右键切换选项，按 `Enter` 执行高亮项，也可按 `Y` 开始、`N` 或 `Esc` 跳过；鼠标可直接点击按钮。选择「开始迁移」后同一界面显示进度（总进度条、当前条目、已拷贝/保留/跳过计数），期间可按 `Esc` 取消；完成后按 `Enter` 进入应用，历史与书源此时才加载。选择「跳过」后写入拒绝标记，后续启动不再询问。
+- **显式命令 `trn migrate`**：独立迁移界面，展示同样内容并要求确认；该命令无视拒绝标记，随时可运行。`trn migrate --yes` 跳过界面直接迁移并在终端打印摘要（脚本或无终端环境），退出码反映是否成功完成。
+
 迁移持有文件锁，各文件在目标目录暂存后原子发布；只导入普通文件，不跟随符号链接。
-新目录已有同名文件时保留新文件并提示。已有 `config.toml` 整体优先，不合并旧偏好。
+新目录已有同名文件时保留新文件并计入「保留已有」计数。已有 `config.toml` 整体优先，不合并旧偏好。
 
 | 旧 `~/.novel/` 文件 | 新 `~/.trnovel/` 路径 |
 | --- | --- |
@@ -38,10 +42,11 @@ TRNovel 统一发布 `trnovel`、`trn`，默认提供听书界面。Talechime �
 `browser.always_allow = true`。缺少的偏好使用默认值，不把旧 JSON 直接改扩展名。
 
 成功后根目录保存 `.legacy-migration-v1`，后续启动不再重复导入。
-损坏 JSON、不可读取或无法写入的文件在 stderr 提示，保留源文件并继续启动，之后可重试。
-`clear` 在删除前另保存 `.legacy-reading-cleared-v1`：即使迁移只部分成功，已清除的旧历史、
-local/network 和字体缓存也不会在下次启动重新导入；失败的偏好、书源和登录数据仍可重试。
-这两个标记不会被 `clear` 删除。
+取消或中断不发布完成标记：已拷贝文件保留并视为「已有新文件」，下次迁移（启动询问或 `trn migrate`）自动续迁。
+条目级失败（损坏 JSON、不可读取等）在迁移汇总中列出且不发布完成标记，保留源文件，之后可重试；任何迁移结果都不阻止应用进入可用状态。
+`clear` 另保存 `.legacy-reading-cleared-v1`：即使迁移只部分成功，已清除的旧历史、
+local/network 和字体缓存也不会在之后的迁移中重新导入；失败的偏好、书源和登录数据仍可重试。
+`.legacy-migration-v1`、`.legacy-reading-cleared-v1`、`.legacy-migration-declined-v1` 三个标记都不会被 `clear` 删除。
 
 ## 旧文件手工检查
 
