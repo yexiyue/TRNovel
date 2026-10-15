@@ -30,7 +30,7 @@ description: >-
 3. **判定字符集 + 反爬**(见下两节)。
 4. **拼装 JSON**(`schema: "trnovel-booksource/v2"`,带 `samples` 黄金样例)。
 5. **校验:`trn doctor <文件>`** → 看逐项 ✓/✗ → 只修那个 ✗ 对应的规则 → 重跑,直到全绿(或只剩已知难项,如被挑战的搜索)。
-6. **导入:`trn import <文件>`** —— 把验证通过的书源写入 `~/.novel`,使其在网络小说里**立即可用**(闭环的最后一步,见下「导入」)。
+6. **导入:`trn import <文件>`** —— 把验证通过的书源写入 `~/.trnovel/data/`,使其在网络小说里**立即可用**(闭环的最后一步,见下「导入」)。
 7. 告知用户:doctor 各项结果 + 已导入,可在 `trn -n` 选用。
 
 **绝不把未经 doctor 校验的书源交付,也别忘了最后一步导入。** 校验循环把「猜的选择器」变成「验证过的选择器」;导入让它真正能用。
@@ -57,7 +57,7 @@ cargo run -- import /path/to/<站点>.v2.json
 # 或已安装的二进制:trn import <文件>   (也支持 URL:trn import https://…/source.json)
 ```
 
-它把书源写入 `~/.novel/book_sources.json`(按 `url`+`name` 去重,同名会被新的覆盖,便于反复迭代同一书源),之后在网络小说(`trn -n`)的书源列表里即可选用。**这是「AI 生成 → 验证 → 可用」闭环的收尾**:不导入,生成的书源只是个文件,用户用不上。
+它把书源写入 `~/.trnovel/data/book_sources.json`(按 `url`+`name` 去重,同名会被新的覆盖,便于反复迭代同一书源),之后在网络小说(`trn -n`)的书源列表里即可选用。**这是「AI 生成 → 验证 → 可用」闭环的收尾**:不导入,生成的书源只是个文件,用户用不上。
 
 ## 按能力逆向(关键启发式)
 
@@ -118,7 +118,7 @@ cargo run -- import /path/to/<站点>.v2.json
      "clean": [ { "fontMap": { "E4DE": "一", "E4F3": "的" } } ] } }
    ```
 
-要点:同一站通常**全站一套字体**(映射固定,生成一次复用;站方换字体才重跑)。引擎只按表查、**不内置任何站点的表**(表是数据、跟着书源走)。详解见 `references/reverse-engineering.md` 的「字体反爬」与博客 `dev-notes/blog/font-anti-scraping-and-fontmap.md`。
+要点:同一站的正文、搜索和书库也可能使用不同字体;分别取各页面实际加载的字体生成映射,不能跨页面复用(番茄示例有 `content`、`search`、`explore` 三张表)。`gen-fontmap` 的相似度匹配可能把形近字误认,即使没有低置信提示,也要用实际正文或列表语境核对可疑字(如「眼」被识别为「限」)。引擎只按表查、**不内置任何站点的表**(表是数据、跟着书源走)。详解见 `references/reverse-engineering.md` 的「字体反爬」与博客 `dev-notes/blog/font-anti-scraping-and-fontmap.md`。
 
 ## 登录与多步编排(host 桥,需 `js-host` 构建)
 

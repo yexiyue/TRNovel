@@ -65,6 +65,7 @@ render 的 `interceptApi` 会话**本来就在渲染一张真实页面**，拦 A
 - **生成新字体的 map**：`cargo run -- gen-fontmap "<woff2 URL 或路径>" --out /tmp/x.json`（字形位图相似度匹配,自动下 Noto 基准;纯 Rust 零 C 依赖)。字体 URL 从页面 `@font-face` 的 `src` 取（`document.styleSheets` 里 `r.type===5` 的规则）。低置信（<0.55）项会标注、个别字可能错（与现有 content/search map 同等质量）。
 - **怎么定位用哪套**：渲染该页,`TreeWalker(SHOW_TEXT)` 扫含 PUA（0xE000–0xF8FF）的短文本节点,看 `parentElement.className` 的 `font-xxx`,再比对各 map 解码是否通顺。
 - **稳定性假设**：这些字体哈希在番茄基础设施上**相对稳定**（content/search map 静态内联已长期可用),故 explore map 也静态内联;若哪天轮换导致解码变乱码,重跑 `gen-fontmap` 更新即可。
+- **字形匹配仍需语境复核**：2026-10-15 用现有三套字体重新运行 `gen-fontmap`,362 项/表均与旧表完全一致,却将「眼」误识为形近字「限」(content `E528`、search `E48E`、explore `E522`)。抽取当前作品前几章的正文,出现「限睛」「限前」「丹凤限」等,故人工把三张表对应码点修为「眼」。没有低置信告警不代表每项正确;更新字体表时要抽取实际正文/列表文本,复核明显不通顺的词。
 - **三套字体的当前 URL**（`https://lf3-awef.bytetos.com/obj/awesome-font/c/<hash>.woff2`,`lf6-` 同源镜像;是静态 CDN、**无需签名**,直接 curl 可下）：content=`dc027189e0ba4cd`(md5 `d15c2b29`)、explore=`e26e946d8b2ccb7`、search=`c207f68a84deae3`。**怎么拿 hash**：content/explore 的 `@font-face` 在 **reader 页 SSR HTML** 里（`grep awesome-font`）；search 是客户端渲染,SSR 无字体,须**渲染搜索页 + 读 `document.styleSheets` 的 FONT_FACE 规则**才拿得到——且 headless 首刷会撞 secsdk **软封锁**(空结果、不注入字体),**reload 一次**即出结果与 `@font-face`（与正文抓取的 reload-once 同一招）。
 
 ### fontMap 候选集必须含数字 + 拉丁字母,否则数字/英文被强配成汉字
