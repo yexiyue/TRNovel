@@ -4633,7 +4633,7 @@ dependencies = [
 
 [[package]]
 name = "trnovel"
-version = "0.18.2"
+version = "0.18.3"
 dependencies = [
  "anyhow",
  "async-trait",

@@ -1,73 +1,80 @@
-## [0.18.2] - 2026-10-14
+## [0.18.3] - 2026-10-15
 
-TRNovel 0.18.2 恢复 Intel Mac 与 x86_64 / ARM64 musl Linux，包含 0.18 的全部听书、终端界面与自动迁移升级。升级前请留意新的数据目录和独立听书程序要求。
+### 🚀 Features
 
-### 重大变更与升级要求
+- *(migration)* Add consent-driven legacy migration UI
+## [trnovel-v0.18.2] - 2026-10-14
 
-- **听书引擎独立安装。** 安装包仅包含 `trnovel` / `trn`，听书交给 Talechime 处理。请另外安装 Talechime 0.4.1；普通阅读无需 worker、模型或音频推理库。
-- **协议升级到 JSON Lines v7。** 旧 v5 worker 不兼容；旧强制对齐、逐句高亮和对齐设备入口移除。按实际播放片段高亮与跟随仍保留，生成完成不再等同于播放完成。
-- **声音设置保存与应用分离。** 浏览或保存模型、音色、风格和设备不会打断当前朗读；“应用并重播”从最后确认播放的位置继续并保留暂停，“从头重听”从本章开头立即播放。速度、音量和自动续章仍即时生效。
-- **默认数据目录首次启动自动迁移。** TRNovel 将旧 `~/.novel/` 阅读数据和 JSON 偏好搬入 `~/.trnovel/`，Talechime 0.4.1 迁入 `~/.talechime/`。原文件保留，已有新数据优先；损坏或冲突会提示，`clear` 后不再重新导入已清理记录。请先退出旧程序；细节见[自动迁移指南](https://yexiyue.github.io/TRNovel/guides/migration/)。
-- **发行渠道统一。** 官方阅读器目标为 Apple Silicon / Intel macOS、x86_64 Linux GNU、x86_64 / ARM64 Linux musl、x86_64 Windows MSVC。musl 包为静态阅读器，不需要 ALSA 或 ONNX Runtime；旧 basic、捆绑 worker 和加速包停止更新。新增平台支持普通阅读，听书仍需该平台可用的独立 Talechime；本次未扩展 Talechime 原生推理平台。
+### 🐛 Bug Fixes
 
-### 新功能与修复
+- *(release)* Restore Intel Mac and static musl reader targets
 
-- 恢复 Intel Mac 和两种 musl 架构，纳入统一 shell/npm/Homebrew 安装器；CI 覆盖六平台安装检查，musl 在 Alpine 中验证静态程序与安装器目标选择。
+### ⚙️ Miscellaneous Tasks
 
-- Cargo 源码包仅保留运行源码、测试和必要说明，排除文档录屏与品牌媒体；打包源码编译验证已通过。
+- Release
+## [trnovel-v0.18.1] - 2026-10-14
 
-- 模型与音色可按名称或 ID 搜索，并提供 `trn tts show/list/setup` 非 TUI 快速配置。
-- 新增流式/整章生成后播放策略。整章缓存支持从头、固定 seed、无回读、不可变预置音色的封闭计划；自定义克隆音色和断点续播暂不缓存。
-- 完善鼠标操作、折叠菜单、全局外观设置和列表翻页；背景正文在弹窗内保持静止。
-- 修复搜索列表重绘后的关闭回调、准备失败后遗留暂停状态，并加强配置保存前的校验。
+### 🐛 Bug Fixes
 
-本机完成 Rust 测试、Clippy、格式、rustdoc、基础构建、文档构建与真实 PTY 交互检查。真实模型听感及跨平台实际音频质量仍需分别验收。
+- *(release)* Bound Cargo package contents and warm worker fixtures
 
-## [0.18.1] - 2026-10-14
+### ⚙️ Miscellaneous Tasks
 
-TRNovel 0.18.1 修复 crates.io 源码包体积，包含 0.18 的全部听书与终端界面升级。升级前请留意新的数据目录和独立听书程序要求。
+- Release
+## [trnovel-v0.18.0] - 2026-10-14
 
-### 重大变更与升级要求
+### 🚀 Features
 
-- **听书引擎独立安装。** 安装包仅包含 `trnovel` / `trn`，听书交给 Talechime 处理。请另外安装 Talechime 0.4.1；普通阅读无需 worker、模型或音频推理库。
-- **协议升级到 JSON Lines v7。** 旧 v5 worker 不兼容；旧强制对齐、逐句高亮和对齐设备入口移除。按实际播放片段高亮与跟随仍保留，生成完成不再等同于播放完成。
-- **声音设置保存与应用分离。** 浏览或保存模型、音色、风格和设备不会打断当前朗读；“应用并重播”从最后确认播放的位置继续并保留暂停，“从头重听”从本章开头立即播放。速度、音量和自动续章仍即时生效。
-- **默认数据目录首次启动自动迁移。** TRNovel 将旧 `~/.novel/` 阅读数据和 JSON 偏好搬入 `~/.trnovel/`，Talechime 0.4.1 迁入 `~/.talechime/`。原文件保留，已有新数据优先；损坏或冲突会提示，`clear` 后不再重新导入已清理记录。请先退出旧程序；细节见[自动迁移指南](https://yexiyue.github.io/TRNovel/guides/migration/)。
-- **发行渠道统一。** 官方目标为 Apple Silicon macOS、x86_64 Linux GNU、x86_64 Windows MSVC；旧 basic、捆绑 worker、加速包、Intel Mac 和 ARM64 musl 专用发行停止更新。
+- *(tts)* Add MOSS and reliable continuous playback
+- *(tts)* Add Qwen backend and reader follow controls
+- *(brand)* Introduce Xiaojuan terminal robot identity
+- *(docs)* Upgrade terminal reader landing page
+- *(tts)* Integrate GPU model tiers and native MOSS Candle modes
+- *(tts)* Migrate VoxCPM to Candle 0.11 and add BF16 experiment
+- *(tts)* Add adapter-specific MOSS DirectML probe
+- Unify reader distribution and use independently installed Talechime
+- *(tui)* 接入鼠标交互与 ratatui-kit 0.12
+- *(tui)* 完善折叠菜单与全局界面设置
+- *(reader)* Integrate Talechime v7 and migrate legacy data
 
-### 新功能与修复
+### 🐛 Bug Fixes
 
-- Cargo 源码包仅保留运行源码、测试和必要说明，排除文档录屏与品牌媒体；打包源码编译验证已通过。
+- *(tts)* Stabilize Metal inference and retire Kokoro and ZipVoice
+- *(tts)* Track Talechime MOSS Metal loading fix
+- Isolate user homes and restrict distribution to application packages
+- Decode Windows smoke output as UTF-8
 
-- 模型与音色可按名称或 ID 搜索，并提供 `trn tts show/list/setup` 非 TUI 快速配置。
-- 新增流式/整章生成后播放策略。整章缓存支持从头、固定 seed、无回读、不可变预置音色的封闭计划；自定义克隆音色和断点续播暂不缓存。
-- 完善鼠标操作、折叠菜单、全局外观设置和列表翻页；背景正文在弹窗内保持静止。
-- 修复搜索列表重绘后的关闭回调、准备失败后遗留暂停状态，并加强配置保存前的校验。
+### 📚 Documentation
 
-本机完成 Rust 测试、Clippy、格式、rustdoc、基础构建、文档构建与真实 PTY 交互检查。真实模型听感及跨平台实际音频质量仍需分别验收。
+- Record cross-platform installation smoke pitfalls
 
-## [0.18.0] - 2026-10-14
+### 🚜 Refactor
 
-TRNovel 0.18.0 是一次较大的听书与终端界面升级。升级前请留意新的数据目录和独立听书程序要求。
+- *(tts)* [**breaking**] Decouple listening into standalone core and CLI
+- Extract TTS into Talechime repository
 
-### 重大变更与升级要求
+### 🎨 Styling
 
-- **听书引擎独立安装。** 安装包仅包含 `trnovel` / `trn`，听书交给 Talechime 处理。请另外安装 Talechime 0.4.1；普通阅读无需 worker、模型或音频推理库。
-- **协议升级到 JSON Lines v7。** 旧 v5 worker 不兼容；旧强制对齐、逐句高亮和对齐设备入口移除。按实际播放片段高亮与跟随仍保留，生成完成不再等同于播放完成。
-- **声音设置保存与应用分离。** 浏览或保存模型、音色、风格和设备不会打断当前朗读；“应用并重播”从最后确认播放的位置继续并保留暂停，“从头重听”从本章开头立即播放。速度、音量和自动续章仍即时生效。
-- **默认数据目录首次启动自动迁移。** TRNovel 将旧 `~/.novel/` 阅读数据和 JSON 偏好搬入 `~/.trnovel/`，Talechime 0.4.1 迁入 `~/.talechime/`。原文件保留，已有新数据优先；损坏或冲突会提示，`clear` 后不再重新导入已清理记录。请先退出旧程序；细节见[自动迁移指南](https://yexiyue.github.io/TRNovel/guides/migration/)。
-- **发行渠道统一。** 官方目标为 Apple Silicon macOS、x86_64 Linux GNU、x86_64 Windows MSVC；旧 basic、捆绑 worker、加速包、Intel Mac 和 ARM64 musl 专用发行停止更新。
+- Format listening panel for current stable rustfmt
+- Format worker fixture path
 
-### 新功能与修复
+### 🧪 Testing
 
-- 模型与音色可按名称或 ID 搜索，并提供 `trn tts show/list/setup` 非 TUI 快速配置。
-- 新增流式/整章生成后播放策略。整章缓存支持从头、固定 seed、无回读、不可变预置音色的封闭计划；自定义克隆音色和断点续播暂不缓存。
-- 完善鼠标操作、折叠菜单、全局外观设置和列表翻页；背景正文在弹窗内保持静止。
-- 修复搜索列表重绘后的关闭回调、准备失败后遗留暂停状态，并加强配置保存前的校验。
+- Cover retired worker discovery and record platform requirements
+- Exercise ordinary reading without an installed worker
+- Use valid source fixtures when opening the reader
+- Select local fixture in reader installation smoke
+- Allow cold cargo metadata resolution in distribution smoke
+- Avoid executable copy races in worker fixtures
+- Drain pseudo-terminal output during reader shutdown
 
-本机完成 Rust 测试、Clippy、格式、rustdoc、基础构建、文档构建与真实 PTY 交互检查。真实模型听感及跨平台实际音频质量仍需分别验收。
+### ⚙️ Miscellaneous Tasks
 
-## [0.17.2] - 2026-10-05
+- Add OpenSpec agent skills
+- Bootstrap Talechime publishing credentials
+- Smoke test generated installers in isolated directories
+- Release
+## [trnovel-v0.17.2] - 2026-10-05
 
 ### 🚀 Features
 
@@ -85,6 +92,7 @@ TRNovel 0.18.0 是一次较大的听书与终端界面升级。升级前请留�
 
 - Migrate npm publishing to Trusted Publishing (#74)
 - Remove obsolete examples and repository clutter (#76)
+- Release
 ## [trnovel-v0.17.1] - 2026-10-05
 
 ### 🚀 Features
