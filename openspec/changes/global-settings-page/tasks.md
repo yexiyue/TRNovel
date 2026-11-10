@@ -29,4 +29,4 @@
 - [x] 4.2 设置页 `every_section_has_rows`、`item_line_fills_the_whole_width`
 - [x] 4.3 README 增补全局设置页与空格/方向键翻页
 - [x] 4.4 `cargo fmt --all --check`、clippy(`-D warnings`，全特性与纯本地)、`cargo test --lib`
-- [ ] 4.5 VHS/截图验收：设置页五个分组、空格翻页、方向键翻页开关
+- [x] 4.5 截图验收：设置页五个分组、空格翻页、方向键翻页开关（本机用 PTY 文本截图逐屏核对，未用 VHS）
