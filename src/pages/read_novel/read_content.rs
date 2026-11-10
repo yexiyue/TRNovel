@@ -1,14 +1,15 @@
-use super::search::{ChapterSearch, ContentLayout};
+use super::search::{ChapterSearch, ContentLayout, LayoutOptions};
 use crate::components::{ActionBar, ActionButton};
 use crate::{
+    ReaderDisplayConfig,
     components::Loading,
-    keymap::{ReaderAction, display_first_key},
+    keymap::{ReaderAction, display_first_key, hint_bar},
     theme::ReaderTheme,
 };
 use ratatui::{
     layout::{Constraint, Direction, Flex, Margin},
     text::Line,
-    widgets::Paragraph,
+    widgets::{Borders, Padding, Paragraph},
 };
 #[cfg(test)]
 use ratatui::{style::Style, text::Span};
@@ -35,11 +36,14 @@ enum Edge {
     AtLast,
 }
 
-/// 正文可见行数:组件高度扣掉上下边框与底部状态栏共 3 行,至少 1 行。
+/// 正文可见行数:组件高度扣掉固定占用的「框线 + 状态栏 + 提示行」,至少 1 行。
 ///
-/// 翻页步长、章末判定与设置面板里展示的「每页滚动 M 行」都由它派生,故只此一处定义。
-pub fn visible_lines(height: u16) -> usize {
-    (height as usize).saturating_sub(3).max(1)
+/// 占用行数随阅读偏好变化:无边框省 2 行,关掉提示行省 1 行。翻页步长、章末判定
+/// 与设置面板里展示的「每页滚动 M 行」都由它派生,故只此一处定义 —— 各调用点
+/// 自己减三减四,geometry 一变就会各说各话。
+pub fn visible_lines(height: u16, display: &ReaderDisplayConfig) -> usize {
+    let chrome = 1 + 2 * display.frameline.inset() as usize + usize::from(display.show_hint_bar);
+    (height as usize).saturating_sub(chrome).max(1)
 }
 
 /// 章内滚动位置。**意图**与**比例**是两回事,故用变体而非在 f64 里塞哨兵值:
@@ -148,6 +152,9 @@ pub fn ReadContent(
         props.height.saturating_sub(1)
     };
     let mut reader_display = hooks.use_atom(&crate::state::READER_DISPLAY);
+    // 排版参数先取成值:下面每个 memo 的 deps 都要用它,而 deps 里传 atom 句柄
+    // 比较的是「自己跟自己」,关掉设置面板后排版会冻结在首帧。
+    let display = *reader_display.read();
     let mut on_prev = props.on_prev.take();
     let mut on_next = props.on_next.take();
     let mut edge = hooks.use_state(|| Edge::None);
@@ -232,7 +239,17 @@ pub fn ReadContent(
 
     // 先取成值再进闭包:memo 的 deps 必须是值,传 atom 句柄比较的是「当前值跟自己比」,
     // 恒等 → 切换开关后排版会冻结在首帧。
-    let paragraph_spacing = reader_display.read().paragraph_spacing;
+    let paragraph_gap = display.paragraph_gap as usize;
+    let first_line_indent = display.first_line_indent as usize;
+    // 正文可用宽度:扣掉左右边框与用户设置的左右留白;边框选「无」时不留位。
+    let content_width = (width as usize)
+        .saturating_sub(2 * display.frameline.inset() as usize + 2 * display.h_margin as usize)
+        .max(1);
+    // 每行字数只是上限:窗口比它窄时按窗口走,否则正文会溢出边框。
+    let wrap_width = match display.lines_per_row {
+        0 => content_width,
+        chars => content_width.min(chars as usize),
+    };
 
     let local_search = hooks.use_state(ChapterSearch::default);
     let mut search = props.search.unwrap_or(local_search);
@@ -248,13 +265,21 @@ pub fn ReadContent(
     let editing = search.read().editing && props.is_scroll && !props.is_loading;
     let layout = hooks.use_memo(
         || {
-            Arc::new(ContentLayout::new(
+            Arc::new(ContentLayout::with_options(
                 &props.content,
-                width.saturating_sub(2) as usize,
-                paragraph_spacing,
+                LayoutOptions {
+                    width: wrap_width,
+                    paragraph_gap,
+                    indent: first_line_indent,
+                },
             ))
         },
-        (props.content.clone(), width, paragraph_spacing),
+        (
+            props.content.clone(),
+            wrap_width,
+            paragraph_gap,
+            first_line_indent,
+        ),
     );
     let matches = search.read().matches.clone();
     let selected = search.read().selected;
@@ -281,8 +306,9 @@ pub fn ReadContent(
         },
         (
             props.content.clone(),
-            width,
-            paragraph_spacing,
+            wrap_width,
+            paragraph_gap,
+            first_line_indent,
             search.read().revision,
             selected,
             tts_range.clone(),
@@ -307,9 +333,9 @@ pub fn ReadContent(
     //   end_scroll 贴底位置(最后一行正好落在屏幕底部)= 章末判定线
     // 旧实现只有一个 `line_count`(实为 end_scroll)同时兼任滚动上限、进度分母与行号分母,
     // 分母含视口高度 → 进度随终端尺寸漂移,且末尾无法留白。
-    let total = paragraph.line_count(width.saturating_sub(2));
+    let total = paragraph.line_count(content_width as u16);
     let can_search = props.is_scroll && !props.is_loading;
-    let view = visible_lines(height);
+    let view = visible_lines(height, &display);
     let end_scroll = total.saturating_sub(view);
 
     hooks.use_effect(
@@ -320,7 +346,13 @@ pub fn ReadContent(
                 scroll_target.set(ScrollTarget::Ratio(line as f64 / total.max(1) as f64));
             }
         },
-        (search.read().revision, width, paragraph_spacing, height),
+        (
+            search.read().revision,
+            wrap_width,
+            paragraph_gap,
+            first_line_indent,
+            height,
+        ),
     );
 
     let mut current_line = hooks.use_memo(
@@ -341,9 +373,10 @@ pub fn ReadContent(
             (
                 snapshot.state,
                 tts_range.clone(),
-                width,
+                wrap_width,
                 height,
-                paragraph_spacing,
+                paragraph_gap,
+                first_line_indent,
             ),
             (total, view, scroll_target.get()),
         );
@@ -629,6 +662,12 @@ pub fn ReadContent(
     };
 
     let show_title = reader_display.read().show_title;
+    let frameline = display.frameline;
+    let hint = if display.show_hint_bar {
+        hint_bar(&reader_keymap, width as usize)
+    } else {
+        String::new()
+    };
 
     #[cfg(feature = "tts")]
     let listening_footer = if let Some(error) = &snapshot.error {
@@ -707,12 +746,18 @@ pub fn ReadContent(
     }
     Border(
         border_style: theme.border,
-        top_title: if show_title {
+        // 无边框 = 连边都不画(字符集单线但 Borders 为空),同时省下 2 行给正文。
+        borders: if frameline == crate::Frameline::None { Borders::NONE } else { Borders::ALL },
+        border_set: frameline.border_set(),
+        // 左右留白做成内边距:正文、提示条、状态栏一起内缩,不会只有正文缩进、
+        // 状态栏却顶到框线上。
+        padding: Padding::new(display.h_margin, display.h_margin, 0, 0),
+        top_title: if show_title && frameline != crate::Frameline::None && display.show_frameline_title {
             Some(Line::from(props.chapter_name.to_string()).style(theme.chapter).centered())
         }else{
             None
         },
-        bottom_title: if show_title && !listening_footer.is_empty() {
+        bottom_title: if show_title && frameline != crate::Frameline::None && !listening_footer.is_empty() {
            Some(Line::from(listening_footer).style(theme.footer).centered())
         }else{
             None
@@ -727,6 +772,13 @@ pub fn ReadContent(
                 scroll: (current_line as u16,0))
             ).into_any()
         } }
+        // 常显快捷键提示:高度由配置决定(关掉时占 0 行,不偷正文空间)。
+        View(
+            height: Constraint::Length(if display.show_hint_bar { 1 } else { 0 }),
+            margin: Margin::new(1,0),
+        ){
+            widget(Line::from(hint.clone()).style(theme.footer).centered())
+        }
         View(
             flex_direction: Direction::Horizontal,
             justify_content: Flex::SpaceBetween,
@@ -1017,10 +1069,19 @@ mod tests {
     /// 视口尺寸的换算只此一处,极矮终端下也必须 ≥ 1(否则翻页步长会退化为 0、翻不动)。
     #[test]
     fn visible_lines_never_zero() {
+        // 默认配置:边框单线(上下各 1)+ 状态栏 1 + 提示条 1 = 4 行 chrome。
+        let display = crate::ReaderDisplayConfig::default();
         for height in 0..=4u16 {
-            assert_eq!(visible_lines(height), 1, "height={height}");
+            assert_eq!(visible_lines(height, &display), 1, "height={height}");
         }
-        assert_eq!(visible_lines(33), 30);
+        assert_eq!(visible_lines(33, &display), 29);
+        // 关边框、关提示条后,除了状态栏那 1 行全部还给正文。
+        let bare = crate::ReaderDisplayConfig {
+            frameline: crate::Frameline::None,
+            show_hint_bar: false,
+            ..display
+        };
+        assert_eq!(visible_lines(33, &bare), 32);
     }
 
     /// 落盘往返:用户滚动产生的比例恒 < 1.0,不会被 `from_ratio` 误判成章末。

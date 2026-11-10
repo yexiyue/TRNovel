@@ -215,6 +215,52 @@ pub fn display_first_key(keymap: &Keymap<ReaderAction>, action: ReaderAction) ->
         .unwrap_or_else(|| "?".to_string())
 }
 
+/// 常显提示条展示的条目,按「读小说最常用」排序,不是全量键位表。
+///
+/// 全量表在帮助浮层里;这一行只放得下几项,再多的会在渲染时按宽度裁掉,
+/// 所以顺序本身就是优先级。
+pub const HINT_ITEMS: &[(ReaderAction, &str)] = &[
+    (ReaderAction::PageDown, "翻页"),
+    (ReaderAction::PrevChapter, "上一章"),
+    (ReaderAction::NextChapter, "下一章"),
+    (ReaderAction::SearchContent, "搜索"),
+    (ReaderAction::ToggleReadMode, "目录"),
+    (ReaderAction::ToggleReaderSettings, "设置"),
+    (ReaderAction::ToggleInfo, "帮助"),
+];
+
+/// 生成常显快捷键提示条(`PgDn 翻页 · ← 上一章 · …`)。
+///
+/// 键名全部从**当前生效的 keymap** 取,用户重绑 `keybindings.toml` 后提示随即
+/// 改变,不会显示一个按了没用的键。宽度按终端列计(中文算 2 列),
+/// 放不下时整段丢弃并在末尾补省略号 —— 截半个汉字比丢掉有用信息更糟。
+pub fn hint_bar(keymap: &Keymap<ReaderAction>, width: usize) -> String {
+    use unicode_width::UnicodeWidthStr;
+    const SEPARATOR: &str = " · ";
+    const ELLIPSIS: &str = " …";
+    let mut out = String::new();
+    let mut used = 0usize;
+    let mut dropped = false;
+    for (action, label) in HINT_ITEMS {
+        let segment = format!("{} {label}", display_first_key(keymap, *action));
+        let separator = if out.is_empty() { 0 } else { SEPARATOR.width() };
+        let needed = used + separator + segment.width();
+        if needed > width {
+            dropped = true;
+            break;
+        }
+        if !out.is_empty() {
+            out.push_str(SEPARATOR);
+        }
+        out.push_str(&segment);
+        used = needed;
+    }
+    if dropped && used + ELLIPSIS.width() <= width {
+        out.push_str(ELLIPSIS);
+    }
+    out
+}
+
 // Search navigation distinguishes lowercase n from uppercase N.
 fn prettify_action_key(name: &str, action: ReaderAction) -> String {
     if matches!(

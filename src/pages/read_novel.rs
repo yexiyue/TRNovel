@@ -82,7 +82,10 @@ where
     } else {
         height.saturating_sub(1)
     };
-    let viewport_lines = visible_lines(reader_height);
+    let viewport_lines = visible_lines(
+        reader_height,
+        &hooks.use_atom(&crate::state::READER_DISPLAY).read(),
+    );
 
     let mut content_loading = hooks.use_state(|| false);
     let mut info_modal_open = hooks.use_state(|| false);

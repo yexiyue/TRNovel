@@ -170,3 +170,25 @@ fn follow_playback_is_feature_gated_and_remappable() {
     #[cfg(not(feature = "tts"))]
     let _ = &mut km;
 }
+#[test]
+fn hint_bar_lists_bindings_and_truncates_by_display_width() {
+    use unicode_width::UnicodeWidthStr;
+
+    let km = reader_defaults();
+    let full = hint_bar(&km, 200);
+    assert!(full.contains("翻页"), "{full}");
+    assert!(full.contains("搜索"), "{full}");
+    assert!(full.contains("帮助"), "{full}");
+
+    // 窄屏按显示宽度裁剪(中文两列、箭头一列):任何宽度都不能溢出,也不能
+    // 把汉字劈成半个 —— 宁可整段丢掉。
+    for width in 0..60usize {
+        let text = hint_bar(&km, width);
+        assert!(
+            UnicodeWidthStr::width(text.as_str()) <= width,
+            "width={width} text={text:?}"
+        );
+    }
+    assert_eq!(hint_bar(&km, 0), "");
+    assert!(hint_bar(&km, 7).ends_with('…'), "{:?}", hint_bar(&km, 7));
+}

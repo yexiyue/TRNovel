@@ -6,7 +6,7 @@
 
 use crossterm::event::{Event, KeyCode, KeyEventKind, MouseEventKind};
 use ratatui::{
-    layout::{Constraint, Margin},
+    layout::{Constraint, Direction, Margin},
     style::Style,
     text::Line,
 };
@@ -19,12 +19,12 @@ use crate::{
     theme::AppChromeTheme,
 };
 
-/// 面板条目数(索引上界)。新增条目时同步改这里、下方渲染的索引判断与 `PANEL_HEIGHT`。
-const ITEM_COUNT: usize = 3 + cfg!(feature = "tts") as usize;
+/// 面板条目数(索引上界)。新增条目时同步改这里、`describe_setting`/`adjust`
+/// 与 `PANEL_HEIGHT` —— 三处对不上就会出现「能选中但没内容」的空条目。
+const ITEM_COUNT: usize = 9 + cfg!(feature = "tts") as usize;
 
-/// 面板高度:每个条目 3 行(含边框),外加浮层自身的边框与外边距 4 行。
-/// 不够高会把最后一个条目裁掉 —— 条目数变了必须跟着改。
-const PANEL_HEIGHT: u16 = ITEM_COUNT as u16 * 3 + 5;
+/// 每个条目 3 行(含边框),每列 5 个,外加浮层自身的边框与外边距 5 行。
+const PANEL_HEIGHT: u16 = 5 * 3 + 5;
 
 #[derive(Props, Default)]
 pub struct ReaderSettingsModalProps {
@@ -123,24 +123,13 @@ pub fn ReaderSettingsModal(
     let config = *reader_display.read();
     // 同屏展示派生步长:用户无法凭「2」想象效果,但看到「每页滚动 28 行」就懂了;
     // 终端极矮把步长压到 1 时也能一眼看见。
-    let overlap_value = format!(
-        "{} 行(每页滚动 {} 行)",
-        config.page_overlap,
-        config.page_step(
-            props
-                .viewport_lines
-                .unwrap_or_else(|| visible_lines(height))
-        )
-    );
-    let title_value = if config.show_title { "开" } else { "关" };
-    let spacing_value = if config.paragraph_spacing {
-        "开"
-    } else {
-        "关"
-    };
+    let visible = props
+        .viewport_lines
+        .unwrap_or_else(|| visible_lines(height, &config));
+    let page_step = config.page_step(visible);
 
     element!(Modal(
-        width:Constraint::Percentage(60),
+        width:Constraint::Percentage(80),
         height: Constraint::Length(PANEL_HEIGHT),
         open: is_open,
         layer: layer,
@@ -158,46 +147,162 @@ pub fn ReaderSettingsModal(
                 top_title: Line::from("阅读设置").centered().style(theme.title),
                 bottom_title: hint,
             ) {
-                View(height: Constraint::Length(3)) {
-                    AdjustableSettingItem(
-                        is_editing: index.get() == 0 && is_editing,
-                        label: "翻页重叠:".to_string(),
-                        value: overlap_value,
-                        on_decrease: move |_| reader_display.write().decrease_page_overlap(),
-                        on_increase: move |_| reader_display.write().increase_page_overlap(),
-                        on_click: focus_row(index, 0),
-                    )
-                }
-                View(height: Constraint::Length(3)) {
-                    AdjustableSettingItem(
-                        is_editing: index.get() == 1 && is_editing,
-                        // 此前只有 v 键盲切、没有可视入口,与翻页重叠同属 ReaderDisplayConfig,
-                        // 一并收进面板。
-                        label: "显示标题:".to_string(),
-                        value: title_value.to_string(),
-                        on_decrease: move |_| reader_display.write().show_title = false,
-                        on_increase: move |_| reader_display.write().show_title = true,
-                        on_click: focus_row(index, 1),
-                    )
-                }
-                View(height: Constraint::Length(3)) {
-                    AdjustableSettingItem(
-                        is_editing: index.get() == 2 && is_editing,
-                        // 关掉后段落首尾相接,一屏正文行数近乎翻倍 —— 小屏用户的诉求。
-                        label: "段落间距:".to_string(),
-                        value: spacing_value.to_string(),
-                        on_decrease: move |_| reader_display.write().paragraph_spacing = false,
-                        on_increase: move |_| reader_display.write().paragraph_spacing = true,
-                        on_click: focus_row(index, 2),
-                    )
-                }
-                Fragment {
-                    {follow_setting(reader_display, index, index.get() == 3 && is_editing)}
+                // 条目多到一屏放不下时,双列比「加滚动窗口」更好按:所有项一次可见,
+                // 不用记自己翻到第几页。左列 = 行为,右列 = 版式。
+                View(flex_direction: Direction::Horizontal) {
+                    View(width: Constraint::Percentage(50)) {
+                        {setting_row(reader_display, index, 0, is_editing, &config, page_step)}
+                        {setting_row(reader_display, index, 1, is_editing, &config, page_step)}
+                        {setting_row(reader_display, index, 2, is_editing, &config, page_step)}
+                        {setting_row(reader_display, index, 3, is_editing, &config, page_step)}
+                        {setting_row(reader_display, index, 4, is_editing, &config, page_step)}
+                    }
+                    View(width: Constraint::Percentage(50)) {
+                        {setting_row(reader_display, index, 5, is_editing, &config, page_step)}
+                        {setting_row(reader_display, index, 6, is_editing, &config, page_step)}
+                        {setting_row(reader_display, index, 7, is_editing, &config, page_step)}
+                        {setting_row(reader_display, index, 8, is_editing, &config, page_step)}
+                        {follow_setting(reader_display, index, is_editing && index.get() == 9)}
+                    }
                 }
             }
         }
     })
     .into_any()
+}
+
+/// 渲染单个条目。值文案在这里现算(配置每次写入都会触发重渲染),回调只报方向,
+/// 钳制交给 `ReaderDisplayConfig` 的增减方法 —— 面板不重复实现边界。
+fn setting_row(
+    display: AtomState<crate::ReaderDisplayConfig>,
+    index: ratatui_kit::State<usize>,
+    row: usize,
+    is_editing: bool,
+    config: &crate::ReaderDisplayConfig,
+    page_step: usize,
+) -> AnyElement<'static> {
+    let (label, value) = describe_setting(config, row, page_step);
+    element!(View(height: Constraint::Length(3)) {
+        AdjustableSettingItem(
+            is_editing: is_editing && index.get() == row,
+            label: label,
+            value: value,
+            on_decrease: move |_| adjust(display, row, -1),
+            on_increase: move |_| adjust(display, row, 1),
+            on_click: focus_row(index, row),
+        )
+    })
+    .into_any()
+}
+
+/// 条目序号 → (标签, 当前值文案)。新增条目只改这里和 `adjust`,不必再动渲染树。
+fn describe_setting(
+    config: &crate::ReaderDisplayConfig,
+    row: usize,
+    page_step: usize,
+) -> (String, String) {
+    let on_off = |value: bool| if value { "开" } else { "关" }.to_string();
+    match row {
+        // 用户无法凭「2」想象效果,但看到「每页滚动 28 行」就懂了;终端极矮把
+        // 步长压到 1 时也能一眼看见。
+        0 => (
+            "翻页重叠:".to_string(),
+            format!("{} 行(每页滚动 {} 行)", config.page_overlap, page_step),
+        ),
+        1 => ("显示标题:".to_string(), on_off(config.show_title)),
+        2 => (
+            "段间空行:".to_string(),
+            if config.paragraph_gap == 0 {
+                "0 行(段落相接)".to_string()
+            } else {
+                format!("{} 行", config.paragraph_gap)
+            },
+        ),
+        3 => (
+            "首行缩进:".to_string(),
+            if config.first_line_indent == 0 {
+                "0 字(不缩进)".to_string()
+            } else {
+                format!("{} 字", config.first_line_indent)
+            },
+        ),
+        4 => (
+            "每行字数:".to_string(),
+            if config.lines_per_row == 0 {
+                "跟随窗口".to_string()
+            } else {
+                format!("{} 字", config.lines_per_row)
+            },
+        ),
+        5 => (
+            "左右留白:".to_string(),
+            if config.h_margin == 0 {
+                "0 列(贴边)".to_string()
+            } else {
+                format!("{} 列", config.h_margin)
+            },
+        ),
+        6 => ("边框:".to_string(), config.frameline.label().to_string()),
+        7 => ("边框标题:".to_string(), on_off(config.show_frameline_title)),
+        8 => ("快捷键提示:".to_string(), on_off(config.show_hint_bar)),
+        9 => ("跟随朗读:".to_string(), on_off(config.follow_tts)),
+        _ => (String::new(), String::new()),
+    }
+}
+
+/// 加减一个单位。方向用 i32 而非 bool,是因为多数条目真的有多档(0..=4 行空行),
+/// 只有开关型才把它折成真假。
+fn adjust(display: AtomState<crate::ReaderDisplayConfig>, row: usize, delta: i32) {
+    let mut config = display.write();
+    match row {
+        0 => {
+            if delta > 0 {
+                config.increase_page_overlap();
+            } else {
+                config.decrease_page_overlap();
+            }
+        }
+        1 => config.show_title = delta > 0,
+        2 => {
+            if delta > 0 {
+                config.increase_paragraph_gap();
+            } else {
+                config.decrease_paragraph_gap();
+            }
+        }
+        3 => {
+            if delta > 0 {
+                config.increase_first_line_indent();
+            } else {
+                config.decrease_first_line_indent();
+            }
+        }
+        4 => {
+            if delta > 0 {
+                config.increase_lines_per_row();
+            } else {
+                config.decrease_lines_per_row();
+            }
+        }
+        5 => {
+            if delta > 0 {
+                config.increase_h_margin();
+            } else {
+                config.decrease_h_margin();
+            }
+        }
+        6 => {
+            config.frameline = if delta > 0 {
+                config.frameline.next()
+            } else {
+                config.frameline.previous()
+            };
+        }
+        7 => config.show_frameline_title = delta > 0,
+        8 => config.show_hint_bar = delta > 0,
+        9 => config.follow_tts = delta > 0,
+        _ => {}
+    }
 }
 
 #[cfg(feature = "tts")]
@@ -215,7 +320,7 @@ fn follow_setting(
         AdjustableSettingItem(is_editing: editing, label: "跟随朗读:".to_string(), value: value.to_string(),
             on_decrease: move |_| config.write().follow_tts = false,
             on_increase: move |_| config.write().follow_tts = true,
-            on_click: focus_row(index, 3))
+            on_click: focus_row(index, 9))
     }).into_any()
 }
 #[cfg(not(feature = "tts"))]
