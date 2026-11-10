@@ -6,7 +6,7 @@
 //! 统一分派: 命中预设走本项目色板, 否则回落外部主题 —— 老配置里的 slug 因此照旧可用。
 //!
 //! 预设针对"长时间读中文正文"取舍: 正文前景/背景对比度 ≥ 4.5, 背景避开纯白
-//! (降低亮度刺激); 选中态取与背景反差足够大的色块, 再用 [`readable_foreground`]
+//! (降低亮度刺激); 选中态取与背景反差足够大的色块, 再用 `readable_foreground`
 //! 选黑/白前景, 保证浅色与深色主题下都看得清选中行与边框。
 
 // `Palette` 来自外部 crate 且 `#[non_exhaustive]`, 下游无法用结构体字面量构造,
@@ -17,6 +17,7 @@
 use ratatui::style::Color;
 use ratatui_kit::Palette;
 use ratatui_kit_themes::{IntoKitPalette, ThemeName};
+use serde::{Deserialize, Serialize};
 
 /// 一套本项目的阅读主题: 稳定 slug(写入 config.toml)+ 中文名 + 完整语义色板。
 ///
@@ -142,6 +143,237 @@ impl ThemeChoice {
                 .find(|name| name.slug() == slug)
                 .map(Self::Builtin)
         })
+    }
+}
+
+/// 自定义方案可循环选择的固定 16 色。
+///
+/// 终端里手敲 hex 既慢又容易打错, 所以 UI 只让用户在有限的色格里左右切换。
+/// 色格同时覆盖浅底、深底与常见强调色, 保证不选 hex 也能配出可读的一套。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct CustomColor {
+    pub name: &'static str,
+    pub color: Color,
+}
+
+pub const CUSTOM_COLORS: [CustomColor; 16] = [
+    CustomColor {
+        name: "墨黑",
+        color: Color::Rgb(0, 0, 0),
+    },
+    CustomColor {
+        name: "纯白",
+        color: Color::Rgb(255, 255, 255),
+    },
+    CustomColor {
+        name: "米黄",
+        color: Color::Rgb(245, 238, 224),
+    },
+    CustomColor {
+        name: "暖灰",
+        color: Color::Rgb(222, 216, 206),
+    },
+    CustomColor {
+        name: "豆沙绿",
+        color: Color::Rgb(201, 228, 197),
+    },
+    CustomColor {
+        name: "深夜蓝",
+        color: Color::Rgb(16, 24, 38),
+    },
+    CustomColor {
+        name: "石板青",
+        color: Color::Rgb(29, 41, 56),
+    },
+    CustomColor {
+        name: "暖白",
+        color: Color::Rgb(230, 225, 214),
+    },
+    CustomColor {
+        name: "深灰",
+        color: Color::Rgb(46, 42, 37),
+    },
+    CustomColor {
+        name: "中灰",
+        color: Color::Rgb(122, 114, 104),
+    },
+    CustomColor {
+        name: "琥珀",
+        color: Color::Rgb(210, 168, 92),
+    },
+    CustomColor {
+        name: "砖红",
+        color: Color::Rgb(158, 55, 43),
+    },
+    CustomColor {
+        name: "松绿",
+        color: Color::Rgb(46, 107, 60),
+    },
+    CustomColor {
+        name: "天蓝",
+        color: Color::Rgb(111, 168, 220),
+    },
+    CustomColor {
+        name: "紫灰",
+        color: Color::Rgb(107, 91, 123),
+    },
+    CustomColor {
+        name: "粉橙",
+        color: Color::Rgb(224, 138, 95),
+    },
+];
+
+/// 把配置里的 `#rrggbb` 解析成终端 RGB; 只接受这一种格式。
+///
+/// 严格解析而不是接受 `#rgb`/颜色名: 写盘与回读必须是同一种表示, 否则
+/// 「循环色格」与手工改配置会得到肉眼看不到的差别。
+pub fn parse_hex_color(value: &str) -> Option<Color> {
+    let hex = value.strip_prefix('#')?;
+    if hex.len() != 6 || !hex.is_ascii() {
+        return None;
+    }
+    let channel = |range: std::ops::Range<usize>| u8::from_str_radix(&hex[range], 16).ok();
+    Some(Color::Rgb(channel(0..2)?, channel(2..4)?, channel(4..6)?))
+}
+
+/// `parse_hex_color` 的反向操作; 非 RGB 色没有稳定的文本表示, 返回 `None`。
+pub fn color_to_hex(color: Color) -> Option<String> {
+    let Color::Rgb(r, g, b) = color else {
+        return None;
+    };
+    Some(format!("#{r:02x}{g:02x}{b:02x}"))
+}
+
+/// 从任意色板色找最接近的固定色格, 用于新建方案时预填当前主题的观感。
+pub fn nearest_custom_color(color: Color) -> usize {
+    let Color::Rgb(r, g, b) = color else {
+        return 0;
+    };
+    CUSTOM_COLORS
+        .iter()
+        .enumerate()
+        .min_by_key(|(_, entry)| {
+            let Color::Rgb(er, eg, eb) = entry.color else {
+                return u32::MAX;
+            };
+            let distance = |a: u8, b: u8| {
+                let delta = i32::from(a) - i32::from(b);
+                (delta * delta) as u32
+            };
+            distance(r, er) + distance(g, eg) + distance(b, eb)
+        })
+        .map(|(index, _)| index)
+        .unwrap_or(0)
+}
+
+/// 用户创建的一套配色, 持久化在 `[appearance].custom_themes`。
+///
+/// 只存三个语义色的 hex 与「基于哪套主题」: 其余字段在解析时从 base 继承,
+/// 这样以后调节预设计算逻辑时, 自定义方案会自动跟着改善, 而不是冻结旧色板。
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct CustomTheme {
+    /// 设置页展示的中文名。
+    pub name: String,
+    /// 写进配置的稳定标识, 形如 `custom-1`。
+    pub slug: String,
+    /// 底色所继承的主题 slug(预设或内置主题)。
+    pub base: String,
+    pub bg: String,
+    pub fg: String,
+    pub accent: String,
+}
+
+impl CustomTheme {
+    /// 生成一个不与预设、内置主题及已有自定义方案冲突的 slug。
+    ///
+    /// 不用「数量 + 1」: 删掉中间一项后数量会回退, 新 slug 可能撞上仍存在的旧项。
+    /// 从 1 开始找第一个空位, 保证重启后配置里的 slug 仍唯一。
+    pub fn next_slug(existing: &[Self]) -> String {
+        (1u32..)
+            .map(|n| format!("custom-{n}"))
+            .find(|slug| {
+                !existing.iter().any(|theme| &theme.slug == slug)
+                    && ThemeChoice::from_slug(slug).is_none()
+            })
+            .expect("u32 范围内总能找到空闲 slug")
+    }
+
+    /// 以 base 的完整色板为底, 只覆盖 bg/fg/accent 三个语义色。
+    ///
+    /// 未知 base(手改配置、删掉的预设)回落默认主题, 而不是 panic 或返回全 Reset;
+    /// 无效 hex 同样静默保留 base 的颜色, 让一份脏配置仍能启动。
+    pub fn palette(&self) -> Palette {
+        let mut palette = ThemeChoice::from_slug(&self.base)
+            .map(ThemeChoice::palette)
+            .unwrap_or_else(|| ThemeName::TokyoNight.into_kit_palette());
+        if let Some(bg) = parse_hex_color(&self.bg) {
+            palette.bg = bg;
+        }
+        if let Some(fg) = parse_hex_color(&self.fg) {
+            palette.fg = fg;
+        }
+        if let Some(accent) = parse_hex_color(&self.accent) {
+            palette.accent = accent;
+        }
+        // on_accent 与 border_active 是从 accent 派生的语义色: 只换 accent 却沿用
+        // 旧的前景/边框, 会出现「强调色变了、焦点框还是旧色」的割裂, 这里一并重算。
+        palette.on_accent = readable_foreground(&[palette.accent, palette.selection]);
+        palette.border_active = palette.accent;
+        palette
+    }
+}
+
+/// 设置页统一的列表项: 预设、内置主题、用户方案。
+///
+/// 与 [`ThemeChoice`] 分开是因为自定义方案含 `String`, 无法保持 `Copy`;
+/// 而配色解析仍走 [`ThemeChoice`], 两处职责不混。
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ThemeEntry {
+    Preset(ReadingTheme),
+    Builtin(ThemeName),
+    Custom(CustomTheme),
+}
+
+impl ThemeEntry {
+    /// 顺序固定为「预设 → 内置 → 自定义」, 用户方案追加在既有主题之后。
+    pub fn all(custom: &[CustomTheme]) -> Vec<Self> {
+        ThemeChoice::all()
+            .into_iter()
+            .map(|choice| match choice {
+                ThemeChoice::Preset(theme) => Self::Preset(theme),
+                ThemeChoice::Builtin(name) => Self::Builtin(name),
+            })
+            .chain(custom.iter().cloned().map(Self::Custom))
+            .collect()
+    }
+
+    pub fn slug(&self) -> &str {
+        match self {
+            Self::Preset(theme) => theme.slug(),
+            Self::Builtin(name) => name.slug(),
+            Self::Custom(theme) => &theme.slug,
+        }
+    }
+
+    pub fn display_name(&self) -> &str {
+        match self {
+            Self::Preset(theme) => theme.display_name(),
+            Self::Builtin(name) => name.display_name(),
+            Self::Custom(theme) => &theme.name,
+        }
+    }
+
+    pub fn palette(&self) -> Palette {
+        match self {
+            Self::Preset(theme) => theme.palette(),
+            Self::Builtin(name) => name.into_kit_palette(),
+            Self::Custom(theme) => theme.palette(),
+        }
+    }
+
+    pub fn is_custom(&self) -> bool {
+        matches!(self, Self::Custom(_))
     }
 }
 
@@ -472,5 +704,60 @@ mod tests {
         slugs.sort_unstable();
         slugs.dedup();
         assert_eq!(slugs.len(), total, "整个主题列表里 slug 必须唯一");
+    }
+
+    /// 配置里存的是 `#rrggbb`: 解析与回写必须严格往返, 否则用户保存后重启,
+    /// 颜色会悄悄变一个值。
+    #[test]
+    fn hex_colors_round_trip_through_config_text() {
+        for color in [
+            Color::Rgb(0x00, 0x00, 0x00),
+            Color::Rgb(0xff, 0xff, 0xff),
+            Color::Rgb(0xf5, 0xee, 0xe0),
+            Color::Rgb(0x12, 0xab, 0x7d),
+        ] {
+            let hex = color_to_hex(color).unwrap();
+            assert_eq!(hex.len(), 7);
+            assert_eq!(parse_hex_color(&hex), Some(color));
+        }
+
+        // 非法输入只返回 None, 由调用方保留 base 颜色, 不 panic。
+        for invalid in ["", "#fff", "#gggggg", "f5eee0", "#f5eee00"] {
+            assert_eq!(parse_hex_color(invalid), None, "{invalid} 不该被接受");
+        }
+        assert_eq!(color_to_hex(Color::Reset), None);
+    }
+
+    /// 新建方案时用当前主题的色板预填最近色格, 让"从现有配色出发"真的省事。
+    #[test]
+    fn nearest_custom_color_finds_exact_palette_member() {
+        for (index, entry) in CUSTOM_COLORS.iter().enumerate() {
+            assert_eq!(nearest_custom_color(entry.color), index);
+        }
+        // 非 RGB 色没有距离可言, 回落到第一个色格而不是越界。
+        assert_eq!(nearest_custom_color(Color::Reset), 0);
+    }
+
+    /// 列表顺序是设置页的分组依据: 自定义方案必须排在所有既有主题之后。
+    #[test]
+    fn theme_entries_append_custom_themes_after_builtin_ones() {
+        let custom = vec![CustomTheme {
+            name: "我的夜间".to_string(),
+            slug: "custom-1".to_string(),
+            base: "midnight-blue".to_string(),
+            bg: "#101826".to_string(),
+            fg: "#e6e1d6".to_string(),
+            accent: "#d2a85c".to_string(),
+        }];
+        let entries = ThemeEntry::all(&custom);
+        assert_eq!(entries.len(), ThemeChoice::all().len() + 1);
+        assert!(entries.last().unwrap().is_custom());
+        assert_eq!(entries.last().unwrap().display_name(), "我的夜间");
+        assert_eq!(entries.last().unwrap().slug(), "custom-1");
+        // 自定义项按 base 解析后再覆盖, 与 AppearanceConfig::palette 保持一致。
+        assert_eq!(
+            entries.last().unwrap().palette().bg,
+            parse_hex_color("#101826").unwrap()
+        );
     }
 }

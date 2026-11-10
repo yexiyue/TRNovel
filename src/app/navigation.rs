@@ -58,7 +58,8 @@ pub fn page_label(path: &str) -> &'static str {
         "/book-detail" => "小说详情",
         "/select-history" => "历史记录",
         "/book-source-login" => "书源登录",
-        "/theme-setting" => "全局设置",
+        "/settings" => "全局设置",
+        "/theme-setting" => "外观与主题",
         _ => "上一页",
     }
 }

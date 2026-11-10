@@ -27,7 +27,7 @@ use crate::{
     novel::local_novel::LocalNovel,
     pages::{
         ReadNovel, home::Home, local_novel::SelectFile, select_history::SelectHistory,
-        theme_setting::ThemeSetting,
+        settings::Settings, theme_setting::ThemeSetting,
     },
 };
 mod layout;
@@ -127,7 +127,8 @@ pub fn App(props: &AppProps, mut hooks: Hooks) -> impl Into<AnyElement<'static>>
             // 本地小说
             "/select-file"=> SelectFile,
             "/local-novel"=> ReadNovel<LocalNovel>,
-            // 主题设置
+            // 全局设置与主题设置
+            "/settings"=> Settings,
             "/theme-setting"=> ThemeSetting,
         }
     );

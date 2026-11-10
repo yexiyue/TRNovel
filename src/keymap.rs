@@ -75,9 +75,10 @@ fn reader_defaults() -> Keymap<ReaderAction> {
         .desc(ReaderAction::NextChapter, "下一章")
         // 物理键放首位:底部提示/帮助只放得下一个键时仍显示 PageUp/PageDown(既有视觉习惯);
         // ctrl-b/ctrl-f 是 Vim 的整页前后翻,与本 action 语义精确对应(ctrl-d/ctrl-u 是半页,不绑)。
+        // Space 习惯上就是「往下一屏」,与 PageDown 同义;放在末位,提示行仍显示 PageDown。
         .bind(ReaderAction::PageUp, ["pageup", "ctrl-b"])
         .desc(ReaderAction::PageUp, "上一页(章首连按翻上一章)")
-        .bind(ReaderAction::PageDown, ["pagedown", "ctrl-f"])
+        .bind(ReaderAction::PageDown, ["pagedown", "ctrl-f", "space"])
         .desc(ReaderAction::PageDown, "下一页(章末连按翻下一章)")
         .bind(ReaderAction::GoTop, ["home"])
         .desc(ReaderAction::GoTop, "跳到开头")

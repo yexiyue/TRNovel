@@ -5,4 +5,5 @@ pub mod local_novel;
 #[cfg(feature = "network")]
 pub mod network_novel;
 pub mod select_history;
+pub mod settings;
 pub mod theme_setting;

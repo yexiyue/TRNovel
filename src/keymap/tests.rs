@@ -44,6 +44,9 @@ fn reader_defaults_build_and_match_legacy_keys() {
     assert_eq!(km.action_for(key!(k)), Some(ReaderAction::ScrollUp));
     assert_eq!(km.action_for(key!(down)), Some(ReaderAction::ScrollDown));
     assert_eq!(km.action_for(key!(pagedown)), Some(ReaderAction::PageDown));
+    // 空格与 PageDown 同义;提示行仍显示物理键(它排在首位)。
+    assert_eq!(km.action_for(key!(space)), Some(ReaderAction::PageDown));
+    assert_eq!(display_first_key(&km, ReaderAction::PageDown), "PageDown");
     assert_eq!(km.action_for(key!(home)), Some(ReaderAction::GoTop));
     #[cfg(feature = "tts")]
     {

@@ -21,7 +21,7 @@ pub use read_content::*;
 use std::sync::Arc;
 use tokio::sync::Notify;
 use tokio::time::{Duration, sleep};
-mod settings;
+pub(crate) mod settings;
 pub use settings::*;
 #[cfg(feature = "tts")]
 fn listening_panel(

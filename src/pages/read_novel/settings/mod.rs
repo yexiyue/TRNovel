@@ -6,7 +6,7 @@
 
 use crossterm::event::{Event, KeyCode, KeyEventKind, MouseEventKind};
 use ratatui::{
-    layout::{Constraint, Direction, Margin},
+    layout::{Constraint, Margin},
     style::Style,
     text::Line,
 };
@@ -19,12 +19,16 @@ use crate::{
     theme::AppChromeTheme,
 };
 
-/// 面板条目数(索引上界)。新增条目时同步改这里、`describe_setting`/`adjust`
-/// 与 `PANEL_HEIGHT` —— 三处对不上就会出现「能选中但没内容」的空条目。
-const ITEM_COUNT: usize = 9 + cfg!(feature = "tts") as usize;
+/// 浮层只放高频的 4 项,其余排版项与外观/键位/数据都在全局设置页(`/settings`)。
+/// 值是 `describe_setting` / `adjust` 的条目序号 —— 两处表格仍保持完整 11 项,
+/// 浮层只是挑其中 4 行来渲染,免得同一份文案写两遍。
+pub(crate) const SETTING_ROWS: [usize; 4] = [4, 3, 2, 6];
 
-/// 每个条目 3 行(含边框),每列 5 个,外加浮层自身的边框与外边距 5 行。
-const PANEL_HEIGHT: u16 = 5 * 3 + 5;
+/// 浮层条目数(索引上界)。
+const ITEM_COUNT: usize = SETTING_ROWS.len();
+
+/// 每个条目 3 行(含边框),共 4 个,外加浮层自身的边框与外边距 5 行。
+const PANEL_HEIGHT: u16 = 4 * 3 + 5;
 
 #[derive(Props, Default)]
 pub struct ReaderSettingsModalProps {
@@ -114,7 +118,7 @@ pub fn ReaderSettingsModal(
     }
 
     let hint = Line::from(format!(
-        "↑/↓ 选择 · ←/→ 调整 · {} 关闭",
+        "↑/↓ 选择 · ←/→ 调整 · {} 关闭 · 全部设置见首页「全局设置」",
         display_first_key(&reader_keymap, ReaderAction::ToggleReaderSettings)
     ))
     .centered()
@@ -129,7 +133,7 @@ pub fn ReaderSettingsModal(
     let page_step = config.page_step(visible);
 
     element!(Modal(
-        width:Constraint::Percentage(80),
+        width:Constraint::Percentage(70),
         height: Constraint::Length(PANEL_HEIGHT),
         open: is_open,
         layer: layer,
@@ -147,23 +151,13 @@ pub fn ReaderSettingsModal(
                 top_title: Line::from("阅读设置").centered().style(theme.title),
                 bottom_title: hint,
             ) {
-                // 条目多到一屏放不下时,双列比「加滚动窗口」更好按:所有项一次可见,
-                // 不用记自己翻到第几页。左列 = 行为,右列 = 版式。
-                View(flex_direction: Direction::Horizontal) {
-                    View(width: Constraint::Percentage(50)) {
-                        {setting_row(reader_display, index, 0, is_editing, &config, page_step)}
-                        {setting_row(reader_display, index, 1, is_editing, &config, page_step)}
-                        {setting_row(reader_display, index, 2, is_editing, &config, page_step)}
-                        {setting_row(reader_display, index, 3, is_editing, &config, page_step)}
-                        {setting_row(reader_display, index, 4, is_editing, &config, page_step)}
-                    }
-                    View(width: Constraint::Percentage(50)) {
-                        {setting_row(reader_display, index, 5, is_editing, &config, page_step)}
-                        {setting_row(reader_display, index, 6, is_editing, &config, page_step)}
-                        {setting_row(reader_display, index, 7, is_editing, &config, page_step)}
-                        {setting_row(reader_display, index, 8, is_editing, &config, page_step)}
-                        {follow_setting(reader_display, index, is_editing && index.get() == 9)}
-                    }
+                // 单列 4 项:26 行终端里也放得下,且每行都有足够的宽度显示完整值。
+                // 双列时代每列只剩 36 列,「2 行(每页滚动 19 行)」会被裁掉尾巴。
+                View {
+                    {setting_row(reader_display, index, 0, is_editing, &config, page_step)}
+                    {setting_row(reader_display, index, 1, is_editing, &config, page_step)}
+                    {setting_row(reader_display, index, 2, is_editing, &config, page_step)}
+                    {setting_row(reader_display, index, 3, is_editing, &config, page_step)}
                 }
             }
         }
@@ -181,14 +175,16 @@ fn setting_row(
     config: &crate::ReaderDisplayConfig,
     page_step: usize,
 ) -> AnyElement<'static> {
-    let (label, value) = describe_setting(config, row, page_step);
+    // row 是浮层里的行号(0..4),SETTING_ROWS 把它翻译成设置项序号。
+    let item = SETTING_ROWS[row];
+    let (label, value) = describe_setting(config, item, page_step);
     element!(View(height: Constraint::Length(3)) {
         AdjustableSettingItem(
             is_editing: is_editing && index.get() == row,
             label: label,
             value: value,
-            on_decrease: move |_| adjust(display, row, -1),
-            on_increase: move |_| adjust(display, row, 1),
+            on_decrease: move |_| adjust(display, item, -1),
+            on_increase: move |_| adjust(display, item, 1),
             on_click: focus_row(index, row),
         )
     })
@@ -196,7 +192,7 @@ fn setting_row(
 }
 
 /// 条目序号 → (标签, 当前值文案)。新增条目只改这里和 `adjust`,不必再动渲染树。
-fn describe_setting(
+pub(crate) fn describe_setting(
     config: &crate::ReaderDisplayConfig,
     row: usize,
     page_step: usize,
@@ -231,7 +227,12 @@ fn describe_setting(
             if config.lines_per_row == 0 {
                 "跟随窗口".to_string()
             } else {
-                format!("{} 字", config.lines_per_row)
+                // 一个汉字两列:写清列数,用户不必自己换算「30 字为什么这么窄」。
+                format!(
+                    "{} 字({} 列)",
+                    config.lines_per_row,
+                    config.lines_per_row * 2
+                )
             },
         ),
         5 => (
@@ -245,14 +246,15 @@ fn describe_setting(
         6 => ("边框:".to_string(), config.frameline.label().to_string()),
         7 => ("边框标题:".to_string(), on_off(config.show_frameline_title)),
         8 => ("快捷键提示:".to_string(), on_off(config.show_hint_bar)),
-        9 => ("跟随朗读:".to_string(), on_off(config.follow_tts)),
+        9 => ("↑/↓ 翻页:".to_string(), on_off(config.arrows_page)),
+        10 => ("跟随朗读:".to_string(), on_off(config.follow_tts)),
         _ => (String::new(), String::new()),
     }
 }
 
 /// 加减一个单位。方向用 i32 而非 bool,是因为多数条目真的有多档(0..=4 行空行),
 /// 只有开关型才把它折成真假。
-fn adjust(display: AtomState<crate::ReaderDisplayConfig>, row: usize, delta: i32) {
+pub(crate) fn adjust(display: AtomState<crate::ReaderDisplayConfig>, row: usize, delta: i32) {
     let mut config = display.write();
     match row {
         0 => {
@@ -300,34 +302,8 @@ fn adjust(display: AtomState<crate::ReaderDisplayConfig>, row: usize, delta: i32
         }
         7 => config.show_frameline_title = delta > 0,
         8 => config.show_hint_bar = delta > 0,
-        9 => config.follow_tts = delta > 0,
+        9 => config.arrows_page = delta > 0,
+        10 => config.follow_tts = delta > 0,
         _ => {}
     }
-}
-
-#[cfg(feature = "tts")]
-fn follow_setting(
-    config: AtomState<crate::ReaderDisplayConfig>,
-    index: ratatui_kit::State<usize>,
-    editing: bool,
-) -> AnyElement<'static> {
-    let value = if config.read().follow_tts {
-        "开"
-    } else {
-        "关"
-    };
-    element!(View(height: Constraint::Length(3)) {
-        AdjustableSettingItem(is_editing: editing, label: "跟随朗读:".to_string(), value: value.to_string(),
-            on_decrease: move |_| config.write().follow_tts = false,
-            on_increase: move |_| config.write().follow_tts = true,
-            on_click: focus_row(index, 9))
-    }).into_any()
-}
-#[cfg(not(feature = "tts"))]
-fn follow_setting(
-    _: AtomState<crate::ReaderDisplayConfig>,
-    _: ratatui_kit::State<usize>,
-    _: bool,
-) -> AnyElement<'static> {
-    element!(Fragment).into_any()
 }

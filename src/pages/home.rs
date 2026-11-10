@@ -41,11 +41,11 @@ fn navigate_menu(
         #[cfg(feature = "network")]
         2 => navigate.push("/select-history"),
         #[cfg(feature = "network")]
-        3 => navigate.push("/theme-setting"),
+        3 => navigate.push("/settings"),
         #[cfg(not(feature = "network"))]
         1 => navigate.push("/select-history"),
         #[cfg(not(feature = "network"))]
-        2 => navigate.push("/theme-setting"),
+        2 => navigate.push("/settings"),
         _ => {}
     }
 }

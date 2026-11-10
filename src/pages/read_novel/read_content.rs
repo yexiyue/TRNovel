@@ -246,10 +246,7 @@ pub fn ReadContent(
         .saturating_sub(2 * display.frameline.inset() as usize + 2 * display.h_margin as usize)
         .max(1);
     // 每行字数只是上限:窗口比它窄时按窗口走,否则正文会溢出边框。
-    let wrap_width = match display.lines_per_row {
-        0 => content_width,
-        chars => content_width.min(chars as usize),
-    };
+    let wrap_width = display.wrap_width(content_width);
 
     let local_search = hooks.use_state(ChapterSearch::default);
     let mut search = props.search.unwrap_or(local_search);
@@ -611,7 +608,27 @@ pub fn ReadContent(
         reader_keymap.clone(),
         {
             let handler = action_handler.clone();
-            move |action, _key| handler.lock().unwrap_or_else(|e| e.into_inner())(action)
+            let display = reader_display;
+            move |action, key| {
+                // 「↑/↓ 当翻页键」:直接按下的 Up/Down 换成整页翻,别的键(k/j、自定义键)
+                // 与 keymap 本身都不动 —— 改键位表会让 j/k 跟着变,那不符合「只是把方向键
+                // 调成翻页」的直觉。
+                let action = if display.read().arrows_page {
+                    match (action, key.code) {
+                        (ReaderAction::ScrollUp, ratatui_kit::crossterm::event::KeyCode::Up) => {
+                            ReaderAction::PageUp
+                        }
+                        (
+                            ReaderAction::ScrollDown,
+                            ratatui_kit::crossterm::event::KeyCode::Down,
+                        ) => ReaderAction::PageDown,
+                        _ => action,
+                    }
+                } else {
+                    action
+                };
+                handler.lock().unwrap_or_else(|e| e.into_inner())(action)
+            }
         },
     );
 

@@ -140,7 +140,7 @@ pub fn Layout(mut hooks: Hooks) -> impl Into<AnyElement<'static>> {
     element!(View {
         View(height: ratatui::layout::Constraint::Length(u16::from(show_header)))
         crate::components::ActionBar(menu: "更多") {
-            crate::components::ActionButton(label: "全局设置", on_press: move |_| navigate.push("/theme-setting"))
+            crate::components::ActionButton(label: "全局设置", on_press: move |_| navigate.push("/settings"))
             crate::components::ActionButton(label: if show_header { "隐藏顶部栏" } else { "显示顶部栏" }, shortcut: "F10 呼出", on_press: move |_| {
                 crate::components::action_bar::toggle_header(appearance);
             })
