@@ -150,6 +150,20 @@ cd TRNovel
 cargo build --release --locked -p trnovel --bins
 ```
 
+### 两种构建：全功能 / 纯本地
+
+网络书源位于 cargo feature `network`（**默认开启**）。默认构建与上游行为完全一致；只想读本地 TXT 时，关掉它可省掉浏览器抓取、JS 沙箱、加密字体解析等一整套依赖（实测约 516 → 226 个 crate，首次构建时间差别明显）：
+
+```sh
+# 全功能（含网络书源 + TTS）
+cargo build --release --locked -p trnovel --bins
+
+# 纯本地：无网络书源，保留本地阅读与 TTS
+cargo build --release --locked -p trnovel --bins --no-default-features --features tts
+```
+
+纯本地构建里 `-n`/`-d`/`-i` 与 `gen-fontmap` 子命令、首页「网络小说」入口、网络阅读路由都不存在；历史记录中已有的网络条目仍会正常显示，只是无法点开。若连 TTS 也不需要，再把 `--features tts` 去掉即可。
+
 Talechime 的源码构建和独立安装见[项目 README](https://github.com/yexiyue/talechime#installation)。worker 查找顺序为 `--tts-program`、`~/.trnovel/config.toml` 中的 `[tts].program`、PATH 中的 `talechime`。指定路径无效会直接报错；缺少程序显示安装链接，不自动下载或更新。
 
 开发入口与质量检查见 [AGENTS.md](AGENTS.md)。文档站位于 `docs/`：

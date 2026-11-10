@@ -1,3 +1,4 @@
+#[cfg(feature = "network")]
 use crate::cache::NetworkNovelCache;
 use chrono::{DateTime, Local};
 use serde::{Deserialize, Serialize};
@@ -13,6 +14,7 @@ pub struct NetworkHistoryItem {
     pub book_source: String,
 }
 
+#[cfg(feature = "network")]
 impl From<NetworkNovelCache> for NetworkHistoryItem {
     fn from(value: NetworkNovelCache) -> Self {
         Self {

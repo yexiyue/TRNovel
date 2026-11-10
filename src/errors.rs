@@ -17,6 +17,7 @@ pub enum Errors {
     #[error(transparent)]
     Json(#[from] serde_json::Error),
 
+    #[cfg(feature = "network")]
     #[error(transparent)]
     BookSource(#[from] parse_book_source::BookSourceError),
 

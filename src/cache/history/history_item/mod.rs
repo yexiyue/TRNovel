@@ -4,7 +4,9 @@ pub mod network_history_item;
 pub use network_history_item::NetworkHistoryItem;
 use serde::{Deserialize, Serialize};
 
-use crate::cache::{LocalNovelCache, NetworkNovelCache};
+use crate::cache::LocalNovelCache;
+#[cfg(feature = "network")]
+use crate::cache::NetworkNovelCache;
 
 /// 历史记录，分网络和本地，只用于在UI中展示数据
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -20,6 +22,7 @@ impl From<LocalNovelCache> for HistoryItem {
     }
 }
 
+#[cfg(feature = "network")]
 impl From<NetworkNovelCache> for HistoryItem {
     fn from(item: NetworkNovelCache) -> Self {
         HistoryItem::Network(item.into())

@@ -13,8 +13,14 @@ use ratatui::{
 use ratatui_kit::prelude::*;
 use tui_big_text::{BigText, PixelSize};
 
-/// 首页菜单项数,悬停/点击的行→索引映射与列表内容都以此为准。
-const MENU_LEN: usize = 4;
+/// 首页菜单项。无网络构建去掉「网络小说」,其余项与路由一一对应;
+/// 菜单长度、行→索引映射和列表内容都从这里派生,避免两套构建各写死一份。
+#[cfg(feature = "network")]
+const MENU: [&str; 4] = ["本地小说", "网络小说", "历史记录", "全局设置"];
+#[cfg(not(feature = "network"))]
+const MENU: [&str; 3] = ["本地小说", "历史记录", "全局设置"];
+
+const MENU_LEN: usize = MENU.len();
 
 /// 菜单导航:Enter 键与鼠标点击共用同一份目标路由。
 fn navigate_menu(
@@ -30,9 +36,16 @@ fn navigate_menu(
                 navigate.push("/select-file");
             }
         }
+        #[cfg(feature = "network")]
         1 => navigate.push("/book-source"),
+        #[cfg(feature = "network")]
         2 => navigate.push("/select-history"),
+        #[cfg(feature = "network")]
         3 => navigate.push("/theme-setting"),
+        #[cfg(not(feature = "network"))]
+        1 => navigate.push("/select-history"),
+        #[cfg(not(feature = "network"))]
+        2 => navigate.push("/theme-setting"),
         _ => {}
     }
 }
@@ -55,12 +68,11 @@ fn HomeMenu(props: &mut HomeMenuProps, mut hooks: Hooks) -> impl Into<AnyElement
     let props_is_editing = props.is_editing;
     let mut on_navigate = props.on_navigate.take();
 
-    let list = List::new(vec![
-        Line::from("本地小说").centered(),
-        Line::from("网络小说").centered(),
-        Line::from("历史记录").centered(),
-        Line::from("全局设置").centered(),
-    ])
+    let list = List::new(
+        MENU.iter()
+            .map(|label| Line::from(*label).centered())
+            .collect::<Vec<_>>(),
+    )
     .style(theme.text)
     .highlight_style(theme.selected);
 

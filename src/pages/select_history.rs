@@ -2,10 +2,11 @@ use crate::app::navigation::UseAppNavigate;
 use crate::components::{ActionBar, ActionButton};
 use std::path::PathBuf;
 
+#[cfg(feature = "network")]
+use crate::pages::network_novel::book_detail::BookDetailState;
 use crate::{
     History, HistoryItem,
     components::{ConfirmModal, KeyShortcutInfo, ShortcutInfoModal, list_select::ListSelect},
-    pages::network_novel::book_detail::BookDetailState,
     theme::AppChromeTheme,
 };
 use crossterm::event::{Event, KeyCode, KeyEventKind};
@@ -198,12 +199,16 @@ pub fn SelectHistory(mut hooks: Hooks) -> impl Into<AnyElement<'static>> {
                             PathBuf::from(path),
                         );
                     }
+                    // 无网络构建:历史里的网络条目照常显示,但点开没有对应页面。
+                    #[cfg(feature = "network")]
                     HistoryItem::Network(_) => {
                         navigate.push_with_state(
                             "/book-detail",
                             BookDetailState::from_cache(path),
                         );
                     }
+                    #[cfg(not(feature = "network"))]
+                    HistoryItem::Network(_) => {}
                 }
             },
         )

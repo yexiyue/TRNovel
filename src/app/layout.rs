@@ -1,8 +1,23 @@
 use crate::app::navigation::UseAppNavigate;
-use crate::{
-    Commands, History, HistoryItem, TRNovel, components::BrowserPromptModal,
-    pages::network_novel::book_detail::BookDetailState,
-};
+#[cfg(feature = "network")]
+use crate::components::BrowserPromptModal;
+#[cfg(feature = "network")]
+use crate::pages::network_novel::book_detail::BookDetailState;
+use crate::{Commands, History, HistoryItem, TRNovel};
+
+/// 浏览器授权弹窗只在网络构建里存在;无网络构建渲染零高度的占位元素,
+/// 让两种构建共用同一棵元素树(元素树里只能写组件名,不能写条件表达式)。
+#[cfg(feature = "network")]
+#[component]
+fn BrowserPromptSlot(_hooks: Hooks) -> impl Into<AnyElement<'static>> {
+    element!(BrowserPromptModal)
+}
+
+#[cfg(not(feature = "network"))]
+#[component]
+fn BrowserPromptSlot(_hooks: Hooks) -> impl Into<AnyElement<'static>> {
+    element!(View(height: ratatui::layout::Constraint::Length(0)))
+}
 use crossterm::event::{Event, KeyCode, KeyEventKind, KeyModifiers};
 use ratatui_kit::{
     AnyElement, EventPriority, EventResult, EventScope, Hooks, State, UseAtom, UseContext,
@@ -38,6 +53,7 @@ pub fn Layout(mut hooks: Hooks) -> impl Into<AnyElement<'static>> {
             if let Some(params) = params.clone() {
                 did_initial_nav.set(true);
                 match params.subcommand.clone() {
+                    #[cfg(feature = "network")]
                     Some(Commands::Network) => {
                         navigate.push("/book-source");
                     }
@@ -59,12 +75,16 @@ pub fn Layout(mut hooks: Hooks) -> impl Into<AnyElement<'static>> {
                                 HistoryItem::Local(_) => {
                                     navigate.push_with_state("/local-novel", PathBuf::from(path));
                                 }
+                                #[cfg(feature = "network")]
                                 HistoryItem::Network(_) => {
                                     navigate.push_with_state(
                                         "/book-detail",
                                         BookDetailState::from_cache(path.clone()),
                                     );
                                 }
+                                // 无网络构建:最近一条是网络小说时没有可续读的页面,保持停在首页。
+                                #[cfg(not(feature = "network"))]
+                                HistoryItem::Network(_) => {}
                             }
                         }
                     }
@@ -135,6 +155,6 @@ pub fn Layout(mut hooks: Hooks) -> impl Into<AnyElement<'static>> {
         )
         crate::components::action_menu::AppMenuPopup
         crate::components::ActionHint
-        BrowserPromptModal
+        BrowserPromptSlot
     })
 }
