@@ -25,3 +25,11 @@
 边框的 `padding` 会同时缩进边框内的所有子节点，包括状态栏。
 把正文 `Text` 单独包进 `View(height: Fill(1), margin: Margin::new(h_margin, 0))`，边框与状态栏保持原样：留白只影响正文，状态栏回到左右下角。
 `visible_lines` 的 chrome 不变（留白是水平方向）。
+
+## D5：首行缩进改用「首行更窄的宽度预算」
+
+`wrap_paragraph(text, first_width, width)` 逐段调用 `textwrap::wrap`：首行用 `width - indent`，续行用 `width`；用 `rest.find(chunk)` 回推每段在原文中的字节范围，空白落在两段之间的缝隙、不进入任何一段。
+这样既保留 textwrap 的 Unicode 折行规则（中文标点不落行首、英文单词不拆、超长词硬切），又能让缩进与正文共享同一份预算。
+缩进上限为 `width - 2`；`width == 0` 时退化为逐字行，与旧行为一致。
+行首空白会让 textwrap 先返回空段（宽度 0 时必现），需要跳过空段再取第一段，否则整段排版会提前中断。
+`total` 改为 `layout.lines.len()`，滚动上限与进度分母都基于真实渲染行数。

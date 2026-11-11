@@ -326,11 +326,12 @@ pub fn ReadContent(
     let is_scroll = props.is_scroll;
     // 滚动坐标系:以「内容总行数」为唯一绝对基准,三个量各司其职——
     //   total      正文总行数,落盘进度的分母(与视口无关,换终端尺寸后仍指向同一行)
-    //   view       可见行数(height - 3:上下边框 + 底部状态栏)
+    //              直接取预排版行数:每一行都已按 wrap_width 切好,含缩进也不超宽
+    //   view       可见行数(高度扣掉边框与底部状态栏,见 visible_lines)
     //   end_scroll 贴底位置(最后一行正好落在屏幕底部)= 章末判定线
     // 旧实现只有一个 `line_count`(实为 end_scroll)同时兼任滚动上限、进度分母与行号分母,
     // 分母含视口高度 → 进度随终端尺寸漂移,且末尾无法留白。
-    let total = paragraph.line_count(content_width as u16);
+    let total = layout.lines.len();
     let can_search = props.is_scroll && !props.is_loading;
     let view = visible_lines(height, &display);
     let end_scroll = total.saturating_sub(view);
@@ -791,7 +792,7 @@ pub fn ReadContent(
                 Text(
                     text: paragraph,
                     style:theme.content,
-                    scroll: (current_line as u16,0))
+                    scroll: (current_line.min(u16::MAX as usize) as u16,0))
             }).into_any()
         } }
         View(

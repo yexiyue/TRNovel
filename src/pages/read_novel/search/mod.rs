@@ -115,6 +115,42 @@ pub struct ContentLayout {
     indent: usize,
 }
 
+/// 按「首行可用宽度」与「续行宽度」分段换行,返回每段在原文中的字节范围。
+///
+/// 首行比其余行少一个缩进宽度。逐段调用 `textwrap` 而不是先算整段:这样首行与续行
+/// 可以有不同的宽度预算,同时仍复用 textwrap 的 Unicode 换行规则(不在中文标点前断行、
+/// 不拆英文单词、超长单词硬切)。
+fn wrap_paragraph(text: &str, first_width: usize, width: usize) -> Vec<(usize, usize)> {
+    let mut ranges = Vec::new();
+    let mut cursor = 0;
+    let mut current_width = first_width;
+    while cursor < text.len() {
+        let rest = &text[cursor..];
+        if rest.trim().is_empty() {
+            break;
+        }
+        // 行首空白会让 textwrap 先吐一个空段(宽度为 0 时更是如此),
+        // 跳过它再取第一个有内容的段,否则整段排版会在这里就断掉。
+        let Some(chunk) = textwrap::wrap(rest, current_width)
+            .into_iter()
+            .find(|chunk| !chunk.is_empty())
+        else {
+            break;
+        };
+        // textwrap 在软换行处会省略空白,返回的段可能不是从 rest 开头开始;
+        // 向前搜一次拿到真实起点,空白只落在两段之间的缝隙里,不进任何一段。
+        let start = cursor + rest.find(chunk.as_ref()).unwrap_or(0);
+        let end = start + chunk.len();
+        if end <= start {
+            break;
+        }
+        ranges.push((start, end));
+        cursor = end;
+        current_width = width;
+    }
+    ranges
+}
+
 impl ContentLayout {
     /// 旧签名(宽度 + 「要不要段间空行」),等价于 gap = spacing ? 1 : 0、不缩进。
     /// 生产路径已改走 [`Self::with_options`],留着是为了既有测试能继续表达旧行为。
@@ -131,8 +167,13 @@ impl ContentLayout {
     }
 
     pub fn with_options(text: &str, options: LayoutOptions) -> Self {
+        // 缩进是渲染时补的空格,不占 wrap 宽度;不预先从首行预算里扣掉的话,
+        // 「缩进 + 满宽正文」会越过正文区,`Paragraph` 又默认不换行,行尾直接被裁掉。
+        // 宽度极窄时缩进也要让位,否则首行预算归零。
+        let indent = options.indent.min(options.width.saturating_sub(2));
+        let first_width = options.width.saturating_sub(indent);
         let mut layout = Self {
-            indent: options.indent,
+            indent,
             ..Default::default()
         };
         let mut offset = 0;
@@ -161,18 +202,12 @@ impl ContentLayout {
                     }
                 }
                 let first = layout.lines.len();
-                let mut cursor = 0;
-                for wrapped in textwrap::wrap(line, options.width) {
-                    // Default textwrap options return contiguous source slices, omitting
-                    // only whitespace at soft wraps. Search forward to retain that gap.
-                    let start = cursor + line[cursor..].find(wrapped.as_ref()).unwrap_or(0);
-                    let end = start + wrapped.len();
+                for (start, end) in wrap_paragraph(line, first_width, options.width) {
                     layout.ranges.push(offset + start..offset + end);
-                    layout.lines.push(Line::from(wrapped.into_owned()));
+                    layout.lines.push(Line::from(line[start..end].to_string()));
                     layout
                         .paragraph_starts
                         .push(layout.lines.len() - 1 == first);
-                    cursor = end;
                 }
             }
             offset += raw.len();
@@ -265,6 +300,7 @@ impl ContentLayout {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use unicode_width::UnicodeWidthStr;
 
     #[test]
     fn input_draft_only_commits_on_enter_and_escape_preserves_results() {
@@ -306,10 +342,27 @@ mod tests {
         for text in samples {
             for width in [0, 1, 4, 11, 80] {
                 for spacing in [false, true] {
+                    let layout = ContentLayout::new(text, width, spacing);
+                    // 省略首行缩进后,渲染文本去掉空白应与原文一致:既不能丢字,
+                    // 也不能因为换行预算算错把行尾裁掉。
+                    let rendered: String = plain_text(&layout.lines)
+                        .chars()
+                        .filter(|c| !c.is_whitespace())
+                        .collect();
+                    let expected: String = text.chars().filter(|c| !c.is_whitespace()).collect();
                     assert_eq!(
-                        ContentLayout::new(text, width, spacing).lines,
-                        super::super::read_content::wrap_content(text, width, spacing)
+                        rendered, expected,
+                        "text={text:?} width={width} spacing={spacing}"
                     );
+                    // 宽字符(汉字)本身占 2 列,宽度 1 时不可能塞进一行,不参与该断言。
+                    if width >= 2 {
+                        for line in &layout.lines {
+                            assert!(
+                                rendered_width(line) <= width,
+                                "text={text:?} width={width} spacing={spacing} line={line:?}"
+                            );
+                        }
+                    }
                 }
             }
         }
@@ -349,6 +402,105 @@ mod tests {
         assert!(rendered[0].spans[0].content.starts_with("  "));
         // 补出来的空行不该被缩进污染宽度。
         assert!(rendered[1].spans.is_empty());
+    }
+
+    fn rendered_width(line: &Line<'static>) -> usize {
+        line.spans
+            .iter()
+            .map(|span| UnicodeWidthStr::width(span.content.as_ref()))
+            .sum()
+    }
+
+    fn plain_text(lines: &[Line<'static>]) -> String {
+        lines
+            .iter()
+            .map(|line| {
+                line.spans
+                    .iter()
+                    .map(|span| span.content.as_ref())
+                    .collect::<String>()
+            })
+            .collect::<Vec<_>>()
+            .join("")
+    }
+
+    /// 首行缩进必须从首行的换行预算里扣掉,否则缩进 + 满宽会被渲染层直接裁掉。
+    #[test]
+    fn indented_first_line_never_exceeds_the_wrap_width() {
+        let text = "abcdefghijklmnopqrstuvwxyz0123456789";
+        let layout = ContentLayout::with_options(
+            text,
+            LayoutOptions {
+                width: 10,
+                paragraph_gap: 0,
+                indent: 3,
+            },
+        );
+        let rendered = layout.styled(&[], 0, Style::default(), None);
+        for line in &rendered {
+            assert!(
+                rendered_width(line) <= 10,
+                "行宽 {} 超过 10: {:?}",
+                rendered_width(line),
+                plain_text(std::slice::from_ref(line))
+            );
+        }
+        assert!(rendered[0].spans[0].content.starts_with("   "));
+        assert_eq!(plain_text(&rendered).replace(' ', ""), text);
+    }
+
+    /// 缩进比整行还宽时不能把首行预算压成 0(那会一行只有缩进、正文另起)。
+    #[test]
+    fn oversized_indent_is_capped_instead_of_starving_the_first_line() {
+        let text = "一二三四五六";
+        let layout = ContentLayout::with_options(
+            text,
+            LayoutOptions {
+                width: 5,
+                paragraph_gap: 0,
+                indent: 20,
+            },
+        );
+        let rendered = layout.styled(&[], 0, Style::default(), None);
+        for line in &rendered {
+            assert!(rendered_width(line) <= 5, "{:?}", plain_text(&rendered));
+        }
+        assert_eq!(
+            plain_text(&rendered).replace(' ', ""),
+            text,
+            "缩进被钳制后正文不能缺字"
+        );
+    }
+
+    /// 中文标点不能被顶到行首 —— 续行预算也要受 textwrap 的 Unicode 断行约束。
+    #[test]
+    fn cjk_closing_punctuation_never_starts_a_wrapped_line() {
+        let text = "你好，世界。再见！朋友？";
+        let layout = ContentLayout::with_options(
+            text,
+            LayoutOptions {
+                width: 8,
+                paragraph_gap: 0,
+                indent: 2,
+            },
+        );
+        let rendered = layout.styled(&[], 0, Style::default(), None);
+        for line in &rendered {
+            let body = line
+                .spans
+                .iter()
+                .map(|span| span.content.as_ref())
+                .collect::<String>();
+            let body = body.trim_start();
+            assert!(
+                !matches!(
+                    body.chars().next(),
+                    Some('，' | '。' | '！' | '？' | '、' | '；' | '：')
+                ),
+                "标点跑到行首: {body:?}"
+            );
+        }
+        assert_eq!(plain_text(&rendered).replace(' ', ""), text);
     }
 
     #[test]
