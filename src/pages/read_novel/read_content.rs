@@ -9,7 +9,7 @@ use crate::{
 use ratatui::{
     layout::{Constraint, Direction, Flex, Margin},
     text::Line,
-    widgets::{Borders, Padding, Paragraph},
+    widgets::{Borders, Paragraph},
 };
 #[cfg(test)]
 use ratatui::{style::Style, text::Span};
@@ -489,8 +489,17 @@ pub fn ReadContent(
                 EventResult::Consumed
             }
             ReaderAction::ClearContentSearch if can_search => {
-                search.set(ChapterSearch::default());
-                EventResult::Consumed
+                // 没有搜索内容时把 Esc 让给全局返回(Esc 默认绑在「清除正文搜索」上)。
+                // 否则这一层会静默吞掉 Esc,阅读页就永远回不去——搜索为空时它本来
+                // 也没有可清除的东西,不消费才符合用户预期。
+                let state = search.read();
+                if state.query.is_empty() && !state.editing {
+                    EventResult::Ignored
+                } else {
+                    drop(state);
+                    search.set(ChapterSearch::default());
+                    EventResult::Consumed
+                }
             }
             ReaderAction::ScrollUp | ReaderAction::PageUp => {
                 if current_line > 0 {
@@ -761,9 +770,6 @@ pub fn ReadContent(
         // 无边框 = 连边都不画(字符集单线但 Borders 为空),同时省下 2 行给正文。
         borders: if frameline == crate::Frameline::None { Borders::NONE } else { Borders::ALL },
         border_set: frameline.border_set(),
-        // 左右留白做成内边距:正文与状态栏一起内缩,不会只有正文缩进、
-        // 状态栏却顶到框线上。
-        padding: Padding::new(display.h_margin, display.h_margin, 0, 0),
         top_title: if show_title && frameline != crate::Frameline::None && display.show_frameline_title {
             Some(Line::from(props.chapter_name.to_string()).style(theme.chapter).centered())
         }else{
@@ -778,11 +784,15 @@ pub fn ReadContent(
         { if props.is_loading {
             element!(Loading(tip:"加载内容中...")).into_any()
         }else{
-            element!(Text(
-                text: paragraph,
-                style:theme.content,
-                scroll: (current_line as u16,0))
-            ).into_any()
+            element!(View(
+                height: Constraint::Fill(1),
+                margin: Margin::new(display.h_margin,0),
+            ){
+                Text(
+                    text: paragraph,
+                    style:theme.content,
+                    scroll: (current_line as u16,0))
+            }).into_any()
         } }
         View(
             flex_direction: Direction::Horizontal,

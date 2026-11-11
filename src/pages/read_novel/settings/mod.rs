@@ -19,10 +19,13 @@ use crate::{
     theme::AppChromeTheme,
 };
 
-/// 浮层只放高频的 4 项,其余排版项与外观/键位/数据都在全局设置页(`/settings`)。
-/// 值是 `describe_setting` / `adjust` 的条目序号 —— 两处表格保持完整条目,
-/// 浮层只是挑其中 4 行来渲染,免得同一份文案写两遍。
-pub(crate) const SETTING_ROWS: [usize; 4] = [4, 3, 2, 6];
+/// 浮层按「常用在前」的顺序列出全部排版项;窗口高度不够时滚动显示。
+/// 值是 describe_setting / adjust 的条目序号 —— 两处表格保持完整条目,
+/// 浮层只是决定展示顺序,免得同一份文案写两遍。
+#[cfg(feature = "tts")]
+pub(crate) const SETTING_ROWS: &[usize] = &[4, 5, 3, 2, 6, 7, 8, TOC_ROW, 9, 0, 1, 10];
+#[cfg(not(feature = "tts"))]
+pub(crate) const SETTING_ROWS: &[usize] = &[4, 5, 3, 2, 6, 7, 8, TOC_ROW, 9, 0, 1];
 
 /// 「目录占宽」的条目序号:追加在现有条目末尾,避免打乱浮层已用的行号。
 /// tts 构建比非 tts 多「跟随朗读」一行,故用 cfg 偏移。
@@ -31,8 +34,11 @@ pub(crate) const TOC_ROW: usize = 10 + cfg!(feature = "tts") as usize;
 /// 浮层条目数(索引上界)。
 const ITEM_COUNT: usize = SETTING_ROWS.len();
 
-/// 每个条目 3 行(含边框),共 4 个,外加浮层自身的边框与外边距 5 行。
-const PANEL_HEIGHT: u16 = 4 * 3 + 5;
+/// 浮层每个条目 3 行(含边框),自身再占 5 行(边框 + 外边距);
+/// 可见行数按终端高度算,放不下的条目滚动显示。
+fn visible_rows(height: u16) -> usize {
+    (usize::from(height.saturating_sub(7) / 3)).clamp(1, ITEM_COUNT)
+}
 
 #[derive(Props, Default)]
 pub struct ReaderSettingsModalProps {
@@ -129,6 +135,13 @@ pub fn ReaderSettingsModal(
     .style(theme.muted);
 
     let config = *reader_display.read();
+    let rows = visible_rows(height);
+    // 整页翻:光标越过分页边界时窗口跟着跳一页,和列表页的翻页手感一致。
+    let offset = if ITEM_COUNT > rows {
+        ((index.get() / rows) * rows).min(ITEM_COUNT - rows)
+    } else {
+        0
+    };
     // 同屏展示派生步长:用户无法凭「2」想象效果,但看到「每页滚动 28 行」就懂了;
     // 终端极矮把步长压到 1 时也能一眼看见。
     let visible = props
@@ -138,7 +151,7 @@ pub fn ReaderSettingsModal(
 
     element!(Modal(
         width:Constraint::Percentage(70),
-        height: Constraint::Length(PANEL_HEIGHT),
+        height: Constraint::Length((rows * 3 + 5) as u16),
         open: is_open,
         layer: layer,
         margin: Margin::new(1, 1),
@@ -155,13 +168,12 @@ pub fn ReaderSettingsModal(
                 top_title: Line::from("阅读设置").centered().style(theme.title),
                 bottom_title: hint,
             ) {
-                // 单列 4 项:26 行终端里也放得下,且每行都有足够的宽度显示完整值。
+                // 单列窗口:按终端高度显示尽可能多的条目,剩下的用翻页窗口滚动。
                 // 双列时代每列只剩 36 列,「2 行(每页滚动 19 行)」会被裁掉尾巴。
                 View {
-                    {setting_row(reader_display, index, 0, is_editing, &config, page_step)}
-                    {setting_row(reader_display, index, 1, is_editing, &config, page_step)}
-                    {setting_row(reader_display, index, 2, is_editing, &config, page_step)}
-                    {setting_row(reader_display, index, 3, is_editing, &config, page_step)}
+                    for row in 0..rows {
+                        {setting_row(reader_display, index, offset + row, is_editing, &config, page_step)}
+                    }
                 }
             }
         }

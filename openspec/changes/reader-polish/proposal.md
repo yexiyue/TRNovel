@@ -1,0 +1,34 @@
+# Proposal: reader-polish
+
+## Why
+
+阅读页经过几轮排版增强后，出现了四个直接影响可用性的问题：
+
+1. **Esc 无法返回**：`esc` 默认绑给正文搜索的「清除搜索」，该动作在任何情况下都返回 Consumed，根布局的 Esc 返回兜底永远收不到事件，用户只能按 `b` 或 `q`。
+2. **O 浮层只显示 4 项**：为了不让浮层在 24 行终端里溢出，上一版把它砍成「每行字数 / 首行缩进 / 段间空行 / 边框」，其余设置只能去首页「全局设置」，与用户按 O 的预期不符。
+3. **目录长标题被截断**：目录栏收窄到 1/4 后，章节名超出列宽直接被裁掉，末尾的章节序号看不见。
+4. **留白把状态栏一起推走**：左右留白实现在边框 `padding` 上，底部的阅读进度、百分比与时间跟着正文缩进，不再贴角。
+
+## What Changes
+
+- 正文搜索为空且不在输入态时，`ClearContentSearch` 返回 Ignored，让 Esc 冒泡到根布局执行 `navigate.go(-1)`；有搜索词时仍然是「先清空」。
+- 「阅读设置」浮层恢复全部条目，按终端高度决定可见行数并整页滚动；面板高度随可见行数变化。
+- 目录树标题按目录栏实际宽度自动折行（含分卷标题），折行按显示宽度计算，CJK 占 2 列。
+- 左右留白只包住正文的 `Text`，状态栏单独渲染，进度与百分比回到框内左右下角。
+
+## Capabilities
+
+### Added Capabilities
+
+- `reader-settings-scroll`: 阅读设置浮层按高度滚动，全部排版项可达。
+
+### Modified Capabilities
+
+- `reader-display`: 留白仅影响正文；目录标题折行。
+- `reader-navigation`: Esc 在无搜索时返回上一页。
+
+## Impact
+
+- **修改代码**：`src/pages/read_novel/read_content.rs`、`src/pages/read_novel/select_chapter.rs`、`src/pages/read_novel/settings/mod.rs`、`README.md`。
+- **兼容性**：不新增配置字段，旧 `config.toml` 完全不变。
+- **行为变化**：Esc 在阅读页无搜索时由「无反应」变为「返回」；O 浮层条目变多、需要滚动。
