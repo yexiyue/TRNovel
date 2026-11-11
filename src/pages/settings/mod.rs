@@ -3,13 +3,14 @@
 //! 阅读页的 `o` 浮层只放 4 个高频排版项,其余条目都在这里;两处共用
 //! `super::read_novel::settings::{describe_setting, adjust}`,文案与边界钳制只有一份。
 //!
-//! 本页只写 `READER_DISPLAY` 与路由跳转,**不直接落盘**:阅读偏好的写盘由
-//! `ReadNovel` 的防抖 effect 负责,外观由主题设置页经 `ConfigStore` 负责。
+//! 阅读偏好在本页同样会改,所以本页自带一份防抖落盘 + 卸载兜底(与 `ReadNovel`
+//! 相同),否则在这里调完值直接退出会丢;外观由主题设置页经 `ConfigStore` 负责。
 
 use crate::{
     BackgroundMode,
     app::navigation::UseAppNavigate,
     components::{ActionBar, ActionButton, KeyShortcutInfo, ShortcutInfoModal},
+    hooks::{DebounceOptions, UseDebounceEffect},
     keymap::{ReaderAction, display_keys},
     pages::read_novel::{
         settings::{TOC_ROW, adjust, describe_setting},
@@ -141,6 +142,35 @@ pub fn Settings(mut hooks: Hooks) -> impl Into<AnyElement<'static>> {
     let mut cursor = hooks.use_state(move || initial_cursor);
     let mut info_open = hooks.use_state(|| false);
     let mut navigate = hooks.use_app_navigate();
+
+    // 本页也会改阅读偏好(「阅读」分组),而阅读页的防抖 effect 只在其自身挂载时
+    // 生效。若在这里调完值直接退出,改动只留在 atom 里、永远不会落盘。复制同一套
+    // 防抖 + 卸载兜底:初始化快照取进入本页时的值,挂载帧不会把刚 load 的配置写回。
+    let saved_reader = hooks.use_state(|| crate::state::READER_DISPLAY.get());
+    hooks.use_debounce_effect(
+        move || {
+            let current = *reader_display.read();
+            if current == saved_reader.get() {
+                return;
+            }
+            let mut saved_reader = saved_reader;
+            tokio::task::spawn_blocking(move || {
+                if current.save().is_ok() {
+                    saved_reader.set(current);
+                }
+            });
+        },
+        *reader_display.read(),
+        DebounceOptions::default(),
+    );
+    // 切页会 drop 本组件,防抖 future 不会 flush;必须同步补一次,否则 500ms 内的
+    // 改动在本进程内再也不会写盘(atom 已是新值,重进本页时快照直接相等)。
+    hooks.use_on_drop(move || {
+        let current = *reader_display.read();
+        if current != saved_reader.get() {
+            let _ = current.save();
+        }
+    });
 
     hooks.use_event_handler(EventScope::Current, EventPriority::Normal, move |event| {
         // 帮助浮层自己持有输入,别让 Esc/Tab 穿透到分组导航。

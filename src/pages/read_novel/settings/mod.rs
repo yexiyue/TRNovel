@@ -330,3 +330,25 @@ pub(crate) fn adjust(display: AtomState<crate::ReaderDisplayConfig>, row: usize,
         _ => {}
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn setting_rows_cover_every_item_exactly_once() {
+        let mut rows = SETTING_ROWS.to_vec();
+        rows.sort_unstable();
+        assert_eq!(rows, (0..SETTING_ROWS.len()).collect::<Vec<_>>());
+    }
+
+    #[test]
+    fn every_setting_has_a_label_and_value() {
+        let config = crate::ReaderDisplayConfig::default();
+        for (index, row) in SETTING_ROWS.iter().enumerate() {
+            let (label, value) = describe_setting(&config, *row, 28);
+            assert!(!label.is_empty(), "条目 {index} 没有标签");
+            assert!(!value.is_empty(), "条目 {index} 没有值文案");
+        }
+    }
+}

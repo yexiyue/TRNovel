@@ -5,7 +5,7 @@ use ratatui_kit::Palette;
 use ratatui_kit_themes::{IntoKitPalette, ThemeName, terminal_background};
 use serde::{Deserialize, Serialize};
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(default, rename_all = "snake_case")]
 pub struct AppearanceConfig {
     pub theme_slug: String,
@@ -585,6 +585,55 @@ mod tests {
         assert_eq!(palette.accent, themed.accent);
         assert_eq!(palette.fg, themed.fg);
     }
+    #[test]
+    fn every_reader_display_field_survives_serialization() {
+        // 逐字段给非默认值:任何字段漏写 serde 或 default 用错,这里都会掉回默认。
+        let config = ReaderDisplayConfig {
+            follow_tts: false,
+            show_title: false,
+            page_overlap: 7,
+            paragraph_spacing: true,
+            show_hint_bar: false,
+            lines_per_row: 42,
+            first_line_indent: 5,
+            paragraph_gap: 3,
+            h_margin: 4,
+            frameline: Frameline::Rounded,
+            show_frameline_title: false,
+            toc_ratio: TocRatio::Quarter,
+            arrows_page: true,
+        };
+        let text = toml::to_string(&config).unwrap();
+        let restored: ReaderDisplayConfig = toml::from_str(&text).unwrap();
+        assert_eq!(restored, config);
+    }
+
+    #[test]
+    fn every_appearance_field_survives_serialization() {
+        let custom = CustomTheme {
+            name: "我的方案".to_string(),
+            slug: "custom-1".to_string(),
+            base: "rice-paper".to_string(),
+            colors: [
+                ("fg".to_string(), "#112233".to_string()),
+                ("accent".to_string(), "#445566".to_string()),
+            ]
+            .into_iter()
+            .collect(),
+            ..Default::default()
+        };
+        let config = AppearanceConfig {
+            theme_slug: "custom-1".to_string(),
+            background: BackgroundMode::Theme,
+            show_header: false,
+            confirm_exit: false,
+            custom_themes: vec![custom],
+        };
+        let text = toml::to_string(&config).unwrap();
+        let restored: AppearanceConfig = toml::from_str(&text).unwrap();
+        assert_eq!(restored, config);
+    }
+
     #[test]
     fn legacy_reader_config_gets_reading_defaults() {
         // 旧版本只写了 show_title:新字段一律走默认,不能因为缺字段就报错或归零。
