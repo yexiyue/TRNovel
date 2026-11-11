@@ -22,6 +22,8 @@
 - [x] 3.2 `ReaderDisplayConfig.arrows_page`（`serde(default)`，默认 false）
 - [x] 3.3 `ReadContent` 在 `arrows_page` 开启时把实际按下的 ↑/↓ 翻译为 PageUp/PageDown
 - [x] 3.4 设置条目 9「↑/↓ 翻页」，浮层与设置页同步
+- [x] 3.5 设置条目末尾追加「目录占宽 1/4｜1/3｜1/2」（`TOC_ROW`），`reading_rows()` 同步，`SETTING_ROWS` 浮层不变
+- [x] 3.6 单测：`TocRatio` 序列化往返与非法值回落、宽度换算（80 → 20/26/40）
 
 ## 4. 测试与文档
 

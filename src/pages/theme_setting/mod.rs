@@ -4,67 +4,58 @@ use crate::{
     theme::{
         AppChromeTheme,
         presets::{
-            CUSTOM_COLORS, CustomTheme, ThemeChoice, ThemeEntry, color_to_hex, nearest_custom_color,
+            CUSTOM_COLORS, CustomTheme, PALETTE_FIELDS, ThemeChoice, ThemeEntry, color_to_hex,
+            nearest_custom_color, palette_field, parse_hex_color,
         },
     },
 };
 use crossterm::event::{Event, KeyCode, KeyEventKind};
 use ratatui::{
     layout::{Constraint, Layout},
-    style::{Modifier, Style},
+    style::{Color, Modifier, Style},
     text::{Line, Span},
     widgets::{Block, Padding, Paragraph, Widget, WidgetRef},
 };
 use ratatui_kit::prelude::*;
+use std::collections::BTreeMap;
 use tui_widget_list::ListState;
 
-/// 弹窗里的 5 个可编辑字段, 顺序即 Tab 的移动顺序。
-const EDITOR_FIELDS: usize = 5;
-const FIELD_NAME: usize = 0;
-const FIELD_BASE: usize = 1;
-const FIELD_BG: usize = 2;
-const FIELD_FG: usize = 3;
-const FIELD_ACCENT: usize = 4;
+/// 编辑器里 Tab 轮换的三个区域。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum EditorFocus {
+    Name,
+    Base,
+    Colors,
+}
+
+/// 颜色列表一次最多显示 9 行; 其余靠滚动, 15 个字段也不会把弹窗撑出屏幕。
+const VISIBLE_COLORS: usize = 9;
 
 #[derive(Debug, Clone)]
 struct CustomDraft {
+    /// 编辑已有方案时保留原 slug; 新建时为 None。
+    editing_slug: Option<String>,
     name: String,
-    active: usize,
+    focus: EditorFocus,
     base: usize,
-    bg: usize,
-    fg: usize,
-    accent: usize,
+    /// 当前选中的调色字段下标, 与 PALETTE_FIELDS 同序。
+    field: usize,
+    /// 每个字段当前选中的颜色, 与 PALETTE_FIELDS 同序。
+    colors: Vec<Color>,
+    /// 手输的 #rrggbb 草稿; 空表示仍用 16 色色格。
+    hex_input: String,
 }
 
 impl Default for CustomDraft {
     fn default() -> Self {
         Self {
+            editing_slug: None,
             name: String::new(),
-            active: FIELD_NAME,
+            focus: EditorFocus::Name,
             base: 0,
-            bg: 0,
-            fg: 1,
-            accent: 10,
-        }
-    }
-}
-
-impl CustomDraft {
-    fn color_index(&self, field: usize) -> Option<usize> {
-        match field {
-            FIELD_BG => Some(self.bg),
-            FIELD_FG => Some(self.fg),
-            FIELD_ACCENT => Some(self.accent),
-            _ => None,
-        }
-    }
-
-    fn color_index_mut(&mut self, field: usize) -> Option<&mut usize> {
-        match field {
-            FIELD_BG => Some(&mut self.bg),
-            FIELD_FG => Some(&mut self.fg),
-            FIELD_ACCENT => Some(&mut self.accent),
-            _ => None,
+            field: 0,
+            colors: vec![Color::Reset; PALETTE_FIELDS.len()],
+            hex_input: String::new(),
         }
     }
 }
@@ -166,49 +157,78 @@ impl ThemeListItem {
     }
 }
 
-/// 打开编辑器时用当前生效配色预填。
+/// 当前生效的完整色板。
 ///
-/// 「从现有配色出发」不是再让用户从头挑 16 色: 名称、base 与三个颜色都取当前主题,
-/// 用户只需要微调想改的那一格。
+/// 不用 config.palette(): 后者在「终端背景」模式下把 bg/surface/overlay 换成
+/// Reset, 用它预填颜色会退化成「终端默认」, 编辑弹窗就失去意义。
+fn effective_palette(config: &AppearanceConfig) -> ratatui_kit::Palette {
+    config
+        .custom_theme(&config.theme_slug)
+        .map(CustomTheme::palette)
+        .or_else(|| ThemeChoice::from_slug(&config.theme_slug).map(ThemeChoice::palette))
+        .unwrap_or_else(|| ThemeChoice::Builtin(config.theme_name()).palette())
+}
+
+/// 打开编辑器: edit_slug 有值时预填该自定义方案, 否则从当前配色新建。
 fn open_custom_editor<N: ratatui_kit::Notifier>(
     appearance: ratatui_kit::ReactiveHandle<AppearanceConfig, N>,
     mut draft: ratatui_kit::State<CustomDraft>,
     mut editor_open: ratatui_kit::State<bool>,
+    edit_slug: Option<String>,
 ) {
     let config = appearance.read();
-    let base_slug = config
-        .custom_theme(&config.theme_slug)
-        .map(|theme| theme.base.clone())
-        .unwrap_or_else(|| config.theme_slug.clone());
-    // 直接取主题色板而不是 config.palette(): 后者在「终端背景」模式下会把 bg 换成 Reset,
-    // 用 Reset 找最近色格只会永远落在第一个墨黑, 预填就失去意义。
-    let palette = config
-        .custom_theme(&config.theme_slug)
-        .map(CustomTheme::palette)
-        .or_else(|| ThemeChoice::from_slug(&config.theme_slug).map(ThemeChoice::palette))
-        .unwrap_or_else(|| ThemeChoice::Builtin(config.theme_name()).palette());
+    let editing = edit_slug
+        .as_deref()
+        .and_then(|slug| config.custom_theme(slug))
+        .cloned();
+    let (name, base_slug, palette, editing_slug) = match editing {
+        Some(theme) => (
+            theme.name.clone(),
+            theme.base.clone(),
+            theme.palette(),
+            Some(theme.slug),
+        ),
+        None => {
+            let base_slug = config
+                .custom_theme(&config.theme_slug)
+                .map(|theme| theme.base.clone())
+                .unwrap_or_else(|| config.theme_slug.clone());
+            let slug = CustomTheme::next_slug(&config.custom_themes);
+            let suffix = slug.trim_start_matches("custom-");
+            (
+                format!("自定义 {suffix}"),
+                base_slug,
+                effective_palette(&config),
+                None,
+            )
+        }
+    };
     let base = ThemeChoice::all()
         .iter()
         .position(|choice| choice.slug() == base_slug)
         .unwrap_or(0);
-    let suffix = CustomTheme::next_slug(&config.custom_themes);
-    let suffix = suffix.trim_start_matches("custom-");
+    let colors = PALETTE_FIELDS
+        .iter()
+        .map(|field| palette_field(&palette, field.key).unwrap_or(Color::Reset))
+        .collect();
 
     draft.set(CustomDraft {
-        name: format!("自定义 {suffix}"),
-        active: FIELD_NAME,
+        editing_slug,
+        name,
+        focus: EditorFocus::Name,
         base,
-        bg: nearest_custom_color(palette.bg),
-        fg: nearest_custom_color(palette.fg),
-        accent: nearest_custom_color(palette.accent),
+        field: 0,
+        colors,
+        hex_input: String::new(),
     });
     drop(config);
     editor_open.set(true);
 }
 
-/// 把编辑器里的色格写回配置并立即应用。
+/// 把编辑器里的逐字段颜色写回配置并立即应用。
 ///
-/// 保存后把列表选中项移到新条目, 否则用户会看到配色变了、光标却还停在原来那一行。
+/// 只记录与 base 色板不同的字段, 未改的字段继续继承 base; 编辑已有方案时覆盖
+/// 同一个 slug 和列表位置, 新建时追加到「自定义」分组。
 fn save_custom_theme<N: ratatui_kit::Notifier>(
     mut appearance: ratatui_kit::ReactiveHandle<AppearanceConfig, N>,
     draft: ratatui_kit::State<CustomDraft>,
@@ -224,20 +244,47 @@ fn save_custom_theme<N: ratatui_kit::Notifier>(
 
     let choices = ThemeChoice::all();
     let base = choices.get(draft.base).copied().unwrap_or(choices[0]);
-    let color_hex = |index: usize| {
-        color_to_hex(CUSTOM_COLORS[index % CUSTOM_COLORS.len()].color).unwrap_or_default()
-    };
+    let base_palette = base.palette();
+    let mut colors = BTreeMap::new();
+    for (field, color) in PALETTE_FIELDS.iter().zip(draft.colors.iter()) {
+        let base_color = palette_field(&base_palette, field.key).unwrap_or(Color::Reset);
+        if *color == base_color {
+            continue;
+        }
+        if let Some(hex) = color_to_hex(*color) {
+            colors.insert(field.key.to_string(), hex);
+        }
+    }
 
-    let mut next = appearance.read().clone();
-    let slug = CustomTheme::next_slug(&next.custom_themes);
-    next.custom_themes.push(CustomTheme {
+    let theme = CustomTheme {
         name: name.to_string(),
-        slug: slug.clone(),
+        slug: String::new(),
         base: base.slug().to_string(),
-        bg: color_hex(draft.bg),
-        fg: color_hex(draft.fg),
-        accent: color_hex(draft.accent),
-    });
+        bg: String::new(),
+        fg: String::new(),
+        accent: String::new(),
+        colors,
+    };
+    let mut next = appearance.read().clone();
+    let slug = match draft.editing_slug.as_deref() {
+        Some(slug) if next.custom_theme(slug).is_some() => {
+            if let Some(existing) = next.custom_themes.iter_mut().find(|item| item.slug == slug) {
+                *existing = CustomTheme {
+                    slug: slug.to_string(),
+                    ..theme
+                };
+            }
+            slug.to_string()
+        }
+        _ => {
+            let slug = CustomTheme::next_slug(&next.custom_themes);
+            next.custom_themes.push(CustomTheme {
+                slug: slug.clone(),
+                ..theme
+            });
+            slug
+        }
+    };
     next.theme_slug = slug.clone();
     let _ = next.save();
     appearance.set(next.clone());
@@ -278,12 +325,38 @@ pub fn ThemeSetting(mut hooks: Hooks) -> impl Into<AnyElement<'static>> {
         .position(|entry| entry.slug() == current_slug)
         .unwrap_or(0);
     let first_custom = entries.iter().position(ThemeEntry::is_custom);
+    // 恢复上次停留的主题项；列表变短(删掉自定义主题)时钳到最后一项，
+    // 没有记忆时仍落在当前生效主题上。
+    let initial_index = crate::app::ui_memory::restored_index(
+        crate::app::ui_memory::THEME_SETTING,
+        entries.len(),
+        selected_index,
+    );
     let list_state = hooks.use_state(move || {
         let mut state = ListState::default();
-        state.selected = Some(selected_index);
+        state.selected = Some(initial_index);
         state
     });
+    let selected_custom = list_state
+        .read()
+        .selected
+        .and_then(|index| entries.get(index))
+        .and_then(|entry| match entry {
+            ThemeEntry::Custom(custom) => Some(custom.slug.clone()),
+            _ => None,
+        });
     let editor_layer = hooks.use_input_layer(editor_open.get(), true);
+
+    // 光标变化就写回，离开再回来时恢复。
+    let selected = list_state.read().selected;
+    hooks.use_effect(
+        move || {
+            if let Some(index) = selected {
+                crate::app::ui_memory::save_index(crate::app::ui_memory::THEME_SETTING, index);
+            }
+        },
+        selected,
+    );
 
     let mut toggle_background = move |_: ()| {
         let mut next = appearance.read().clone();
@@ -304,7 +377,6 @@ pub fn ThemeSetting(mut hooks: Hooks) -> impl Into<AnyElement<'static>> {
 
     hooks.use_event_handler(EventScope::Current, EventPriority::Normal, {
         let entries = entries.clone();
-        let open_editor = move || open_custom_editor(appearance, draft, editor_open);
         move |event| {
             let Event::Key(key) = event else {
                 return EventResult::Ignored;
@@ -326,8 +398,25 @@ pub fn ThemeSetting(mut hooks: Hooks) -> impl Into<AnyElement<'static>> {
                     EventResult::Consumed
                 }
                 KeyCode::Char('n') | KeyCode::Char('N') => {
-                    open_editor();
+                    open_custom_editor(appearance, draft, editor_open, None);
                     EventResult::Consumed
+                }
+                KeyCode::Char('e') | KeyCode::Char('E') => {
+                    // 只编辑自定义方案: 预设与内置主题没有可覆盖的 slug。
+                    let target = list_state
+                        .read()
+                        .selected
+                        .and_then(|index| entries.get(index))
+                        .and_then(|entry| match entry {
+                            ThemeEntry::Custom(custom) => Some(custom.slug.clone()),
+                            _ => None,
+                        });
+                    if let Some(slug) = target {
+                        open_custom_editor(appearance, draft, editor_open, Some(slug));
+                        EventResult::Consumed
+                    } else {
+                        EventResult::Ignored
+                    }
                 }
                 KeyCode::Char('x') | KeyCode::Char('X') => {
                     // 只允许删除自定义项: 预设与内置主题是代码资产, 不该被配置删掉。
@@ -385,39 +474,88 @@ pub fn ThemeSetting(mut hooks: Hooks) -> impl Into<AnyElement<'static>> {
                     save_custom_theme(appearance, draft, editor_open, list_state);
                     EventResult::Consumed
                 }
-                KeyCode::Tab | KeyCode::Down | KeyCode::Up | KeyCode::BackTab => {
+                KeyCode::Tab | KeyCode::BackTab => {
                     let mut next = draft.read().clone();
-                    let forward = !matches!(key.code, KeyCode::Up | KeyCode::BackTab);
-                    next.active = if forward {
-                        (next.active + 1) % EDITOR_FIELDS
-                    } else {
-                        (next.active + EDITOR_FIELDS - 1) % EDITOR_FIELDS
+                    next.focus = match (key.code, next.focus) {
+                        (KeyCode::BackTab, EditorFocus::Name) => EditorFocus::Colors,
+                        (KeyCode::BackTab, EditorFocus::Base) => EditorFocus::Name,
+                        (KeyCode::BackTab, EditorFocus::Colors) => EditorFocus::Base,
+                        (_, EditorFocus::Name) => EditorFocus::Base,
+                        (_, EditorFocus::Base) => EditorFocus::Colors,
+                        (_, EditorFocus::Colors) => EditorFocus::Name,
                     };
+                    next.hex_input.clear();
+                    draft.set(next);
+                    EventResult::Consumed
+                }
+                KeyCode::Up | KeyCode::Down => {
+                    let mut next = draft.read().clone();
+                    next.focus = EditorFocus::Colors;
+                    let len = PALETTE_FIELDS.len();
+                    next.field = if key.code == KeyCode::Down {
+                        (next.field + 1) % len
+                    } else {
+                        (next.field + len - 1) % len
+                    };
+                    next.hex_input.clear();
                     draft.set(next);
                     EventResult::Consumed
                 }
                 KeyCode::Left | KeyCode::Right => {
                     let mut next = draft.read().clone();
                     let delta = if key.code == KeyCode::Right { 1 } else { -1 };
-                    if next.active == FIELD_BASE {
-                        let len = ThemeChoice::all().len();
-                        next.base = (next.base as isize + delta).rem_euclid(len as isize) as usize;
-                    } else if let Some(index) = next.color_index_mut(next.active) {
-                        let len = CUSTOM_COLORS.len();
-                        *index = (*index as isize + delta).rem_euclid(len as isize) as usize;
+                    match next.focus {
+                        EditorFocus::Base => {
+                            let len = ThemeChoice::all().len();
+                            next.base =
+                                (next.base as isize + delta).rem_euclid(len as isize) as usize;
+                        }
+                        EditorFocus::Colors => {
+                            let len = CUSTOM_COLORS.len();
+                            let current = nearest_custom_color(next.colors[next.field]);
+                            let index =
+                                (current as isize + delta).rem_euclid(len as isize) as usize;
+                            next.colors[next.field] = CUSTOM_COLORS[index].color;
+                            next.hex_input.clear();
+                        }
+                        EditorFocus::Name => {}
                     }
                     draft.set(next);
                     EventResult::Consumed
                 }
-                KeyCode::Backspace if draft.read().active == FIELD_NAME => {
+                KeyCode::Backspace => {
                     let mut next = draft.read().clone();
-                    next.name.pop();
+                    match next.focus {
+                        EditorFocus::Name => {
+                            next.name.pop();
+                        }
+                        EditorFocus::Colors => {
+                            next.hex_input.pop();
+                            if let Some(color) = parse_hex_color(&next.hex_input) {
+                                next.colors[next.field] = color;
+                            }
+                        }
+                        EditorFocus::Base => {}
+                    }
                     draft.set(next);
                     EventResult::Consumed
                 }
-                KeyCode::Char(ch) if draft.read().active == FIELD_NAME && !ch.is_control() => {
+                KeyCode::Char(ch) => {
                     let mut next = draft.read().clone();
-                    next.name.push(ch);
+                    match next.focus {
+                        EditorFocus::Name if !ch.is_control() => next.name.push(ch),
+                        EditorFocus::Colors if ch == '#' || ch.is_ascii_hexdigit() => {
+                            // 输满 7 位后重新开一段, 让用户可以直接覆盖上一份 hex。
+                            if next.hex_input.len() >= 7 {
+                                next.hex_input.clear();
+                            }
+                            next.hex_input.push(ch);
+                            if let Some(color) = parse_hex_color(&next.hex_input) {
+                                next.colors[next.field] = color;
+                            }
+                        }
+                        _ => {}
+                    }
                     draft.set(next);
                     EventResult::Consumed
                 }
@@ -426,6 +564,7 @@ pub fn ThemeSetting(mut hooks: Hooks) -> impl Into<AnyElement<'static>> {
         },
     );
 
+    let edit_selected = selected_custom;
     let base_choices = ThemeChoice::all();
     let draft_snapshot = draft.read().clone();
     let editor_lines = custom_editor_lines(&draft_snapshot, &base_choices, theme);
@@ -439,7 +578,12 @@ pub fn ThemeSetting(mut hooks: Hooks) -> impl Into<AnyElement<'static>> {
             crate::components::ActionButton(label: if appearance.read().confirm_exit { "退出确认：开启" } else { "退出确认：关闭" }, shortcut: "C", on_press: toggle_confirm_exit)
             crate::components::ActionButton(label: "重置外观", shortcut: "D", on_press: move |_| reset_modal_open.set(true))
             crate::components::ActionButton(label: "帮助", shortcut: "I", on_press: move |_| info_modal_open.set(true))
-            crate::components::ActionButton(label: "新建配色", shortcut: "N", on_press: move |_| open_custom_editor(appearance, draft, editor_open))
+            crate::components::ActionButton(label: "新建配色", shortcut: "N", on_press: move |_| open_custom_editor(appearance, draft, editor_open, None))
+            crate::components::ActionButton(label: "编辑配色", shortcut: "E", on_press: move |_| {
+                if let Some(slug) = edit_selected.clone() {
+                    open_custom_editor(appearance, draft, editor_open, Some(slug));
+                }
+            })
         }
         ListSelect<ThemeEntry>(
             items: entries.clone(),
@@ -489,6 +633,7 @@ pub fn ThemeSetting(mut hooks: Hooks) -> impl Into<AnyElement<'static>> {
                 ("选择上一个", "K / ▲"),
                 ("应用主题", "Enter"),
                 ("新建自定义方案", "N"),
+                ("编辑当前自定义方案", "E"),
                 ("删除当前自定义方案", "X"),
                 ("切换终端背景", "T"),
                 ("退出前确认", "C"),
@@ -566,13 +711,20 @@ pub fn ThemeSetting(mut hooks: Hooks) -> impl Into<AnyElement<'static>> {
         )
         Modal(
             open: editor_open.get(),
-            width: Constraint::Percentage(60),
-            height: Constraint::Length(14),
+            width: Constraint::Percentage(80),
+            height: Constraint::Length(20),
             layer: editor_layer,
             style: Style::new().dim(),
         ){
             Border(
-                top_title: Some(Line::from("新建自定义方案").style(theme.title)),
+                top_title: Some(
+                    Line::from(if draft_snapshot.editing_slug.is_some() {
+                        "编辑方案"
+                    } else {
+                        "新建方案"
+                    })
+                    .style(theme.title),
+                ),
                 border_style: theme.border,
             ){
                 View {
@@ -583,66 +735,110 @@ pub fn ThemeSetting(mut hooks: Hooks) -> impl Into<AnyElement<'static>> {
     })
 }
 
-/// 编辑器正文: 每行一个字段, 当前行高亮, 颜色字段带真正铺色的色块。
+/// 编辑器正文: 逐项列出 Palette 字段, 带色块与用途说明, 颜色列表可滚动。
 fn custom_editor_lines(
     draft: &CustomDraft,
     base_choices: &[ThemeChoice],
     theme: AppChromeTheme,
 ) -> Vec<Line<'static>> {
-    let active_label = |field: usize| {
-        if draft.active == field {
-            theme.highlight.add_modifier(Modifier::BOLD)
+    let focus_style = |focus: EditorFocus| {
+        if draft.focus == focus {
+            theme.selected
         } else {
             theme.meta_label
         }
     };
-    let cursor = if draft.active == FIELD_NAME {
+    let cursor = if draft.focus == EditorFocus::Name {
         "▏"
     } else {
         ""
     };
-    let mut lines = vec![Line::from(vec![
-        Span::from("名称  ").style(active_label(FIELD_NAME)),
-        Span::from(format!("{}{cursor}", draft.name)).style(theme.text),
-    ])];
+    let mut lines = vec![
+        Line::from(vec![
+            Span::from("名称  ").style(focus_style(EditorFocus::Name)),
+            Span::from(format!("{}{cursor}", draft.name)).style(theme.text),
+        ]),
+        {
+            let base = base_choices
+                .get(draft.base)
+                .copied()
+                .unwrap_or(base_choices[0]);
+            Line::from(vec![
+                Span::from("基于  ").style(focus_style(EditorFocus::Base)),
+                Span::from("◀ ").style(theme.meta_label),
+                Span::from(base.display_name()).style(theme.text),
+                Span::from(" ▶").style(theme.meta_label),
+            ])
+        },
+        {
+            let mut spans = vec![
+                Span::from("颜色  ").style(focus_style(EditorFocus::Colors)),
+                Span::from(format!(
+                    "第 {}/{} 项",
+                    draft.field + 1,
+                    PALETTE_FIELDS.len()
+                ))
+                .style(theme.meta_label),
+            ];
+            if draft.focus == EditorFocus::Colors && !draft.hex_input.is_empty() {
+                spans.push(
+                    Span::from(format!(" · 输入 {}", draft.hex_input)).style(theme.highlight),
+                );
+            }
+            Line::from(spans)
+        },
+    ];
 
-    let base = base_choices
-        .get(draft.base)
-        .copied()
-        .unwrap_or(base_choices[0]);
-    lines.push(Line::from(vec![
-        Span::from("基于  ").style(active_label(FIELD_BASE)),
-        Span::from("◀ ").style(theme.meta_label),
-        Span::from(base.display_name()).style(theme.text),
-        Span::from(" ▶").style(theme.meta_label),
-    ]));
-
-    for (field, label) in [
-        (FIELD_BG, "底色  "),
-        (FIELD_FG, "正文色"),
-        (FIELD_ACCENT, "强调色"),
-    ] {
-        let index = draft.color_index(field).unwrap_or(0);
-        let color = CUSTOM_COLORS[index % CUSTOM_COLORS.len()];
-        let hex = color_to_hex(color.color).unwrap_or_default();
+    let start = draft.field.saturating_sub(VISIBLE_COLORS - 1);
+    let end = (start + VISIBLE_COLORS).min(PALETTE_FIELDS.len());
+    for (index, field) in PALETTE_FIELDS.iter().enumerate().take(end).skip(start) {
+        let selected = draft.focus == EditorFocus::Colors && index == draft.field;
+        let label_style = if selected {
+            theme.selected
+        } else if index == draft.field {
+            theme.highlight
+        } else {
+            theme.meta_label
+        };
+        let color = draft.colors.get(index).copied().unwrap_or(Color::Reset);
+        let hex = color_to_hex(color).unwrap_or_else(|| "默认".to_string());
         lines.push(Line::from(vec![
-            Span::from(label).style(active_label(field)),
-            Span::from("  ◀ ").style(theme.meta_label),
-            Span::from("    ").style(Style::new().bg(color.color)),
+            Span::from(if selected { "▶ " } else { "  " }).style(label_style),
+            Span::from(field.label).style(label_style),
             Span::from(" "),
-            Span::from(format!("{}  {hex}", color.name)).style(theme.text),
-            Span::from(" ▶").style(theme.meta_label),
+            Span::from("██").style(Style::new().fg(color)),
+            Span::from(" "),
+            Span::from(format!("{hex:<7}")).style(theme.text),
+            Span::from(" "),
+            Span::from(field.usage).style(theme.meta_label),
         ]));
     }
 
+    let mut swatches = vec![Span::from("色板  ").style(theme.meta_label)];
+    let current = draft
+        .colors
+        .get(draft.field)
+        .copied()
+        .unwrap_or(Color::Reset);
+    let selected_index = nearest_custom_color(current);
+    for (index, color) in CUSTOM_COLORS.iter().enumerate() {
+        let style = Style::new().fg(color.color);
+        if index == selected_index {
+            swatches.push(Span::from("[").style(theme.highlight));
+            swatches.push(Span::from("██").style(style));
+            swatches.push(Span::from("]").style(theme.highlight));
+        } else {
+            swatches.push(Span::from(" ██ ").style(style));
+        }
+    }
+    lines.push(Line::from(swatches));
     lines.push(Line::from(""));
     lines.push(
-        Line::from("Tab / ↑↓ 切换字段 · ←→ 选择 · Enter 保存 · Esc 取消").style(theme.meta_label),
+        Line::from("Tab 切换区域 · ↑↓ 选字段 · ←→ 取色 · 直接输入 #rrggbb").style(theme.meta_label),
     );
     lines.push(
-        Line::from("颜色在固定 16 色里循环, 配置文件中保存为 #rrggbb").style(theme.meta_label),
+        Line::from("Enter 保存 · Esc 取消 · 未改字段沿用「基于」色板").style(theme.meta_label),
     );
-    lines.push(Line::from("保存后立即应用, 并追加到上方「自定义」分组").style(theme.meta_label));
     lines
 }
 

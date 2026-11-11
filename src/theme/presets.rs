@@ -18,6 +18,7 @@ use ratatui::style::Color;
 use ratatui_kit::Palette;
 use ratatui_kit_themes::{IntoKitPalette, ThemeName};
 use serde::{Deserialize, Serialize};
+use std::collections::BTreeMap;
 
 /// 一套本项目的阅读主题: 稳定 slug(写入 config.toml)+ 中文名 + 完整语义色板。
 ///
@@ -223,6 +224,142 @@ pub const CUSTOM_COLORS: [CustomColor; 16] = [
     },
 ];
 
+/// 一套配色里所有可单独覆盖的字段, 顺序与 Palette 的声明一致。
+///
+/// UI、校验与文档都从这张表取字段名和说明, 避免三处各写一份而漂移。
+/// key 必须与 Palette 的字段名逐字相同 —— 配置里的 colors 用它做键。
+#[derive(Debug, Clone, Copy)]
+pub struct PaletteField {
+    /// Palette 字段名, 也是配置里 colors 的键。
+    pub key: &'static str,
+    /// 设置页展示的中文标签。
+    pub label: &'static str,
+    /// 这个颜色在界面上的实际用途。
+    pub usage: &'static str,
+}
+
+pub const PALETTE_FIELDS: [PaletteField; 15] = [
+    PaletteField {
+        key: "fg",
+        label: "正文",
+        usage: "阅读页正文与目录条目文字",
+    },
+    PaletteField {
+        key: "fg_dim",
+        label: "次要文字",
+        usage: "页脚状态栏、快捷键提示与标签",
+    },
+    PaletteField {
+        key: "bg",
+        label: "背景",
+        usage: "阅读页与列表的整屏背景",
+    },
+    PaletteField {
+        key: "surface",
+        label: "面板",
+        usage: "输入框、面板等容器的抬升底色",
+    },
+    PaletteField {
+        key: "overlay",
+        label: "遮罩",
+        usage: "模态弹窗背后的遮罩",
+    },
+    PaletteField {
+        key: "accent",
+        label: "强调",
+        usage: "标题、章节名与高亮符号",
+    },
+    PaletteField {
+        key: "on_accent",
+        label: "强调前景",
+        usage: "选中行等强调底色上的文字",
+    },
+    PaletteField {
+        key: "selection",
+        label: "选中行",
+        usage: "列表当前选中行的背景",
+    },
+    PaletteField {
+        key: "border",
+        label: "边框",
+        usage: "阅读页外框、列表与浮层边框",
+    },
+    PaletteField {
+        key: "border_active",
+        label: "聚焦边框",
+        usage: "当前聚焦控件与弹窗边框",
+    },
+    PaletteField {
+        key: "success",
+        label: "成功",
+        usage: "成功提示与听书朗读高亮",
+    },
+    PaletteField {
+        key: "warning",
+        label: "警告",
+        usage: "警告提示",
+    },
+    PaletteField {
+        key: "error",
+        label: "错误",
+        usage: "错误提示",
+    },
+    PaletteField {
+        key: "info",
+        label: "信息",
+        usage: "一般信息提示",
+    },
+    PaletteField {
+        key: "placeholder",
+        label: "占位",
+        usage: "空列表提示与输入占位",
+    },
+];
+
+/// 按字段名读取色板颜色; 未知字段名返回 None。
+pub fn palette_field(palette: &Palette, key: &str) -> Option<Color> {
+    Some(match key {
+        "fg" => palette.fg,
+        "fg_dim" => palette.fg_dim,
+        "bg" => palette.bg,
+        "surface" => palette.surface,
+        "overlay" => palette.overlay,
+        "accent" => palette.accent,
+        "on_accent" => palette.on_accent,
+        "selection" => palette.selection,
+        "border" => palette.border,
+        "border_active" => palette.border_active,
+        "success" => palette.success,
+        "warning" => palette.warning,
+        "error" => palette.error,
+        "info" => palette.info,
+        "placeholder" => palette.placeholder,
+        _ => return None,
+    })
+}
+
+/// 按字段名取得色板颜色的可变引用; 未知字段名返回 None。
+fn palette_field_mut<'a>(palette: &'a mut Palette, key: &str) -> Option<&'a mut Color> {
+    Some(match key {
+        "fg" => &mut palette.fg,
+        "fg_dim" => &mut palette.fg_dim,
+        "bg" => &mut palette.bg,
+        "surface" => &mut palette.surface,
+        "overlay" => &mut palette.overlay,
+        "accent" => &mut palette.accent,
+        "on_accent" => &mut palette.on_accent,
+        "selection" => &mut palette.selection,
+        "border" => &mut palette.border,
+        "border_active" => &mut palette.border_active,
+        "success" => &mut palette.success,
+        "warning" => &mut palette.warning,
+        "error" => &mut palette.error,
+        "info" => &mut palette.info,
+        "placeholder" => &mut palette.placeholder,
+        _ => return None,
+    })
+}
+
 /// 把配置里的 `#rrggbb` 解析成终端 RGB; 只接受这一种格式。
 ///
 /// 严格解析而不是接受 `#rgb`/颜色名: 写盘与回读必须是同一种表示, 否则
@@ -266,22 +403,35 @@ pub fn nearest_custom_color(color: Color) -> usize {
         .unwrap_or(0)
 }
 
-/// 用户创建的一套配色, 持久化在 `[appearance].custom_themes`。
+/// 用户创建的一套配色, 持久化在 [appearance].custom_themes。
 ///
-/// 只存三个语义色的 hex 与「基于哪套主题」: 其余字段在解析时从 base 继承,
-/// 这样以后调节预设计算逻辑时, 自定义方案会自动跟着改善, 而不是冻结旧色板。
+/// colors 以 PALETTE_FIELDS 的字段名为键, 只存与 base 不同的颜色; 未填字段
+/// 解析时从 base 继承 —— 以后调整预设计算逻辑时, 自定义方案会自动跟着改善,
+/// 而不是冻结旧色板。
+///
+/// bg/fg/accent 是旧版格式的遗留字段, 只为读取旧配置保留; 新写入的方案不再
+/// 产出这三个字段, 解析时 colors 优先于它们。
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct CustomTheme {
     /// 设置页展示的中文名。
     pub name: String,
-    /// 写进配置的稳定标识, 形如 `custom-1`。
+    /// 写进配置的稳定标识, 形如 custom-1。
     pub slug: String,
-    /// 底色所继承的主题 slug(预设或内置主题)。
+    /// 颜色所继承的主题 slug(预设或内置主题)。
     pub base: String,
+    /// 旧版底色; 仅用于兼容旧配置。
+    #[serde(skip_serializing_if = "String::is_empty")]
     pub bg: String,
+    /// 旧版正文色; 仅用于兼容旧配置。
+    #[serde(skip_serializing_if = "String::is_empty")]
     pub fg: String,
+    /// 旧版强调色; 仅用于兼容旧配置。
+    #[serde(skip_serializing_if = "String::is_empty")]
     pub accent: String,
+    /// Palette 字段名 -> #rrggbb; 只覆盖与 base 不同的字段。
+    #[serde(skip_serializing_if = "BTreeMap::is_empty")]
+    pub colors: BTreeMap<String, String>,
 }
 
 impl CustomTheme {
@@ -299,27 +449,50 @@ impl CustomTheme {
             .expect("u32 范围内总能找到空闲 slug")
     }
 
-    /// 以 base 的完整色板为底, 只覆盖 bg/fg/accent 三个语义色。
+    /// 以 base 的完整色板为底, 逐字段覆盖 PALETTE_FIELDS 中配置过的颜色。
     ///
     /// 未知 base(手改配置、删掉的预设)回落默认主题, 而不是 panic 或返回全 Reset;
-    /// 无效 hex 同样静默保留 base 的颜色, 让一份脏配置仍能启动。
+    /// 无效 hex 与未知字段名同样静默忽略, 让一份脏配置仍能启动。旧版的
+    /// bg/fg/accent 先应用, colors 中同名键再覆盖它们。
     pub fn palette(&self) -> Palette {
         let mut palette = ThemeChoice::from_slug(&self.base)
             .map(ThemeChoice::palette)
             .unwrap_or_else(|| ThemeName::TokyoNight.into_kit_palette());
-        if let Some(bg) = parse_hex_color(&self.bg) {
-            palette.bg = bg;
+
+        let mut has_on_accent = false;
+        let mut has_border_active = false;
+        {
+            let mut apply = |palette: &mut Palette, key: &str, hex: &str| {
+                let Some(color) = parse_hex_color(hex) else {
+                    return;
+                };
+                let Some(slot) = palette_field_mut(palette, key) else {
+                    return;
+                };
+                *slot = color;
+                if key == "on_accent" {
+                    has_on_accent = true;
+                }
+                if key == "border_active" {
+                    has_border_active = true;
+                }
+            };
+            apply(&mut palette, "bg", &self.bg);
+            apply(&mut palette, "fg", &self.fg);
+            apply(&mut palette, "accent", &self.accent);
+            for (key, hex) in &self.colors {
+                apply(&mut palette, key, hex);
+            }
         }
-        if let Some(fg) = parse_hex_color(&self.fg) {
-            palette.fg = fg;
+
+        // on_accent 与 border_active 原本是从 accent 派生的语义色: 用户没有显式
+        // 配置时仍按强调色重算; 显式配置了就以用户的取色为准。
+        if !has_on_accent {
+            palette.on_accent = readable_foreground(&[palette.accent, palette.selection]);
         }
-        if let Some(accent) = parse_hex_color(&self.accent) {
-            palette.accent = accent;
+        if !has_border_active {
+            palette.border_active = palette.accent;
         }
-        // on_accent 与 border_active 是从 accent 派生的语义色: 只换 accent 却沿用
-        // 旧的前景/边框, 会出现「强调色变了、焦点框还是旧色」的割裂, 这里一并重算。
-        palette.on_accent = readable_foreground(&[palette.accent, palette.selection]);
-        palette.border_active = palette.accent;
         palette
     }
 }
@@ -745,6 +918,7 @@ mod tests {
             name: "我的夜间".to_string(),
             slug: "custom-1".to_string(),
             base: "midnight-blue".to_string(),
+            colors: BTreeMap::new(),
             bg: "#101826".to_string(),
             fg: "#e6e1d6".to_string(),
             accent: "#d2a85c".to_string(),
@@ -759,5 +933,101 @@ mod tests {
             entries.last().unwrap().palette().bg,
             parse_hex_color("#101826").unwrap()
         );
+    }
+
+    /// 旧版自定义方案只有 bg/fg/accent, 也必须能解析, 且未写的字段继承 base。
+    #[test]
+    fn legacy_custom_theme_json_still_parses_and_falls_back() {
+        let theme: CustomTheme = serde_json::from_str(
+            r##"{"name":"旧方案","slug":"custom-1","base":"rice-paper","bg":"#000000","fg":"#ffffff","accent":"#ff0000"}"##,
+        )
+        .unwrap();
+        assert!(theme.colors.is_empty());
+
+        let palette = theme.palette();
+        let base = ThemeChoice::from_slug("rice-paper").unwrap().palette();
+        assert_eq!(palette.bg, Color::Rgb(0, 0, 0));
+        assert_eq!(palette.fg, Color::Rgb(255, 255, 255));
+        assert_eq!(palette.accent, Color::Rgb(255, 0, 0));
+        // 旧配置没写的字段仍继承 base, 不会被默认色板冲掉。
+        assert_eq!(palette.surface, base.surface);
+        assert_eq!(palette.selection, base.selection);
+    }
+
+    /// colors 里不认识的字段名不参与渲染, 也不能让整份配置解析失败。
+    #[test]
+    fn unknown_color_fields_are_ignored() {
+        let theme: CustomTheme = serde_json::from_str(
+            r##"{"base":"ink-black","colors":{"bg":"#123456","no_such_field":"#ffffff"}}"##,
+        )
+        .unwrap();
+        assert_eq!(
+            theme.colors.get("no_such_field").map(String::as_str),
+            Some("#ffffff")
+        );
+
+        let palette = theme.palette();
+        let base = ThemeChoice::from_slug("ink-black").unwrap().palette();
+        assert_eq!(palette.bg, Color::Rgb(0x12, 0x34, 0x56));
+        assert_eq!(palette.surface, base.surface);
+    }
+
+    /// Palette 的每个字段都应能被覆盖; 非法 hex 静默回落 base, 不 panic。
+    #[test]
+    fn every_palette_field_can_be_overridden_and_invalid_hex_falls_back() {
+        let base = ThemeChoice::from_slug("warm-gray").unwrap().palette();
+        let mut colors: BTreeMap<String, String> = PALETTE_FIELDS
+            .iter()
+            .map(|field| (field.key.to_string(), "#123456".to_string()))
+            .collect();
+        colors.insert("bg".to_string(), "not-a-color".to_string());
+
+        let theme = CustomTheme {
+            base: "warm-gray".to_string(),
+            colors,
+            ..CustomTheme::default()
+        };
+        let palette = theme.palette();
+        assert_eq!(palette.bg, base.bg, "非法颜色应回落 base");
+        for field in PALETTE_FIELDS {
+            let actual = palette_field(&palette, field.key).unwrap();
+            if field.key == "bg" {
+                assert_eq!(actual, base.bg);
+            } else {
+                assert_eq!(actual, Color::Rgb(0x12, 0x34, 0x56), "{} 未生效", field.key);
+            }
+        }
+    }
+
+    /// 字段表必须覆盖 Palette 全部字段, 且每个字段都有中文标签与使用场景。
+    #[test]
+    fn palette_field_table_covers_every_palette_field() {
+        let palette = ThemeName::TokyoNight.into_kit_palette();
+        let mut keys: Vec<&str> = PALETTE_FIELDS.iter().map(|field| field.key).collect();
+        let total = keys.len();
+        keys.sort_unstable();
+        keys.dedup();
+        assert_eq!(keys.len(), total, "字段名有重复");
+        assert_eq!(total, 15, "Palette 共有 15 个字段");
+
+        for field in PALETTE_FIELDS {
+            assert!(palette_field(&palette, field.key).is_some());
+            assert!(!field.label.is_empty(), "{} 缺少中文标签", field.key);
+            assert!(!field.usage.is_empty(), "{} 缺少使用场景", field.key);
+        }
+    }
+
+    /// 同一字段同时出现在旧字段与 colors 时, 以新的 colors 为准。
+    #[test]
+    fn colors_take_precedence_over_legacy_fields() {
+        let mut colors = BTreeMap::new();
+        colors.insert("bg".to_string(), "#ffffff".to_string());
+        let theme = CustomTheme {
+            base: "ink-black".to_string(),
+            bg: "#000000".to_string(),
+            colors,
+            ..CustomTheme::default()
+        };
+        assert_eq!(theme.palette().bg, Color::Rgb(255, 255, 255));
     }
 }

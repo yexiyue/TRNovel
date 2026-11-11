@@ -3,7 +3,7 @@ use crate::components::{ActionBar, ActionButton};
 use crate::{
     ReaderDisplayConfig,
     components::Loading,
-    keymap::{ReaderAction, display_first_key, hint_bar},
+    keymap::{ReaderAction, display_first_key},
     theme::ReaderTheme,
 };
 use ratatui::{
@@ -36,13 +36,13 @@ enum Edge {
     AtLast,
 }
 
-/// 正文可见行数:组件高度扣掉固定占用的「框线 + 状态栏 + 提示行」,至少 1 行。
+/// 正文可见行数:组件高度扣掉固定占用的「框线 + 状态栏」,至少 1 行。
 ///
-/// 占用行数随阅读偏好变化:无边框省 2 行,关掉提示行省 1 行。翻页步长、章末判定
-/// 与设置面板里展示的「每页滚动 M 行」都由它派生,故只此一处定义 —— 各调用点
-/// 自己减三减四,geometry 一变就会各说各话。
+/// 快捷提示条已移到整屏最后一行、边框之外,不再占正文内部行数,故是否开启
+/// 提示条不影响这里的换算。翻页步长、章末判定与设置面板里展示的「每页滚动
+/// M 行」都由它派生,故只此一处定义。
 pub fn visible_lines(height: u16, display: &ReaderDisplayConfig) -> usize {
-    let chrome = 1 + 2 * display.frameline.inset() as usize + usize::from(display.show_hint_bar);
+    let chrome = 1 + 2 * display.frameline.inset() as usize;
     (height as usize).saturating_sub(chrome).max(1)
 }
 
@@ -680,11 +680,6 @@ pub fn ReadContent(
 
     let show_title = reader_display.read().show_title;
     let frameline = display.frameline;
-    let hint = if display.show_hint_bar {
-        hint_bar(&reader_keymap, width as usize)
-    } else {
-        String::new()
-    };
 
     #[cfg(feature = "tts")]
     let listening_footer = if let Some(error) = &snapshot.error {
@@ -766,7 +761,7 @@ pub fn ReadContent(
         // 无边框 = 连边都不画(字符集单线但 Borders 为空),同时省下 2 行给正文。
         borders: if frameline == crate::Frameline::None { Borders::NONE } else { Borders::ALL },
         border_set: frameline.border_set(),
-        // 左右留白做成内边距:正文、提示条、状态栏一起内缩,不会只有正文缩进、
+        // 左右留白做成内边距:正文与状态栏一起内缩,不会只有正文缩进、
         // 状态栏却顶到框线上。
         padding: Padding::new(display.h_margin, display.h_margin, 0, 0),
         top_title: if show_title && frameline != crate::Frameline::None && display.show_frameline_title {
@@ -789,13 +784,6 @@ pub fn ReadContent(
                 scroll: (current_line as u16,0))
             ).into_any()
         } }
-        // 常显快捷键提示:高度由配置决定(关掉时占 0 行,不偷正文空间)。
-        View(
-            height: Constraint::Length(if display.show_hint_bar { 1 } else { 0 }),
-            margin: Margin::new(1,0),
-        ){
-            widget(Line::from(hint.clone()).style(theme.footer).centered())
-        }
         View(
             flex_direction: Direction::Horizontal,
             justify_content: Flex::SpaceBetween,
@@ -1086,13 +1074,19 @@ mod tests {
     /// 视口尺寸的换算只此一处,极矮终端下也必须 ≥ 1(否则翻页步长会退化为 0、翻不动)。
     #[test]
     fn visible_lines_never_zero() {
-        // 默认配置:边框单线(上下各 1)+ 状态栏 1 + 提示条 1 = 4 行 chrome。
+        // 默认配置:边框单线(上下各 1)+ 状态栏 1 = 3 行 chrome。
         let display = crate::ReaderDisplayConfig::default();
-        for height in 0..=4u16 {
+        for height in 0..=3u16 {
             assert_eq!(visible_lines(height, &display), 1, "height={height}");
         }
-        assert_eq!(visible_lines(33, &display), 29);
-        // 关边框、关提示条后,除了状态栏那 1 行全部还给正文。
+        assert_eq!(visible_lines(33, &display), 30);
+        // 提示条在整屏最后一行,开或关都不改变正文内部行数。
+        let no_hint = crate::ReaderDisplayConfig {
+            show_hint_bar: false,
+            ..display
+        };
+        assert_eq!(visible_lines(33, &no_hint), 30);
+        // 关边框后,除了状态栏那 1 行全部还给正文。
         let bare = crate::ReaderDisplayConfig {
             frameline: crate::Frameline::None,
             show_hint_bar: false,

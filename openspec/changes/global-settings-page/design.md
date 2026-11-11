@@ -13,9 +13,9 @@
 
 ## D2 条目序号即协议
 
-`describe_setting(config, row, page_step)` 的 `row` 是全局序号：0 翻页重叠、1 显示标题、2 段间空行、3 首行缩进、4 每行字数、5 左右留白、6 边框、7 边框标题、8 快捷键提示、9 ↑/↓ 翻页、10 跟随朗读（仅 TTS 构建）。
+`describe_setting(config, row, page_step)` 的 `row` 是全局序号：0 翻页重叠、1 显示标题、2 段间空行、3 首行缩进、4 每行字数、5 左右留白、6 边框、7 边框标题、8 快捷键提示、9 ↑/↓ 翻页、10 跟随朗读（仅 TTS 构建），末尾是「目录占宽」（`TOC_ROW = 10 + cfg!(feature = "tts")`）。
 
-设置页用 `reading_rows() = 10 + cfg!(feature = "tts")` 决定渲染几行，浮层用 `SETTING_ROWS = [4, 3, 2, 6]` 挑行。新增条目要同时改：`describe_setting`、`adjust`、`reading_rows`。
+设置页用 `reading_rows() = TOC_ROW + 1` 决定渲染几行，浮层用 `SETTING_ROWS = [4, 3, 2, 6]` 挑行。新增条目要同时改：`describe_setting`、`adjust`、`reading_rows`（以及若涉及 tts 偏移的 `TOC_ROW` 序号）。
 
 ## D3 Space 绑在键位表，而不是事件特判
 

@@ -41,4 +41,5 @@
 - **修改代码**：`src/cache/setting.rs`、`src/pages/read_novel/read_content.rs`、`src/pages/read_novel/search/mod.rs`、`src/pages/read_novel/settings/mod.rs`、`src/pages/read_novel.rs`、`src/keymap.rs`、`src/lib.rs`、`src/pages/theme_setting/mod.rs`。
 - **依赖**：新增 `unicode-width`（提示条按显示宽度裁剪，CJK 占 2 列）。
 - **兼容性**：新增字段全部 `#[serde(default)]`，旧 `config.toml` 无感；`paragraph_spacing` 双向同步，旧值不会被丢弃。
-- **行为变化**：默认开启提示条会让每屏正文少 1 行（可用设置关掉）；需在 README 与 CHANGELOG 写明；字号缩放仍由终端负责（Windows Terminal 的 Ctrl+加号），应用不介入。
+- **行为变化**：默认开启提示条会占整屏最后一行（边框之外），正文视口相应让出 1 行；需在 README 与 CHANGELOG 写明；字号缩放仍由终端负责（Windows Terminal 的 Ctrl+加号），应用不介入。
+- **后续修订（同分支）**：提示条从边框内移到整屏最后一行，并并入阅读页顶栏的 B 返回 / F10 菜单；新增「目录占宽」三档（`toc_ratio`，默认 1/2 = 旧版分栏）。

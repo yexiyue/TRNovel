@@ -178,20 +178,54 @@ fn hint_bar_lists_bindings_and_truncates_by_display_width() {
     use unicode_width::UnicodeWidthStr;
 
     let km = reader_defaults();
-    let full = hint_bar(&km, 200);
+    // 阅读页:正文动作之外,顶栏的返回/菜单和全局退出也在提示里。
+    let full = hint_bar(&km, 200, HintPage::Reader);
     assert!(full.contains("翻页"), "{full}");
     assert!(full.contains("搜索"), "{full}");
     assert!(full.contains("帮助"), "{full}");
+    assert!(full.contains("返回"), "{full}");
+    assert!(full.contains("菜单"), "{full}");
+
+    // 其它页只列当前页真正可用的全局键,不能把翻页/目录这类只在阅读页生效的键
+    // 混进去。
+    let other = hint_bar(&km, 200, HintPage::Other);
+    assert!(other.contains("返回"), "{other}");
+    assert!(other.contains("菜单"), "{other}");
+    assert!(!other.contains("翻页"), "{other}");
+    assert!(!other.contains("目录"), "{other}");
+    assert!(!other.contains("搜索"), "{other}");
 
     // 窄屏按显示宽度裁剪(中文两列、箭头一列):任何宽度都不能溢出,也不能
     // 把汉字劈成半个 —— 宁可整段丢掉。
+    for page in [HintPage::Reader, HintPage::Other] {
+        for width in 0..60usize {
+            let text = hint_bar(&km, width, page);
+            assert!(
+                UnicodeWidthStr::width(text.as_str()) <= width,
+                "page={page:?} width={width} text={text:?}"
+            );
+        }
+    }
+    // 非阅读页的全局提示条不依赖 keymap:没有阅读键位表也能画出顶栏键。
+    let global = other_hint_bar(200);
+    assert!(global.contains("返回"), "{global}");
+    assert!(global.contains("菜单"), "{global}");
+    assert!(global.contains("退出"), "{global}");
+    assert!(!global.contains("翻页"), "{global}");
     for width in 0..60usize {
-        let text = hint_bar(&km, width);
+        let text = other_hint_bar(width);
         assert!(
             UnicodeWidthStr::width(text.as_str()) <= width,
             "width={width} text={text:?}"
         );
     }
-    assert_eq!(hint_bar(&km, 0), "");
-    assert!(hint_bar(&km, 7).ends_with('…'), "{:?}", hint_bar(&km, 7));
+    assert_eq!(other_hint_bar(0), "");
+
+    assert_eq!(hint_bar(&km, 0, HintPage::Reader), "");
+    assert_eq!(hint_bar(&km, 0, HintPage::Other), "");
+    assert!(
+        hint_bar(&km, 7, HintPage::Reader).ends_with('…'),
+        "{:?}",
+        hint_bar(&km, 7, HintPage::Reader)
+    );
 }

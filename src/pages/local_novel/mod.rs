@@ -23,6 +23,11 @@ use ratatui::{
 use ratatui_kit::prelude::*;
 use std::path::PathBuf;
 
+/// 每个目录独立记住光标,避免 A 目录的选中位置串到 B 目录。
+fn cursor_key(dir: &std::path::Path) -> String {
+    format!("{}:{}", crate::app::ui_memory::LOCAL_NOVEL, dir.display())
+}
+
 #[component]
 pub fn SelectFile(mut hooks: Hooks) -> impl Into<AnyElement<'static>> {
     let route_path = hooks
@@ -39,9 +44,12 @@ pub fn SelectFile(mut hooks: Hooks) -> impl Into<AnyElement<'static>> {
         .filter(|path| path.is_file())
         .map(|path| std::path::absolute(path).unwrap_or_else(|_| path.clone()));
     let quick_cwd = cwd.clone();
+    // 本次运行里上次停留的目录优先于进程 cwd;路由明确带路径时仍以路由为准。
+    let remembered_dir =
+        crate::app::ui_memory::remembered_dir(crate::app::ui_memory::LOCAL_NOVEL_DIR);
     let mut current_dir = hooks.use_state({
         let route_path = route_path.clone();
-        move || initial_dir(route_path.as_deref(), cwd)
+        move || initial_dir(route_path.as_deref(), remembered_dir.unwrap_or(cwd))
     });
     let quick = hooks.use_state(move || quick_dirs(&quick_cwd));
     let mut filter_text = hooks.use_state(String::default);
@@ -92,11 +100,43 @@ pub fn SelectFile(mut hooks: Hooks) -> impl Into<AnyElement<'static>> {
     };
     let is_loading = !ready && read_error.is_none();
 
-    // 目录、筛选词或首次加载完成时回到首项；否则空列表会把 selection 置为 None，
-    // 等列表重新有内容后 Enter 会没反应。
+    // 记住当前目录，返回本地小说页时先回到这里。
     hooks.use_effect(
-        move || {
-            list_state.write().select(Some(0));
+        {
+            let dir_path = dir_path.clone();
+            move || {
+                crate::app::ui_memory::remember_dir(
+                    crate::app::ui_memory::LOCAL_NOVEL_DIR,
+                    &dir_path,
+                );
+            }
+        },
+        dir_path.clone(),
+    );
+
+    // 目录或筛选词变化后重建列表：目录内恢复该目录记住的选中项，筛选时回到首项。
+    // 列表为空则清掉 selection，避免重新有内容后 Enter 没反应；越界由 restored_index 钳制。
+    hooks.use_effect(
+        {
+            let rows = rows.clone();
+            let dir_path = dir_path.clone();
+            let filter_empty = filter.is_empty();
+            move || {
+                if !ready {
+                    return;
+                }
+                let len = rows.len();
+                let index = if filter_empty {
+                    crate::app::ui_memory::restored_index(&cursor_key(&dir_path), len, 0)
+                } else {
+                    0
+                };
+                list_state.write().select(if len == 0 {
+                    None
+                } else {
+                    Some(index.min(len - 1))
+                });
+            }
         },
         (dir_path.clone(), filter.clone(), ready),
     );
@@ -119,6 +159,23 @@ pub fn SelectFile(mut hooks: Hooks) -> impl Into<AnyElement<'static>> {
             }
         },
         ready,
+    );
+
+    // 光标变化时写回当前目录；筛选态不覆盖目录里记住的真实选择。
+    let selected = list_state.read().selected();
+    let filter_empty = filter.is_empty();
+    hooks.use_effect(
+        {
+            let dir_path = dir_path.clone();
+            move || {
+                if filter_empty && let Some(index) = selected {
+                    crate::app::ui_memory::save_index(cursor_key(&dir_path), index);
+                }
+            }
+        },
+        // 只跟随选中项：目录变化时列表还没恢复，若把 dir_path 也列为依赖，
+        // 会把上一目录的索引写到新目录的键上。
+        selected,
     );
 
     // 每个目录只保留本次读取的错误；否则进入可访问目录后状态栏还挂着上一次的

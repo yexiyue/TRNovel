@@ -21,9 +21,11 @@
 
 提示条内容由 `Keymap<ReaderAction>` 动态生成（重绑键位后提示的就是新键），按 `unicode-width` 累加列宽；放不下整段就丢弃整段，末尾能塞得下才补省略号。不做逐字截断，避免出现「下一」这种半截键名。
 
+后续修订：提示条移到整屏最后一行、边框之外，不再占正文内部行数；`hint_bar` 增加页面参数，阅读页额外并入顶栏的 B 返回 / F10 菜单，其它页只显示当前页可用的全局键。
+
 ## D5 visible_lines 单一来源
 
-`visible_lines(height, &ReaderDisplayConfig)` 统一计算 `chrome = 1 + 2*frameline.inset() + show_hint_bar`。此前硬编码 `height - 3`，分散在阅读页、设置面板、viewport 计算三处；新增提示条与可选边框后必须统一，否则会出现「翻到页尾时最后一行显示不全」的经典 bug。
+`visible_lines(height, &ReaderDisplayConfig)` 统一计算 `chrome = 1 + 2*frameline.inset()`（提示条已在整屏最后一行，不再计入）。此前硬编码 `height - 3`，分散在阅读页、设置面板、viewport 计算三处；新增可选边框后必须统一，否则会出现「翻到页尾时最后一行显示不全」的经典 bug。
 
 ## D6 设置面板双列
 

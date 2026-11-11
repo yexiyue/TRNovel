@@ -1,4 +1,5 @@
 pub mod navigation;
+pub mod ui_memory;
 use std::{sync::Arc, time::Duration};
 
 use futures::FutureExt;

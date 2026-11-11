@@ -20,9 +20,13 @@ use crate::{
 };
 
 /// 浮层只放高频的 4 项,其余排版项与外观/键位/数据都在全局设置页(`/settings`)。
-/// 值是 `describe_setting` / `adjust` 的条目序号 —— 两处表格仍保持完整 11 项,
+/// 值是 `describe_setting` / `adjust` 的条目序号 —— 两处表格保持完整条目,
 /// 浮层只是挑其中 4 行来渲染,免得同一份文案写两遍。
 pub(crate) const SETTING_ROWS: [usize; 4] = [4, 3, 2, 6];
+
+/// 「目录占宽」的条目序号:追加在现有条目末尾,避免打乱浮层已用的行号。
+/// tts 构建比非 tts 多「跟随朗读」一行,故用 cfg 偏移。
+pub(crate) const TOC_ROW: usize = 10 + cfg!(feature = "tts") as usize;
 
 /// 浮层条目数(索引上界)。
 const ITEM_COUNT: usize = SETTING_ROWS.len();
@@ -247,7 +251,12 @@ pub(crate) fn describe_setting(
         7 => ("边框标题:".to_string(), on_off(config.show_frameline_title)),
         8 => ("快捷键提示:".to_string(), on_off(config.show_hint_bar)),
         9 => ("↑/↓ 翻页:".to_string(), on_off(config.arrows_page)),
+        #[cfg(feature = "tts")]
         10 => ("跟随朗读:".to_string(), on_off(config.follow_tts)),
+        TOC_ROW => (
+            "目录占宽:".to_string(),
+            config.toc_ratio.label().to_string(),
+        ),
         _ => (String::new(), String::new()),
     }
 }
@@ -303,7 +312,9 @@ pub(crate) fn adjust(display: AtomState<crate::ReaderDisplayConfig>, row: usize,
         7 => config.show_frameline_title = delta > 0,
         8 => config.show_hint_bar = delta > 0,
         9 => config.arrows_page = delta > 0,
+        #[cfg(feature = "tts")]
         10 => config.follow_tts = delta > 0,
+        TOC_ROW => config.toc_ratio = config.toc_ratio.shift(if delta > 0 { 1 } else { -1 }),
         _ => {}
     }
 }

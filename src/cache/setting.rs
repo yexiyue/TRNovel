@@ -131,6 +131,9 @@ pub struct ReaderDisplayConfig {
     /// 是否在边框上显示小说标题。
     #[serde(default = "default_show_frameline_title")]
     pub show_frameline_title: bool,
+    /// 目录模式下左侧目录栏占整屏宽度的比例。默认一半,保持旧版分栏观感。
+    #[serde(default = "default_toc_ratio")]
+    pub toc_ratio: TocRatio,
     /// 把 ↑/↓ 当作整页翻页(PgUp/PgDn),而不是逐行滚动。
     ///
     /// 默认关:方向键逐行滚是既有习惯,改成翻页会让「想微调一行」的人无从下手。
@@ -201,6 +204,73 @@ impl Frameline {
         let all = Self::ALL;
         let index = all.iter().position(|item| *item == self).unwrap_or(0);
         all[(index + all.len() - 1) % all.len()]
+    }
+}
+
+/// 目录栏占宽。三档覆盖常见分栏偏好,默认 1/2 与旧版固定分栏一致。
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize)]
+#[serde(rename_all = "lowercase")]
+pub enum TocRatio {
+    Quarter,
+    Third,
+    #[default]
+    Half,
+}
+
+impl TocRatio {
+    /// 面板 ←/→ 的切换顺序:由窄到宽。
+    pub const ALL: [Self; 3] = [Self::Quarter, Self::Third, Self::Half];
+
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::Quarter => "1/4",
+            Self::Third => "1/3",
+            Self::Half => "1/2",
+        }
+    }
+
+    /// 按整屏宽度换算目录栏列宽。宽度极小时至少留 1 列,避免目录整栏消失。
+    pub fn width(self, width: u16) -> u16 {
+        let divisor = match self {
+            Self::Quarter => 4,
+            Self::Third => 3,
+            Self::Half => 2,
+        };
+        if width == 0 {
+            0
+        } else {
+            (width / divisor).max(1)
+        }
+    }
+
+    /// 面板方向键的入口:在三档内移动,到两端即停,不环绕。
+    pub fn shift(self, delta: i8) -> Self {
+        let index = Self::ALL
+            .iter()
+            .position(|item| *item == self)
+            .unwrap_or(Self::ALL.len() - 1);
+        let shifted = index as isize + delta as isize;
+        Self::ALL[shifted.clamp(0, Self::ALL.len() as isize - 1) as usize]
+    }
+
+    fn from_slug(slug: &str) -> Option<Self> {
+        match slug {
+            "quarter" => Some(Self::Quarter),
+            "third" => Some(Self::Third),
+            "half" => Some(Self::Half),
+            _ => None,
+        }
+    }
+}
+
+// 非法/未知值静默回落默认档,不让一个手改坏的值阻断整份配置加载。
+impl<'de> Deserialize<'de> for TocRatio {
+    fn deserialize<D>(deserializer: D) -> std::result::Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        let raw = String::deserialize(deserializer)?;
+        Ok(Self::from_slug(&raw).unwrap_or_default())
     }
 }
 
@@ -296,6 +366,7 @@ impl ReaderDisplayConfig {
         self.paragraph_spacing = self.paragraph_gap > 0;
         self.first_line_indent = self.first_line_indent.min(Self::INDENT_MAX);
         self.h_margin = self.h_margin.min(Self::H_MARGIN_MAX);
+        // toc_ratio 是枚举,非法字符串在反序列化时已回落默认,这里无需再钳制。
         // 折行宽度太窄会把正文压成一列,按下限修正而不是拒绝启动。
         if self.lines_per_row > 0 {
             self.lines_per_row = self
@@ -331,6 +402,7 @@ impl Default for ReaderDisplayConfig {
             h_margin: default_h_margin(),
             frameline: default_frameline(),
             show_frameline_title: default_show_frameline_title(),
+            toc_ratio: default_toc_ratio(),
             arrows_page: default_arrows_page(),
         }
     }
@@ -384,6 +456,11 @@ fn default_frameline() -> Frameline {
 
 fn default_show_frameline_title() -> bool {
     true
+}
+
+/// 默认 1/2:与旧版固定「width / 2」的分栏一致,升级不改变既有阅读观感。
+fn default_toc_ratio() -> TocRatio {
+    TocRatio::Half
 }
 
 /// 默认关:方向键逐行滚是既有习惯,想整页翻的用户在设置里一眼可开。
@@ -539,6 +616,49 @@ mod tests {
     }
 
     #[test]
+    fn toc_ratio_defaults_to_half_and_round_trips() {
+        // 旧配置没有这一项:默认 1/2,保持升级前的分栏观感。
+        let config: ReaderDisplayConfig = serde_json::from_str(r#"{"show_title": true}"#).unwrap();
+        assert_eq!(config.toc_ratio, TocRatio::Half);
+
+        for ratio in TocRatio::ALL {
+            let json = serde_json::to_string(&ratio).unwrap();
+            assert_eq!(serde_json::from_str::<TocRatio>(&json).unwrap(), ratio);
+        }
+
+        let config = ReaderDisplayConfig {
+            toc_ratio: TocRatio::Third,
+            ..Default::default()
+        };
+        let restored: ReaderDisplayConfig =
+            serde_json::from_str(&serde_json::to_string(&config).unwrap()).unwrap();
+        assert_eq!(restored.toc_ratio, TocRatio::Third);
+    }
+
+    #[test]
+    fn unknown_toc_ratio_falls_back_to_default() {
+        // 手改坏的枚举值不应让整份配置加载失败,静默回落 1/2。
+        let ratio: TocRatio = serde_json::from_str(r#""wide""#).unwrap();
+        assert_eq!(ratio, TocRatio::Half);
+    }
+
+    #[test]
+    fn toc_ratio_width_conversion_and_shift_clamp() {
+        assert_eq!(TocRatio::Quarter.width(80), 20);
+        // 80 / 3 整除得 26,余数列留给正文,避免目录栏吃掉正文最后一列。
+        assert_eq!(TocRatio::Third.width(80), 26);
+        assert_eq!(TocRatio::Half.width(80), 40);
+        assert_eq!(TocRatio::Quarter.width(0), 0);
+        assert_eq!(TocRatio::Quarter.width(2), 1);
+
+        // 两端停住,不环绕 —— 否则连按 → 会从 1/2 跳回 1/4。
+        assert_eq!(TocRatio::Quarter.shift(-1), TocRatio::Quarter);
+        assert_eq!(TocRatio::Half.shift(1), TocRatio::Half);
+        assert_eq!(TocRatio::Quarter.shift(1), TocRatio::Third);
+        assert_eq!(TocRatio::Half.shift(-1), TocRatio::Third);
+    }
+
+    #[test]
     fn appearance_gains_confirm_exit_by_default() {
         // 旧配置文件没有这一项:确认默认开,防止 Q 误触退出丢进度。
         let config: AppearanceConfig = toml::from_str("theme_slug = 'tokyo-night'").unwrap();
@@ -635,6 +755,7 @@ mod tests {
             name: format!("我的方案 {slug}"),
             slug: slug.to_string(),
             base: base.to_string(),
+            colors: Default::default(),
             bg: "#000000".to_string(),
             fg: "#ffffff".to_string(),
             accent: "#ff0000".to_string(),

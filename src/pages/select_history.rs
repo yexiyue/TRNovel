@@ -117,8 +117,6 @@ pub fn SelectHistory(mut hooks: Hooks) -> impl Into<AnyElement<'static>> {
     let mut delete_modal_open = hooks.use_state(|| false);
     let mut info_modal_open = hooks.use_state(|| false);
 
-    let state = hooks.use_state(ListState::default);
-
     let history = hooks.use_memo(
         || {
             let new_history = History::load().ok();
@@ -133,6 +131,21 @@ pub fn SelectHistory(mut hooks: Hooks) -> impl Into<AnyElement<'static>> {
         .clone()
         .map(|h| h.histories.clone())
         .unwrap_or_default();
+
+    // 按界面记忆恢复上次光标;历史为空时不选中任何项。
+    let history_len = histories.len();
+    let initial_index = crate::app::ui_memory::restored_index(
+        crate::app::ui_memory::SELECT_HISTORY,
+        history_len,
+        0,
+    );
+    let state = hooks.use_state(move || {
+        let mut state = ListState::default();
+        if history_len > 0 {
+            state.selected = Some(initial_index);
+        }
+        state
+    });
 
     hooks.use_event_handler(EventScope::Current, EventPriority::Normal, move |event| {
         let Event::Key(key) = event else {
@@ -157,6 +170,17 @@ pub fn SelectHistory(mut hooks: Hooks) -> impl Into<AnyElement<'static>> {
             _ => EventResult::Ignored,
         }
     });
+
+    // 选中项变化就写回;删除导致列表变短时也由这里记录新光标。
+    let selected = state.read().selected;
+    hooks.use_effect(
+        move || {
+            if let Some(index) = selected {
+                crate::app::ui_memory::save_index(crate::app::ui_memory::SELECT_HISTORY, index);
+            }
+        },
+        selected,
+    );
 
     element!(View{
         ActionBar(menu: "记录") {
@@ -217,13 +241,28 @@ pub fn SelectHistory(mut hooks: Hooks) -> impl Into<AnyElement<'static>> {
             content: "确认删除该历史记录吗？",
             open: delete_modal_open.get(),
             on_confirm:move |_| {
-                let selected= state.read().selected;
-                if let Some(index) = selected
-                    && let Some(histories) = history.write().as_mut()
-                        && index < histories.histories.len() {
-                            histories.histories.remove(index);
-                            state.write().select(Some(index.saturating_sub(1)));
-                        }
+                let selected = state.read().selected;
+                if let Some(index) = selected {
+                    // 在独立作用域里写入并拿新长度,先释放 history 写锁再改列表光标。
+                    let new_len = {
+                        let mut guard = history.write();
+                        guard.as_mut().and_then(|histories| {
+                            if index < histories.histories.len() {
+                                histories.histories.remove(index);
+                                Some(histories.histories.len())
+                            } else {
+                                None
+                            }
+                        })
+                    };
+                    if let Some(len) = new_len {
+                        state.write().select(if len == 0 {
+                            None
+                        } else {
+                            Some(index.min(len - 1))
+                        });
+                    }
+                }
                 delete_modal_open.set(false);
             },
             on_cancel:move |_| {

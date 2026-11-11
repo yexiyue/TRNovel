@@ -19,6 +19,7 @@ fn BrowserPromptSlot(_hooks: Hooks) -> impl Into<AnyElement<'static>> {
     element!(View(height: ratatui::layout::Constraint::Length(0)))
 }
 use crossterm::event::{Event, KeyCode, KeyEventKind, KeyModifiers};
+use ratatui_kit::prelude::*;
 use ratatui_kit::{
     AnyElement, EventPriority, EventResult, EventScope, Hooks, State, UseAtom, UseContext,
     UseEffect, UseEventHandler, UseExit, UseInputLayer, UseRouter, UseState, component, element,
@@ -39,6 +40,20 @@ pub fn Layout(mut hooks: Hooks) -> impl Into<AnyElement<'static>> {
     let mut confirm_exit_open = hooks.use_state(|| false);
     let mut appearance = hooks.use_atom(&crate::state::APPEARANCE);
     let show_header = appearance.read().show_header;
+    let (terminal_width, _) = hooks.use_terminal_size();
+    let chrome_theme = hooks.use_component_theme::<crate::theme::AppChromeTheme>();
+    let display = *hooks.use_atom(&crate::state::READER_DISPLAY).read();
+    // 阅读页自己画提示条(它还要按开关扣正文行数),这里只负责其余页面,避免同屏两条。
+    let reading_page = {
+        let trail = trail.read();
+        matches!(trail.current_path(), "/local-novel" | "/network-novel")
+    };
+    let footer_rows = u16::from(display.show_hint_bar && !reading_page);
+    let footer_hint = if footer_rows > 0 {
+        crate::keymap::other_hint_bar(terminal_width.saturating_sub(2) as usize)
+    } else {
+        String::new()
+    };
     let chrome_layer = hooks.use_input_layer(true, false);
     let params = hooks.try_use_route_state::<TRNovel>();
     let history = *hooks.use_context::<State<Option<History>>>();
@@ -122,6 +137,22 @@ pub fn Layout(mut hooks: Hooks) -> impl Into<AnyElement<'static>> {
             return EventResult::Ignored;
         }
         match key.code {
+            // Esc/Backspace 统一兜底为「返回上一页」,与顶栏返回、b/B 共用 navigate.go(-1)。
+            // 本 handler 在 root 层且优先级 Low:页面 Normal handler 先处理;搜索框、Modal、
+            // 主题编辑器等 blocks_lower 输入层会直接把本层截断,故不会抢走既有 Esc 语义。
+            KeyCode::Esc | KeyCode::Backspace => {
+                // 先释放 trail 读锁再 go:go 会写同一个 Atom,读锁未放会死锁。
+                let can_back = {
+                    let trail = trail.read();
+                    trail.can_go_back() && trail.current_path() != "/home"
+                };
+                if can_back {
+                    navigate.go(-1);
+                    EventResult::Consumed
+                } else {
+                    EventResult::Ignored
+                }
+            }
             KeyCode::Char('q') | KeyCode::Char('Q') => {
                 request_exit(&appearance.read(), confirm_exit_open, &mut exit);
                 EventResult::Consumed
@@ -153,6 +184,10 @@ pub fn Layout(mut hooks: Hooks) -> impl Into<AnyElement<'static>> {
             })
         }
         Outlet
+        // 常显快捷键提示条固定在整屏最后一行;阅读页自带,故此时高度为 0。
+        View(height: ratatui::layout::Constraint::Length(footer_rows), margin: ratatui::layout::Margin::new(1, 0)) {
+            widget(ratatui::text::Line::from(footer_hint).style(chrome_theme.meta_label).centered())
+        }
         crate::components::search_input::HeaderSearch(
             chrome_layer: Some(chrome_layer),
             back_shortcut: back.map(|name| format!("B · 返回{name}")).unwrap_or_else(|| "B".into()),

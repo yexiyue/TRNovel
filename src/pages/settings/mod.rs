@@ -12,7 +12,7 @@ use crate::{
     components::{ActionBar, ActionButton, KeyShortcutInfo, ShortcutInfoModal},
     keymap::{ReaderAction, display_keys},
     pages::read_novel::{
-        settings::{adjust, describe_setting},
+        settings::{TOC_ROW, adjust, describe_setting},
         visible_lines,
     },
     theme::{AppChromeTheme, presets::ThemeChoice},
@@ -47,10 +47,10 @@ const KEY_ITEMS: &[(ReaderAction, &str)] = &[
     (ReaderAction::ToggleInfo, "帮助"),
 ];
 
-/// 阅读分组条目数,与 `describe_setting` 的行号一一对应(9 个基础项,tts 构建多一项跟随朗读)。
+/// 阅读分组条目数,与 `describe_setting` 的行号一一对应。
+/// 末尾追加了「目录占宽」;tts 构建还多一项「跟随朗读」,行号由 `TOC_ROW` 统一。
 fn reading_rows() -> usize {
-    // 0..=9 是 10 个基础项(第 9 项是 ↑/↓ 翻页),tts 构建多一项「跟随朗读」。
-    10 + cfg!(feature = "tts") as usize
+    TOC_ROW + 1
 }
 
 fn rows_in(section: usize) -> usize {
@@ -125,8 +125,20 @@ pub fn Settings(mut hooks: Hooks) -> impl Into<AnyElement<'static>> {
     let appearance = hooks.use_atom(&crate::state::APPEARANCE);
     let reader_display = hooks.use_atom(&crate::state::READER_DISPLAY);
     let reader_keymap = hooks.use_atom(&crate::state::KEYMAP).read().reader.clone();
-    let mut section = hooks.use_state(|| SECTION_READING);
-    let mut cursor = hooks.use_state(|| 0usize);
+    // 恢复上次的分组与组内光标;分组数、组内条目数变化时都做边界钳制。
+    let restored = crate::app::ui_memory::restored_cursor(crate::app::ui_memory::SETTINGS);
+    let initial_section = restored
+        .map(|cursor| cursor.index.min(SECTIONS.len() - 1))
+        .unwrap_or(SECTION_READING);
+    let initial_cursor = restored
+        .map(|cursor| {
+            cursor
+                .offset
+                .min(rows_in(initial_section).saturating_sub(1))
+        })
+        .unwrap_or(0);
+    let mut section = hooks.use_state(move || initial_section);
+    let mut cursor = hooks.use_state(move || initial_cursor);
     let mut info_open = hooks.use_state(|| false);
     let mut navigate = hooks.use_app_navigate();
 
@@ -185,8 +197,23 @@ pub fn Settings(mut hooks: Hooks) -> impl Into<AnyElement<'static>> {
         }
     });
 
+    // 分组或光标变化就写回,离开再回来时恢复。
+    let section_now = section.get();
+    let cursor_now = cursor.get();
+    hooks.use_effect(
+        move || {
+            crate::app::ui_memory::save_cursor(
+                crate::app::ui_memory::SETTINGS,
+                crate::app::ui_memory::Cursor::new(section_now, cursor_now),
+            );
+        },
+        (section_now, cursor_now),
+    );
+
     let config = *reader_display.read();
-    let page_step = config.page_step(visible_lines(height, &config));
+    // 提示条独占整屏最后一行,与阅读页一致:正文视口要先让出这 1 行。
+    let hint_rows = u16::from(config.show_hint_bar);
+    let page_step = config.page_step(visible_lines(height.saturating_sub(hint_rows), &config));
     // 内容区宽度 = 终端宽 - 边框两侧 - 页边距两侧 - 左侧分组栏。
     let content_width = (width as usize).saturating_sub(2 + 2 + 14);
     let selected = cursor.get();

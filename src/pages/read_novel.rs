@@ -4,11 +4,13 @@ use crate::{
     components::{KeyShortcutInfo, Loading, ShortcutInfoModal, WarningModal},
     errors::Errors,
     hooks::{DebounceOptions, UseDebounceEffect, UseInitState},
-    keymap::{ReaderAction, display_keys},
+    keymap::{HintPage, ReaderAction, display_keys, hint_bar},
     novel::{Novel, VolumeMarker},
+    theme::ReaderTheme,
 };
 use futures::FutureExt;
-use ratatui::layout::Direction;
+use ratatui::layout::{Constraint, Direction, Margin};
+use ratatui::text::Line;
 use ratatui_kit::prelude::*;
 use ratatui_kit_keymap::UseKeymapHandler;
 #[cfg(feature = "tts")]
@@ -82,10 +84,11 @@ where
     } else {
         height.saturating_sub(1)
     };
-    let viewport_lines = visible_lines(
-        reader_height,
-        &hooks.use_atom(&crate::state::READER_DISPLAY).read(),
-    );
+    let display = *hooks.use_atom(&crate::state::READER_DISPLAY).read();
+    // 提示条现在独占整屏最后一行,不在 ReadContent 的边框内,故正文视口要再让出这 1 行。
+    let hint_rows = u16::from(display.show_hint_bar);
+    let viewport_lines = visible_lines(reader_height.saturating_sub(hint_rows), &display);
+    let theme = hooks.use_component_theme::<ReaderTheme>();
 
     let mut content_loading = hooks.use_state(|| false);
     let mut info_modal_open = hooks.use_state(|| false);
@@ -243,6 +246,16 @@ where
 
     // 页面级 action(模式/浮层切换)在此分发;正文滚动等 action 由 ReadContent 处理。
     let reader_keymap = hooks.use_atom(&crate::state::KEYMAP).read().reader.clone();
+    let hint = if display.show_hint_bar {
+        hint_bar(
+            &reader_keymap,
+            width.saturating_sub(2) as usize,
+            HintPage::Reader,
+        )
+    } else {
+        String::new()
+    };
+    let toc_width = display.toc_ratio.width(width);
     let panel_open = panel.get() != Panel::None && is_read_mode.get();
     let panel_layer = hooks.use_input_layer(panel_open, true);
     let page_scope = if panel_open {
@@ -338,7 +351,7 @@ where
             ActionButton(label: "帮助", shortcut: display_keys(&reader_keymap, ReaderAction::ToggleInfo), on_press: move |_| { page_action(ReaderAction::ToggleInfo); })
         }
         { if is_read_mode.get() {
-            element!(View{
+            element!(View(height: Constraint::Fill(1)){
                 ReadContent(
                     search: search,
                     show_actions: true,
@@ -466,7 +479,8 @@ where
                 )
             })
         }else{
-            element!(View(flex_direction:Direction::Horizontal){
+            element!(View(flex_direction:Direction::Horizontal, height: Constraint::Fill(1)){
+                View(width: Constraint::Length(toc_width)) {
                 SelectChapter(
                     is_editing: !info_modal_open.get(),
                     chapters: chapters.read().clone(),
@@ -491,13 +505,14 @@ where
                         };
                     },
                 )
+                }
                 ReadContent(
                     content: content.read().clone(),
                     book_id: novel.read().as_ref().map(|book|book.get_id()).unwrap_or_default(),
                     chapter_index: current_chapter.get(),
                     chapter_name: chapter_name,
                     chapter_percent: chapter_percent,
-                    width: width / 2,
+                    width: width.saturating_sub(toc_width),
                     height: height,
                     is_loading: content_loading.get(),
                     scroll_target: scroll_target,
@@ -524,6 +539,10 @@ where
                 )
             })
         } }
+        // 快捷提示条固定在整屏最后一行,边框之外;关掉时占 0 行。
+        View(height: Constraint::Length(hint_rows), margin: Margin::new(1, 0)) {
+            widget(Line::from(hint).style(theme.footer).centered())
+        }
         WarningModal(
             tip: format!("加载失败:{:?}", error.read().as_ref()),
             is_error: error.read().is_some(),
