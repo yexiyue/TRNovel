@@ -4667,6 +4667,7 @@ dependencies = [
  "tui-big-text",
  "tui-tree-widget",
  "tui-widget-list",
+ "unicode-width",
  "walkdir",
  "woff2-patched",
  "zeno",

@@ -169,4 +169,56 @@ mod tests {
         assert!(first.update(|c| c.browser.always_allow = false).is_err());
         assert_eq!(fs::read_to_string(path).unwrap(), "[invalid");
     }
+
+    #[test]
+    fn every_reader_and_appearance_field_survives_a_disk_round_trip() {
+        use crate::cache::{BackgroundMode, Frameline, TocRatio};
+        use crate::theme::presets::CustomTheme;
+        use std::collections::BTreeMap;
+
+        let home = tempfile::tempdir().unwrap();
+        let store = ConfigStore::new(AppPaths::from_home(home.path()).config());
+        let reader = ReaderDisplayConfig {
+            follow_tts: false,
+            show_title: false,
+            page_overlap: 7,
+            paragraph_spacing: true,
+            show_hint_bar: false,
+            show_global_hint: false,
+            allow_page_blank: true,
+            lines_per_row: 42,
+            first_line_indent: 5,
+            paragraph_gap: 3,
+            h_margin: 4,
+            frameline: Frameline::Rounded,
+            show_frameline_title: false,
+            toc_ratio: TocRatio::Quarter,
+            arrows_page: true,
+        };
+        let mut colors = BTreeMap::new();
+        colors.insert("fg".to_string(), "#112233".to_string());
+        colors.insert("accent".to_string(), "#445566".to_string());
+        let appearance = AppearanceConfig {
+            theme_slug: "custom-1".to_string(),
+            background: BackgroundMode::Theme,
+            show_header: false,
+            confirm_exit: false,
+            custom_themes: vec![CustomTheme {
+                name: "我的方案".to_string(),
+                slug: "custom-1".to_string(),
+                base: "rice-paper".to_string(),
+                colors,
+                ..Default::default()
+            }],
+        };
+        store
+            .update(|c| {
+                c.reader = reader;
+                c.appearance = appearance.clone();
+            })
+            .unwrap();
+        let loaded = store.load().unwrap();
+        assert_eq!(loaded.reader, reader);
+        assert_eq!(loaded.appearance, appearance);
+    }
 }

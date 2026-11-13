@@ -1,4 +1,5 @@
 pub mod navigation;
+pub mod ui_memory;
 use std::{sync::Arc, time::Duration};
 
 use futures::FutureExt;
@@ -11,22 +12,23 @@ use ratatui_kit::{
 };
 use tokio::sync::Notify;
 
+#[cfg(feature = "network")]
+use crate::book_source::BookSourceCache;
+#[cfg(feature = "network")]
+use crate::novel::network_novel::NetworkNovel;
+#[cfg(feature = "network")]
+use crate::pages::network_novel::{
+    book_detail::BookDetail, book_source_login::BookSourceLogin,
+    book_source_manager::BookSourceManager, select_books::SelectBooks,
+};
 use crate::{
     AppearanceConfig, History, ReaderDisplayConfig, TRNovel,
-    book_source::BookSourceCache,
     components::{Loading, WarningModal},
     errors::Errors,
-    novel::{local_novel::LocalNovel, network_novel::NetworkNovel},
+    novel::local_novel::LocalNovel,
     pages::{
-        ReadNovel,
-        home::Home,
-        local_novel::SelectFile,
-        network_novel::{
-            book_detail::BookDetail, book_source_login::BookSourceLogin,
-            book_source_manager::BookSourceManager, select_books::SelectBooks,
-        },
-        select_history::SelectHistory,
-        theme_setting::ThemeSetting,
+        ReadNovel, home::Home, local_novel::SelectFile, select_history::SelectHistory,
+        settings::Settings, theme_setting::ThemeSetting,
     },
 };
 mod layout;
@@ -46,6 +48,7 @@ pub fn App(props: &AppProps, mut hooks: Hooks) -> impl Into<AnyElement<'static>>
     // App owns caches with Drop saving; listening preferences are confirmed snapshots
     // from the independent worker and have no reader-side persistence hook.
     let history_state = hooks.use_state(|| None::<History>);
+    #[cfg(feature = "network")]
     let book_sources_catch_state = hooks.use_state(|| None::<BookSourceCache>);
     #[cfg(feature = "tts")]
     let listening_snapshot = hooks.use_state(crate::tts::Snapshot::default);
@@ -89,8 +92,11 @@ pub fn App(props: &AppProps, mut hooks: Hooks) -> impl Into<AnyElement<'static>>
             let history = History::load()?;
             history_state.write().replace(history);
 
-            let book_sources = BookSourceCache::load()?;
-            book_sources_catch_state.write().replace(book_sources);
+            #[cfg(feature = "network")]
+            {
+                let book_sources = BookSourceCache::load()?;
+                book_sources_catch_state.write().replace(book_sources);
+            }
 
             crate::state::APPEARANCE.set(AppearanceConfig::load()?);
             crate::state::READER_DISPLAY.set(ReaderDisplayConfig::load()?);
@@ -114,23 +120,51 @@ pub fn App(props: &AppProps, mut hooks: Hooks) -> impl Into<AnyElement<'static>>
         loading.set(false);
     });
 
-    let routes = routes!(
+    #[allow(unused_mut, clippy::let_and_return)]
+    let mut routes = routes!(
         "/"=>Layout{
             "/home"=>Home,
             "/select-history"=>SelectHistory,
             // 本地小说
             "/select-file"=> SelectFile,
             "/local-novel"=> ReadNovel<LocalNovel>,
-            // 网络小说
+            // 全局设置与主题设置
+            "/settings"=> Settings,
+            "/theme-setting"=> ThemeSetting,
+        }
+    );
+
+    // 网络小说页面只在启用 network feature 时挂进路由表;无网络构建里这些路径根本不存在,
+    // 因此也不会误导航到空页面。
+    #[cfg(feature = "network")]
+    {
+        let network_routes = routes!(
             "/book-source"=> BookSourceManager,
             "/book-source-login"=> BookSourceLogin,
             "/select-books"=> SelectBooks,
             "/book-detail"=> BookDetail,
             "/network-novel"=> ReadNovel<NetworkNovel>,
-            // 主题设置
-            "/theme-setting"=> ThemeSetting,
+        );
+        if let Some(root) = routes.first_mut() {
+            root.children.extend(network_routes);
         }
-    );
+    }
+
+    let router = element!(RouterProvider(
+        routes: routes,
+        index_path: "/home",
+        history_length: navigation::HISTORY_LENGTH,
+        state: RouteState::new(props.trnovel.clone())
+    ));
+    #[cfg(feature = "tts")]
+    let router = element!(ContextProvider(value:Context::owned(listening_context)){ {router} });
+    // 书源缓存上下文只有网络页面消费,无网络构建不注入。
+    #[cfg(feature = "network")]
+    let router =
+        element!(ContextProvider(value:Context::owned(book_sources_catch_state)){ {router} });
+    let page =
+        element!(ContextProvider(value:Context::owned(history_state)){ {router.into_any()} })
+            .into_any();
 
     let appearance = hooks.use_atom(&crate::state::APPEARANCE);
     let palette = appearance.read().palette();
@@ -156,23 +190,7 @@ pub fn App(props: &AppProps, mut hooks: Hooks) -> impl Into<AnyElement<'static>>
                         // 门控期间缓存尚未加载,文案保持中性。
                         element!(Loading(tip:"启动中...")).into_any()
                     } else {
-                        element!(
-                            ContextProvider(value:Context::owned(history_state)){
-                                ContextProvider(value:Context::owned(book_sources_catch_state)){
-                                    { {
-                                        let router = element!(RouterProvider(
-                                            routes: routes,
-                                            index_path: "/home",
-                                            history_length: navigation::HISTORY_LENGTH,
-                                            state: RouteState::new(props.trnovel.clone())
-                                        ));
-                                        #[cfg(feature = "tts")]
-                                        let router = element!(ContextProvider(value:Context::owned(listening_context)){ {router} });
-                                        router.into_any()
-                                    } }
-                                }
-                            }
-                        ).into_any()
+                        page
                     }}
                     // 迁移弹窗常驻挂载:询问/进度/汇总期间覆盖在加载屏或路由之上。
                     crate::migration::ui::MigrationModal

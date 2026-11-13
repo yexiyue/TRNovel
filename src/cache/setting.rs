@@ -1,15 +1,23 @@
 use crate::Result;
 use crate::config::ConfigStore;
+use crate::theme::presets::{CustomTheme, ThemeChoice};
 use ratatui_kit::Palette;
 use ratatui_kit_themes::{IntoKitPalette, ThemeName, terminal_background};
 use serde::{Deserialize, Serialize};
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(default, rename_all = "snake_case")]
 pub struct AppearanceConfig {
     pub theme_slug: String,
     pub background: BackgroundMode,
     pub show_header: bool,
+    /// 退出前是否弹确认框。Q 紧挨着翻页键,误触就要重新找进度,因此默认开;
+    /// 习惯一键退出的用户可在设置里关掉。
+    #[serde(default = "default_confirm_exit")]
+    pub confirm_exit: bool,
+    /// 用户在主题设置页创建的方案。旧配置没有这一项时为空,不影响既有主题解析。
+    #[serde(default)]
+    pub custom_themes: Vec<CustomTheme>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -39,11 +47,36 @@ impl AppearanceConfig {
     }
 
     pub fn palette(&self) -> Palette {
-        let palette = self.theme_name().into_kit_palette();
+        // 解析顺序: 自定义方案 → 中文阅读预设 → 上游命名主题。自定义 slug 只由
+        // `custom-<n>` 生成, 不会与后两者撞名; 命中自定义时它的 palette() 再按
+        // base 回查预设/内置主题, 因此这里不必展开 base。
+        let palette = self
+            .custom_theme(&self.theme_slug)
+            .map(CustomTheme::palette)
+            .or_else(|| ThemeChoice::from_slug(&self.theme_slug).map(|choice| choice.palette()))
+            .unwrap_or_else(|| self.theme_name().into_kit_palette());
         match self.background {
             BackgroundMode::Theme => palette,
             BackgroundMode::Terminal => terminal_background(palette),
         }
+    }
+
+    /// 按 slug 查用户方案。列表渲染、配色解析与删除都从这里取, 避免各自遍历。
+    pub fn custom_theme(&self, slug: &str) -> Option<&CustomTheme> {
+        self.custom_themes.iter().find(|theme| theme.slug == slug)
+    }
+
+    /// 删除一个自定义方案; 若它正是当前主题, 同步回落到默认主题。
+    ///
+    /// 返回是否真的删掉了某一项。调用方据此决定要不要写盘, 配置层不替 UI 决定提示文案。
+    pub fn remove_custom_theme(&mut self, slug: &str) -> bool {
+        let before = self.custom_themes.len();
+        self.custom_themes.retain(|theme| theme.slug != slug);
+        let removed = self.custom_themes.len() != before;
+        if removed && self.theme_slug == slug {
+            self.theme_slug = Self::DEFAULT_THEME.slug().to_string();
+        }
+        removed
     }
 }
 
@@ -53,6 +86,8 @@ impl Default for AppearanceConfig {
             theme_slug: Self::DEFAULT_THEME.slug().to_string(),
             background: BackgroundMode::Terminal,
             show_header: true,
+            confirm_exit: default_confirm_exit(),
+            custom_themes: Vec::new(),
         }
     }
 }
@@ -75,11 +110,188 @@ pub struct ReaderDisplayConfig {
     /// 众口难调,交给用户在阅读设置面板里切。
     #[serde(default = "default_paragraph_spacing")]
     pub paragraph_spacing: bool,
+    /// 是否显示阅读页/设置页内的快捷键提示。默认开:不点开帮助也知道键位。
+    /// 关闭后阅读页底部提示和设置页边框底部的操作说明一起隐藏。
+    #[serde(default = "default_show_hint_bar")]
+    pub show_hint_bar: bool,
+    /// 是否在整屏最底部显示非阅读页的全局快捷键提示(返回/菜单/退出)。
+    /// 与 show_hint_bar 独立:只想留阅读页提示、或只想留全局提示都可单独控制。
+    #[serde(default = "default_show_global_hint")]
+    pub show_global_hint: bool,
+    /// 翻到章末后是否允许继续翻页、把正文推上去留下空白。
+    /// 默认关:最后一页贴底铺满;开启后保留旧版「翻页留白」的观感。
+    #[serde(default = "default_allow_page_blank")]
+    pub allow_page_blank: bool,
+    /// 正文每行最多显示多少个汉字(一个汉字按两列算)。0 表示跟随终端宽度。
+    #[serde(default = "default_lines_per_row")]
+    pub lines_per_row: u16,
+    /// 段落首行缩进的字符数,0 为不缩进。
+    #[serde(default = "default_first_line_indent")]
+    pub first_line_indent: u16,
+    /// 段落之间补几个空行。0 为紧凑,1 相当于旧版「段落间距」开关。
+    #[serde(default = "default_paragraph_gap")]
+    pub paragraph_gap: u16,
+    /// 正文左右两侧各留白的列数。
+    #[serde(default = "default_h_margin")]
+    pub h_margin: u16,
+    /// 阅读页边框样式。
+    #[serde(default = "default_frameline")]
+    pub frameline: Frameline,
+    /// 是否在边框上显示小说标题。
+    #[serde(default = "default_show_frameline_title")]
+    pub show_frameline_title: bool,
+    /// 目录模式下左侧目录栏占整屏宽度的比例。默认一半,保持旧版分栏观感。
+    #[serde(default = "default_toc_ratio")]
+    pub toc_ratio: TocRatio,
+    /// 把 ↑/↓ 当作整页翻页(PgUp/PgDn),而不是逐行滚动。
+    ///
+    /// 默认关:方向键逐行滚是既有习惯,改成翻页会让「想微调一行」的人无从下手。
+    /// 但一屏能看的行数多的终端里,逐行挪一屏要按十几次,故给一个开关。
+    /// 打开后 ↑/↓ 等价于 PageUp/PageDown,含章首/章末的二次确认语义。
+    #[serde(default = "default_arrows_page")]
+    pub arrows_page: bool,
+}
+
+/// 阅读页边框样式。`none` 时正文铺满整个可用区域。
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum Frameline {
+    None,
+    Single,
+    Double,
+    Rounded,
+    Thick,
+}
+
+impl Frameline {
+    /// 设置面板里循环切换的顺序:由实到无,最后一项是关闭。
+    pub const ALL: [Self; 5] = [
+        Self::Single,
+        Self::Rounded,
+        Self::Double,
+        Self::Thick,
+        Self::None,
+    ];
+
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::None => "无边框",
+            Self::Single => "单线",
+            Self::Double => "双线",
+            Self::Rounded => "圆角",
+            Self::Thick => "粗线",
+        }
+    }
+
+    /// 边框占用的行列数;无边框时不占位,正文可用区域随之变大。
+    pub fn inset(self) -> u16 {
+        match self {
+            Self::None => 0,
+            _ => 1,
+        }
+    }
+
+    /// 边框字符集。`None` 也返回单线集,由调用方同时把 `Borders` 设成空 ——
+    /// 光有字符集、边还在,框线照样会画出来。
+    pub fn border_set(self) -> ratatui::symbols::border::Set<'static> {
+        use ratatui::symbols::border;
+        match self {
+            Self::None | Self::Single => border::PLAIN,
+            Self::Double => border::DOUBLE,
+            Self::Rounded => border::ROUNDED,
+            Self::Thick => border::THICK,
+        }
+    }
+
+    pub fn next(self) -> Self {
+        let all = Self::ALL;
+        let index = all.iter().position(|item| *item == self).unwrap_or(0);
+        all[(index + 1) % all.len()]
+    }
+
+    pub fn previous(self) -> Self {
+        let all = Self::ALL;
+        let index = all.iter().position(|item| *item == self).unwrap_or(0);
+        all[(index + all.len() - 1) % all.len()]
+    }
+}
+
+/// 目录栏占宽。三档覆盖常见分栏偏好,默认 1/2 与旧版固定分栏一致。
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize)]
+#[serde(rename_all = "lowercase")]
+pub enum TocRatio {
+    Quarter,
+    Third,
+    #[default]
+    Half,
+}
+
+impl TocRatio {
+    /// 面板 ←/→ 的切换顺序:由窄到宽。
+    pub const ALL: [Self; 3] = [Self::Quarter, Self::Third, Self::Half];
+
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::Quarter => "1/4",
+            Self::Third => "1/3",
+            Self::Half => "1/2",
+        }
+    }
+
+    /// 按整屏宽度换算目录栏列宽。宽度极小时至少留 1 列,避免目录整栏消失。
+    pub fn width(self, width: u16) -> u16 {
+        let divisor = match self {
+            Self::Quarter => 4,
+            Self::Third => 3,
+            Self::Half => 2,
+        };
+        if width == 0 {
+            0
+        } else {
+            (width / divisor).max(1)
+        }
+    }
+
+    /// 面板方向键的入口:在三档内移动,到两端即停,不环绕。
+    pub fn shift(self, delta: i8) -> Self {
+        let index = Self::ALL
+            .iter()
+            .position(|item| *item == self)
+            .unwrap_or(Self::ALL.len() - 1);
+        let shifted = index as isize + delta as isize;
+        Self::ALL[shifted.clamp(0, Self::ALL.len() as isize - 1) as usize]
+    }
+
+    fn from_slug(slug: &str) -> Option<Self> {
+        match slug {
+            "quarter" => Some(Self::Quarter),
+            "third" => Some(Self::Third),
+            "half" => Some(Self::Half),
+            _ => None,
+        }
+    }
+}
+
+// 非法/未知值静默回落默认档,不让一个手改坏的值阻断整份配置加载。
+impl<'de> Deserialize<'de> for TocRatio {
+    fn deserialize<D>(deserializer: D) -> std::result::Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        let raw = String::deserialize(deserializer)?;
+        Ok(Self::from_slug(&raw).unwrap_or_default())
+    }
 }
 
 impl ReaderDisplayConfig {
     /// 翻页重叠行数上限。再大就会把「翻一页」压成「滚几行」,属配置错误而非偏好。
     const PAGE_OVERLAP_MAX: u16 = 10;
+    const PARAGRAPH_GAP_MAX: u16 = 4;
+    const INDENT_MAX: u16 = 8;
+    const H_MARGIN_MAX: u16 = 6;
+    const LINES_PER_ROW_MIN: u16 = 10;
+    /// 100 汉字 = 200 列,已超过任何常见终端宽度,再大只会撞到「跟随窗口」。
+    const LINES_PER_ROW_MAX: u16 = 100;
 
     /// 给定可见行数下的翻页步长:整屏减去重叠行数。
     ///
@@ -92,6 +304,23 @@ impl ReaderDisplayConfig {
             .max(1)
     }
 
+    /// 正文折行宽度(列)。`lines_per_row` 按**汉字数**存,一个汉字占两列;
+    /// 0 表示跟随窗口。窗口比设定窄时以窗口为准,否则正文会溢出边框。
+    pub fn wrap_width(&self, content_width: usize) -> usize {
+        match self.lines_per_row {
+            0 => content_width,
+            chars => content_width.min(chars as usize * 2),
+        }
+    }
+
+    /// 章节标题是否要画在正文上方(而不是边框上)。
+    ///
+    /// 「显示标题」决定标题是否可见,「边框标题」只决定放在哪:
+    /// 关掉边框标题或使用无边框模式时,标题仍要在正文上方出现。
+    pub fn inline_title(&self) -> bool {
+        self.show_title && (self.frameline == Frameline::None || !self.show_frameline_title)
+    }
+
     pub fn increase_page_overlap(&mut self) {
         self.page_overlap = (self.page_overlap + 1).min(Self::PAGE_OVERLAP_MAX);
     }
@@ -100,8 +329,72 @@ impl ReaderDisplayConfig {
         self.page_overlap = self.page_overlap.saturating_sub(1);
     }
 
+    /// 面板里「←/→」的增减入口。数值全部在此钳制,面板代码只报方向、不各自 clamp。
+    pub fn increase_paragraph_gap(&mut self) {
+        self.paragraph_gap = (self.paragraph_gap + 1).min(Self::PARAGRAPH_GAP_MAX);
+        self.paragraph_spacing = self.paragraph_gap > 0;
+    }
+
+    pub fn decrease_paragraph_gap(&mut self) {
+        self.paragraph_gap = self.paragraph_gap.saturating_sub(1);
+        self.paragraph_spacing = self.paragraph_gap > 0;
+    }
+
+    pub fn increase_first_line_indent(&mut self) {
+        self.first_line_indent = (self.first_line_indent + 1).min(Self::INDENT_MAX);
+    }
+
+    pub fn decrease_first_line_indent(&mut self) {
+        self.first_line_indent = self.first_line_indent.saturating_sub(1);
+    }
+
+    /// 0 是「跟随终端宽度」这个特殊值,不参与数值增减:往下减到底就回到 0,
+    /// 往上加则从最小字数起步,不会卡在 1 这种窄到没法读的宽度。
+    pub fn increase_lines_per_row(&mut self) {
+        self.lines_per_row = match self.lines_per_row {
+            0 => Self::LINES_PER_ROW_MIN,
+            n => (n + 1).min(Self::LINES_PER_ROW_MAX),
+        };
+    }
+
+    pub fn decrease_lines_per_row(&mut self) {
+        self.lines_per_row = if self.lines_per_row <= Self::LINES_PER_ROW_MIN {
+            0
+        } else {
+            self.lines_per_row - 1
+        };
+    }
+
+    pub fn increase_h_margin(&mut self) {
+        self.h_margin = (self.h_margin + 1).min(Self::H_MARGIN_MAX);
+    }
+
+    pub fn decrease_h_margin(&mut self) {
+        self.h_margin = self.h_margin.saturating_sub(1);
+    }
+
     pub(crate) fn normalize(&mut self) {
         self.page_overlap = self.page_overlap.min(Self::PAGE_OVERLAP_MAX);
+        // 旧版只有「段落间距」开关:开着等价于补 1 行,读到的旧配置据此换算。
+        if self.paragraph_spacing {
+            self.paragraph_gap = self.paragraph_gap.max(1);
+        }
+        self.paragraph_gap = self.paragraph_gap.min(Self::PARAGRAPH_GAP_MAX);
+        self.paragraph_spacing = self.paragraph_gap > 0;
+        self.first_line_indent = self.first_line_indent.min(Self::INDENT_MAX);
+        self.h_margin = self.h_margin.min(Self::H_MARGIN_MAX);
+        // toc_ratio 是枚举,非法字符串在反序列化时已回落默认,这里无需再钳制。
+        // 折行宽度太窄会把正文压成一列,按下限修正而不是拒绝启动。
+        if self.lines_per_row > 0 {
+            self.lines_per_row = self
+                .lines_per_row
+                .clamp(Self::LINES_PER_ROW_MIN, Self::LINES_PER_ROW_MAX);
+        }
+    }
+
+    /// 段落之间实际补的空行数,面板与渲染共用,避免两处各算一遍。
+    pub fn effective_paragraph_gap(&self) -> usize {
+        self.paragraph_gap as usize
     }
     pub fn load() -> Result<Self> {
         Ok(ConfigStore::user_default()?.load()?.reader)
@@ -119,6 +412,17 @@ impl Default for ReaderDisplayConfig {
             show_title: default_show_title(),
             page_overlap: default_page_overlap(),
             paragraph_spacing: default_paragraph_spacing(),
+            show_hint_bar: default_show_hint_bar(),
+            show_global_hint: default_show_global_hint(),
+            allow_page_blank: default_allow_page_blank(),
+            lines_per_row: default_lines_per_row(),
+            first_line_indent: default_first_line_indent(),
+            paragraph_gap: default_paragraph_gap(),
+            h_margin: default_h_margin(),
+            frameline: default_frameline(),
+            show_frameline_title: default_show_frameline_title(),
+            toc_ratio: default_toc_ratio(),
+            arrows_page: default_arrows_page(),
         }
     }
 }
@@ -138,6 +442,58 @@ fn default_paragraph_spacing() -> bool {
 /// 取 0(整屏平移)是旧行为,想要的用户在阅读设置面板里一眼可调。
 fn default_page_overlap() -> u16 {
     2
+}
+
+fn default_confirm_exit() -> bool {
+    true
+}
+
+fn default_show_hint_bar() -> bool {
+    true
+}
+
+fn default_show_global_hint() -> bool {
+    true
+}
+
+/// 默认关:最后一页贴底铺满,不把正文推上去留一块空白。
+fn default_allow_page_blank() -> bool {
+    false
+}
+
+/// 0 = 不按字数折行,直接用终端宽度。
+fn default_lines_per_row() -> u16 {
+    0
+}
+
+fn default_first_line_indent() -> u16 {
+    2
+}
+
+fn default_paragraph_gap() -> u16 {
+    0
+}
+
+fn default_h_margin() -> u16 {
+    0
+}
+
+fn default_frameline() -> Frameline {
+    Frameline::Single
+}
+
+fn default_show_frameline_title() -> bool {
+    true
+}
+
+/// 默认 1/2:与旧版固定「width / 2」的分栏一致,升级不改变既有阅读观感。
+fn default_toc_ratio() -> TocRatio {
+    TocRatio::Half
+}
+
+/// 默认关:方向键逐行滚是既有习惯,想整页翻的用户在设置里一眼可开。
+fn default_arrows_page() -> bool {
+    false
 }
 
 #[cfg(test)]
@@ -168,6 +524,7 @@ mod tests {
             theme_slug: "missing-theme".to_string(),
             background: BackgroundMode::Terminal,
             show_header: true,
+            ..Default::default()
         };
 
         assert_eq!(config.theme_name(), AppearanceConfig::DEFAULT_THEME);
@@ -244,6 +601,7 @@ mod tests {
             theme_slug: ThemeName::Dracula.slug().to_string(),
             background: BackgroundMode::Terminal,
             show_header: true,
+            ..Default::default()
         };
 
         let palette = config.palette();
@@ -254,5 +612,332 @@ mod tests {
         assert_eq!(palette.overlay, Color::Reset);
         assert_eq!(palette.accent, themed.accent);
         assert_eq!(palette.fg, themed.fg);
+    }
+    #[test]
+    fn every_reader_display_field_survives_serialization() {
+        // 逐字段给非默认值:任何字段漏写 serde 或 default 用错,这里都会掉回默认。
+        let config = ReaderDisplayConfig {
+            follow_tts: false,
+            show_title: false,
+            page_overlap: 7,
+            paragraph_spacing: true,
+            show_hint_bar: false,
+            show_global_hint: false,
+            allow_page_blank: true,
+            lines_per_row: 42,
+            first_line_indent: 5,
+            paragraph_gap: 3,
+            h_margin: 4,
+            frameline: Frameline::Rounded,
+            show_frameline_title: false,
+            toc_ratio: TocRatio::Quarter,
+            arrows_page: true,
+        };
+        let text = toml::to_string(&config).unwrap();
+        let restored: ReaderDisplayConfig = toml::from_str(&text).unwrap();
+        assert_eq!(restored, config);
+    }
+
+    #[test]
+    fn every_appearance_field_survives_serialization() {
+        let custom = CustomTheme {
+            name: "我的方案".to_string(),
+            slug: "custom-1".to_string(),
+            base: "rice-paper".to_string(),
+            colors: [
+                ("fg".to_string(), "#112233".to_string()),
+                ("accent".to_string(), "#445566".to_string()),
+            ]
+            .into_iter()
+            .collect(),
+            ..Default::default()
+        };
+        let config = AppearanceConfig {
+            theme_slug: "custom-1".to_string(),
+            background: BackgroundMode::Theme,
+            show_header: false,
+            confirm_exit: false,
+            custom_themes: vec![custom],
+        };
+        let text = toml::to_string(&config).unwrap();
+        let restored: AppearanceConfig = toml::from_str(&text).unwrap();
+        assert_eq!(restored, config);
+    }
+
+    #[test]
+    fn legacy_reader_config_gets_reading_defaults() {
+        // 旧版本只写了 show_title:新字段一律走默认,不能因为缺字段就报错或归零。
+        let config: ReaderDisplayConfig = serde_json::from_str(r#"{"show_title": false}"#).unwrap();
+
+        assert!(!config.show_title);
+        assert!(config.show_hint_bar);
+        assert!(config.show_global_hint);
+        assert!(!config.allow_page_blank);
+        assert_eq!(config.frameline, Frameline::Single);
+        assert!(config.show_frameline_title);
+        assert_eq!(config.lines_per_row, 0);
+        assert_eq!(config.first_line_indent, 2);
+        assert_eq!(config.paragraph_gap, 0);
+        assert_eq!(config.h_margin, 0);
+    }
+
+    #[test]
+    fn arrows_page_is_opt_in_and_round_trips() {
+        // 旧配置没有这一项:默认必须是「逐行滚动」,不能悄悄把方向键改成翻页。
+        let config: ReaderDisplayConfig = serde_json::from_str(r#"{"show_title": true}"#).unwrap();
+        assert!(!config.arrows_page);
+
+        let config = ReaderDisplayConfig {
+            arrows_page: true,
+            ..Default::default()
+        };
+        let restored: ReaderDisplayConfig =
+            serde_json::from_str(&serde_json::to_string(&config).unwrap()).unwrap();
+        assert!(restored.arrows_page);
+    }
+
+    #[test]
+    fn toc_ratio_defaults_to_half_and_round_trips() {
+        // 旧配置没有这一项:默认 1/2,保持升级前的分栏观感。
+        let config: ReaderDisplayConfig = serde_json::from_str(r#"{"show_title": true}"#).unwrap();
+        assert_eq!(config.toc_ratio, TocRatio::Half);
+
+        for ratio in TocRatio::ALL {
+            let json = serde_json::to_string(&ratio).unwrap();
+            assert_eq!(serde_json::from_str::<TocRatio>(&json).unwrap(), ratio);
+        }
+
+        let config = ReaderDisplayConfig {
+            toc_ratio: TocRatio::Third,
+            ..Default::default()
+        };
+        let restored: ReaderDisplayConfig =
+            serde_json::from_str(&serde_json::to_string(&config).unwrap()).unwrap();
+        assert_eq!(restored.toc_ratio, TocRatio::Third);
+    }
+
+    #[test]
+    fn unknown_toc_ratio_falls_back_to_default() {
+        // 手改坏的枚举值不应让整份配置加载失败,静默回落 1/2。
+        let ratio: TocRatio = serde_json::from_str(r#""wide""#).unwrap();
+        assert_eq!(ratio, TocRatio::Half);
+    }
+
+    #[test]
+    fn toc_ratio_width_conversion_and_shift_clamp() {
+        assert_eq!(TocRatio::Quarter.width(80), 20);
+        // 80 / 3 整除得 26,余数列留给正文,避免目录栏吃掉正文最后一列。
+        assert_eq!(TocRatio::Third.width(80), 26);
+        assert_eq!(TocRatio::Half.width(80), 40);
+        assert_eq!(TocRatio::Quarter.width(0), 0);
+        assert_eq!(TocRatio::Quarter.width(2), 1);
+
+        // 两端停住,不环绕 —— 否则连按 → 会从 1/2 跳回 1/4。
+        assert_eq!(TocRatio::Quarter.shift(-1), TocRatio::Quarter);
+        assert_eq!(TocRatio::Half.shift(1), TocRatio::Half);
+        assert_eq!(TocRatio::Quarter.shift(1), TocRatio::Third);
+        assert_eq!(TocRatio::Half.shift(-1), TocRatio::Third);
+    }
+
+    #[test]
+    fn appearance_gains_confirm_exit_by_default() {
+        // 旧配置文件没有这一项:确认默认开,防止 Q 误触退出丢进度。
+        let config: AppearanceConfig = toml::from_str("theme_slug = 'tokyo-night'").unwrap();
+        assert!(config.confirm_exit);
+
+        let config = AppearanceConfig {
+            confirm_exit: false,
+            ..Default::default()
+        };
+        let restored: AppearanceConfig =
+            toml::from_str(&toml::to_string(&config).unwrap()).unwrap();
+        assert!(!restored.confirm_exit);
+    }
+
+    #[test]
+    fn frameline_cycles_through_every_style_and_round_trips() {
+        let mut style = Frameline::Single;
+        let mut seen = Vec::new();
+        for _ in 0..Frameline::ALL.len() {
+            seen.push(style);
+            let json = serde_json::to_string(&style).unwrap();
+            assert_eq!(serde_json::from_str::<Frameline>(&json).unwrap(), style);
+            assert_eq!(style.previous().next(), style);
+            style = style.next();
+        }
+        // 循环一圈必须正好回到起点,否则面板里会漏掉某种样式。
+        assert_eq!(style, Frameline::Single);
+        assert_eq!(seen.len(), Frameline::ALL.len());
+
+        assert_eq!(Frameline::None.inset(), 0);
+        assert_eq!(Frameline::Double.inset(), 1);
+    }
+
+    #[test]
+    fn layout_controls_clamp_at_their_bounds() {
+        let mut config = ReaderDisplayConfig::default();
+
+        for _ in 0..10 {
+            config.increase_paragraph_gap();
+            config.increase_first_line_indent();
+            config.increase_h_margin();
+        }
+        assert_eq!(config.paragraph_gap, ReaderDisplayConfig::PARAGRAPH_GAP_MAX);
+        assert_eq!(config.first_line_indent, ReaderDisplayConfig::INDENT_MAX);
+        assert_eq!(config.h_margin, ReaderDisplayConfig::H_MARGIN_MAX);
+
+        for _ in 0..10 {
+            config.decrease_first_line_indent();
+            config.decrease_h_margin();
+        }
+        assert_eq!(config.first_line_indent, 0);
+        assert_eq!(config.h_margin, 0);
+
+        // 磁盘脏值在 normalize 里修正,而不是渲染时现场截断。
+        config.lines_per_row = 3;
+        config.normalize();
+        assert_eq!(config.lines_per_row, ReaderDisplayConfig::LINES_PER_ROW_MIN);
+        config.lines_per_row = 999;
+        config.normalize();
+        assert_eq!(config.lines_per_row, ReaderDisplayConfig::LINES_PER_ROW_MAX);
+    }
+
+    #[test]
+    fn lines_per_row_zero_means_follow_terminal() {
+        let mut config = ReaderDisplayConfig::default();
+        assert_eq!(config.lines_per_row, 0);
+
+        // 0 是特殊值,往上加要从最小可读字数起步,而不是变成 1 列。
+        config.increase_lines_per_row();
+        assert_eq!(config.lines_per_row, ReaderDisplayConfig::LINES_PER_ROW_MIN);
+
+        for _ in 0..5 {
+            config.decrease_lines_per_row();
+        }
+        assert_eq!(config.lines_per_row, 0);
+    }
+
+    #[test]
+    fn lines_per_row_counts_han_cells() {
+        let mut config = ReaderDisplayConfig::default();
+        // 0 = 跟随窗口:可用宽度原样返回。
+        assert_eq!(config.wrap_width(72), 72);
+
+        // 设定值按汉字计:30 字 = 60 列,不再出现「设 30 只显示 16 个汉字」。
+        config.lines_per_row = 30;
+        assert_eq!(config.wrap_width(72), 60);
+
+        // 窗口更窄时以窗口为准,避免正文溢出边框。
+        assert_eq!(config.wrap_width(40), 40);
+    }
+
+    fn sample_custom(slug: &str, base: &str) -> CustomTheme {
+        CustomTheme {
+            name: format!("我的方案 {slug}"),
+            slug: slug.to_string(),
+            base: base.to_string(),
+            colors: Default::default(),
+            bg: "#000000".to_string(),
+            fg: "#ffffff".to_string(),
+            accent: "#ff0000".to_string(),
+        }
+    }
+
+    #[test]
+    fn custom_theme_overrides_only_base_semantic_colors() {
+        let custom = sample_custom("custom-1", "rice-paper");
+        let config = AppearanceConfig {
+            theme_slug: custom.slug.clone(),
+            background: BackgroundMode::Theme,
+            custom_themes: vec![custom],
+            ..Default::default()
+        };
+
+        let palette = config.palette();
+        let base = ThemeChoice::from_slug("rice-paper").unwrap().palette();
+
+        assert_eq!(palette.bg, Color::Rgb(0, 0, 0));
+        assert_eq!(palette.fg, Color::Rgb(255, 255, 255));
+        assert_eq!(palette.accent, Color::Rgb(255, 0, 0));
+        // 只覆盖三个语义色, 其余字段仍沿用 base, 自定义方案不会悄悄变成另一套配色。
+        assert_eq!(palette.selection, base.selection);
+        assert_eq!(palette.success, base.success);
+        // 派生色跟着 accent 走, 否则焦点框还停留在 base 的强调色上。
+        assert_eq!(palette.border_active, Color::Rgb(255, 0, 0));
+    }
+
+    #[test]
+    fn custom_theme_with_unknown_base_falls_back_to_default_theme() {
+        let custom = sample_custom("custom-1", "no-such-base");
+        let config = AppearanceConfig {
+            theme_slug: custom.slug.clone(),
+            background: BackgroundMode::Theme,
+            custom_themes: vec![custom],
+            ..Default::default()
+        };
+
+        let palette = config.palette();
+        let fallback = ThemeName::TokyoNight.into_kit_palette();
+        assert_eq!(palette.selection, fallback.selection);
+        assert_eq!(palette.success, fallback.success);
+        assert_eq!(palette.bg, Color::Rgb(0, 0, 0));
+    }
+
+    #[test]
+    fn custom_theme_slugs_avoid_existing_and_builtin_slugs() {
+        let existing = vec![sample_custom("custom-1", "rice-paper")];
+        let slug = CustomTheme::next_slug(&existing);
+        assert_eq!(slug, "custom-2");
+        assert!(!existing.iter().any(|theme| theme.slug == slug));
+        assert!(ThemeChoice::from_slug(&slug).is_none());
+    }
+
+    #[test]
+    fn removing_custom_theme_drops_it_and_resets_current_theme() {
+        let mut config = AppearanceConfig {
+            theme_slug: "custom-2".to_string(),
+            background: BackgroundMode::Theme,
+            custom_themes: vec![
+                sample_custom("custom-1", "rice-paper"),
+                sample_custom("custom-2", "ink-black"),
+            ],
+            ..Default::default()
+        };
+
+        assert!(config.remove_custom_theme("custom-2"));
+        assert_eq!(config.theme_slug, AppearanceConfig::DEFAULT_THEME.slug());
+        assert!(config.custom_theme("custom-2").is_none());
+
+        let restored: AppearanceConfig =
+            toml::from_str(&toml::to_string(&config).unwrap()).unwrap();
+        assert_eq!(restored.custom_themes.len(), 1);
+        assert!(restored.custom_theme("custom-2").is_none());
+    }
+
+    #[test]
+    fn legacy_config_without_custom_themes_still_loads() {
+        // 旧版本写出的 [appearance] 没有 custom_themes: 缺字段必须走默认空表,
+        // 既有主题解析与终端背景行为都不能受影响。
+        let config: AppearanceConfig = toml::from_str("theme_slug = 'tokyo-night'").unwrap();
+        assert!(config.custom_themes.is_empty());
+        assert_eq!(config.palette().bg, Color::Reset);
+    }
+
+    #[test]
+    fn paragraph_gap_drives_legacy_spacing_flag() {
+        let mut config = ReaderDisplayConfig::default();
+        config.increase_paragraph_gap();
+        assert!(config.paragraph_spacing);
+        assert_eq!(config.effective_paragraph_gap(), 1);
+
+        config.decrease_paragraph_gap();
+        assert!(!config.paragraph_spacing);
+
+        // 旧配置只有开关:读到后换算成 1 行空行,再写回时两个字段保持一致。
+        let mut legacy: ReaderDisplayConfig =
+            serde_json::from_str(r#"{"paragraph_spacing": true}"#).unwrap();
+        legacy.normalize();
+        assert_eq!(legacy.paragraph_gap, 1);
+        assert!(legacy.paragraph_spacing);
     }
 }

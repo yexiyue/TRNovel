@@ -46,6 +46,19 @@ impl Trail {
     pub fn forward_label(&self) -> Option<&'static str> {
         self.paths.get(self.current + 1).map(|p| page_label(p))
     }
+
+    /// 当前实际所在路径。根页面是 `/home`;Esc 兜底据此判断是否还能返回。
+    pub fn current_path(&self) -> &str {
+        self.paths
+            .get(self.current)
+            .map(String::as_str)
+            .unwrap_or("/")
+    }
+
+    /// 是否还有上一页可退。仅看轨迹,不排除根页面。
+    pub fn can_go_back(&self) -> bool {
+        self.current > 0
+    }
 }
 
 pub fn page_label(path: &str) -> &'static str {
@@ -58,7 +71,8 @@ pub fn page_label(path: &str) -> &'static str {
         "/book-detail" => "小说详情",
         "/select-history" => "历史记录",
         "/book-source-login" => "书源登录",
-        "/theme-setting" => "全局设置",
+        "/settings" => "全局设置",
+        "/theme-setting" => "外观与主题",
         _ => "上一页",
     }
 }
@@ -118,6 +132,21 @@ mod tests {
         trail.push("/book-source");
         assert_eq!(trail.forward_label(), None);
         assert_eq!(trail.back_label(), Some("历史记录"));
+    }
+
+    #[test]
+    fn current_path_and_can_go_back_track_root() {
+        let mut trail = Trail::default();
+        assert_eq!(trail.current_path(), "/home");
+        assert!(!trail.can_go_back());
+
+        trail.push("/select-history");
+        assert_eq!(trail.current_path(), "/select-history");
+        assert!(trail.can_go_back());
+
+        trail.go(-1);
+        assert_eq!(trail.current_path(), "/home");
+        assert!(!trail.can_go_back());
     }
 
     #[test]

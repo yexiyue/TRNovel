@@ -6,17 +6,22 @@ use ratatui_kit::{ElementExt, RunOptions, element};
 use std::{env, ffi::OsString, fmt::Debug, path::PathBuf};
 
 pub mod app;
+#[cfg(feature = "network")]
 pub mod browser_assist;
 pub mod cache;
 pub mod components;
 pub mod config;
+#[cfg(feature = "network")]
 pub mod doctor;
 pub mod errors;
 pub mod file_list;
+#[cfg(feature = "network")]
 pub mod gen_fontmap;
 pub mod hooks;
+#[cfg(feature = "network")]
 pub mod import;
 pub mod keymap;
+#[cfg(feature = "network")]
 pub mod login;
 mod migration;
 pub mod novel;
@@ -56,6 +61,7 @@ where
         listening.shutdown().await;
         let _ = listening_task.await;
     }
+    #[cfg(feature = "network")]
     parse_book_source::shutdown_render_pool().await;
     result
 }
@@ -96,18 +102,21 @@ where
     }
 
     // 书源体检:非 TUI,跑全流程后打印 ✓/✗ 列表并退出。
+    #[cfg(feature = "network")]
     if let Some(Commands::Doctor { path }) = &trnovel.subcommand {
         doctor::run(path).await;
         return Ok(());
     }
 
     // 导入书源:非 TUI,把书源 JSON(文件/URL)写入 ~/.trnovel 后退出。
+    #[cfg(feature = "network")]
     if let Some(Commands::Import { source }) = &trnovel.subcommand {
         import::run(source).await;
         return Ok(());
     }
 
     // 生成字体反爬映射表:非 TUI,字形匹配后写出 {码点:真字} JSON 退出。
+    #[cfg(feature = "network")]
     if let Some(Commands::GenFontmap {
         font,
         out,
@@ -150,11 +159,9 @@ where
   终端小说阅读器 (Terminal reader for novel)
   ==========================================
 
-  TRNovel 是一个终端小说阅读器，支持以下功能。
-    - 本地小说
-    - 网络小说
-    - 历史记录
-    - 主题设置
+  TRNovel 是一个终端小说阅读器：本地 TXT 阅读、章节导航、
+  阅读进度、历史记录与主题设置；另有可选的网络书源
+  （无网络构建不含网络书源，详见 README）。
 
   GitHub: https://github.com/yexiyue/trnovel
   
@@ -195,6 +202,7 @@ pub enum Commands {
     Clear,
 
     /// 网络模式，使用网络小说源
+    #[cfg(feature = "network")]
     #[command(short_flag = 'n')]
     Network,
 
@@ -210,6 +218,7 @@ pub enum Commands {
     History,
 
     /// 体检书源：全流程验证书源 JSON,逐项报告 ✓/✗(用于校验 AI 生成的书源)
+    #[cfg(feature = "network")]
     #[command(short_flag = 'd')]
     Doctor {
         /// 书源 JSON 文件路径
@@ -217,6 +226,7 @@ pub enum Commands {
     },
 
     /// 导入书源：把书源 JSON(本地文件或 URL)写入 ~/.trnovel/data/,使其在网络小说里可用
+    #[cfg(feature = "network")]
     #[command(short_flag = 'i')]
     Import {
         /// 书源 JSON 文件路径或 URL
@@ -224,6 +234,7 @@ pub enum Commands {
     },
 
     /// 生成字体反爬映射表：对加密字体做字形匹配,输出 {码点:真字} JSON(可内联进书源 fontMap)
+    #[cfg(feature = "network")]
     GenFontmap {
         /// 加密字体的 URL 或本地路径(woff2/ttf/otf)
         font: String,
