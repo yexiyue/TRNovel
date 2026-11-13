@@ -48,7 +48,7 @@ pub fn Layout(mut hooks: Hooks) -> impl Into<AnyElement<'static>> {
         let trail = trail.read();
         matches!(trail.current_path(), "/local-novel" | "/network-novel")
     };
-    let footer_rows = u16::from(display.show_hint_bar && !reading_page);
+    let footer_rows = u16::from(display.show_global_hint && !reading_page);
     let footer_hint = if footer_rows > 0 {
         crate::keymap::other_hint_bar(terminal_width.saturating_sub(2) as usize)
     } else {

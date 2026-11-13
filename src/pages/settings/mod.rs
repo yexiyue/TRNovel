@@ -13,7 +13,7 @@ use crate::{
     hooks::{DebounceOptions, UseDebounceEffect},
     keymap::{ReaderAction, display_keys},
     pages::read_novel::{
-        settings::{TOC_ROW, adjust, describe_setting},
+        settings::{SETTING_ROWS, adjust, describe_setting},
         visible_lines,
     },
     theme::{AppChromeTheme, presets::ThemeChoice},
@@ -35,6 +35,12 @@ const SECTION_KEYS: usize = 2;
 const SECTION_DATA: usize = 3;
 const SECTION_ABOUT: usize = 4;
 
+/// 左栏固定宽度。鼠标命中判断和渲染共用这一份,避免两边各写一个 14。
+const NAV_WIDTH: u16 = 14;
+/// 内容区左上角相对组件区域的位置:边框 1 + 页边距 1。
+const CONTENT_TOP: u16 = 2;
+const CONTENT_LEFT: u16 = 2 + NAV_WIDTH;
+
 /// 键位分组展示的动作。不是全量 21 个:这里回答「最常用的怎么按」,
 /// 全量表仍在阅读页 `I` 帮助里。
 const KEY_ITEMS: &[(ReaderAction, &str)] = &[
@@ -48,10 +54,10 @@ const KEY_ITEMS: &[(ReaderAction, &str)] = &[
     (ReaderAction::ToggleInfo, "帮助"),
 ];
 
-/// 阅读分组条目数,与 `describe_setting` 的行号一一对应。
-/// 末尾追加了「目录占宽」;tts 构建还多一项「跟随朗读」,行号由 `TOC_ROW` 统一。
+/// 阅读分组条目数。展示顺序由 `SETTING_ROWS` 决定,与 `describe_setting` 的
+/// 真实行号解耦;tts 构建多一项「跟随朗读」,长度由常量自动覆盖。
 fn reading_rows() -> usize {
-    TOC_ROW + 1
+    SETTING_ROWS.len()
 }
 
 fn rows_in(section: usize) -> usize {
@@ -204,11 +210,15 @@ pub fn Settings(mut hooks: Hooks) -> impl Into<AnyElement<'static>> {
                 EventResult::Consumed
             }
             KeyCode::Left | KeyCode::Char('h') if section.get() == SECTION_READING => {
-                adjust(reader_display, cursor.get(), -1);
+                if let Some(item) = SETTING_ROWS.get(cursor.get()) {
+                    adjust(reader_display, *item, -1);
+                }
                 EventResult::Consumed
             }
             KeyCode::Right | KeyCode::Char('l') if section.get() == SECTION_READING => {
-                adjust(reader_display, cursor.get(), 1);
+                if let Some(item) = SETTING_ROWS.get(cursor.get()) {
+                    adjust(reader_display, *item, 1);
+                }
                 EventResult::Consumed
             }
             KeyCode::Enter if section.get() == SECTION_APPEARANCE => {
@@ -221,6 +231,54 @@ pub fn Settings(mut hooks: Hooks) -> impl Into<AnyElement<'static>> {
             }
             KeyCode::Char('i') => {
                 info_open.set(true);
+                EventResult::Consumed
+            }
+            _ => EventResult::Ignored,
+        }
+    });
+
+    // 鼠标与键盘共用同一套状态:点左栏切分组,点内容行选中条目;
+    // 已选中的阅读项再点一次,左半减、右半加,与 AdjustableSettingItem 一致。
+    hooks.use_pointer(PointerOptions::default(), move |ev| {
+        if info_open.get() {
+            return EventResult::Ignored;
+        }
+        let x = ev.position.x.saturating_sub(ev.area.x);
+        let y = ev.position.y.saturating_sub(ev.area.y);
+        let current_section = section.get();
+        match ev.kind {
+            PointerKind::Click { .. } => {
+                if (CONTENT_TOP..CONTENT_TOP + SECTIONS.len() as u16).contains(&y)
+                    && (2..2 + NAV_WIDTH).contains(&x)
+                {
+                    section.set((y - CONTENT_TOP) as usize);
+                    cursor.set(0);
+                    return EventResult::Consumed;
+                }
+                if y >= CONTENT_TOP && x >= CONTENT_LEFT {
+                    let index = (y - CONTENT_TOP) as usize;
+                    if index < rows_in(current_section) {
+                        let already = cursor.get() == index;
+                        cursor.set(index);
+                        if already
+                            && current_section == SECTION_READING
+                            && let Some(item) = SETTING_ROWS.get(index)
+                        {
+                            let right = ev.area.width.saturating_sub(2);
+                            let middle = CONTENT_LEFT + (right.saturating_sub(CONTENT_LEFT)) / 2;
+                            adjust(reader_display, *item, if x < middle { -1 } else { 1 });
+                        }
+                        return EventResult::Consumed;
+                    }
+                }
+                EventResult::Ignored
+            }
+            PointerKind::ScrollDown => {
+                cursor.set((cursor.get() + 1).min(rows_in(current_section).saturating_sub(1)));
+                EventResult::Consumed
+            }
+            PointerKind::ScrollUp => {
+                cursor.set(cursor.get().saturating_sub(1));
                 EventResult::Consumed
             }
             _ => EventResult::Ignored,
@@ -241,9 +299,8 @@ pub fn Settings(mut hooks: Hooks) -> impl Into<AnyElement<'static>> {
     );
 
     let config = *reader_display.read();
-    // 提示条独占整屏最后一行,与阅读页一致:正文视口要先让出这 1 行。
-    let hint_rows = u16::from(config.show_hint_bar);
-    let page_step = config.page_step(visible_lines(height.saturating_sub(hint_rows), &config));
+    // 全局页底提示是根布局的兄弟节点,本页拿到的 height 已经扣掉它,不能再减。
+    let page_step = config.page_step(visible_lines(height, &config));
     // 内容区宽度 = 终端宽 - 边框两侧 - 页边距两侧 - 左侧分组栏。
     let content_width = (width as usize).saturating_sub(2 + 2 + 14);
     let selected = cursor.get();
@@ -251,13 +308,13 @@ pub fn Settings(mut hooks: Hooks) -> impl Into<AnyElement<'static>> {
     let mut lines: Vec<Line<'static>> = Vec::new();
     match section.get() {
         SECTION_READING => {
-            for row in 0..reading_rows() {
-                let (label, value) = describe_setting(&config, row, page_step);
+            for (index, row) in SETTING_ROWS.iter().enumerate() {
+                let (label, value) = describe_setting(&config, *row, page_step);
                 let label = label.trim_end_matches(':').to_string();
                 lines.push(item_line(
                     &label,
                     &value,
-                    row == selected,
+                    index == selected,
                     content_width,
                     theme,
                 ));
@@ -389,13 +446,17 @@ pub fn Settings(mut hooks: Hooks) -> impl Into<AnyElement<'static>> {
         Border(
             border_style: theme.border.not_dim(),
             top_title: Line::from("全局设置").style(theme.title).centered(),
-            bottom_title: Line::from("Tab 切换分组 · ↑/↓ 选择 · ←/→ 调整 · Enter 打开 · Esc 返回")
-                .style(theme.muted)
-                .centered(),
+            bottom_title: if config.show_hint_bar {
+                Line::from("Tab 切换分组 · ↑/↓ 选择 · ←/→ 调整 · 鼠标点选/再点调值 · Esc 返回")
+                    .style(theme.muted)
+                    .centered()
+            } else {
+                Line::from("")
+            },
         ) {
             View(margin: Margin::new(1, 1)) {
                 View(flex_direction: Direction::Horizontal) {
-                    View(width: Constraint::Length(14)) {
+                    View(width: Constraint::Length(NAV_WIDTH)) {
                         widget(Paragraph::new(nav))
                     }
                     View {

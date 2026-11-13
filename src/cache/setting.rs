@@ -110,9 +110,18 @@ pub struct ReaderDisplayConfig {
     /// 众口难调,交给用户在阅读设置面板里切。
     #[serde(default = "default_paragraph_spacing")]
     pub paragraph_spacing: bool,
-    /// 是否在正文下方常显一行快捷键提示。默认开:不点开帮助也知道键位。
+    /// 是否显示阅读页/设置页内的快捷键提示。默认开:不点开帮助也知道键位。
+    /// 关闭后阅读页底部提示和设置页边框底部的操作说明一起隐藏。
     #[serde(default = "default_show_hint_bar")]
     pub show_hint_bar: bool,
+    /// 是否在整屏最底部显示非阅读页的全局快捷键提示(返回/菜单/退出)。
+    /// 与 show_hint_bar 独立:只想留阅读页提示、或只想留全局提示都可单独控制。
+    #[serde(default = "default_show_global_hint")]
+    pub show_global_hint: bool,
+    /// 翻到章末后是否允许继续翻页、把正文推上去留下空白。
+    /// 默认关:最后一页贴底铺满;开启后保留旧版「翻页留白」的观感。
+    #[serde(default = "default_allow_page_blank")]
+    pub allow_page_blank: bool,
     /// 正文每行最多显示多少个汉字(一个汉字按两列算)。0 表示跟随终端宽度。
     #[serde(default = "default_lines_per_row")]
     pub lines_per_row: u16,
@@ -304,6 +313,14 @@ impl ReaderDisplayConfig {
         }
     }
 
+    /// 章节标题是否要画在正文上方(而不是边框上)。
+    ///
+    /// 「显示标题」决定标题是否可见,「边框标题」只决定放在哪:
+    /// 关掉边框标题或使用无边框模式时,标题仍要在正文上方出现。
+    pub fn inline_title(&self) -> bool {
+        self.show_title && (self.frameline == Frameline::None || !self.show_frameline_title)
+    }
+
     pub fn increase_page_overlap(&mut self) {
         self.page_overlap = (self.page_overlap + 1).min(Self::PAGE_OVERLAP_MAX);
     }
@@ -396,6 +413,8 @@ impl Default for ReaderDisplayConfig {
             page_overlap: default_page_overlap(),
             paragraph_spacing: default_paragraph_spacing(),
             show_hint_bar: default_show_hint_bar(),
+            show_global_hint: default_show_global_hint(),
+            allow_page_blank: default_allow_page_blank(),
             lines_per_row: default_lines_per_row(),
             first_line_indent: default_first_line_indent(),
             paragraph_gap: default_paragraph_gap(),
@@ -431,6 +450,15 @@ fn default_confirm_exit() -> bool {
 
 fn default_show_hint_bar() -> bool {
     true
+}
+
+fn default_show_global_hint() -> bool {
+    true
+}
+
+/// 默认关:最后一页贴底铺满,不把正文推上去留一块空白。
+fn default_allow_page_blank() -> bool {
+    false
 }
 
 /// 0 = 不按字数折行,直接用终端宽度。
@@ -594,6 +622,8 @@ mod tests {
             page_overlap: 7,
             paragraph_spacing: true,
             show_hint_bar: false,
+            show_global_hint: false,
+            allow_page_blank: true,
             lines_per_row: 42,
             first_line_indent: 5,
             paragraph_gap: 3,
@@ -641,6 +671,8 @@ mod tests {
 
         assert!(!config.show_title);
         assert!(config.show_hint_bar);
+        assert!(config.show_global_hint);
+        assert!(!config.allow_page_blank);
         assert_eq!(config.frameline, Frameline::Single);
         assert!(config.show_frameline_title);
         assert_eq!(config.lines_per_row, 0);

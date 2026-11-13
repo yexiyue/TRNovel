@@ -184,6 +184,8 @@ mod tests {
             page_overlap: 7,
             paragraph_spacing: true,
             show_hint_bar: false,
+            show_global_hint: false,
+            allow_page_blank: true,
             lines_per_row: 42,
             first_line_indent: 5,
             paragraph_gap: 3,

@@ -23,13 +23,49 @@ use crate::{
 /// 值是 describe_setting / adjust 的条目序号 —— 两处表格保持完整条目,
 /// 浮层只是决定展示顺序,免得同一份文案写两遍。
 #[cfg(feature = "tts")]
-pub(crate) const SETTING_ROWS: &[usize] = &[4, 5, 3, 2, 6, 7, 8, TOC_ROW, 9, 0, 1, 10];
+pub(crate) const SETTING_ROWS: &[usize] = &[
+    4,
+    5,
+    3,
+    2,
+    6,
+    7,
+    8,
+    GLOBAL_HINT_ROW,
+    BLANK_ROW,
+    TOC_ROW,
+    9,
+    0,
+    1,
+    10,
+];
 #[cfg(not(feature = "tts"))]
-pub(crate) const SETTING_ROWS: &[usize] = &[4, 5, 3, 2, 6, 7, 8, TOC_ROW, 9, 0, 1];
+pub(crate) const SETTING_ROWS: &[usize] = &[
+    4,
+    5,
+    3,
+    2,
+    6,
+    7,
+    8,
+    GLOBAL_HINT_ROW,
+    BLANK_ROW,
+    TOC_ROW,
+    9,
+    0,
+    1,
+];
 
 /// 「目录占宽」的条目序号:追加在现有条目末尾,避免打乱浮层已用的行号。
 /// tts 构建比非 tts 多「跟随朗读」一行,故用 cfg 偏移。
 pub(crate) const TOC_ROW: usize = 10 + cfg!(feature = "tts") as usize;
+
+/// 整屏最底部(非阅读页)的全局快捷键提示开关。
+/// 与阅读页提示分开,才能只留一种提示。
+pub(crate) const GLOBAL_HINT_ROW: usize = TOC_ROW + 1;
+
+/// 章末翻页留白开关,默认关:最后一页贴底。
+pub(crate) const BLANK_ROW: usize = TOC_ROW + 2;
 
 /// 浮层条目数(索引上界)。
 const ITEM_COUNT: usize = SETTING_ROWS.len();
@@ -127,14 +163,18 @@ pub fn ReaderSettingsModal(
         return element!(View).into_any();
     }
 
-    let hint = Line::from(format!(
-        "↑/↓ 选择 · ←/→ 调整 · {} 关闭 · 全部设置见首页「全局设置」",
-        display_first_key(&reader_keymap, ReaderAction::ToggleReaderSettings)
-    ))
-    .centered()
-    .style(theme.muted);
-
     let config = *reader_display.read();
+    // 面板自身边框底部的操作说明也归「界面提示」总开关管,关掉后只留边框。
+    let hint = if config.show_hint_bar {
+        Line::from(format!(
+            "↑/↓ 选择 · ←/→ 调整 · {} 关闭 · 全部设置见首页「全局设置」",
+            display_first_key(&reader_keymap, ReaderAction::ToggleReaderSettings)
+        ))
+        .centered()
+        .style(theme.muted)
+    } else {
+        Line::from("")
+    };
     let rows = visible_rows(height);
     // 整页翻:光标越过分页边界时窗口跟着跳一页,和列表页的翻页手感一致。
     let offset = if ITEM_COUNT > rows {
@@ -261,8 +301,10 @@ pub(crate) fn describe_setting(
         ),
         6 => ("边框:".to_string(), config.frameline.label().to_string()),
         7 => ("边框标题:".to_string(), on_off(config.show_frameline_title)),
-        8 => ("快捷键提示:".to_string(), on_off(config.show_hint_bar)),
+        8 => ("框底提示:".to_string(), on_off(config.show_hint_bar)),
         9 => ("↑/↓ 翻页:".to_string(), on_off(config.arrows_page)),
+        GLOBAL_HINT_ROW => ("页底提示:".to_string(), on_off(config.show_global_hint)),
+        BLANK_ROW => ("翻页留白:".to_string(), on_off(config.allow_page_blank)),
         #[cfg(feature = "tts")]
         10 => ("跟随朗读:".to_string(), on_off(config.follow_tts)),
         TOC_ROW => (
@@ -324,6 +366,8 @@ pub(crate) fn adjust(display: AtomState<crate::ReaderDisplayConfig>, row: usize,
         7 => config.show_frameline_title = delta > 0,
         8 => config.show_hint_bar = delta > 0,
         9 => config.arrows_page = delta > 0,
+        GLOBAL_HINT_ROW => config.show_global_hint = delta > 0,
+        BLANK_ROW => config.allow_page_blank = delta > 0,
         #[cfg(feature = "tts")]
         10 => config.follow_tts = delta > 0,
         TOC_ROW => config.toc_ratio = config.toc_ratio.shift(if delta > 0 { 1 } else { -1 }),
