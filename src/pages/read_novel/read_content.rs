@@ -42,10 +42,9 @@ enum Edge {
 /// 提示条不影响这里的换算。翻页步长、章末判定与设置面板里展示的「每页滚动
 /// M 行」都由它派生,故只此一处定义。
 ///
-/// 内联标题(见 [`ReaderDisplayConfig::inline_title`])画在正文区最上方、占 1 行,
-/// 与边框标题互斥,所以这里只加 1 行;它不进入正文行数,滚动/搜索偏移不受影响。
-pub fn visible_lines(height: u16, display: &ReaderDisplayConfig) -> usize {
-    let chrome = 1 + 2 * display.frameline.inset() as usize + usize::from(display.inline_title());
+/// `inline_title` 必须与实际绘制一致:原文已提供标题时不再为额外标题扣一行。
+pub fn visible_lines(height: u16, display: &ReaderDisplayConfig, inline_title: bool) -> usize {
+    let chrome = 1 + 2 * display.frameline.inset() as usize + usize::from(inline_title);
     (height as usize).saturating_sub(chrome).max(1)
 }
 
@@ -62,6 +61,16 @@ fn content_starts_with_chapter_title(content: &str, chapter_name: &str) -> bool 
             .map(str::trim)
             .find(|line| !line.is_empty())
             .is_some_and(|line| line == title)
+}
+
+pub(crate) fn show_inline_title(
+    content: &str,
+    chapter_name: &str,
+    display: &ReaderDisplayConfig,
+) -> bool {
+    display.inline_title()
+        && !chapter_name.trim().is_empty()
+        && !content_starts_with_chapter_title(content, chapter_name)
 }
 
 /// 章内滚动位置。**意图**与**比例**是两回事,故用变体而非在 f64 里塞哨兵值:
@@ -203,6 +212,7 @@ pub fn ReadContent(
     // 排版参数先取成值:下面每个 memo 的 deps 都要用它,而 deps 里传 atom 句柄
     // 比较的是「自己跟自己」,关掉设置面板后排版会冻结在首帧。
     let display = *reader_display.read();
+    let inline_title = show_inline_title(&props.content, &props.chapter_name, &display);
     let mut on_prev = props.on_prev.take();
     let mut on_next = props.on_next.take();
     let mut edge = hooks.use_state(|| Edge::None);
@@ -381,7 +391,7 @@ pub fn ReadContent(
     // 分母含视口高度 → 进度随终端尺寸漂移,且末尾无法留白。
     let total = layout.lines.len();
     let can_search = props.is_scroll && !props.is_loading;
-    let view = visible_lines(height, &display);
+    let view = visible_lines(height, &display, inline_title);
     let end_scroll = total.saturating_sub(view);
 
     hooks.use_effect(
@@ -828,7 +838,7 @@ pub fn ReadContent(
         }else{
             None
         },
-        bottom_title: if show_title && frameline != crate::Frameline::None && !listening_footer.is_empty() {
+        bottom_title: if frameline != crate::Frameline::None && display.show_frameline_title && !listening_footer.is_empty() {
            Some(Line::from(listening_footer).style(theme.footer).centered())
         }else{
             None
@@ -841,9 +851,7 @@ pub fn ReadContent(
             // 内联标题与边框标题互斥:关掉边框标题或使用无边框时,标题改画在正文
             // 区最上方,占 1 行(已计入 visible_lines)。它不进入正文行数,因此
             // 不影响滚动、行号与搜索高亮的字节偏移。
-            if display.inline_title()
-                && !content_starts_with_chapter_title(&props.content, &props.chapter_name)
-            {
+            if inline_title {
                 View(height: Constraint::Length(1)) {
                     widget(Line::from(props.chapter_name.to_string()).style(theme.chapter).centered())
                 }
@@ -1152,21 +1160,25 @@ mod tests {
         // 默认配置:边框单线(上下各 1)+ 状态栏 1 = 3 行 chrome。
         let display = crate::ReaderDisplayConfig::default();
         for height in 0..=3u16 {
-            assert_eq!(visible_lines(height, &display), 1, "height={height}");
+            assert_eq!(
+                visible_lines(height, &display, display.inline_title()),
+                1,
+                "height={height}"
+            );
         }
-        assert_eq!(visible_lines(33, &display), 30);
+        assert_eq!(visible_lines(33, &display, display.inline_title()), 30);
         // 提示条在整屏最后一行,开或关都不改变正文内部行数。
         let no_hint = crate::ReaderDisplayConfig {
             show_hint_bar: false,
             ..display
         };
-        assert_eq!(visible_lines(33, &no_hint), 30);
+        assert_eq!(visible_lines(33, &no_hint, no_hint.inline_title()), 30);
         // 关边框标题:标题回落到正文区最上方,比别人少 1 行正文。
         let inline = crate::ReaderDisplayConfig {
             show_frameline_title: false,
             ..display
         };
-        assert_eq!(visible_lines(33, &inline), 29);
+        assert_eq!(visible_lines(33, &inline, inline.inline_title()), 29);
         // 无边框:省下上下各 1 行边框,但标题仍要占正文区 1 行,
         // 故比 Single 边框的 30 行多 1 行(而不是多 2 行)。
         let bare = crate::ReaderDisplayConfig {
@@ -1174,7 +1186,7 @@ mod tests {
             show_hint_bar: false,
             ..display
         };
-        assert_eq!(visible_lines(33, &bare), 31);
+        assert_eq!(visible_lines(33, &bare, bare.inline_title()), 31);
         // 无边框且关闭标题:省下的 2 行边框全部还给正文,没有标题行。
         let bare_no_title = crate::ReaderDisplayConfig {
             frameline: crate::Frameline::None,
@@ -1182,7 +1194,10 @@ mod tests {
             show_hint_bar: false,
             ..display
         };
-        assert_eq!(visible_lines(33, &bare_no_title), 32);
+        assert_eq!(
+            visible_lines(33, &bare_no_title, bare_no_title.inline_title()),
+            32
+        );
     }
 
     /// 「显示标题」决定标题是否可见,「边框标题」只决定放在边框上还是正文上方。
@@ -1237,6 +1252,55 @@ mod tests {
         ));
         assert!(!content_starts_with_chapter_title("正文", "第1章 风起"));
         assert!(!content_starts_with_chapter_title("", "第1章 风起"));
+    }
+
+    #[test]
+    fn source_title_does_not_reserve_an_extra_row_on_the_last_page() {
+        let title = "第1章 风起";
+        let content = format!("{title}\n{}", "正文\n".repeat(40));
+        for frameline in [crate::Frameline::Single, crate::Frameline::None] {
+            let display = crate::ReaderDisplayConfig {
+                frameline,
+                show_frameline_title: false,
+                ..Default::default()
+            };
+            let inline = show_inline_title(&content, title, &display);
+            assert!(!inline);
+            let view = visible_lines(20, &display, inline);
+            let actual_view = 20 - 1 - 2 * usize::from(frameline.inset());
+            assert_eq!(view, actual_view);
+
+            let total = wrap_content(&content, 80, false).len();
+            let end_scroll = total - view;
+            let (line, _) = page_forward(
+                end_scroll - 1,
+                display.page_step(view),
+                total,
+                end_scroll,
+                false,
+            );
+            assert_eq!(line + actual_view, total, "最后一行必须贴底且不留空白");
+        }
+    }
+
+    #[test]
+    fn extra_title_only_uses_a_row_when_it_is_drawn() {
+        let display = crate::ReaderDisplayConfig {
+            show_frameline_title: false,
+            ..Default::default()
+        };
+        let inline = show_inline_title("正文", "第一章", &display);
+        assert!(inline);
+        assert_eq!(visible_lines(20, &display, inline), 16);
+        assert!(!show_inline_title("正文", "", &display));
+        assert!(!show_inline_title(
+            "正文",
+            "第一章",
+            &crate::ReaderDisplayConfig {
+                show_title: false,
+                ..display
+            }
+        ));
     }
 
     /// 默认配置(allow_page_blank=false):最后一页必须贴底,落点钳到 end_scroll,

@@ -1,6 +1,6 @@
 //! 全局设置页:首页菜单「全局设置」进入,左侧分组、右侧内容。
 //!
-//! 阅读页的 `o` 浮层只放 4 个高频排版项,其余条目都在这里;两处共用
+//! 阅读页的 `o` 浮层与本页展示相同的排版项;两处共用
 //! `super::read_novel::settings::{describe_setting, adjust}`,文案与边界钳制只有一份。
 //!
 //! 阅读偏好在本页同样会改,所以本页自带一份防抖落盘 + 卸载兜底(与 `ReadNovel`
@@ -18,9 +18,9 @@ use crate::{
     },
     theme::{AppChromeTheme, presets::ThemeChoice},
 };
-use crossterm::event::{Event, KeyCode, KeyEventKind};
+use crossterm::event::{Event, KeyCode, KeyEventKind, MouseButton};
 use ratatui::{
-    layout::{Constraint, Direction, Margin},
+    layout::{Constraint, Direction, Layout, Margin, Position, Rect},
     text::{Line, Span},
     widgets::Paragraph,
 };
@@ -37,9 +37,19 @@ const SECTION_ABOUT: usize = 4;
 
 /// 左栏固定宽度。鼠标命中判断和渲染共用这一份,避免两边各写一个 14。
 const NAV_WIDTH: u16 = 14;
-/// 内容区左上角相对组件区域的位置:边框 1 + 页边距 1。
-const CONTENT_TOP: u16 = 2;
-const CONTENT_LEFT: u16 = 2 + NAV_WIDTH;
+
+fn settings_areas(area: Rect) -> [Rect; 2] {
+    Layout::horizontal([Constraint::Length(NAV_WIDTH), Constraint::Fill(1)])
+        .areas(area.inner(Margin::new(2, 2)))
+}
+
+fn row_at(area: Rect, position: Position, count: usize) -> Option<usize> {
+    if !area.contains(position) {
+        return None;
+    }
+    let row = usize::from(position.y - area.y);
+    (row < count).then_some(row)
+}
 
 /// 键位分组展示的动作。不是全量 21 个:这里回答「最常用的怎么按」,
 /// 全量表仍在阅读页 `I` 帮助里。
@@ -243,33 +253,33 @@ pub fn Settings(mut hooks: Hooks) -> impl Into<AnyElement<'static>> {
         if info_open.get() {
             return EventResult::Ignored;
         }
-        let x = ev.position.x.saturating_sub(ev.area.x);
-        let y = ev.position.y.saturating_sub(ev.area.y);
+        let [nav_area, content_area] = settings_areas(ev.area);
         let current_section = section.get();
         match ev.kind {
-            PointerKind::Click { .. } => {
-                if (CONTENT_TOP..CONTENT_TOP + SECTIONS.len() as u16).contains(&y)
-                    && (2..2 + NAV_WIDTH).contains(&x)
-                {
-                    section.set((y - CONTENT_TOP) as usize);
+            PointerKind::Click {
+                button: MouseButton::Left,
+                ..
+            } => {
+                if let Some(index) = row_at(nav_area, ev.position, SECTIONS.len()) {
+                    section.set(index);
                     cursor.set(0);
                     return EventResult::Consumed;
                 }
-                if y >= CONTENT_TOP && x >= CONTENT_LEFT {
-                    let index = (y - CONTENT_TOP) as usize;
-                    if index < rows_in(current_section) {
-                        let already = cursor.get() == index;
-                        cursor.set(index);
-                        if already
-                            && current_section == SECTION_READING
-                            && let Some(item) = SETTING_ROWS.get(index)
-                        {
-                            let right = ev.area.width.saturating_sub(2);
-                            let middle = CONTENT_LEFT + (right.saturating_sub(CONTENT_LEFT)) / 2;
-                            adjust(reader_display, *item, if x < middle { -1 } else { 1 });
-                        }
-                        return EventResult::Consumed;
+                if let Some(index) = row_at(content_area, ev.position, rows_in(current_section)) {
+                    let already = cursor.get() == index;
+                    cursor.set(index);
+                    if already
+                        && current_section == SECTION_READING
+                        && let Some(item) = SETTING_ROWS.get(index)
+                    {
+                        let middle = content_area.x + content_area.width / 2;
+                        adjust(
+                            reader_display,
+                            *item,
+                            if ev.position.x < middle { -1 } else { 1 },
+                        );
                     }
+                    return EventResult::Consumed;
                 }
                 EventResult::Ignored
             }
@@ -300,7 +310,7 @@ pub fn Settings(mut hooks: Hooks) -> impl Into<AnyElement<'static>> {
 
     let config = *reader_display.read();
     // 全局页底提示是根布局的兄弟节点,本页拿到的 height 已经扣掉它,不能再减。
-    let page_step = config.page_step(visible_lines(height, &config));
+    let page_step = config.page_step(visible_lines(height, &config, config.inline_title()));
     // 内容区宽度 = 终端宽 - 边框两侧 - 页边距两侧 - 左侧分组栏。
     let content_width = (width as usize).saturating_sub(2 + 2 + 14);
     let selected = cursor.get();
@@ -519,6 +529,42 @@ mod tests {
     fn every_section_has_rows() {
         for (index, name) in SECTIONS.iter().enumerate() {
             assert!(rows_in(index) > 0, "分组 {name} 没有条目");
+        }
+    }
+
+    #[test]
+    fn clicks_exclude_borders_margins_and_blank_rows() {
+        let [nav, content] = settings_areas(Rect::new(10, 5, 80, 20));
+        assert_eq!(row_at(nav, Position::new(12, 7), SECTIONS.len()), Some(0));
+        assert_eq!(row_at(content, Position::new(26, 7), 4), Some(0));
+        assert_eq!(row_at(content, Position::new(87, 10), 4), Some(3));
+        for position in [
+            Position::new(25, 7),
+            Position::new(88, 7),
+            Position::new(89, 7),
+            Position::new(26, 6),
+            Position::new(26, 11),
+            Position::new(26, 23),
+            Position::new(26, 24),
+        ] {
+            assert_eq!(row_at(content, position, 4), None, "{position:?}");
+        }
+    }
+
+    #[test]
+    fn clipped_rows_and_tiny_layouts_cannot_be_clicked() {
+        let [_, content] = settings_areas(Rect::new(0, 0, 80, 8));
+        assert_eq!(
+            row_at(content, Position::new(16, 5), reading_rows()),
+            Some(3)
+        );
+        assert_eq!(row_at(content, Position::new(16, 6), reading_rows()), None);
+        for width in 0..=4 {
+            for height in 0..=4 {
+                let [nav, content] = settings_areas(Rect::new(0, 0, width, height));
+                assert_eq!(row_at(nav, Position::new(0, 0), SECTIONS.len()), None);
+                assert_eq!(row_at(content, Position::new(0, 0), reading_rows()), None);
+            }
         }
     }
 

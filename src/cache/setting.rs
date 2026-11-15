@@ -98,6 +98,7 @@ pub struct ReaderDisplayConfig {
     /// Follow actual played text; saved in the reader section of config.toml.
     #[serde(default = "default_show_title")]
     pub follow_tts: bool,
+    /// 是否额外显示界面章节标题;不删改原文中的标题行。
     #[serde(default = "default_show_title")]
     pub show_title: bool,
     /// 翻页时与上一屏重叠保留的行数,翻页步长由 [`Self::page_step`] 派生。
@@ -137,7 +138,7 @@ pub struct ReaderDisplayConfig {
     /// 阅读页边框样式。
     #[serde(default = "default_frameline")]
     pub frameline: Frameline,
-    /// 是否在边框上显示小说标题。
+    /// 是否将界面章节标题放在边框上,并显示边框听书状态。
     #[serde(default = "default_show_frameline_title")]
     pub show_frameline_title: bool,
     /// 目录模式下左侧目录栏占整屏宽度的比例。默认一半,保持旧版分栏观感。

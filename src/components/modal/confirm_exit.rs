@@ -14,6 +14,23 @@ use ratatui_kit::{
 
 use crate::theme::AppChromeTheme;
 
+type SharedHandler<T> = Arc<Mutex<Handler<'static, T>>>;
+
+// Hover/focus updates may reuse props whose handlers were already taken.
+fn use_handler<T: 'static>(
+    hooks: &mut Hooks,
+    incoming: &mut Handler<'static, T>,
+) -> SharedHandler<T> {
+    let callback = hooks
+        .use_state(|| Arc::new(Mutex::new(Handler::default())))
+        .read()
+        .clone();
+    if !incoming.is_default() {
+        *callback.lock().unwrap_or_else(|e| e.into_inner()) = incoming.take();
+    }
+    callback
+}
+
 /// 弹窗内的键盘焦点。默认落在「取消」,让回车不会误退出。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum Focus {
@@ -79,8 +96,8 @@ pub fn ConfirmExitModal(
     );
 
     let layer = hooks.use_input_layer(open, true);
-    let on_confirm = Arc::new(Mutex::new(props.on_confirm.take()));
-    let on_cancel = Arc::new(Mutex::new(props.on_cancel.take()));
+    let on_confirm = use_handler(&mut hooks, &mut props.on_confirm);
+    let on_cancel = use_handler(&mut hooks, &mut props.on_cancel);
 
     // 键盘处理器必须把所有 Key 事件消费掉:模态层已 blocks_lower,但同层若有其它
     // 处理器,放行会让它们也响应。鼠标事件一律 Ignored,交给按钮/勾选项/遮罩。
@@ -105,18 +122,20 @@ pub fn ConfirmExitModal(
                 KeyCode::Char(' ') => no_remind.set(!no_remind.get()),
                 KeyCode::Enter => match focus.get() {
                     Focus::NoRemind => no_remind.set(!no_remind.get()),
-                    Focus::Cancel => (on_cancel.lock().unwrap())(()),
-                    Focus::Exit => (on_confirm.lock().unwrap())(no_remind.get()),
+                    Focus::Cancel => (on_cancel.lock().unwrap_or_else(|e| e.into_inner()))(()),
+                    Focus::Exit => {
+                        (on_confirm.lock().unwrap_or_else(|e| e.into_inner()))(no_remind.get())
+                    }
                 },
                 KeyCode::Char('y') | KeyCode::Char('Y') => {
-                    (on_confirm.lock().unwrap())(no_remind.get())
+                    (on_confirm.lock().unwrap_or_else(|e| e.into_inner()))(no_remind.get())
                 }
                 // Q 在这里只当作「取消」:用户刚按了一次 Q,不能让同一个键直接退出。
                 KeyCode::Esc
                 | KeyCode::Char('n')
                 | KeyCode::Char('N')
                 | KeyCode::Char('q')
-                | KeyCode::Char('Q') => (on_cancel.lock().unwrap())(()),
+                | KeyCode::Char('Q') => (on_cancel.lock().unwrap_or_else(|e| e.into_inner()))(()),
                 _ => {}
             }
             EventResult::Consumed
@@ -134,7 +153,7 @@ pub fn ConfirmExitModal(
                 if let Event::Mouse(m) = event
                     && m.kind == MouseEventKind::Down(MouseButton::Left)
                 {
-                    (on_cancel.lock().unwrap())(());
+                    (on_cancel.lock().unwrap_or_else(|e| e.into_inner()))(());
                     return EventResult::Consumed;
                 }
                 EventResult::Ignored
@@ -205,17 +224,14 @@ pub fn ConfirmExitModal(
 }
 
 /// 把共享回包成可复制给子组件的无参 Handler;勾选状态在渲染时已捕获进闭包。
-fn confirm_handler(
-    shared: &Arc<Mutex<Handler<'static, bool>>>,
-    no_remind: bool,
-) -> Handler<'static, ()> {
+fn confirm_handler(shared: &SharedHandler<bool>, no_remind: bool) -> Handler<'static, ()> {
     let shared = Arc::clone(shared);
-    Handler::from(move |()| (shared.lock().unwrap())(no_remind))
+    Handler::from(move |()| (shared.lock().unwrap_or_else(|e| e.into_inner()))(no_remind))
 }
 
-fn unit_handler(shared: &Arc<Mutex<Handler<'static, ()>>>) -> Handler<'static, ()> {
+fn unit_handler(shared: &SharedHandler<()>) -> Handler<'static, ()> {
     let shared = Arc::clone(shared);
-    Handler::from(move |()| (shared.lock().unwrap())(()))
+    Handler::from(move |()| (shared.lock().unwrap_or_else(|e| e.into_inner()))(()))
 }
 
 #[derive(Props, Default)]
@@ -229,11 +245,11 @@ struct ExitButtonProps {
 #[component]
 fn ExitButton(props: &mut ExitButtonProps, mut hooks: Hooks) -> impl Into<AnyElement<'static>> {
     let theme = hooks.use_component_theme::<AppChromeTheme>();
-    let mut on_press = props.on_press.take();
+    let on_press = use_handler(&mut hooks, &mut props.on_press);
     let hovered = hooks.use_hover();
     hooks.use_pointer(PointerOptions::default(), move |event| {
         if let PointerKind::Down(MouseButton::Left) = event.kind {
-            on_press(());
+            (on_press.lock().unwrap_or_else(|e| e.into_inner()))(());
             EventResult::Consumed
         } else {
             EventResult::Ignored
@@ -272,11 +288,11 @@ struct NoRemindRowProps {
 #[component]
 fn NoRemindRow(props: &mut NoRemindRowProps, mut hooks: Hooks) -> impl Into<AnyElement<'static>> {
     let theme = hooks.use_component_theme::<AppChromeTheme>();
-    let mut on_toggle = props.on_toggle.take();
+    let on_toggle = use_handler(&mut hooks, &mut props.on_toggle);
     let hovered = hooks.use_hover();
     hooks.use_pointer(PointerOptions::default(), move |event| {
         if let PointerKind::Down(MouseButton::Left) = event.kind {
-            on_toggle(());
+            (on_toggle.lock().unwrap_or_else(|e| e.into_inner()))(());
             EventResult::Consumed
         } else {
             EventResult::Ignored
@@ -302,6 +318,48 @@ fn NoRemindRow(props: &mut NoRemindRowProps, mut hooks: Hooks) -> impl Into<AnyE
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[derive(Props)]
+    struct CallbackProbeProps {
+        on_call: Handler<'static, bool>,
+    }
+
+    #[component]
+    fn CallbackProbe(
+        props: &mut CallbackProbeProps,
+        mut hooks: Hooks,
+    ) -> impl Into<AnyElement<'static>> {
+        let callback = use_handler(&mut hooks, &mut props.on_call);
+        let mut frame = hooks.use_state(|| 0);
+        hooks.use_effect(
+            move || {
+                let current = frame.get();
+                if current < 3 {
+                    (callback.lock().unwrap())(current > 0);
+                    frame.set(current + 1);
+                }
+            },
+            frame.get(),
+        );
+        element!(Text(text: frame.get().to_string()))
+    }
+
+    #[test]
+    fn callbacks_survive_local_renders_with_consumed_props() {
+        let calls = Arc::new(Mutex::new(Vec::new()));
+        let result = calls.clone();
+        let _ = ratatui_kit::test_util::render_frames(
+            element!(CallbackProbe(
+                ..CallbackProbeProps {
+                    on_call: Handler::from(move |checked| calls.lock().unwrap().push(checked)),
+                }
+            )),
+            10,
+            1,
+            4,
+        );
+        assert_eq!(*result.lock().unwrap(), [false, true, true]);
+    }
 
     #[test]
     fn focus_cycle_stays_inside_dialog() {

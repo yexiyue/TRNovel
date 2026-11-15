@@ -87,7 +87,6 @@ where
     let display = *hooks.use_atom(&crate::state::READER_DISPLAY).read();
     // 提示条现在独占整屏最后一行,不在 ReadContent 的边框内,故正文视口要再让出这 1 行。
     let hint_rows = u16::from(display.show_hint_bar);
-    let viewport_lines = visible_lines(reader_height.saturating_sub(hint_rows), &display);
     let theme = hooks.use_component_theme::<ReaderTheme>();
 
     let mut content_loading = hooks.use_state(|| false);
@@ -320,6 +319,13 @@ where
         .as_ref()
         .and_then(|n| n.get_current_chapter_name().ok())
         .unwrap_or_default();
+
+    let inline_title = show_inline_title(&content.read(), &chapter_name, &display);
+    let viewport_lines = visible_lines(
+        reader_height.saturating_sub(hint_rows),
+        &display,
+        inline_title,
+    );
 
     let chapter_percent = novel
         .read()

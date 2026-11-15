@@ -734,3 +734,11 @@ TTSManager 的听书、声音、高级三个页复用父页当帧输入层。声
 **PTY 冒烟脚本模式**(本次 `/tmp/migration_ui_smoke.py`,参照 verify.py 的 Session):pyte 重建屏幕后 `locate` 文本定位、SGR 序列 `[<0;列;行M` 点击;按钮定位要用边框特征串,否则会匹配到正文里同词;纯文本 dump 里 CJK 行与 ASCII 行的列对齐不可信(宽字符单 cell 双显示列),核对几何要用 cell 列坐标,别看拼接文本;pyte cell 的 fg/bg/bold 可直接断言描边色与悬停状态。
 
 **相关文件**:src/migration.rs(引擎:status/Event/Outcome/协作取消/目录 fsync 批量化)、src/migration/ui.rs(Session Atom/门控/视图/Gauge/按钮)、src/app.rs(门控接入)、src/lib.rs(`Commands::Migrate`)、tests/migration_startup.rs。
+
+### 阅读标题和视口必须使用同一绘制决策
+
+`show_title` 仅控制额外的界面标题，不能删除 TXT 原文中的标题行，否则搜索与听书的原文偏移会分叉。正文自带标题时省略额外内联行；渲染、分页、滚动条和阅读设置预览必须共用实际 `show_inline_title` 结果，只为真正绘制的标题扣一行。全局设置页没有章节上下文，只按配置估算。
+
+设置页的点击区域按边框与内边距计算，排除右侧及底部边框、留白和不可见条目。弹窗及其按钮的回调也必须保存在 hook 中；父弹窗的焦点更新和子按钮的悬停都会触发局部重渲染，不能每帧直接消费 `Handler::take()`。
+
+**相关文件**：`src/pages/read_novel/read_content.rs`、`src/pages/settings/mod.rs`、`src/components/modal/confirm_exit.rs`。

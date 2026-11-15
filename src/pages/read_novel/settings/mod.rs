@@ -186,7 +186,7 @@ pub fn ReaderSettingsModal(
     // 终端极矮把步长压到 1 时也能一眼看见。
     let visible = props
         .viewport_lines
-        .unwrap_or_else(|| visible_lines(height, &config));
+        .unwrap_or_else(|| visible_lines(height, &config, config.inline_title()));
     let page_step = config.page_step(visible);
 
     element!(Modal(
