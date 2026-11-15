@@ -1,5 +1,4 @@
 use super::*;
-use ratatui_kit::test_util::render_frames;
 
 fn catalog() -> Snapshot {
     let caps = tts_protocol::Capabilities {
@@ -73,7 +72,7 @@ fn sound_rows_follow_pending_model_capabilities_and_remove_alignment() {
             .position(|row| row.label == "从头重听")
             .is_some_and(|replay| replay == apply + 1)
     );
-    assert_eq!(rows(&snapshot, Panel::Playback).len(), 6);
+    assert_eq!(rows(&snapshot, Panel::Playback).len(), 5);
     assert!(
         rows(&snapshot, Panel::Playback)
             .iter()
@@ -87,47 +86,36 @@ fn sound_rows_follow_pending_model_capabilities_and_remove_alignment() {
         );
     }
 }
-#[derive(Props)]
-struct SceneProps {
-    handle: super::super::Handle,
-    snapshot: Snapshot,
-}
-#[component]
-fn Scene(props: &SceneProps, mut hooks: Hooks) -> impl Into<AnyElement<'static>> {
-    let context = TtsContext {
-        handle: props.handle.clone(),
-        snapshot: hooks.use_state(|| props.snapshot.clone()),
-    };
-    element!(PaletteProvider(palette:Palette::default()) {ContextProvider(value:Context::owned(context)) {
-        picker::SoundPicker(kind:Some(PickerKind::Model))
-    }})
-}
-fn text(buffer: &ratatui::buffer::Buffer) -> String {
-    buffer
-        .content
+#[test]
+fn picker_content_renders_at_normal_and_small_terminal_sizes() {
+    use crate::components::settings::view::PickerWidget;
+    use ratatui::{buffer::Buffer, layout::Rect, widgets::Widget};
+    use std::sync::{Arc, Mutex};
+    let options = picker::choices(&catalog(), PickerKind::Model, "")
         .iter()
-        .flat_map(|cell| cell.symbol().chars())
-        .filter(|c| !c.is_whitespace())
-        .collect()
-}
-#[tokio::test]
-async fn actual_picker_renders_at_normal_and_small_terminal_sizes() {
-    let (handle, task) = super::super::Handle::new();
+        .map(|choice| choice.label.clone())
+        .collect::<Vec<_>>();
     for (width, height) in [(100, 32), (52, 18)] {
-        let display = render_frames(
-            element!(Scene(
-                ..SceneProps {
-                    handle: handle.clone(),
-                    snapshot: catalog(),
-                }
-            )),
-            width,
-            height,
-            3,
-        );
-        assert!(text(&display).contains("搜索名称或ID"));
-        assert!(text(&display).contains("MOSSNano"));
+        let area = Rect::new(0, 0, width, height);
+        let mut buffer = Buffer::empty(area);
+        PickerWidget {
+            colors: None,
+            area: Arc::new(Mutex::new(area)),
+            title: "可选项".into(),
+            options: options.clone(),
+            selected: 0,
+            offset: 0,
+            hover: None,
+            theme: AppChromeTheme::from_palette(&Palette::default()),
+        }
+        .render(area, &mut buffer);
+        let text: String = buffer
+            .content
+            .iter()
+            .flat_map(|cell| cell.symbol().chars())
+            .filter(|c| !c.is_whitespace())
+            .collect();
+        assert!(text.contains("MOSSNano"));
+        assert!(text.contains("QwenCustom"));
     }
-    handle.shutdown().await;
-    task.await.unwrap();
 }

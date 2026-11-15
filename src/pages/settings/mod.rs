@@ -1,7 +1,8 @@
 //! 顶部标签、分组表单与直接操作控件。配置仍由原有 ConfigStore 保存。
 mod model;
-mod view;
 
+use crate::components::settings::view::Focus;
+use crate::components::settings::{self, Edit, Editor};
 use crate::{
     AppearanceConfig, BackgroundMode, ReaderDisplayConfig,
     app::navigation::UseAppNavigate,
@@ -10,7 +11,7 @@ use crate::{
     pages::read_novel::settings::adjust,
     theme::AppChromeTheme,
 };
-use crossterm::event::{Event, KeyCode, KeyEventKind, KeyModifiers, MouseButton, MouseEventKind};
+use crossterm::event::{Event, KeyCode, KeyEventKind, KeyModifiers};
 use model::{Control, Key, Picker, SECTIONS};
 use ratatui::{
     layout::{Constraint, Margin},
@@ -19,21 +20,6 @@ use ratatui::{
 };
 use ratatui_kit::prelude::*;
 use std::sync::{Arc, Mutex};
-use view::{Focus, Hit};
-
-fn use_area(hooks: &mut Hooks) -> view::FrameArea {
-    hooks
-        .use_state(|| Arc::new(Mutex::new(ratatui::layout::Rect::default())))
-        .read()
-        .clone()
-}
-
-type Editor = Arc<Mutex<Handler<'static, Edit>>>;
-#[derive(Clone, Copy)]
-enum Edit {
-    Activate(usize),
-    Adjust(usize, i32),
-}
 
 fn select_row(mut cursors: State<[usize; 5]>, section: usize, index: usize) {
     let mut current = cursors.get();
@@ -147,9 +133,15 @@ pub fn Settings(mut hooks: Hooks) -> impl Into<AnyElement<'static>> {
         let keymap = keymap.clone();
         let mut picker = picker;
         move |edit| {
+            if let Edit::Focus(index) = edit {
+                select_row(cursors, current_section, index);
+                focus.set(Focus::Form);
+                return;
+            }
             let (index, delta) = match edit {
                 Edit::Activate(i) => (i, None),
                 Edit::Adjust(i, d) => (i, Some(d)),
+                Edit::Focus(_) => return,
             };
             // Read current atoms for rapid repeated clicks; all read guards end before mutation.
             let fresh = model::rows(current_section, &reader.read(), &appearance.read(), &keymap);
@@ -283,12 +275,27 @@ pub fn Settings(mut hooks: Hooks) -> impl Into<AnyElement<'static>> {
             EventResult::Consumed
         }
     });
-    let picker_layer = hooks.use_input_layer(picker.read().is_some(), true);
-    let picker_height = picker
-        .read()
-        .as_ref()
-        .map(|p| p.options.len() as u16 + 2)
-        .unwrap_or(2);
+    let picker_view = if let Some(current) = picker.read().clone() {
+        let mut picker = picker;
+        element!(settings::SettingsPicker(
+            ..settings::PickerProps {
+                colors: None,
+                title: current.title,
+                options: Arc::new(current.options),
+                initial: current.selected,
+                on_select: settings::callback(move |index| {
+                    if let Some(key) = current.key {
+                        choose(key, index, reader, appearance, feedback);
+                    }
+                    picker.set(None);
+                }),
+                on_cancel: settings::callback(move |_| picker.set(None)),
+            }
+        ))
+        .into_any()
+    } else {
+        element!(View(height:Constraint::Length(0))).into_any()
+    };
     let hint = reader.read().show_hint_bar;
     let detail = if !feedback.read().is_empty() {
         feedback.read().clone()
@@ -305,290 +312,16 @@ pub fn Settings(mut hooks: Hooks) -> impl Into<AnyElement<'static>> {
         View(width:Constraint::Length(width.saturating_sub(6).min(88))) {
             View(height:Constraint::Length(1)){widget(Line::from("设置").style(theme.title))}
             View(height:Constraint::Length(1)){}
-            SettingsTabs(..SettingsTabsProps {section,focus,active:!overlay})
+            settings::SettingsTabs(..settings::TabsProps {labels:Arc::new(SECTIONS.iter().map(|s|(*s).to_owned()).collect()),selected:current_section,focused:focus.get()==Focus::Tabs,active:!overlay,on_select:settings::callback(move |index|{section.set(index);focus.set(Focus::Tabs);})})
             View(height:Constraint::Length(1)){}
-            SettingsBody(..SettingsBodyProps {rows,section:current_section,cursors,focus,editor,active:!overlay,keyboard_revision:keyboard_revision.get()})
+            settings::SettingsForm<model::Key>(..settings::FormProps {rows,selected:cursor,focused:focus.get()==Focus::Form,editor,active:!overlay,keyboard_revision:keyboard_revision.get(),identity:current_section})
             View(height:Constraint::Length(2)){widget(Paragraph::new(detail).style(theme.muted).wrap(Wrap{trim:false}))}
             View(height:Constraint::Length(u16::from(hint))){widget(Line::from("Tab 切换焦点 · ↑↓ 选择 · ←→ 调整 · 空格/Enter 操作 · Esc 返回").style(theme.muted))}
         }
-        Modal(open:picker.read().is_some(),layer:Some(picker_layer),width:Constraint::Length(32),height:Constraint::Length(picker_height)) {
-            ChoicePanel(..ChoicePanelProps {picker,feedback})
-        }
+        {picker_view}
         ShortcutInfoModal(
             key_shortcut_info:KeyShortcutInfo::new(vec![("标签栏 / 表单焦点","Tab / Shift+Tab"),("切换标签","标签栏 ←/→ 或 Ctrl+PageUp/PageDown"),("选择设置","↑/↓，Home/End，PageUp/PageDown"),("调整数值","←/→ 或点击 [-]/[+]"),("开关 / 选择 / 打开","Space / Enter 或单击控件"),("取消选择 / 返回","Esc")]),
             open:info_open.get(),on_close:move |_|info_open.set(false),
         )
     })
-}
-
-#[derive(Props)]
-struct SettingsTabsProps {
-    section: State<usize>,
-    focus: State<Focus>,
-    active: bool,
-}
-#[component]
-fn SettingsTabs(props: &SettingsTabsProps, mut hooks: Hooks) -> impl Into<AnyElement<'static>> {
-    let theme = hooks.use_component_theme::<AppChromeTheme>();
-    let geometry = use_area(&mut hooks);
-    let active = props.active;
-    let mut section = props.section;
-    let mut focus = props.focus;
-    let hover = hooks.use_hover_row({
-        let geometry = geometry.clone();
-        move |position| {
-            let area = *geometry.lock().unwrap_or_else(|e| e.into_inner());
-            if active {
-                view::tab_at(area, position)
-            } else {
-                None
-            }
-        }
-    });
-    hooks.use_pointer(PointerOptions::default(), move |event| {
-        if active
-            && matches!(
-                event.kind,
-                PointerKind::Click {
-                    button: MouseButton::Left,
-                    ..
-                }
-            )
-            && let Some(tab) = view::tab_at(event.area, event.position)
-        {
-            section.set(tab);
-            focus.set(Focus::Tabs);
-            return EventResult::Consumed;
-        }
-        EventResult::Ignored
-    });
-    element!(View(height:Constraint::Length(2)){widget(view::TabsWidget{area:geometry,section:section.get(),focus:focus.get(),hover:if active{hover.get()}else{None},theme})})
-}
-
-#[derive(Props)]
-struct SettingsBodyProps {
-    rows: Arc<Vec<model::Row>>,
-    section: usize,
-    cursors: State<[usize; 5]>,
-    focus: State<Focus>,
-    editor: Editor,
-    active: bool,
-    keyboard_revision: u64,
-}
-#[component]
-fn SettingsBody(props: &SettingsBodyProps, mut hooks: Hooks) -> impl Into<AnyElement<'static>> {
-    let theme = hooks.use_component_theme::<AppChromeTheme>();
-    let geometry = use_area(&mut hooks);
-    let area = *geometry.lock().unwrap_or_else(|e| e.into_inner());
-    let list = Arc::new(view::entries(&props.rows));
-    let rows = props.rows.clone();
-    let mut offset = hooks.use_state(|| 0usize);
-    let mut focus = props.focus;
-    let cursors = props.cursors;
-    let section = props.section;
-    let active = props.active;
-    let cursor = cursors.get()[section].min(rows.len().saturating_sub(1));
-    hooks.use_effect(
-        {
-            let list = list.clone();
-            move || {
-                if area.height == 0 {
-                    return;
-                }
-                let next = view::reveal(&list, cursor, offset.get(), usize::from(area.height));
-                if next != offset.get() {
-                    offset.set(next);
-                }
-            }
-        },
-        (
-            section,
-            cursor,
-            area.height,
-            focus.get(),
-            props.keyboard_revision,
-        ),
-    );
-    let hover = hooks.use_hover_row({
-        let list = list.clone();
-        let rows = rows.clone();
-        let geometry = geometry.clone();
-        move |position| {
-            let area = *geometry.lock().unwrap_or_else(|e| e.into_inner());
-            if active {
-                view::hit(area, &list, offset.get(), &rows, position)
-            } else {
-                None
-            }
-        }
-    });
-    hooks.use_scrollbar(
-        ScrollbarOptions {
-            content_length: list.len(),
-            viewport_length: usize::from(area.height),
-            position: offset.get(),
-            scrollbar: crate::theme::scrollbar_style(theme.border, theme.title),
-            placement: TrackPlacement::RightInward(0),
-        },
-        move |line| offset.set(line),
-    );
-    hooks.use_pointer(PointerOptions::default(), {
-        let list = list.clone();
-        let rows = rows.clone();
-        let editor = props.editor.clone();
-        move |event| {
-            if !active {
-                return EventResult::Ignored;
-            }
-            match event.kind {
-                PointerKind::Click {
-                    button: MouseButton::Left,
-                    ..
-                } => {
-                    if let Some(hit) =
-                        view::hit(event.area, &list, offset.get(), &rows, event.position)
-                    {
-                        select_row(cursors, section, hit.row());
-                        focus.set(Focus::Form);
-                        let edit = match hit {
-                            Hit::Decrease(i) => Some(Edit::Adjust(i, -1)),
-                            Hit::Increase(i) => Some(Edit::Adjust(i, 1)),
-                            Hit::Activate(i) => Some(Edit::Activate(i)),
-                            Hit::Row(_) => None,
-                        };
-                        if let Some(edit) = edit {
-                            (editor.lock().unwrap_or_else(|e| e.into_inner()))(edit);
-                        }
-                        return EventResult::Consumed;
-                    }
-                }
-                PointerKind::ScrollDown => {
-                    offset.set(
-                        (offset.get() + 3)
-                            .min(list.len().saturating_sub(usize::from(event.area.height))),
-                    );
-                    return EventResult::Consumed;
-                }
-                PointerKind::ScrollUp => {
-                    offset.set(offset.get().saturating_sub(3));
-                    return EventResult::Consumed;
-                }
-                _ => {}
-            }
-            EventResult::Ignored
-        }
-    });
-    element!(View(height:Constraint::Fill(1)){widget(view::FormWidget{area:geometry,rows,list,cursor,focus:focus.get(),offset:offset.get(),hover:if active{hover.get()}else{None},theme})})
-}
-
-#[derive(Props)]
-struct ChoicePanelProps {
-    picker: State<Option<Picker>>,
-    feedback: State<String>,
-}
-#[component]
-fn ChoicePanel(props: &ChoicePanelProps, mut hooks: Hooks) -> impl Into<AnyElement<'static>> {
-    let theme = hooks.use_component_theme::<AppChromeTheme>();
-    let geometry = use_area(&mut hooks);
-    let mut picker = props.picker;
-    let feedback = props.feedback;
-    let reader = hooks.use_atom(&crate::state::READER_DISPLAY);
-    let appearance = hooks.use_atom(&crate::state::APPEARANCE);
-    let current = picker.read().clone().unwrap_or_default();
-    let count = current.options.len();
-    let hover = hooks.use_hover_row({
-        let geometry = geometry.clone();
-        move |pos| {
-            let area = *geometry.lock().unwrap_or_else(|e| e.into_inner());
-            picker_row(area, pos, count)
-        }
-    });
-    let mut commit = move |index| {
-        let current = picker.read().clone();
-        if let Some(current) = current
-            && index < current.options.len()
-            && let Some(key) = current.key
-        {
-            choose(key, index, reader, appearance, feedback);
-            picker.set(None);
-        }
-    };
-    hooks.use_event_handler(EventScope::Current, EventPriority::High, move |event| {
-        let Event::Key(key) = event else {
-            return EventResult::Ignored;
-        };
-        if key.kind != KeyEventKind::Press {
-            return EventResult::Ignored;
-        }
-        let selected = picker.read().as_ref().map(|p| p.selected).unwrap_or(0);
-        let next = match key.code {
-            KeyCode::Up | KeyCode::Char('k') => Some(selected.saturating_sub(1)),
-            KeyCode::Down | KeyCode::Char('j') => Some((selected + 1).min(count.saturating_sub(1))),
-            KeyCode::Home => Some(0),
-            KeyCode::End => Some(count.saturating_sub(1)),
-            KeyCode::Enter | KeyCode::Char(' ') => {
-                commit(selected);
-                None
-            }
-            KeyCode::Esc => {
-                picker.set(None);
-                None
-            }
-            _ => return EventResult::Ignored,
-        };
-        if let Some(next) = next
-            && let Some(current) = picker.write().as_mut()
-        {
-            current.selected = next;
-        }
-        EventResult::Consumed
-    });
-    hooks.use_pointer(PointerOptions::default(), move |event| {
-        if matches!(
-            event.kind,
-            PointerKind::Click {
-                button: MouseButton::Left,
-                ..
-            }
-        ) && let Some(index) = picker_row(event.area, event.position, count)
-        {
-            commit(index);
-            return EventResult::Consumed;
-        }
-        EventResult::Ignored
-    });
-    hooks.use_event_handler_with_options(
-        EventScope::Current,
-        EventPriority::Low,
-        EventOptions { hit_test: false },
-        {
-            let geometry = geometry.clone();
-            move |event| {
-                if let Event::Mouse(mouse) = event
-                    && mouse.kind == MouseEventKind::Down(MouseButton::Left)
-                    && !geometry
-                        .lock()
-                        .unwrap_or_else(|e| e.into_inner())
-                        .contains(ratatui::layout::Position::new(mouse.column, mouse.row))
-                {
-                    picker.set(None);
-                    return EventResult::Consumed;
-                }
-                EventResult::Ignored
-            }
-        },
-    );
-    element!(View {widget(view::PickerWidget{area:geometry,title:current.title,options:current.options,selected:current.selected,hover:hover.get(),theme})})
-}
-fn picker_row(
-    area: ratatui::layout::Rect,
-    pos: ratatui::layout::Position,
-    count: usize,
-) -> Option<usize> {
-    let inner = area.inner(Margin::new(1, 1));
-    if !inner.contains(pos) {
-        return None;
-    }
-    let row = usize::from(pos.y - inner.y);
-    (row < count).then_some(row)
 }

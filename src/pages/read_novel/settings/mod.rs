@@ -1,79 +1,58 @@
-//! 阅读设置浮层:把阅读行为偏好(`ReaderDisplayConfig`)搬到 TUI 里可视化调整,
-//! 用户不必手改 `~/.trnovel/config.toml` 的 reader 分节。
-//!
-//! 只改 `READER_DISPLAY` atom,落盘由 `ReadNovel` 的防抖 effect 统一负责——面板与
-//! `v` 键(切换标题)走同一条写盘路径,不会出现两套时序。
-
-use crossterm::event::{Event, KeyCode, KeyEventKind, MouseEventKind};
-use ratatui::{
-    layout::{Constraint, Margin},
-    style::Style,
-    text::Line,
-};
-use ratatui_kit::prelude::*;
-
+//! Reading preferences share the same form controls and metadata with global settings.
+pub(crate) mod rows;
 use crate::{
-    components::{AdjustableSettingItem, setting_item::focus_row},
-    keymap::{ReaderAction, display_first_key},
+    Frameline, ReaderDisplayConfig, TocRatio,
+    components::settings::{self, Control, Edit, view::Focus},
     pages::read_novel::visible_lines,
     theme::AppChromeTheme,
 };
-
-/// 浮层按「常用在前」的顺序列出全部排版项;窗口高度不够时滚动显示。
-/// 值是 describe_setting / adjust 的条目序号 —— 两处表格保持完整条目,
-/// 浮层只是决定展示顺序,免得同一份文案写两遍。
-#[cfg(feature = "tts")]
-pub(crate) const SETTING_ROWS: &[usize] = &[
-    4,
-    5,
-    3,
-    2,
-    6,
-    7,
-    8,
-    GLOBAL_HINT_ROW,
-    BLANK_ROW,
-    TOC_ROW,
-    9,
-    0,
-    1,
-    10,
-];
-#[cfg(not(feature = "tts"))]
-pub(crate) const SETTING_ROWS: &[usize] = &[
-    4,
-    5,
-    3,
-    2,
-    6,
-    7,
-    8,
-    GLOBAL_HINT_ROW,
-    BLANK_ROW,
-    TOC_ROW,
-    9,
-    0,
-    1,
-];
-
-/// 「目录占宽」的条目序号:追加在现有条目末尾,避免打乱浮层已用的行号。
-/// tts 构建比非 tts 多「跟随朗读」一行,故用 cfg 偏移。
+use crossterm::event::{Event, KeyCode, KeyEventKind};
+use ratatui::{
+    layout::{Constraint, Direction, Margin},
+    text::Line,
+};
+use ratatui_kit::prelude::*;
+use std::sync::Arc;
 pub(crate) const TOC_ROW: usize = 10 + cfg!(feature = "tts") as usize;
-
-/// 整屏最底部(非阅读页)的全局快捷键提示开关。
-/// 与阅读页提示分开,才能只留一种提示。
 pub(crate) const GLOBAL_HINT_ROW: usize = TOC_ROW + 1;
-
-/// 章末翻页留白开关,默认关:最后一页贴底。
 pub(crate) const BLANK_ROW: usize = TOC_ROW + 2;
 
-/// 浮层条目数(索引上界)。
-const ITEM_COUNT: usize = SETTING_ROWS.len();
-
-/// 浮层每个条目 3 行(含边框),自身再占 5 行(边框 + 外边距);
-/// 可见行数按终端高度算,放不下的条目滚动显示。
-fn visible_rows(height: u16) -> usize {
-    (usize::from(height.saturating_sub(7) / 3)).clamp(1, ITEM_COUNT)
+pub(crate) fn choices(config: &ReaderDisplayConfig, id: usize) -> Option<(Vec<String>, usize)> {
+    match id {
+        6 => Some((
+            Frameline::ALL
+                .iter()
+                .map(|v| v.label().to_owned())
+                .collect(),
+            Frameline::ALL
+                .iter()
+                .position(|v| *v == config.frameline)
+                .unwrap_or(0),
+        )),
+        TOC_ROW => Some((
+            TocRatio::ALL.iter().map(|v| v.label().to_owned()).collect(),
+            TocRatio::ALL
+                .iter()
+                .position(|v| *v == config.toc_ratio)
+                .unwrap_or(0),
+        )),
+        _ => None,
+    }
+}
+pub(crate) fn choose_config(config: &mut ReaderDisplayConfig, id: usize, index: usize) {
+    match id {
+        6 => {
+            if let Some(v) = Frameline::ALL.get(index) {
+                config.frameline = *v;
+            }
+        }
+        TOC_ROW => {
+            if let Some(v) = TocRatio::ALL.get(index) {
+                config.toc_ratio = *v;
+            }
+        }
+        _ => {}
+    }
 }
 
 #[derive(Props, Default)]
@@ -84,169 +63,230 @@ pub struct ReaderSettingsModalProps {
     pub viewport_lines: Option<usize>,
     pub is_editing: bool,
 }
-
 #[component]
 pub fn ReaderSettingsModal(
     props: &mut ReaderSettingsModalProps,
     mut hooks: Hooks,
 ) -> impl Into<AnyElement<'static>> {
     let theme = hooks.use_component_theme::<AppChromeTheme>();
-    let reader_keymap = hooks.use_atom(&crate::state::KEYMAP).read().reader.clone();
-    let reader_display = hooks.use_atom(&crate::state::READER_DISPLAY);
-    // 阅读页传入扣除工具栏后的实际正文视口。独立挂载时保留终端高度回退。
-    let (_, height) = hooks.use_terminal_size();
-
-    let mut index = hooks.use_state(|| 0usize);
-    let is_open = props.open;
-    let is_editing = props.is_editing;
-    // These handlers belong to the modal even though they are registered above its subtree.
-    let own_layer = hooks.use_input_layer(is_open && props.layer.is_none(), true);
+    let (width, height) = hooks.use_terminal_size();
+    let mut display = hooks.use_atom(&crate::state::READER_DISPLAY);
+    let config = *display.read();
+    let mut tab = hooks.use_state(|| 0usize);
+    let mut indices = hooks.use_state(|| [0usize; 4]);
+    let mut focus = hooks.use_state(|| Focus::Tabs);
+    let mut revision = hooks.use_state(|| 0u64);
+    let mut picker = hooks.use_state(|| None::<usize>);
+    let close = settings::use_callback(&mut hooks, &mut props.on_close);
+    let mut groups = vec!["排版", "翻页", "界面"];
+    if cfg!(feature = "tts") {
+        groups.push("听书");
+    }
+    let groups = Arc::new(groups);
+    let current_tab = tab.get().min(groups.len() - 1);
+    let items = Arc::new(
+        rows::rows(&config)
+            .into_iter()
+            .filter(|r| r.group == groups[current_tab])
+            .collect::<Vec<_>>(),
+    );
+    let selected = indices.get()[current_tab].min(items.len().saturating_sub(1));
+    let open = props.open;
+    let active = open && props.is_editing && picker.get().is_none();
+    let own_layer = hooks.use_input_layer(open && props.layer.is_none(), true);
     let layer = props.layer.unwrap_or(own_layer);
-    let scope = EventScope::Layer(layer);
-
-    hooks.use_event_handler(scope, EventPriority::Normal, move |event| {
-        let Event::Key(key) = event else {
-            return EventResult::Ignored;
-        };
-        if key.kind != KeyEventKind::Press {
-            return EventResult::Ignored;
-        }
-        if !is_open || !is_editing {
-            return EventResult::Ignored;
-        }
-        match key.code {
-            KeyCode::Char('j') | KeyCode::Down => {
-                index.set((index.get() + 1).min(ITEM_COUNT - 1));
-                EventResult::Consumed
-            }
-            KeyCode::Char('k') | KeyCode::Up => {
-                index.set(index.get().saturating_sub(1));
-                EventResult::Consumed
-            }
-            _ => EventResult::Ignored,
-        }
-    });
-
-    // 鼠标滚轮移动面板焦点:面板开着时整屏滚轮都归面板并消费(背景正文此时
-    // is_scroll=false 不响应;消费可避免「浮层没关、正文偷偷滚」)。
-    hooks.use_event_handler_with_options(
-        scope,
-        EventPriority::Low,
-        EventOptions { hit_test: false },
-        {
-            let mut index = index;
-            move |event| {
-                if !is_open {
-                    return EventResult::Ignored;
-                }
-                let Event::Mouse(m) = event else {
-                    return EventResult::Ignored;
-                };
-                match m.kind {
-                    MouseEventKind::ScrollDown => {
-                        index.set((index.get() + 1).min(ITEM_COUNT - 1));
-                        EventResult::Consumed
-                    }
-                    MouseEventKind::ScrollUp => {
-                        index.set(index.get().saturating_sub(1));
-                        EventResult::Consumed
-                    }
-                    _ => EventResult::Ignored,
-                }
+    hooks.use_effect(
+        move || {
+            if open {
+                focus.set(Focus::Tabs);
+                revision.set(revision.get().wrapping_add(1));
             }
         },
+        open,
     );
-
-    // hooks 全部注册完再提前返回:关闭时不构建面板内容(提示行的 describe + format!
-    // 与整棵子树每帧都会被求值一次,而它绝大多数时间不可见)。
-    if !is_open {
-        return element!(View).into_any();
+    let editor = settings::callback({
+        let groups = groups.clone();
+        move |edit| {
+            let (index, delta) = match edit {
+                Edit::Focus(i) => {
+                    let mut values = indices.get();
+                    values[current_tab] = i;
+                    indices.set(values);
+                    focus.set(Focus::Form);
+                    return;
+                }
+                Edit::Activate(i) => (i, None),
+                Edit::Adjust(i, d) => (i, Some(d)),
+            };
+            let config = *display.read();
+            let fresh = rows::rows(&config);
+            let Some(row) = fresh
+                .iter()
+                .filter(|r| r.group == groups[current_tab])
+                .nth(index)
+            else {
+                return;
+            };
+            match row.control {
+                Control::Toggle(value) => adjust(
+                    display,
+                    row.key,
+                    if delta.map(|d| d > 0).unwrap_or(!value) {
+                        1
+                    } else {
+                        -1
+                    },
+                ),
+                Control::Number { decrease, increase } => {
+                    if let Some(d) = delta
+                        && ((d < 0 && decrease) || (d > 0 && increase))
+                    {
+                        adjust(display, row.key, d);
+                    }
+                }
+                Control::Choice => {
+                    if let Some(d) = delta {
+                        if let Some((options, index)) = choices(&config, row.key) {
+                            let index = (index as i32 + d)
+                                .clamp(0, options.len().saturating_sub(1) as i32)
+                                as usize;
+                            let mut next = config;
+                            choose_config(&mut next, row.key, index);
+                            display.set(next);
+                        }
+                    } else {
+                        picker.set(Some(row.key));
+                    }
+                }
+                _ => {}
+            }
+        }
+    });
+    hooks.use_event_handler(EventScope::Layer(layer), EventPriority::High, {
+        let editor = editor.clone();
+        let groups = groups.clone();
+        let close = close.clone();
+        let count = items.len();
+        move |event| {
+            let Event::Key(key) = event else {
+                return EventResult::Ignored;
+            };
+            if !active || key.kind != KeyEventKind::Press {
+                return EventResult::Ignored;
+            }
+            let t = tab.get();
+            let i = indices.get()[t].min(count.saturating_sub(1));
+            let mut next = i;
+            match key.code {
+                KeyCode::Tab | KeyCode::BackTab => focus.set(if focus.get() == Focus::Tabs {
+                    Focus::Form
+                } else {
+                    Focus::Tabs
+                }),
+                KeyCode::Left | KeyCode::Char('h') if focus.get() == Focus::Tabs => {
+                    tab.set((t + groups.len() - 1) % groups.len())
+                }
+                KeyCode::Right | KeyCode::Char('l') if focus.get() == Focus::Tabs => {
+                    tab.set((t + 1) % groups.len())
+                }
+                KeyCode::Down | KeyCode::Char('j') => {
+                    if focus.get() == Focus::Tabs {
+                        focus.set(Focus::Form);
+                    } else {
+                        next = (i + 1).min(count.saturating_sub(1));
+                    }
+                }
+                KeyCode::Up | KeyCode::Char('k') if focus.get() == Focus::Form => {
+                    next = i.saturating_sub(1)
+                }
+                KeyCode::Home if focus.get() == Focus::Form => next = 0,
+                KeyCode::End if focus.get() == Focus::Form => next = count.saturating_sub(1),
+                KeyCode::PageDown if focus.get() == Focus::Form => {
+                    next = (i + 5).min(count.saturating_sub(1))
+                }
+                KeyCode::PageUp if focus.get() == Focus::Form => next = i.saturating_sub(5),
+                KeyCode::Left | KeyCode::Char('h') => {
+                    (editor.lock().unwrap_or_else(|e| e.into_inner()))(Edit::Adjust(i, -1))
+                }
+                KeyCode::Right | KeyCode::Char('l') => {
+                    (editor.lock().unwrap_or_else(|e| e.into_inner()))(Edit::Adjust(i, 1))
+                }
+                KeyCode::Enter | KeyCode::Char(' ') => {
+                    if focus.get() == Focus::Tabs {
+                        focus.set(Focus::Form);
+                    } else {
+                        (editor.lock().unwrap_or_else(|e| e.into_inner()))(Edit::Activate(i));
+                    }
+                }
+                KeyCode::Esc => (close.lock().unwrap_or_else(|e| e.into_inner()))(()),
+                _ => return EventResult::Ignored,
+            }
+            let mut values = indices.get();
+            values[t] = next;
+            indices.set(values);
+            revision.set(revision.get().wrapping_add(1));
+            EventResult::Consumed
+        }
+    });
+    if !open {
+        return element!(View(height:Constraint::Length(0))).into_any();
     }
-
-    let config = *reader_display.read();
-    // 面板自身边框底部的操作说明也归「界面提示」总开关管,关掉后只留边框。
-    let hint = if config.show_hint_bar {
-        Line::from(format!(
-            "↑/↓ 选择 · ←/→ 调整 · {} 关闭 · 全部设置见首页「全局设置」",
-            display_first_key(&reader_keymap, ReaderAction::ToggleReaderSettings)
+    let picker_view = if let Some(id) = picker.get()
+        && let Some((options, initial)) = choices(&config, id)
+    {
+        let title = describe_setting(&config, id, 0)
+            .0
+            .trim_end_matches(':')
+            .to_owned();
+        element!(settings::SettingsPicker(
+            ..settings::PickerProps {
+                colors: None,
+                title,
+                options: Arc::new(options),
+                initial,
+                on_select: settings::callback(move |index| {
+                    let mut config = *display.read();
+                    choose_config(&mut config, id, index);
+                    display.set(config);
+                    picker.set(None);
+                }),
+                on_cancel: settings::callback(move |_| picker.set(None))
+            }
         ))
-        .centered()
-        .style(theme.muted)
+        .into_any()
     } else {
-        Line::from("")
+        element!(View(height:Constraint::Length(0))).into_any()
     };
-    let rows = visible_rows(height);
-    // 整页翻:光标越过分页边界时窗口跟着跳一页,和列表页的翻页手感一致。
-    let offset = if ITEM_COUNT > rows {
-        ((index.get() / rows) * rows).min(ITEM_COUNT - rows)
-    } else {
-        0
-    };
-    // 同屏展示派生步长:用户无法凭「2」想象效果,但看到「每页滚动 28 行」就懂了;
-    // 终端极矮把步长压到 1 时也能一眼看见。
     let visible = props
         .viewport_lines
         .unwrap_or_else(|| visible_lines(height, &config, config.inline_title()));
-    let page_step = config.page_step(visible);
-
-    element!(Modal(
-        width:Constraint::Percentage(70),
-        height: Constraint::Length((rows * 3 + 5) as u16),
-        open: is_open,
-        layer: layer,
-        margin: Margin::new(1, 1),
-        style: Style::default().dim(),
-    ) {
-        View(margin: Margin::new(1, 1)) {
-            if !props.on_close.is_default() {
-                crate::components::ActionBar {
-                    crate::components::ActionButton(label: "关闭阅读设置", shortcut: "Esc", on_press: props.on_close.take())
-                }
+    let detail = items
+        .get(selected)
+        .map(|r| {
+            if r.key == 0 {
+                format!(
+                    "{} · 当前每页滚动 {} 行",
+                    r.detail,
+                    config.page_step(visible)
+                )
+            } else {
+                r.detail.clone()
             }
-            Border(
-                border_style: theme.border.not_dim(),
-                top_title: Line::from("阅读设置").centered().style(theme.title),
-                bottom_title: hint,
-            ) {
-                // 单列窗口:按终端高度显示尽可能多的条目,剩下的用翻页窗口滚动。
-                // 双列时代每列只剩 36 列,「2 行(每页滚动 19 行)」会被裁掉尾巴。
-                View {
-                    for row in 0..rows {
-                        {setting_row(reader_display, index, offset + row, is_editing, &config, page_step)}
-                    }
-                }
+        })
+        .unwrap_or_default();
+    element!(Modal(open:true,layer:Some(layer),width:Constraint::Length(width.saturating_sub(4).min(92)),height:Constraint::Percentage(85)){
+        Border(border_style:theme.border){
+            View(margin:Margin::new(1,1)){
+                View(height:Constraint::Length(1),flex_direction:Direction::Horizontal){View(width:Constraint::Fill(1)){widget(Line::from("阅读设置").style(theme.title))}settings::SettingsButton(..settings::ButtonProps{label:"关闭".into(),on_press:close})}
+                settings::SettingsTabs(..settings::TabsProps{labels:Arc::new(groups.iter().map(|s|(*s).to_owned()).collect()),selected:current_tab,focused:focus.get()==Focus::Tabs,active,on_select:settings::callback(move|index|{tab.set(index);focus.set(Focus::Tabs);})})
+                settings::SettingsForm<usize>(..settings::FormProps{rows:items,selected,focused:focus.get()==Focus::Form,active,identity:current_tab,keyboard_revision:revision.get(),editor})
+                View(height:Constraint::Length(2)){Text(text:detail,style:theme.muted,wrap:true)}
+                View(height:Constraint::Length(u16::from(config.show_hint_bar))){widget(Line::from("Tab 切换焦点 · ↑↓ 选择 · ←→ 调整 · 空格/Enter 操作 · Esc 关闭").style(theme.muted))}
             }
         }
-    })
-    .into_any()
+        {picker_view}
+    }).into_any()
 }
-
-/// 渲染单个条目。值文案在这里现算(配置每次写入都会触发重渲染),回调只报方向,
-/// 钳制交给 `ReaderDisplayConfig` 的增减方法 —— 面板不重复实现边界。
-fn setting_row(
-    display: AtomState<crate::ReaderDisplayConfig>,
-    index: ratatui_kit::State<usize>,
-    row: usize,
-    is_editing: bool,
-    config: &crate::ReaderDisplayConfig,
-    page_step: usize,
-) -> AnyElement<'static> {
-    // row 是浮层里的行号(0..4),SETTING_ROWS 把它翻译成设置项序号。
-    let item = SETTING_ROWS[row];
-    let (label, value) = describe_setting(config, item, page_step);
-    element!(View(height: Constraint::Length(3)) {
-        AdjustableSettingItem(
-            is_editing: is_editing && index.get() == row,
-            label: label,
-            value: value,
-            on_decrease: move |_| adjust(display, item, -1),
-            on_increase: move |_| adjust(display, item, 1),
-            on_click: focus_row(index, row),
-        )
-    })
-    .into_any()
-}
-
 /// 条目序号 → (标签, 当前值文案)。新增条目只改这里和 `adjust`,不必再动渲染树。
 pub(crate) fn describe_setting(
     config: &crate::ReaderDisplayConfig,
@@ -384,16 +424,19 @@ mod tests {
 
     #[test]
     fn setting_rows_cover_every_item_exactly_once() {
-        let mut rows = SETTING_ROWS.to_vec();
+        let mut rows = rows::rows(&crate::ReaderDisplayConfig::default())
+            .iter()
+            .map(|r| r.key)
+            .collect::<Vec<_>>();
         rows.sort_unstable();
-        assert_eq!(rows, (0..SETTING_ROWS.len()).collect::<Vec<_>>());
+        assert_eq!(rows, (0..=BLANK_ROW).collect::<Vec<_>>());
     }
 
     #[test]
     fn every_setting_has_a_label_and_value() {
         let config = crate::ReaderDisplayConfig::default();
-        for (index, row) in SETTING_ROWS.iter().enumerate() {
-            let (label, value) = describe_setting(&config, *row, 28);
+        for index in 0..=BLANK_ROW {
+            let (label, value) = describe_setting(&config, index, 28);
             assert!(!label.is_empty(), "条目 {index} 没有标签");
             assert!(!value.is_empty(), "条目 {index} 没有值文案");
         }

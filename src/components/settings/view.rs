@@ -1,4 +1,4 @@
-use super::model::{Control, Row, SECTIONS};
+use super::{Control, Row};
 use crate::theme::AppChromeTheme;
 use ratatui::{
     buffer::Buffer,
@@ -38,7 +38,7 @@ pub enum Entry {
     Field(usize),
 }
 
-pub fn entries(rows: &[Row]) -> Vec<Entry> {
+pub fn entries<K>(rows: &[Row<K>]) -> Vec<Entry> {
     let mut result = Vec::new();
     let mut previous = "";
     for (index, row) in rows.iter().enumerate() {
@@ -55,7 +55,7 @@ pub fn entries(rows: &[Row]) -> Vec<Entry> {
 }
 
 pub fn reveal(entries: &[Entry], cursor: usize, offset: usize, height: usize) -> usize {
-    if cursor == 0 {
+    if cursor == 0 && height > 1 {
         return 0;
     }
     let line = entries
@@ -73,11 +73,15 @@ pub fn reveal(entries: &[Entry], cursor: usize, offset: usize, height: usize) ->
     next.min(entries.len().saturating_sub(height))
 }
 
-pub fn tab_areas(area: Rect) -> [Rect; 5] {
-    Layout::horizontal([Constraint::Length(8); 5]).areas(area)
+pub fn tab_areas(area: Rect, count: usize) -> Vec<Rect> {
+    Layout::horizontal(vec![Constraint::Length(8); count])
+        .split(area)
+        .to_vec()
 }
-pub fn tab_at(area: Rect, position: Position) -> Option<usize> {
-    tab_areas(area).iter().position(|r| r.contains(position))
+pub fn tab_at(area: Rect, count: usize, position: Position) -> Option<usize> {
+    tab_areas(area, count)
+        .iter()
+        .position(|r| r.contains(position))
 }
 
 fn control_area(area: Rect, control: Control) -> Rect {
@@ -103,11 +107,11 @@ fn stepper_areas(area: Rect) -> [Rect; 3] {
     .areas(area)
 }
 
-pub fn hit(
+pub fn hit<K>(
     area: Rect,
     list: &[Entry],
     offset: usize,
-    rows: &[Row],
+    rows: &[Row<K>],
     position: Position,
 ) -> Option<Hit> {
     // 最后一列留给框架滚动条,不参与控件命中。
@@ -145,6 +149,7 @@ pub fn hit(
 
 #[derive(Clone)]
 pub struct TabsWidget {
+    pub labels: Arc<Vec<String>>,
     pub area: FrameArea,
     pub section: usize,
     pub focus: Focus,
@@ -154,7 +159,7 @@ pub struct TabsWidget {
 impl Widget for TabsWidget {
     fn render(self, area: Rect, buf: &mut Buffer) {
         *self.area.lock().unwrap_or_else(|e| e.into_inner()) = area;
-        for (index, rect) in tab_areas(area).into_iter().enumerate() {
+        for (index, rect) in tab_areas(area, self.labels.len()).into_iter().enumerate() {
             let active = index == self.section;
             let style = if self.hover == Some(index) {
                 self.theme.selected
@@ -164,9 +169,9 @@ impl Widget for TabsWidget {
                 self.theme.muted
             };
             let label = if active && self.focus == Focus::Tabs {
-                format!("› {}", SECTIONS[index])
+                format!("› {}", self.labels[index])
             } else {
-                SECTIONS[index].to_owned()
+                self.labels[index].to_owned()
             };
             Line::styled(label, style)
                 .alignment(Alignment::Center)
@@ -186,9 +191,9 @@ impl Widget for TabsWidget {
 }
 
 #[derive(Clone)]
-pub struct FormWidget {
+pub struct FormWidget<K> {
     pub area: FrameArea,
-    pub rows: Arc<Vec<Row>>,
+    pub rows: Arc<Vec<Row<K>>>,
     pub list: Arc<Vec<Entry>>,
     pub cursor: usize,
     pub focus: Focus,
@@ -196,7 +201,7 @@ pub struct FormWidget {
     pub hover: Option<Hit>,
     pub theme: AppChromeTheme,
 }
-impl Widget for FormWidget {
+impl<K: Clone> Widget for FormWidget<K> {
     fn render(self, area: Rect, buf: &mut Buffer) {
         *self.area.lock().unwrap_or_else(|e| e.into_inner()) = area;
         for (y, entry) in self
@@ -332,6 +337,8 @@ fn draw_control(
 
 #[derive(Clone)]
 pub struct PickerWidget {
+    pub colors: Option<Arc<Vec<ratatui::style::Color>>>,
+    pub offset: usize,
     pub area: FrameArea,
     pub title: String,
     pub options: Vec<String>,
@@ -348,9 +355,14 @@ impl Widget for PickerWidget {
             .border_style(self.theme.border);
         let inner = block.inner(area);
         block.render(area, buf);
-        for (i, option) in self
+        if self.options.is_empty() {
+            Line::styled("没有匹配结果，请调整关键词", self.theme.meta_label).render(inner, buf);
+        }
+        for (visual, (i, option)) in self
             .options
             .iter()
+            .enumerate()
+            .skip(self.offset)
             .take(usize::from(inner.height))
             .enumerate()
         {
@@ -362,23 +374,39 @@ impl Widget for PickerWidget {
                 self.theme.text
             };
             let line = format!("{} {}", if i == self.selected { "›" } else { " " }, option);
-            Line::styled(line, style)
-                .render(Rect::new(inner.x, inner.y + i as u16, inner.width, 1), buf);
+            let mut spans = vec![ratatui::text::Span::styled(line, style)];
+            if let Some(color) = self.colors.as_ref().and_then(|colors| colors.get(i)) {
+                spans.push(ratatui::text::Span::styled(
+                    " ██",
+                    ratatui::style::Style::new().fg(*color),
+                ));
+            }
+            Line::from(spans).render(
+                Rect::new(inner.x, inner.y + visual as u16, inner.width, 1),
+                buf,
+            );
         }
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use super::super::model;
+
     use super::*;
-    fn rows() -> Vec<Row> {
-        model::rows(
-            0,
-            &Default::default(),
-            &Default::default(),
-            &Default::default(),
-        )
+    fn rows() -> Vec<Row<()>> {
+        (0..8)
+            .map(|i| Row {
+                key: (),
+                group: if i < 4 { "排版" } else { "界面" },
+                label: format!("条目{i}"),
+                value: "0".into(),
+                detail: String::new(),
+                control: Control::Number {
+                    decrease: false,
+                    increase: true,
+                },
+            })
+            .collect()
     }
     #[test]
     fn pointer_hits_only_visible_controls_and_not_spacing_or_scrollbar() {
@@ -411,6 +439,7 @@ mod tests {
         assert_eq!(offset, list.len() - 5);
         assert_eq!(reveal(&list, 0, offset, 5), 0);
         assert_eq!(reveal(&list, 0, offset, 100), 0);
+        assert_eq!(reveal(&list, 0, offset, 1), 1);
     }
 
     #[test]
@@ -420,6 +449,13 @@ mod tests {
         let mut buffer = Buffer::empty(area);
         let geometry = Arc::default();
         TabsWidget {
+            labels: Arc::new(vec![
+                "阅读".into(),
+                "外观".into(),
+                "键位".into(),
+                "数据".into(),
+                "关于".into(),
+            ]),
             area: Arc::clone(&geometry),
             section: 0,
             focus: Focus::Tabs,
@@ -470,6 +506,7 @@ mod tests {
                 })
                 .render(area, &mut buffer);
                 (TabsWidget {
+                    labels: Arc::new(vec!["阅读".into(), "外观".into()]),
                     area: Arc::default(),
                     section: 0,
                     focus: Focus::Tabs,

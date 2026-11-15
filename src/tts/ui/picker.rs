@@ -1,32 +1,22 @@
 //! A modal-local live filter; typing never reaches the reader's shortcuts.
 use super::{PickerKind, Snapshot, TtsContext};
-use crate::{components::select::Select, theme::AppChromeTheme};
+use crate::{components::settings, theme::AppChromeTheme};
 use crossterm::event::{Event, KeyCode, KeyEventKind};
 use ratatui::{
     layout::{Constraint, Direction},
     text::Line,
-    widgets::{ListItem, ListState},
 };
 use ratatui_kit::prelude::*;
+use std::sync::Arc;
 use tts_protocol::ConfigPatch;
 use tui_input::backend::crossterm::EventHandler;
 
 #[derive(Clone)]
 pub(super) struct Choice {
-    label: String,
+    pub(super) label: String,
     patch: ConfigPatch,
     selected: bool,
 }
-impl From<Choice> for ListItem<'static> {
-    fn from(choice: Choice) -> Self {
-        ListItem::new(format!(
-            "{}{}",
-            if choice.selected { "✓ " } else { "  " },
-            choice.label
-        ))
-    }
-}
-
 pub(super) fn choices(snapshot: &Snapshot, kind: PickerKind, query: &str) -> Vec<Choice> {
     let mut choices = Vec::new();
     let Some(sound) = &snapshot.sound else {
@@ -96,20 +86,12 @@ pub(super) fn SoundPicker(
     let context = hooks.use_context::<TtsContext>().clone();
     let kind = props.kind.unwrap_or(PickerKind::Model);
     let input = hooks.use_state(tui_input::Input::default);
-    let state = hooks.use_state(ListState::default);
     let layer = hooks.use_input_layer(true, true);
     let theme = hooks.use_component_theme::<AppChromeTheme>();
-    let callbacks = hooks
-        .use_state(|| std::sync::Arc::new(std::sync::Mutex::new(Handler::<'static, ()>::default())))
-        .read()
-        .clone();
-    if !props.on_close.is_default() {
-        *callbacks.lock().unwrap_or_else(|e| e.into_inner()) = props.on_close.take();
-    }
+    let callbacks = settings::use_callback(&mut hooks, &mut props.on_close);
     let query = input.read().value().to_owned();
     let items = choices(&context.snapshot.read(), kind, &query);
     let initial = items.iter().position(|choice| choice.selected).unwrap_or(0);
-    hooks.use_effect(move || state.write().select(Some(initial)), query);
     hooks.use_event_handler(EventScope::Layer(layer), EventPriority::High, {
         let callbacks = callbacks.clone();
         move |event| {
@@ -152,8 +134,12 @@ pub(super) fn SoundPicker(
                         Input(input:input.read().clone(), placeholder:"输入关键词…", on_seek:move |cursor| { input.write().handle(tui_input::InputRequest::SetCursor(cursor)); })
                     }
                 }
-                Select<Choice>(items:items, state:Some(state), default_value:Some(initial), is_editing:true, empty_message:"没有匹配结果，修改搜索词或按 Esc 返回",
-                    on_select:{let callbacks=callbacks.clone(); move |choice:Choice| { if !choice.selected { context.handle.update(choice.patch); } callbacks.lock().unwrap_or_else(|e| e.into_inner())(()); }})
+                settings::SettingsChoiceList(..settings::ChoiceListProps {
+                    colors:None,
+                    title:"可选项".into(),options:Arc::new(items.iter().map(|c|format!("{}{}",if c.selected{"✓ "}else{"  "},c.label)).collect()),initial,
+                    on_select:settings::callback({let callbacks=callbacks.clone();move|index: usize|{if let Some(choice)=items.get(index){if !choice.selected{context.handle.update(choice.patch.clone());}callbacks.lock().unwrap_or_else(|e|e.into_inner())(());}}}),
+                    on_cancel:callbacks.clone(),dismiss_outside:false,
+                })
             }
         }
     })

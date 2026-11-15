@@ -751,4 +751,13 @@ TTSManager 的听书、声音、高级三个页复用父页当帧输入层。声
 
 滚轮和拖动滚动条自由浏览时不移动焦点；切回表单焦点或重新使用键盘调整时必须显露当前项。显露 effect 除 cursor/section/height 外还依赖 focus 与键盘操作版本，不能只在 cursor 数字变化时触发，否则会调整到屏外设置。数值边界由共享 `adjust_config` 在配置副本上推导，避免 UI 再抄一套范围常量。
 
-**相关文件**：`src/pages/settings/{mod,model,view}.rs`、`tests/pty/settings_tabs.py`。POSIX PTY 回归可在全功能构建后执行 `uv run tests/pty/settings_tabs.py`，不使用真实用户目录。
+**相关文件**：`src/pages/settings/{mod,model}.rs`、`src/components/settings/{mod,view}.rs`、`tests/pty/settings_tabs.py`。POSIX PTY 回归可在全功能构建后执行 `uv run tests/pty/settings_tabs.py`，不使用真实用户目录。
+
+
+### 设置表单统一入口与独占选择器
+
+全局设置、阅读弹窗、听书和自定义配色编辑器共用 `components::settings`。阅读项元数据、枚举与调整边界归阅读模块，宿主只负责焦点、输入层及保存。`Edit::Focus` 只聚焦，`Activate` 执行动作，`Adjust` 只调整数值/开关/枚举，不能让左右键触发重播、释放等动作。独占选择器作为 Modal 子树创建层；搜索型选择器不把搜索框点击当作外部取消。
+
+自定义配色的部分 hex 输入与当前字段说明必须在宿主显示；颜色选择器带真实色块，不只给颜色名称。键盘操作版本也适用于配色编辑，保证滚轮浏览后原地改值可显露字段。一行视口应优先显示字段，不能被分组标题遮住。听书在矮窗口缩减固定说明和内边距，把空间留给表单。
+
+`ratatui-kit` 0.12 的离屏 `render_frames` 关闭鼠标，不能挂载直接注册 `use_pointer` 的完整组件；不要关闭应用鼠标或改依赖来迁就测试。纯 widget 检查绘制，`tests/pty/settings_surfaces.py` 在隔离 HOME 下验证实际输入层、hover、搜索、保存和小窗口，听书使用协议 fixture，不能据此声称真实模型或音频验收。

@@ -1,6 +1,8 @@
 use crate::{
     AppearanceConfig, BackgroundMode,
-    components::{ConfirmModal, KeyShortcutInfo, ShortcutInfoModal, list_select::ListSelect},
+    components::{
+        ConfirmModal, KeyShortcutInfo, ShortcutInfoModal, list_select::ListSelect, settings,
+    },
     theme::{
         AppChromeTheme,
         presets::{
@@ -17,7 +19,7 @@ use ratatui::{
     widgets::{Block, Padding, Paragraph, Widget, WidgetRef},
 };
 use ratatui_kit::prelude::*;
-use std::collections::BTreeMap;
+use std::{collections::BTreeMap, sync::Arc};
 use tui_widget_list::ListState;
 
 /// 编辑器里 Tab 轮换的三个区域。
@@ -27,9 +29,6 @@ enum EditorFocus {
     Base,
     Colors,
 }
-
-/// 颜色列表一次最多显示 9 行; 其余靠滚动, 15 个字段也不会把弹窗撑出屏幕。
-const VISIBLE_COLORS: usize = 9;
 
 #[derive(Debug, Clone)]
 struct CustomDraft {
@@ -301,6 +300,7 @@ pub fn ThemeSetting(mut hooks: Hooks) -> impl Into<AnyElement<'static>> {
     let mut info_modal_open = hooks.use_state(|| false);
     let mut reset_modal_open = hooks.use_state(|| false);
     let mut editor_open = hooks.use_state(|| false);
+    let mut editor_revision = hooks.use_state(|| 0u64);
     let mut delete_modal_open = hooks.use_state(|| false);
     let mut draft = hooks.use_state(CustomDraft::default);
     let mut delete_target = hooks.use_state(|| None::<(String, String)>);
@@ -465,6 +465,7 @@ pub fn ThemeSetting(mut hooks: Hooks) -> impl Into<AnyElement<'static>> {
             if key.kind != KeyEventKind::Press {
                 return EventResult::Ignored;
             }
+            editor_revision.set(editor_revision.get().wrapping_add(1));
             match key.code {
                 KeyCode::Esc => {
                     editor_open.set(false);
@@ -565,9 +566,7 @@ pub fn ThemeSetting(mut hooks: Hooks) -> impl Into<AnyElement<'static>> {
     );
 
     let edit_selected = selected_custom;
-    let base_choices = ThemeChoice::all();
     let draft_snapshot = draft.read().clone();
-    let editor_lines = custom_editor_lines(&draft_snapshot, &base_choices, theme);
 
     element!(View{
         crate::components::ActionBar(menu: "设置") {
@@ -588,7 +587,7 @@ pub fn ThemeSetting(mut hooks: Hooks) -> impl Into<AnyElement<'static>> {
         ListSelect<ThemeEntry>(
             items: entries.clone(),
             state: list_state,
-            top_title: Line::from("全局设置").style(theme.title).centered(),
+            top_title: Line::from("外观与主题").style(theme.title).centered(),
             bottom_title: Line::from(format!(
                 "当前: {} · 背景: {}",
                 entries
@@ -712,7 +711,7 @@ pub fn ThemeSetting(mut hooks: Hooks) -> impl Into<AnyElement<'static>> {
         Modal(
             open: editor_open.get(),
             width: Constraint::Percentage(80),
-            height: Constraint::Length(20),
+            height: Constraint::Percentage(85),
             layer: editor_layer,
             style: Style::new().dim(),
         ){
@@ -727,119 +726,137 @@ pub fn ThemeSetting(mut hooks: Hooks) -> impl Into<AnyElement<'static>> {
                 ),
                 border_style: theme.border,
             ){
-                View {
-                    widget(Paragraph::new(editor_lines))
-                }
+                CustomEditor(..CustomEditorProps {
+                    draft,
+                    keyboard_revision: editor_revision.get(),
+                    on_save: Handler::from(move |_| save_custom_theme(appearance, draft, editor_open, list_state)),
+                    on_cancel: Handler::from(move |_| editor_open.set(false)),
+                })
             }
         }
     })
 }
 
-/// 编辑器正文: 逐项列出 Palette 字段, 带色块与用途说明, 颜色列表可滚动。
-fn custom_editor_lines(
-    draft: &CustomDraft,
-    base_choices: &[ThemeChoice],
-    theme: AppChromeTheme,
-) -> Vec<Line<'static>> {
-    let focus_style = |focus: EditorFocus| {
-        if draft.focus == focus {
-            theme.selected
-        } else {
-            theme.meta_label
-        }
-    };
-    let cursor = if draft.focus == EditorFocus::Name {
-        "▏"
-    } else {
-        ""
-    };
-    let mut lines = vec![
-        Line::from(vec![
-            Span::from("名称  ").style(focus_style(EditorFocus::Name)),
-            Span::from(format!("{}{cursor}", draft.name)).style(theme.text),
-        ]),
-        {
-            let base = base_choices
-                .get(draft.base)
-                .copied()
-                .unwrap_or(base_choices[0]);
-            Line::from(vec![
-                Span::from("基于  ").style(focus_style(EditorFocus::Base)),
-                Span::from("◀ ").style(theme.meta_label),
-                Span::from(base.display_name()).style(theme.text),
-                Span::from(" ▶").style(theme.meta_label),
-            ])
+#[derive(Props)]
+struct CustomEditorProps {
+    keyboard_revision: u64,
+    draft: State<CustomDraft>,
+    on_save: Handler<'static, ()>,
+    on_cancel: Handler<'static, ()>,
+}
+
+/// The same form and exclusive pickers as reader and global settings. Text/hex
+/// editing remains owned by the editor's keyboard layer.
+#[component]
+fn CustomEditor(props: &mut CustomEditorProps, mut hooks: Hooks) -> impl Into<AnyElement<'static>> {
+    let mut draft = props.draft;
+    let save = settings::use_callback(&mut hooks, &mut props.on_save);
+    let cancel = settings::use_callback(&mut hooks, &mut props.on_cancel);
+    let mut picker = hooks.use_state(|| None::<usize>);
+    let snapshot = draft.read().clone();
+    let bases = ThemeChoice::all();
+    let mut rows = vec![
+        settings::Row {
+            group: "方案",
+            key: 0,
+            label: "名称".into(),
+            value: snapshot.name.clone(),
+            detail: "点击后直接输入名称".into(),
+            control: settings::Control::Action,
         },
-        {
-            let mut spans = vec![
-                Span::from("颜色  ").style(focus_style(EditorFocus::Colors)),
-                Span::from(format!(
-                    "第 {}/{} 项",
-                    draft.field + 1,
-                    PALETTE_FIELDS.len()
-                ))
-                .style(theme.meta_label),
-            ];
-            if draft.focus == EditorFocus::Colors && !draft.hex_input.is_empty() {
-                spans.push(
-                    Span::from(format!(" · 输入 {}", draft.hex_input)).style(theme.highlight),
-                );
-            }
-            Line::from(spans)
+        settings::Row {
+            group: "方案",
+            key: 1,
+            label: "基于".into(),
+            value: bases[snapshot.base].display_name().into(),
+            detail: "未改字段沿用基础主题".into(),
+            control: settings::Control::Choice,
         },
     ];
-
-    let start = draft.field.saturating_sub(VISIBLE_COLORS - 1);
-    let end = (start + VISIBLE_COLORS).min(PALETTE_FIELDS.len());
-    for (index, field) in PALETTE_FIELDS.iter().enumerate().take(end).skip(start) {
-        let selected = draft.focus == EditorFocus::Colors && index == draft.field;
-        let label_style = if selected {
-            theme.selected
-        } else if index == draft.field {
-            theme.highlight
-        } else {
-            theme.meta_label
+    rows.extend(
+        PALETTE_FIELDS
+            .iter()
+            .enumerate()
+            .map(|(index, field)| settings::Row {
+                group: "颜色",
+                key: index + 2,
+                label: field.label.into(),
+                value: color_to_hex(snapshot.colors[index]).unwrap_or_else(|| "默认".into()),
+                detail: if index == snapshot.field && !snapshot.hex_input.is_empty() {
+                    format!("输入 {} · {}", snapshot.hex_input, field.usage)
+                } else {
+                    field.usage.into()
+                },
+                control: settings::Control::Choice,
+            }),
+    );
+    let selected = match snapshot.focus {
+        EditorFocus::Name => 0,
+        EditorFocus::Base => 1,
+        EditorFocus::Colors => snapshot.field + 2,
+    };
+    let editor = settings::callback(move |edit| {
+        let index = match edit {
+            settings::Edit::Focus(i)
+            | settings::Edit::Activate(i)
+            | settings::Edit::Adjust(i, _) => i,
         };
-        let color = draft.colors.get(index).copied().unwrap_or(Color::Reset);
-        let hex = color_to_hex(color).unwrap_or_else(|| "默认".to_string());
-        lines.push(Line::from(vec![
-            Span::from(if selected { "▶ " } else { "  " }).style(label_style),
-            Span::from(field.label).style(label_style),
-            Span::from(" "),
-            Span::from("██").style(Style::new().fg(color)),
-            Span::from(" "),
-            Span::from(format!("{hex:<7}")).style(theme.text),
-            Span::from(" "),
-            Span::from(field.usage).style(theme.meta_label),
-        ]));
-    }
-
-    let mut swatches = vec![Span::from("色板  ").style(theme.meta_label)];
-    let current = draft
-        .colors
-        .get(draft.field)
-        .copied()
-        .unwrap_or(Color::Reset);
-    let selected_index = nearest_custom_color(current);
-    for (index, color) in CUSTOM_COLORS.iter().enumerate() {
-        let style = Style::new().fg(color.color);
-        if index == selected_index {
-            swatches.push(Span::from("[").style(theme.highlight));
-            swatches.push(Span::from("██").style(style));
-            swatches.push(Span::from("]").style(theme.highlight));
-        } else {
-            swatches.push(Span::from(" ██ ").style(style));
+        let mut next = draft.read().clone();
+        let previous = (next.focus, next.field);
+        next.focus = match index {
+            0 => EditorFocus::Name,
+            1 => EditorFocus::Base,
+            _ => EditorFocus::Colors,
+        };
+        if index >= 2 {
+            next.field = index - 2;
         }
-    }
-    lines.push(Line::from(swatches));
-    lines.push(Line::from(""));
-    lines.push(
-        Line::from("Tab 切换区域 · ↑↓ 选字段 · ←→ 取色 · 直接输入 #rrggbb").style(theme.meta_label),
-    );
-    lines.push(
-        Line::from("Enter 保存 · Esc 取消 · 未改字段沿用「基于」色板").style(theme.meta_label),
-    );
-    lines
+        if previous != (next.focus, next.field) {
+            next.hex_input.clear();
+        }
+        if matches!(edit, settings::Edit::Activate(_)) && index > 0 {
+            picker.set(Some(index));
+        }
+        draft.set(next);
+    });
+    let choice = picker.get().map(|index| {
+        let (options, initial) = if index == 1 {
+            (
+                bases.iter().map(|b| b.display_name().to_string()).collect(),
+                snapshot.base,
+            )
+        } else {
+            (
+                CUSTOM_COLORS
+                    .iter()
+                    .map(|c| format!("{}  {}", c.name, color_to_hex(c.color).unwrap_or_default()))
+                    .collect(),
+                nearest_custom_color(snapshot.colors[index - 2]),
+            )
+        };
+        (index, Arc::new(options), initial)
+    });
+    let detail = rows[selected].detail.clone();
+    element!(View(flex_direction:ratatui::layout::Direction::Vertical,margin:ratatui::layout::Margin::new(1,0)) {
+        settings::SettingsForm<usize>(..settings::FormProps {rows:Arc::new(rows),selected,focused:true,active:picker.get().is_none(),identity:0,keyboard_revision:props.keyboard_revision,editor})
+        View(height:Constraint::Length(1)) {Text(text:detail)}
+        View(height:Constraint::Length(1)) {Text(text:"Tab 切换区域 · ↑↓ 选颜色 · ←→ 取色 · 输入 #rrggbb")}
+        View(height:Constraint::Length(1),flex_direction:ratatui::layout::Direction::Horizontal,gap:2) {
+            settings::SettingsButton(..settings::ButtonProps {label:"保存 · Enter".into(),on_press:save})
+            settings::SettingsButton(..settings::ButtonProps {label:"取消 · Esc".into(),on_press:cancel})
+        }
+        if let Some((index,options,initial)) = choice {
+            settings::SettingsPicker(..settings::PickerProps {
+                colors:if index==1 {None} else {Some(Arc::new(CUSTOM_COLORS.iter().map(|c|c.color).collect()))},
+                title:if index==1 {"选择基础主题".into()} else {PALETTE_FIELDS[index-2].label.into()},options,initial,
+                on_select:settings::callback(move |choice:usize| {
+                    let mut next=draft.read().clone();
+                    if index==1 {next.base=choice;} else {next.colors[index-2]=CUSTOM_COLORS[choice].color;next.hex_input.clear();}
+                    draft.set(next);picker.set(None);
+                }),on_cancel:settings::callback(move |_|picker.set(None)),
+            })
+        }
+    })
 }
 
 fn background_label(mode: BackgroundMode) -> &'static str {
