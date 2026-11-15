@@ -46,6 +46,7 @@ impl BookDetailState {
 #[component]
 pub fn BookDetail(mut hooks: Hooks) -> impl Into<AnyElement<'static>> {
     let book_detail_state = hooks.use_route_state::<BookDetailState>();
+    let cached = matches!(&*book_detail_state, BookDetailState::Cache { .. });
     let book_source_cache = *hooks.use_context::<State<Option<BookSourceCache>>>();
 
     let mut book_info = hooks.use_state(|| None::<BookInfo>);
@@ -150,8 +151,10 @@ pub fn BookDetail(mut hooks: Hooks) -> impl Into<AnyElement<'static>> {
         top_title: Line::from("小说详情").centered().style(theme.title),
         border_style: theme.border,
     ){
-        ActionBar(menu: "小说") {
-            ActionButton(label: "开始阅读", shortcut: "Enter / L / →", disabled: loading.get() || book_source_parser.read().is_none(), on_press: move |_| open_book())
+        View(height: Constraint::Length(3), margin: Margin::new(1,1)) {
+            ActionBar {
+                ActionButton(label: if cached { "继续阅读" } else { "开始阅读" }, shortcut: "Enter / L / →", disabled: loading.get() || book_source_parser.read().is_none(), on_press: move |_| open_book())
+            }
         }
         {if loading.get(){
             element!(Loading(tip: "加载中...")).into_any()

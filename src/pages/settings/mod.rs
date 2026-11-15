@@ -262,8 +262,6 @@ pub fn Settings(mut hooks: Hooks) -> impl Into<AnyElement<'static>> {
             ActionButton(label:"返回",shortcut:"Esc",on_press:move |_|navigate.go(-1))
         }
         View(width:Constraint::Length(width.saturating_sub(6).min(88))) {
-            View(height:Constraint::Length(1)){widget(Line::from("设置").style(theme.title))}
-            View(height:Constraint::Length(1)){}
             settings::SettingsTabs(..tabs_props)
             View(height:Constraint::Length(1)){}
             settings::SettingsForm<model::Key>(..form_props)

@@ -23,12 +23,14 @@ OUT.mkdir(exist_ok=True)
 
 class App:
 
-    def __init__(self, config='', novel=False):
+    def __init__(self, config='', novel=False, seed=None):
         self.temp = tempfile.TemporaryDirectory(prefix='trnovel-settings-pty-')
         self.root = Path(self.temp.name)
         cfg = self.root / '.trnovel'
         cfg.mkdir()
         (cfg / 'config.toml').write_text(config)
+        if seed is not None:
+            seed(self.root)
         args = [BINARY]
         if novel:
             (self.root / 'sample.txt').write_text('第一章 测试\n' + '这是用于交互验收的文字。\n' * 200)
@@ -153,6 +155,8 @@ if __name__ == '__main__':
     a = App('[appearance]\nshow_header = false\nconfirm_exit = true\n[reader]\nshow_global_hint = false\n')
     checks = []
     try:
+        # Force overflow: removing the redundant heading frees two form rows.
+        resize(a, 120, 27)
         open_settings(a)
         a.save('initial')
         print(a.text(), flush=True)
