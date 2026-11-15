@@ -1,10 +1,10 @@
 use crate::app::navigation::UseAppNavigate;
-use crate::components::{ActionBar, ActionButton};
+use crate::components::ActionButton;
 use anyhow::anyhow;
 use crossterm::event::{Event, KeyCode, KeyEventKind};
 use parse_book_source::{BookInfo, BookListItem, Engine};
 use ratatui::{
-    layout::{Constraint, Margin},
+    layout::{Constraint, Direction, Flex, Margin},
     text::{Line, Span},
     widgets::{Paragraph, Wrap},
 };
@@ -151,11 +151,6 @@ pub fn BookDetail(mut hooks: Hooks) -> impl Into<AnyElement<'static>> {
         top_title: Line::from("小说详情").centered().style(theme.title),
         border_style: theme.border,
     ){
-        View(height: Constraint::Length(3), margin: Margin::new(1,1)) {
-            ActionBar {
-                ActionButton(label: if cached { "继续阅读" } else { "开始阅读" }, shortcut: "Enter / L / →", disabled: loading.get() || book_source_parser.read().is_none(), on_press: move |_| open_book())
-            }
-        }
         {if loading.get(){
             element!(Loading(tip: "加载中...")).into_any()
         }else{
@@ -182,6 +177,14 @@ pub fn BookDetail(mut hooks: Hooks) -> impl Into<AnyElement<'static>> {
                 }
             }).into_any()
         }}
+        View(
+            height: Constraint::Length(3),
+            margin: Margin::new(1,1),
+            flex_direction: Direction::Horizontal,
+            justify_content: Flex::Center,
+        ) {
+            ActionButton(label: if cached { "继续阅读" } else { "开始阅读" }, shortcut: "Enter / L / →", disabled: loading.get() || book_source_parser.read().is_none(), on_press: move |_| open_book())
+        }
         WarningModal(
             // 用 Display(非 Debug)展示:登录态失效会清晰提示「登录态已失效,请重新登录」(9.3)。
             tip: error.read().as_ref().map(|e| e.to_string()).unwrap_or_default(),

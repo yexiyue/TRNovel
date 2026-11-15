@@ -9,7 +9,7 @@ import sys
 import threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 sys.dont_write_bytecode = True
-from settings_tabs import App, OUT, find, open_settings
+from settings_tabs import App, OUT, find, open_settings, resize
 
 ready = threading.Event()
 requests = []
@@ -19,7 +19,7 @@ class Pages(BaseHTTPRequestHandler):
         requests.append(self.path)
         if self.path == '/book':
             ready.wait(15)
-            text = '<h1>鼠标续读验收</h1><a id="toc" href="/toc">目录</a><p id="intro">本地测试书籍简介</p>'
+            text = '<h1>鼠标续读验收</h1><a id="toc" href="/toc">目录</a><p id="intro">' + ('本地测试书籍简介。' * 500) + '</p>'
         elif self.path == '/toc':
             text = '<a class="chapter" href="/first">第一章</a><a class="chapter" href="/second">第二章</a>'
         else:
@@ -68,7 +68,15 @@ try:
     a.pump(1)
     a.move(0, 0)
     x, y = find(a, '继续阅读')
-    assert y > 1, a.text()
+    assert y >= a.screen.lines - 5 and abs(x + 4 - a.screen.columns / 2) <= 1, a.text()
+    a.send('\x1b[<65;20;12M' * 5)
+    assert find(a, '继续阅读') == (x, y), a.text()
+    resize(a, 52, 18)
+    compact_x, compact_y = find(a, '继续阅读')
+    assert compact_y >= 13 and abs(compact_x + 4 - 26) <= 1, a.text()
+    a.save('network-detail-compact')
+    resize(a, 120, 29)
+    x, y = find(a, '继续阅读')
     before = a.screen.buffer[y][x].reverse
     a.move(x, y)
     assert before != a.screen.buffer[y][x].reverse, a.text()

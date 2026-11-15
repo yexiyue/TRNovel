@@ -778,6 +778,6 @@ TTSManager 的听书、声音、高级三个页复用父页当帧输入层。声
 
 `ActionBar(menu: "分组")` 只向顶栏注册动作，不绘制页内按钮。书籍详情的开始/继续阅读属于主要动作，使用不带 menu 的页内 ActionBar，加载完成前禁用，鼠标和键盘共用同一个打开回调。缓存详情保留章节位置，以“继续阅读”标识。
 
-header 隐藏时全局 ActionHint 仍在第 1 行显示临时提示，页内按钮应留出顶端间距，避免 hover 提示盖住自己的点击入口。全局设置正文直接从 Tabs 开始，不再重复顶栏已有的设置标题。
+详情阅读按钮放在 ScrollView 外的底部固定区域并水平居中，长简介滚动时保持可点击。header 隐藏时全局 ActionHint 仍在第 1 行显示临时提示，底部按钮不会被提示覆盖。全局设置正文直接从 Tabs 开始，不再重复顶栏已有的设置标题。
 
 **相关文件**：`src/pages/network_novel/book_detail.rs`、`src/pages/settings/mod.rs`、`tests/pty/book_detail.py`。详情回归使用隔离 HOME 和 loopback 书源，验证加载门控、hover、鼠标续读和 Enter；不依赖真实书站。
