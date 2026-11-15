@@ -318,7 +318,10 @@ pub(crate) fn describe_setting(
 /// 加减一个单位。方向用 i32 而非 bool,是因为多数条目真的有多档(0..=4 行空行),
 /// 只有开关型才把它折成真假。
 pub(crate) fn adjust(display: AtomState<crate::ReaderDisplayConfig>, row: usize, delta: i32) {
-    let mut config = display.write();
+    adjust_config(&mut display.write(), row, delta);
+}
+
+pub(crate) fn adjust_config(config: &mut crate::ReaderDisplayConfig, row: usize, delta: i32) {
     match row {
         0 => {
             if delta > 0 {

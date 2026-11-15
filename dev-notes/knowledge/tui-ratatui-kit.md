@@ -742,3 +742,13 @@ TTSManager 的听书、声音、高级三个页复用父页当帧输入层。声
 设置页的点击区域按边框与内边距计算，排除右侧及底部边框、留白和不可见条目。弹窗及其按钮的回调也必须保存在 hook 中；父弹窗的焦点更新和子按钮的悬停都会触发局部重渲染，不能每帧直接消费 `Handler::take()`。
 
 **相关文件**：`src/pages/read_novel/read_content.rs`、`src/pages/settings/mod.rs`、`src/components/modal/confirm_exit.rs`。
+
+### 全局设置：复合焦点、悬停与实际绘制几何
+
+全局设置使用顶部五标签及限宽分组表单。标签栏与表单是两个复合焦点区域，Tab/Shift+Tab 切换区域；标签栏方向键切页，表单方向键调整当前项。悬停使用 `use_hover_row`，只提供反馈，不写键盘焦点或配置。
+
+自绘控件的 hover 命中必须读取 widget 当帧记录的几何（稳定 `Arc<Mutex<Rect>>`），不能只依赖 `use_previous_size`：第一次绘制或布局变化后的鼠标事件需要立即命中。绘制与点击复用同一控件矩形；滚动条复用 `use_scrollbar`，绘制行、视口和 offset 使用相同的视觉行单位。
+
+滚轮和拖动滚动条自由浏览时不移动焦点；切回表单焦点或重新使用键盘调整时必须显露当前项。显露 effect 除 cursor/section/height 外还依赖 focus 与键盘操作版本，不能只在 cursor 数字变化时触发，否则会调整到屏外设置。数值边界由共享 `adjust_config` 在配置副本上推导，避免 UI 再抄一套范围常量。
+
+**相关文件**：`src/pages/settings/{mod,model,view}.rs`、`tests/pty/settings_tabs.py`。POSIX PTY 回归可在全功能构建后执行 `uv run tests/pty/settings_tabs.py`，不使用真实用户目录。
