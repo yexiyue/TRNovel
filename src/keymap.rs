@@ -75,9 +75,10 @@ fn reader_defaults() -> Keymap<ReaderAction> {
         .desc(ReaderAction::NextChapter, "下一章")
         // 物理键放首位:底部提示/帮助只放得下一个键时仍显示 PageUp/PageDown(既有视觉习惯);
         // ctrl-b/ctrl-f 是 Vim 的整页前后翻,与本 action 语义精确对应(ctrl-d/ctrl-u 是半页,不绑)。
+        // Space 习惯上就是「往下一屏」,与 PageDown 同义;放在末位,提示行仍显示 PageDown。
         .bind(ReaderAction::PageUp, ["pageup", "ctrl-b"])
         .desc(ReaderAction::PageUp, "上一页(章首连按翻上一章)")
-        .bind(ReaderAction::PageDown, ["pagedown", "ctrl-f"])
+        .bind(ReaderAction::PageDown, ["pagedown", "ctrl-f", "space"])
         .desc(ReaderAction::PageDown, "下一页(章末连按翻下一章)")
         .bind(ReaderAction::GoTop, ["home"])
         .desc(ReaderAction::GoTop, "跳到开头")
@@ -213,6 +214,106 @@ pub fn display_first_key(keymap: &Keymap<ReaderAction>, action: ReaderAction) ->
         .first()
         .map(|name| prettify_action_key(name, action))
         .unwrap_or_else(|| "?".to_string())
+}
+
+/// 提示条所属页面。阅读页多出翻页/目录等阅读键,其它页只显示全局可用键,
+/// 不会出现「按了没反应」的假提示。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum HintPage {
+    Reader,
+    Other,
+}
+
+/// 提示条的一个片段:阅读键从当前 keymap 取实际键名,顶栏/全局键是固定键位。
+enum HintItem {
+    Action(ReaderAction, &'static str),
+    Key(&'static str, &'static str),
+}
+
+/// 阅读页提示条目,按「最常用优先」排序,不是全量键位表。
+///
+/// 全量表在帮助浮层里;这一行只放得下几项,再多的会在渲染时按宽度裁掉,
+/// 所以顺序本身就是优先级。顶栏的「返回/菜单」排在阅读键之后、帮助/设置之前,
+/// 保证常见 80 列终端里也能看到。
+const READER_HINT_ITEMS: &[HintItem] = &[
+    HintItem::Action(ReaderAction::PageDown, "翻页"),
+    HintItem::Action(ReaderAction::PrevChapter, "上一章"),
+    HintItem::Action(ReaderAction::NextChapter, "下一章"),
+    HintItem::Action(ReaderAction::SearchContent, "搜索"),
+    HintItem::Action(ReaderAction::ToggleReadMode, "目录"),
+    HintItem::Key("B", "返回"),
+    HintItem::Key("F10", "菜单"),
+    HintItem::Action(ReaderAction::ToggleTts, "听书"),
+    HintItem::Action(ReaderAction::ToggleInfo, "帮助"),
+    HintItem::Action(ReaderAction::ToggleReaderSettings, "设置"),
+    HintItem::Key("Q", "退出"),
+];
+
+/// 非阅读页真正可用的全局键:返回、菜单、退出。
+const OTHER_HINT_ITEMS: &[HintItem] = &[
+    HintItem::Key("B", "返回"),
+    HintItem::Key("F10", "菜单"),
+    HintItem::Key("Q", "退出"),
+];
+
+/// 生成常显快捷键提示条(`PgDn 翻页 · ← 上一章 · …`)。
+///
+/// 键名全部从**当前生效的 keymap** 取,用户重绑 `keybindings.toml` 后提示随即
+/// 改变,不会显示一个按了没用的键。宽度按终端列计(中文算 2 列),
+/// 放不下时整段丢弃并在末尾补省略号 —— 截半个汉字比丢掉有用信息更糟。
+pub fn hint_bar(keymap: &Keymap<ReaderAction>, width: usize, page: HintPage) -> String {
+    let items = match page {
+        HintPage::Reader => READER_HINT_ITEMS,
+        HintPage::Other => OTHER_HINT_ITEMS,
+    };
+    let segments = items.iter().filter_map(|item| match item {
+        // 无 tts 构建里该 action 没有绑定,显示 "?" 只会误导,整段跳过。
+        HintItem::Action(ReaderAction::ToggleTts, _) if !cfg!(feature = "tts") => None,
+        HintItem::Action(action, label) => Some((display_first_key(keymap, *action), *label)),
+        HintItem::Key(key, label) => Some(((*key).to_string(), *label)),
+    });
+    render_segments(segments, width)
+}
+
+/// 非阅读页的提示条。这些条目全是顶栏/全局固定键,不需要 keymap,
+/// 因此调用方不必先把阅读键位表读出来。
+pub fn other_hint_bar(width: usize) -> String {
+    let segments = OTHER_HINT_ITEMS.iter().filter_map(|item| match item {
+        HintItem::Key(key, label) => Some(((*key).to_string(), *label)),
+        HintItem::Action(..) => None,
+    });
+    render_segments(segments, width)
+}
+
+/// 把 `(键名, 说明)` 拼成一行,按显示宽度裁剪并补省略号。
+fn render_segments<I>(segments: I, width: usize) -> String
+where
+    I: Iterator<Item = (String, &'static str)>,
+{
+    use unicode_width::UnicodeWidthStr;
+    const SEPARATOR: &str = " · ";
+    const ELLIPSIS: &str = " …";
+    let mut out = String::new();
+    let mut used = 0usize;
+    let mut dropped = false;
+    for (key, label) in segments {
+        let segment = format!("{key} {label}");
+        let separator = if out.is_empty() { 0 } else { SEPARATOR.width() };
+        let needed = used + separator + segment.width();
+        if needed > width {
+            dropped = true;
+            break;
+        }
+        if !out.is_empty() {
+            out.push_str(SEPARATOR);
+        }
+        out.push_str(&segment);
+        used = needed;
+    }
+    if dropped && used + ELLIPSIS.width() <= width {
+        out.push_str(ELLIPSIS);
+    }
+    out
 }
 
 // Search navigation distinguishes lowercase n from uppercase N.

@@ -13,8 +13,14 @@ use ratatui::{
 use ratatui_kit::prelude::*;
 use tui_big_text::{BigText, PixelSize};
 
-/// 首页菜单项数,悬停/点击的行→索引映射与列表内容都以此为准。
-const MENU_LEN: usize = 4;
+/// 首页菜单项。无网络构建去掉「网络小说」,其余项与路由一一对应;
+/// 菜单长度、行→索引映射和列表内容都从这里派生,避免两套构建各写死一份。
+#[cfg(feature = "network")]
+const MENU: [&str; 4] = ["本地小说", "网络小说", "历史记录", "全局设置"];
+#[cfg(not(feature = "network"))]
+const MENU: [&str; 3] = ["本地小说", "历史记录", "全局设置"];
+
+const MENU_LEN: usize = MENU.len();
 
 /// 菜单导航:Enter 键与鼠标点击共用同一份目标路由。
 fn navigate_menu(
@@ -30,9 +36,16 @@ fn navigate_menu(
                 navigate.push("/select-file");
             }
         }
+        #[cfg(feature = "network")]
         1 => navigate.push("/book-source"),
+        #[cfg(feature = "network")]
         2 => navigate.push("/select-history"),
-        3 => navigate.push("/theme-setting"),
+        #[cfg(feature = "network")]
+        3 => navigate.push("/settings"),
+        #[cfg(not(feature = "network"))]
+        1 => navigate.push("/select-history"),
+        #[cfg(not(feature = "network"))]
+        2 => navigate.push("/settings"),
         _ => {}
     }
 }
@@ -55,12 +68,11 @@ fn HomeMenu(props: &mut HomeMenuProps, mut hooks: Hooks) -> impl Into<AnyElement
     let props_is_editing = props.is_editing;
     let mut on_navigate = props.on_navigate.take();
 
-    let list = List::new(vec![
-        Line::from("本地小说").centered(),
-        Line::from("网络小说").centered(),
-        Line::from("历史记录").centered(),
-        Line::from("全局设置").centered(),
-    ])
+    let list = List::new(
+        MENU.iter()
+            .map(|label| Line::from(*label).centered())
+            .collect::<Vec<_>>(),
+    )
     .style(theme.text)
     .highlight_style(theme.selected);
 
@@ -103,7 +115,10 @@ fn HomeMenu(props: &mut HomeMenuProps, mut hooks: Hooks) -> impl Into<AnyElement
 
 #[component]
 pub fn Home(mut hooks: Hooks) -> impl Into<AnyElement<'static>> {
-    let state = hooks.use_state(|| ListState::default().with_selected(Some(0)));
+    // 从界面记忆恢复上次停留的菜单项;列表变短时由 restored_index 钳到最后一项。
+    let initial_index =
+        crate::app::ui_memory::restored_index(crate::app::ui_memory::HOME, MENU_LEN, 0);
+    let state = hooks.use_state(move || ListState::default().with_selected(Some(initial_index)));
     let mut info_modal_open = hooks.use_state(|| false);
     let history = hooks.use_context::<State<Option<History>>>();
     let local_path = history.read().as_ref().and_then(|h| h.local_path.clone());
@@ -155,6 +170,17 @@ pub fn Home(mut hooks: Hooks) -> impl Into<AnyElement<'static>> {
             }
         }
     });
+
+    // 选中项变化就写回,返回时由上面的初始化恢复。
+    let selected = state.read().selected();
+    hooks.use_effect(
+        move || {
+            if let Some(index) = selected {
+                crate::app::ui_memory::save_index(crate::app::ui_memory::HOME, index);
+            }
+        },
+        selected,
+    );
 
     let big_txt = BigText::builder()
         .pixel_size(PixelSize::Quadrant)

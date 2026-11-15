@@ -1,12 +1,14 @@
 use crossterm::event::{Event, KeyCode, KeyEventKind};
 use ratatui::{
     layout::{Alignment, Constraint},
-    text::Line,
+    style::Style,
+    text::{Line, Text as RatatuiText},
     widgets::Block,
 };
 use ratatui_kit::{components::tree_select::tree_item_at_position, prelude::*};
 use std::{cell::RefCell, rc::Rc};
 use tui_tree_widget::{TreeItem, TreeState};
+use unicode_width::UnicodeWidthChar;
 
 use crate::{components::search_input::SearchInput, novel::VolumeMarker, theme::AppChromeTheme};
 
@@ -57,7 +59,10 @@ pub fn SelectChapter(
 ) -> impl Into<AnyElement<'static>> {
     let mut filter_text = hooks.use_state(String::default);
     let theme = hooks.use_component_theme::<AppChromeTheme>();
-    let page_lines = usize::from(hooks.use_previous_size().height.saturating_sub(2)).max(1);
+    let size = hooks.use_previous_size();
+    let page_lines = usize::from(size.height.saturating_sub(2)).max(1);
+    // 目录栏宽度来自上一帧的布局:首帧为 0,先不做换行,下一帧再按真实宽度重排。
+    let toc_width = size.width as usize;
 
     // 树状态只持有展开/光标;「定位到当前章节」交给 TreeSelect 的 `default_selection`。
     let state = hooks.use_state(TreeState::<TocId>::default);
@@ -82,11 +87,20 @@ pub fn SelectChapter(
 
     // 构建树节点：搜索态塌成扁平过滤列表；否则按卷分组（无卷则平铺）。
     let items = hooks.use_memo(
-        || build_items(&props.chapters, &props.volumes, &filter_text.read(), &theme),
+        || {
+            build_items(
+                &props.chapters,
+                &props.volumes,
+                &filter_text.read(),
+                toc_width,
+                &theme,
+            )
+        },
         (
             filter_text.read().clone(),
             props.chapters.len(),
             props.volumes.len(),
+            toc_width,
         ),
     );
 
@@ -246,14 +260,58 @@ pub fn SelectChapter(
     })
 }
 
+/// 按显示宽度把标题拆成多行。
+///
+/// 汉字占两列,所以不能按 chars().count() 切;目录栏收窄时靠它把长章节名
+/// 折行而不是让 Tree 直接截断。逐字符硬折(不按词)对中文标题是正确做法。
+fn wrap_title(title: &str, width: usize) -> Vec<String> {
+    if width == 0 {
+        return vec![title.to_string()];
+    }
+    let mut lines = Vec::new();
+    let mut current = String::new();
+    let mut used = 0usize;
+    for ch in title.chars() {
+        let w = ch.width().unwrap_or(0);
+        if used + w > width && !current.is_empty() {
+            lines.push(std::mem::take(&mut current));
+            used = 0;
+        }
+        current.push(ch);
+        used += w;
+    }
+    if !current.is_empty() || lines.is_empty() {
+        lines.push(current);
+    }
+    lines
+}
+
+/// 标题 → 可换行 Text。树组件会按 Text 的行数占用多行,选中框与点击命中
+/// 也随之按整块高度计算。
+fn title_text(title: &str, width: usize, style: Style) -> RatatuiText<'static> {
+    let lines: Vec<Line<'static>> = wrap_title(title, width)
+        .into_iter()
+        .map(|line| Line::from(line).style(style))
+        .collect();
+    RatatuiText::from(lines)
+}
+
 /// 根据章节、卷与过滤条件构建树节点列表。
 fn build_items(
     chapters: &[ChapterName],
     volumes: &[VolumeMarker],
     filter: &str,
+    width: usize,
     theme: &AppChromeTheme,
 ) -> Vec<TreeItem<'static, TocId>> {
-    let leaf = |c: &ChapterName| TreeItem::new_leaf(TocId::Chapter(c.1), c.0.clone());
+    // 树在边框内还留约 1 列前缀;再按层级扣掉 depth * 2 的缩进。
+    let leaf_width = |depth: usize| width.saturating_sub(3 + depth * 2).max(1);
+    let leaf = |c: &ChapterName, depth: usize| {
+        TreeItem::new_leaf(
+            TocId::Chapter(c.1),
+            title_text(&c.0, leaf_width(depth), Style::default()),
+        )
+    };
 
     // 搜索态：塌成扁平过滤列表。
     if !filter.is_empty() {
@@ -266,20 +324,20 @@ fn build_items(
                     c.0.contains(filter)
                 }
             })
-            .map(leaf)
+            .map(|c| leaf(c, 0))
             .collect();
     }
 
     // 无分卷：平铺。
     if volumes.is_empty() {
-        return chapters.iter().map(leaf).collect();
+        return chapters.iter().map(|c| leaf(c, 0)).collect();
     }
 
     // 分卷：卷前的孤立章节置于根层级，其余按卷分组。
     let len = chapters.len();
     let mut items = Vec::new();
     let first_start = volumes[0].first_chapter_index.min(len);
-    items.extend(chapters[..first_start].iter().map(leaf));
+    items.extend(chapters[..first_start].iter().map(|c| leaf(c, 0)));
 
     for (vi, v) in volumes.iter().enumerate() {
         let start = v.first_chapter_index.min(len);
@@ -287,12 +345,44 @@ fn build_items(
             .get(vi + 1)
             .map(|nv| nv.first_chapter_index.min(len))
             .unwrap_or(len);
-        let children: Vec<_> = chapters[start..end].iter().map(leaf).collect();
-        let title = Line::from(v.title.clone()).style(theme.title);
+        let children: Vec<_> = chapters[start..end].iter().map(|c| leaf(c, 1)).collect();
+        let title = title_text(&v.title, width.saturating_sub(3).max(1), theme.title);
         if let Ok(node) = TreeItem::new(TocId::Volume(vi), title, children) {
             items.push(node);
         }
     }
 
     items
+}
+
+#[cfg(test)]
+mod tests {
+    use super::wrap_title;
+
+    #[test]
+    fn wrap_title_breaks_by_display_width() {
+        // 10 列 = 5 个汉字,超过就换行,不留下半行空白。
+        assert_eq!(wrap_title("一二三四五六七", 10), vec!["一二三四五", "六七"]);
+        assert_eq!(wrap_title("短标题", 10), vec!["短标题"]);
+        assert_eq!(wrap_title("", 10), vec![""]);
+    }
+
+    #[test]
+    fn wrap_title_never_returns_empty_lines() {
+        for width in 1..=6 {
+            for title in ["abcdef", "第一章 很长的章节名字"] {
+                let lines = wrap_title(title, width);
+                assert!(!lines.is_empty());
+                assert!(
+                    lines.iter().all(|line| !line.is_empty()),
+                    "{title:?} {width}"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn wrap_title_counts_ascii_and_wide_chars_together() {
+        assert_eq!(wrap_title("ab中文", 4), vec!["ab中", "文"]);
+    }
 }

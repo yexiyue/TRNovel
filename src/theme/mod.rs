@@ -1,3 +1,5 @@
+pub mod presets;
+
 use ratatui::style::{Modifier, Style};
 use ratatui_kit::{ComponentTheme, Palette};
 

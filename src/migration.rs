@@ -486,12 +486,17 @@ fn validate_json(file: File, destination: &Path, root: &Path) -> Result<()> {
             serde_json::from_value::<Option<std::path::PathBuf>>(path.clone())?;
         }
     } else if destination == data.join("book_sources.json") {
-        let sources = value.get("book_sources").cloned().unwrap_or(value);
-        parse_book_source::BookSource::from_value_many(sources)
-            .map_err(parse_book_source::BookSourceError::from)?;
+        // 无网络构建不解析书源 JSON:文件照常搬运,交由带网络构建再校验。
+        #[cfg(feature = "network")]
+        {
+            let sources = value.get("book_sources").cloned().unwrap_or(value);
+            parse_book_source::BookSource::from_value_many(sources)
+                .map_err(parse_book_source::BookSourceError::from)?;
+        }
     } else if destination.starts_with(data.join("local")) {
         serde_json::from_value::<crate::cache::LocalNovelCache>(value)?;
     } else if destination.starts_with(data.join("network")) {
+        #[cfg(feature = "network")]
         serde_json::from_value::<crate::cache::NetworkNovelCache>(value)?;
     }
     Ok(())

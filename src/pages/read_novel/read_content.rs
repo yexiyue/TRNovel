@@ -1,6 +1,7 @@
-use super::search::{ChapterSearch, ContentLayout};
+use super::search::{ChapterSearch, ContentLayout, LayoutOptions};
 use crate::components::{ActionBar, ActionButton};
 use crate::{
+    ReaderDisplayConfig,
     components::Loading,
     keymap::{ReaderAction, display_first_key},
     theme::ReaderTheme,
@@ -8,7 +9,7 @@ use crate::{
 use ratatui::{
     layout::{Constraint, Direction, Flex, Margin},
     text::Line,
-    widgets::Paragraph,
+    widgets::{Borders, Paragraph},
 };
 #[cfg(test)]
 use ratatui::{style::Style, text::Span};
@@ -35,11 +36,32 @@ enum Edge {
     AtLast,
 }
 
-/// 正文可见行数:组件高度扣掉上下边框与底部状态栏共 3 行,至少 1 行。
+/// 正文可见行数:组件高度扣掉固定占用的「框线 + 状态栏 (+ 正文内联标题)」,至少 1 行。
 ///
-/// 翻页步长、章末判定与设置面板里展示的「每页滚动 M 行」都由它派生,故只此一处定义。
-pub fn visible_lines(height: u16) -> usize {
-    (height as usize).saturating_sub(3).max(1)
+/// 快捷提示条已移到整屏最后一行、边框之外,不再占正文内部行数,故是否开启
+/// 提示条不影响这里的换算。翻页步长、章末判定与设置面板里展示的「每页滚动
+/// M 行」都由它派生,故只此一处定义。
+///
+/// 内联标题(见 [`ReaderDisplayConfig::inline_title`])画在正文区最上方、占 1 行,
+/// 与边框标题互斥,所以这里只加 1 行;它不进入正文行数,滚动/搜索偏移不受影响。
+pub fn visible_lines(height: u16, display: &ReaderDisplayConfig) -> usize {
+    let chrome = 1 + 2 * display.frameline.inset() as usize + usize::from(display.inline_title());
+    (height as usize).saturating_sub(chrome).max(1)
+}
+
+/// 正文本身是否已经以章节标题开头。
+///
+/// 本地 txt 的章节区间从标题行开始,`get_content` 会把它一起读进来;此时若再画一次
+/// 内联标题,正文顶部就会出现两行一模一样的标题。标题仍在最上方,只是由正文自己
+/// 提供,所以此时跳过内联绘制。
+fn content_starts_with_chapter_title(content: &str, chapter_name: &str) -> bool {
+    let title = chapter_name.trim();
+    !title.is_empty()
+        && content
+            .lines()
+            .map(str::trim)
+            .find(|line| !line.is_empty())
+            .is_some_and(|line| line == title)
 }
 
 /// 章内滚动位置。**意图**与**比例**是两回事,故用变体而非在 f64 里塞哨兵值:
@@ -107,6 +129,36 @@ impl Default for ScrollTarget {
     }
 }
 
+/// 前向翻页/滚动的落点。返回(新行号, 要写入的滚动目标)。
+///
+/// 默认配置(`allow_page_blank = false`)下,最后一页必须贴底铺满:落点钳到
+/// `end_scroll`,不产生 `Overscroll`,后续按键走原有的「章末确认/下一章」路径。
+/// 只有用户显式开启留白时,才允许跨过 `end_scroll` 并把留白区记进 `Overscroll`。
+///
+/// 调用前提是 `current_line < end_scroll`(已在章末时由调用方直接走境界分支),
+/// 因此留白落点的上界 `(end_scroll - 1) + step <= total - 1`,不需要额外钳位。
+fn page_forward(
+    current_line: usize,
+    step: usize,
+    total: usize,
+    end_scroll: usize,
+    allow_page_blank: bool,
+) -> (usize, ScrollTarget) {
+    let next = current_line + step;
+    if allow_page_blank && next > end_scroll {
+        (
+            next,
+            ScrollTarget::Overscroll {
+                ratio: next as f64 / total.max(1) as f64,
+                end_scroll,
+            },
+        )
+    } else {
+        let line = next.min(end_scroll);
+        (line, ScrollTarget::Ratio(line as f64 / total.max(1) as f64))
+    }
+}
+
 #[derive(Default, Props)]
 pub struct ReadContentProps {
     pub content: String,
@@ -148,6 +200,9 @@ pub fn ReadContent(
         props.height.saturating_sub(1)
     };
     let mut reader_display = hooks.use_atom(&crate::state::READER_DISPLAY);
+    // 排版参数先取成值:下面每个 memo 的 deps 都要用它,而 deps 里传 atom 句柄
+    // 比较的是「自己跟自己」,关掉设置面板后排版会冻结在首帧。
+    let display = *reader_display.read();
     let mut on_prev = props.on_prev.take();
     let mut on_next = props.on_next.take();
     let mut edge = hooks.use_state(|| Edge::None);
@@ -232,7 +287,14 @@ pub fn ReadContent(
 
     // 先取成值再进闭包:memo 的 deps 必须是值,传 atom 句柄比较的是「当前值跟自己比」,
     // 恒等 → 切换开关后排版会冻结在首帧。
-    let paragraph_spacing = reader_display.read().paragraph_spacing;
+    let paragraph_gap = display.paragraph_gap as usize;
+    let first_line_indent = display.first_line_indent as usize;
+    // 正文可用宽度:扣掉左右边框与用户设置的左右留白;边框选「无」时不留位。
+    let content_width = (width as usize)
+        .saturating_sub(2 * display.frameline.inset() as usize + 2 * display.h_margin as usize)
+        .max(1);
+    // 每行字数只是上限:窗口比它窄时按窗口走,否则正文会溢出边框。
+    let wrap_width = display.wrap_width(content_width);
 
     let local_search = hooks.use_state(ChapterSearch::default);
     let mut search = props.search.unwrap_or(local_search);
@@ -248,13 +310,21 @@ pub fn ReadContent(
     let editing = search.read().editing && props.is_scroll && !props.is_loading;
     let layout = hooks.use_memo(
         || {
-            Arc::new(ContentLayout::new(
+            Arc::new(ContentLayout::with_options(
                 &props.content,
-                width.saturating_sub(2) as usize,
-                paragraph_spacing,
+                LayoutOptions {
+                    width: wrap_width,
+                    paragraph_gap,
+                    indent: first_line_indent,
+                },
             ))
         },
-        (props.content.clone(), width, paragraph_spacing),
+        (
+            props.content.clone(),
+            wrap_width,
+            paragraph_gap,
+            first_line_indent,
+        ),
     );
     let matches = search.read().matches.clone();
     let selected = search.read().selected;
@@ -281,8 +351,9 @@ pub fn ReadContent(
         },
         (
             props.content.clone(),
-            width,
-            paragraph_spacing,
+            wrap_width,
+            paragraph_gap,
+            first_line_indent,
             search.read().revision,
             selected,
             tts_range.clone(),
@@ -303,13 +374,14 @@ pub fn ReadContent(
     let is_scroll = props.is_scroll;
     // 滚动坐标系:以「内容总行数」为唯一绝对基准,三个量各司其职——
     //   total      正文总行数,落盘进度的分母(与视口无关,换终端尺寸后仍指向同一行)
-    //   view       可见行数(height - 3:上下边框 + 底部状态栏)
+    //              直接取预排版行数:每一行都已按 wrap_width 切好,含缩进也不超宽
+    //   view       可见行数(高度扣掉边框与底部状态栏,见 visible_lines)
     //   end_scroll 贴底位置(最后一行正好落在屏幕底部)= 章末判定线
     // 旧实现只有一个 `line_count`(实为 end_scroll)同时兼任滚动上限、进度分母与行号分母,
     // 分母含视口高度 → 进度随终端尺寸漂移,且末尾无法留白。
-    let total = paragraph.line_count(width.saturating_sub(2));
+    let total = layout.lines.len();
     let can_search = props.is_scroll && !props.is_loading;
-    let view = visible_lines(height);
+    let view = visible_lines(height, &display);
     let end_scroll = total.saturating_sub(view);
 
     hooks.use_effect(
@@ -320,12 +392,28 @@ pub fn ReadContent(
                 scroll_target.set(ScrollTarget::Ratio(line as f64 / total.max(1) as f64));
             }
         },
-        (search.read().revision, width, paragraph_spacing, height),
+        (
+            search.read().revision,
+            wrap_width,
+            paragraph_gap,
+            first_line_indent,
+            height,
+        ),
     );
 
+    // 默认(allow_page_blank=false)在解析后再次钳到贴底位置:即使磁盘/内存里还留着
+    // 旧的 Overscroll,最后一页也只贴底,绝不把正文推上去留白。
+    let allow_page_blank = display.allow_page_blank;
     let mut current_line = hooks.use_memo(
-        || scroll_target.get().resolve(total, end_scroll),
-        (total, view, scroll_target.get()),
+        || {
+            let resolved = scroll_target.get().resolve(total, end_scroll);
+            if allow_page_blank {
+                resolved
+            } else {
+                resolved.min(end_scroll)
+            }
+        },
+        (total, view, scroll_target.get(), allow_page_blank),
     );
     #[cfg(feature = "tts")]
     {
@@ -341,9 +429,10 @@ pub fn ReadContent(
             (
                 snapshot.state,
                 tts_range.clone(),
-                width,
+                wrap_width,
                 height,
-                paragraph_spacing,
+                paragraph_gap,
+                first_line_indent,
             ),
             (total, view, scroll_target.get()),
         );
@@ -459,8 +548,17 @@ pub fn ReadContent(
                 EventResult::Consumed
             }
             ReaderAction::ClearContentSearch if can_search => {
-                search.set(ChapterSearch::default());
-                EventResult::Consumed
+                // 没有搜索内容时把 Esc 让给全局返回(Esc 默认绑在「清除正文搜索」上)。
+                // 否则这一层会静默吞掉 Esc,阅读页就永远回不去——搜索为空时它本来
+                // 也没有可清除的东西,不消费才符合用户预期。
+                let state = search.read();
+                if state.query.is_empty() && !state.editing {
+                    EventResult::Ignored
+                } else {
+                    drop(state);
+                    search.set(ChapterSearch::default());
+                    EventResult::Consumed
+                }
             }
             ReaderAction::ScrollUp | ReaderAction::PageUp => {
                 if current_line > 0 {
@@ -481,20 +579,14 @@ pub fn ReadContent(
                 EventResult::Consumed
             }
             ReaderAction::ScrollDown | ReaderAction::PageDown => {
-                // 章末判定线是 end_scroll(最后一行已可见)。翻页可以跨过它落进
-                // 「末尾留白」区,保证每次步长绝对一致;落点上界
-                // (end_scroll-1)+step ≤ total-1,天然不越界,无需额外钳位。
-                // 逐行滚动 delta=1 永远停在 end_scroll,贴底行为与旧版逐帧一致。
+                // 章末判定线是 end_scroll(最后一行已可见)。默认配置下所有前向移动
+                // 都钳在 end_scroll,最后一页贴底铺满;只有 allow_page_blank 开启时
+                // 翻页才允许跨过它落进「末尾留白」区(见 page_forward)。
                 if current_line < end_scroll {
-                    current_line += delta;
-                    let ratio = current_line as f64 / total as f64;
-                    // 跨过贴底位置 = 进入末尾留白,记下当时的 end_scroll:留白量是视口相关的,
-                    // 换终端尺寸后该位置要退化为贴底而不是原样保留(否则前向键会失效)。
-                    scroll_target.set(if current_line > end_scroll {
-                        ScrollTarget::Overscroll { ratio, end_scroll }
-                    } else {
-                        ScrollTarget::Ratio(ratio)
-                    });
+                    let (line, target) =
+                        page_forward(current_line, delta, total, end_scroll, allow_page_blank);
+                    current_line = line;
+                    scroll_target.set(target);
                     edge.set(Edge::None);
                 } else if !has_next {
                     // 全书最后一章的章末:没有下一章可翻,只提示、不武装(再按也不会翻)。
@@ -578,7 +670,27 @@ pub fn ReadContent(
         reader_keymap.clone(),
         {
             let handler = action_handler.clone();
-            move |action, _key| handler.lock().unwrap_or_else(|e| e.into_inner())(action)
+            let display = reader_display;
+            move |action, key| {
+                // 「↑/↓ 当翻页键」:直接按下的 Up/Down 换成整页翻,别的键(k/j、自定义键)
+                // 与 keymap 本身都不动 —— 改键位表会让 j/k 跟着变,那不符合「只是把方向键
+                // 调成翻页」的直觉。
+                let action = if display.read().arrows_page {
+                    match (action, key.code) {
+                        (ReaderAction::ScrollUp, ratatui_kit::crossterm::event::KeyCode::Up) => {
+                            ReaderAction::PageUp
+                        }
+                        (
+                            ReaderAction::ScrollDown,
+                            ratatui_kit::crossterm::event::KeyCode::Down,
+                        ) => ReaderAction::PageDown,
+                        _ => action,
+                    }
+                } else {
+                    action
+                };
+                handler.lock().unwrap_or_else(|e| e.into_inner())(action)
+            }
         },
     );
 
@@ -629,6 +741,7 @@ pub fn ReadContent(
     };
 
     let show_title = reader_display.read().show_title;
+    let frameline = display.frameline;
 
     #[cfg(feature = "tts")]
     let listening_footer = if let Some(error) = &snapshot.error {
@@ -707,26 +820,45 @@ pub fn ReadContent(
     }
     Border(
         border_style: theme.border,
-        top_title: if show_title {
+        // 无边框 = 连边都不画(字符集单线但 Borders 为空),同时省下 2 行给正文。
+        borders: if frameline == crate::Frameline::None { Borders::NONE } else { Borders::ALL },
+        border_set: frameline.border_set(),
+        top_title: if show_title && frameline != crate::Frameline::None && display.show_frameline_title {
             Some(Line::from(props.chapter_name.to_string()).style(theme.chapter).centered())
         }else{
             None
         },
-        bottom_title: if show_title && !listening_footer.is_empty() {
+        bottom_title: if show_title && frameline != crate::Frameline::None && !listening_footer.is_empty() {
            Some(Line::from(listening_footer).style(theme.footer).centered())
         }else{
             None
         },
     ){
-        { if props.is_loading {
-            element!(Loading(tip:"加载内容中...")).into_any()
-        }else{
-            element!(Text(
-                text: paragraph,
-                style:theme.content,
-                scroll: (current_line as u16,0))
-            ).into_any()
-        } }
+        { element!(View(
+            height: Constraint::Fill(1),
+            margin: Margin::new(display.h_margin,0),
+        ){
+            // 内联标题与边框标题互斥:关掉边框标题或使用无边框时,标题改画在正文
+            // 区最上方,占 1 行(已计入 visible_lines)。它不进入正文行数,因此
+            // 不影响滚动、行号与搜索高亮的字节偏移。
+            if display.inline_title()
+                && !content_starts_with_chapter_title(&props.content, &props.chapter_name)
+            {
+                View(height: Constraint::Length(1)) {
+                    widget(Line::from(props.chapter_name.to_string()).style(theme.chapter).centered())
+                }
+            }
+            View(height: Constraint::Fill(1)) {
+                { if props.is_loading {
+                    element!(Loading(tip:"加载内容中...")).into_any()
+                }else{
+                    element!(Text(
+                        text: paragraph,
+                        style:theme.content,
+                        scroll: (current_line.min(u16::MAX as usize) as u16,0))).into_any()
+                } }
+            }
+        }).into_any() }
         View(
             flex_direction: Direction::Horizontal,
             justify_content: Flex::SpaceBetween,
@@ -1017,10 +1149,140 @@ mod tests {
     /// 视口尺寸的换算只此一处,极矮终端下也必须 ≥ 1(否则翻页步长会退化为 0、翻不动)。
     #[test]
     fn visible_lines_never_zero() {
-        for height in 0..=4u16 {
-            assert_eq!(visible_lines(height), 1, "height={height}");
+        // 默认配置:边框单线(上下各 1)+ 状态栏 1 = 3 行 chrome。
+        let display = crate::ReaderDisplayConfig::default();
+        for height in 0..=3u16 {
+            assert_eq!(visible_lines(height, &display), 1, "height={height}");
         }
-        assert_eq!(visible_lines(33), 30);
+        assert_eq!(visible_lines(33, &display), 30);
+        // 提示条在整屏最后一行,开或关都不改变正文内部行数。
+        let no_hint = crate::ReaderDisplayConfig {
+            show_hint_bar: false,
+            ..display
+        };
+        assert_eq!(visible_lines(33, &no_hint), 30);
+        // 关边框标题:标题回落到正文区最上方,比别人少 1 行正文。
+        let inline = crate::ReaderDisplayConfig {
+            show_frameline_title: false,
+            ..display
+        };
+        assert_eq!(visible_lines(33, &inline), 29);
+        // 无边框:省下上下各 1 行边框,但标题仍要占正文区 1 行,
+        // 故比 Single 边框的 30 行多 1 行(而不是多 2 行)。
+        let bare = crate::ReaderDisplayConfig {
+            frameline: crate::Frameline::None,
+            show_hint_bar: false,
+            ..display
+        };
+        assert_eq!(visible_lines(33, &bare), 31);
+        // 无边框且关闭标题:省下的 2 行边框全部还给正文,没有标题行。
+        let bare_no_title = crate::ReaderDisplayConfig {
+            frameline: crate::Frameline::None,
+            show_title: false,
+            show_hint_bar: false,
+            ..display
+        };
+        assert_eq!(visible_lines(33, &bare_no_title), 32);
+    }
+
+    /// 「显示标题」决定标题是否可见,「边框标题」只决定放在边框上还是正文上方。
+    #[test]
+    fn inline_title_follows_show_title_and_frameline_title() {
+        let display = crate::ReaderDisplayConfig::default();
+        assert_eq!(display.frameline, crate::Frameline::Single);
+        assert!(display.show_title && display.show_frameline_title);
+        assert!(!display.inline_title(), "边框上已显示标题时不得再内联一份");
+
+        let hidden = crate::ReaderDisplayConfig {
+            show_title: false,
+            ..display
+        };
+        assert!(
+            !hidden.inline_title(),
+            "关闭显示标题后任何模式都不该出现标题"
+        );
+
+        let no_frameline_title = crate::ReaderDisplayConfig {
+            show_frameline_title: false,
+            ..display
+        };
+        assert!(
+            no_frameline_title.inline_title(),
+            "关闭边框标题后标题应回到正文上方"
+        );
+
+        let bare = crate::ReaderDisplayConfig {
+            frameline: crate::Frameline::None,
+            ..display
+        };
+        assert!(bare.inline_title(), "无边框时标题应回到正文上方");
+
+        let bare_hidden = crate::ReaderDisplayConfig {
+            frameline: crate::Frameline::None,
+            show_title: false,
+            ..display
+        };
+        assert!(!bare_hidden.inline_title());
+    }
+
+    #[test]
+    fn inline_title_is_skipped_when_content_already_starts_with_it() {
+        assert!(content_starts_with_chapter_title(
+            "\n第1章 风起\n正文",
+            "第1章 风起"
+        ));
+        assert!(!content_starts_with_chapter_title(
+            "正文先行\n第1章 风起",
+            "第1章 风起"
+        ));
+        assert!(!content_starts_with_chapter_title("正文", "第1章 风起"));
+        assert!(!content_starts_with_chapter_title("", "第1章 风起"));
+    }
+
+    /// 默认配置(allow_page_blank=false):最后一页必须贴底,落点钳到 end_scroll,
+    /// 不得产生 Overscroll。
+    #[test]
+    fn last_page_stops_at_end_scroll_by_default() {
+        let display = crate::ReaderDisplayConfig::default();
+        assert!(!display.allow_page_blank, "留白必须默认关闭");
+        let (total, view) = (200usize, 30usize);
+        let end_scroll = total - view; // 170
+        let step = display.page_step(view); // 28
+        let (line, target) = page_forward(
+            end_scroll - 1,
+            step,
+            total,
+            end_scroll,
+            display.allow_page_blank,
+        );
+        assert_eq!(line, end_scroll, "最后一页应停在贴底位置");
+        assert!(line <= end_scroll);
+        assert!(
+            matches!(target, ScrollTarget::Ratio(_)),
+            "默认配置下不得写 Overscroll"
+        );
+    }
+
+    /// 只有显式开启 allow_page_blank 才保留旧版「翻页留白」行为。
+    #[test]
+    fn last_page_keeps_blank_when_enabled() {
+        let display = crate::ReaderDisplayConfig {
+            allow_page_blank: true,
+            ..Default::default()
+        };
+        let (total, view) = (200usize, 30usize);
+        let end_scroll = total - view;
+        let step = display.page_step(view);
+        let (line, target) = page_forward(end_scroll - 1, step, total, end_scroll, true);
+        assert!(line > end_scroll, "开启留白后应跨过贴底位置");
+        assert!(line < total, "留白不得越过最后一行");
+        assert_eq!(
+            target,
+            ScrollTarget::Overscroll {
+                ratio: line as f64 / total as f64,
+                end_scroll,
+            }
+        );
     }
 
     /// 落盘往返:用户滚动产生的比例恒 < 1.0,不会被 `from_ratio` 误判成章末。
