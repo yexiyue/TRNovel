@@ -1,4 +1,6 @@
 use super::*;
+use crate::config::SoundConfig;
+use tts_protocol::Device;
 
 fn catalog() -> Snapshot {
     let caps = tts_protocol::Capabilities {

@@ -1,4 +1,4 @@
-use super::{Control, Row};
+use super::{Control, Focus, Row};
 use crate::theme::AppChromeTheme;
 use ratatui::{
     buffer::Buffer,
@@ -9,12 +9,6 @@ use ratatui::{
 };
 use std::sync::{Arc, Mutex};
 pub type FrameArea = Arc<Mutex<Rect>>;
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Focus {
-    Tabs,
-    Form,
-}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Hit {
@@ -244,7 +238,11 @@ impl<K: Clone> Widget for FormWidget<K> {
                         1,
                     )
                     .intersection(rect);
-                    Line::styled(&row.label, style).render(label, buf);
+                    let mut spans = vec![ratatui::text::Span::styled(&row.label, style)];
+                    if let Some(color) = row.swatch {
+                        spans.push(ratatui::text::Span::styled(" ██", Style::new().fg(color)));
+                    }
+                    Line::from(spans).render(label, buf);
                     let base = if focused {
                         self.theme.highlight
                     } else {
@@ -396,6 +394,7 @@ mod tests {
     fn rows() -> Vec<Row<()>> {
         (0..8)
             .map(|i| Row {
+                swatch: None,
                 key: (),
                 group: if i < 4 { "排版" } else { "界面" },
                 label: format!("条目{i}"),

@@ -26,7 +26,7 @@
 - 阅读正文的滚轮**不要**接入「章末武装 + 二次确认翻章」——滚轮一滚就是一串事件,武装会被同一次滑动立即确认,等于变相跳章;钳到 `[0, end_scroll]` 即可,翻章留给显式按键。
 - `ShortcutInfoModal` 自带独占输入层，关闭按钮、Esc、当前帮助快捷键及遮罩点击均在该层处理；背景导航被层栈屏蔽。页面的 `is_editing` 门控仍保留为业务可用性约束。
 
-**相关文件**:`src/lib.rs`(入口)、`src/components/{select,list_select,multi_list_select,file_select,setting_item}.rs`、`src/pages/home.rs`、`src/pages/read_novel/{read_content,select_chapter}.rs`、ratatui-kit `hooks/use_pointer.rs`、本地 skill `../ratatui-kit/skills/ratatui-kit/references/pointer-events.md`
+**相关文件**:`src/lib.rs`(入口)、`src/components/{select,list_select,multi_list_select,file_select}.rs`、`src/components/settings/`、`src/pages/home.rs`、`src/pages/read_novel/{read_content,select_chapter}.rs`、ratatui-kit `hooks/use_pointer.rs`、本地 skill `../ratatui-kit/skills/ratatui-kit/references/pointer-events.md`
 
 ### 树节点精确命中
 
@@ -44,11 +44,11 @@
 
 **相关文件**:ratatui-kit `input/mod.rs`(dispatch 排序)、`components/{confirm,alert}_modal.rs`(修复);TRNovel `Cargo.toml`(正式依赖)、`src/components/modal/shortcut_info_modal.rs`、`src/tts/ui.rs`、`src/pages/read_novel/settings/mod.rs`
 
-### 设置面板的鼠标协议:点击聚焦、已聚焦再点才调整/激活
+### 设置面板的鼠标协议：标签聚焦，显式控件直接操作
 
-`SettingItem` 增加了 `on_click`(点击 = 聚焦本行)与 `on_activate`(已聚焦再点 = 执行该行 Enter 动作);`AdjustableSettingItem` 增加 `on_click`,已聚焦后点击**左半 = on_decrease、右半 = on_increase**。两步式(先聚焦后调整)让「点哪儿都是先聚焦」,不会误改值;接线用 `components::setting_item::focus_row(index, row)` 构造聚焦回调。面板级滚轮(移动焦点索引)注册在 `Low + hit_test:false` 且门控 `open`,整屏滚轮都归面板并消费,避免背景正文在浮层下偷偷滚动。
+全局、阅读和听书设置共用 `components::settings`。字段标签只聚焦；加减、开关、选择器和动作值区直接操作。hover 不改变焦点或值。旧 `SettingItem` 的两步点击与左右半行命中已移除，不要恢复隐形操作区。
 
-**相关文件**:`src/components/setting_item.rs`(`focus_row`)、`src/tts/ui.rs`、`src/pages/read_novel/settings/mod.rs`
+键盘的标签/表单焦点、方向键、Home/End、PageUp/PageDown 和 Ctrl+PageUp/PageDown 由 `settings::navigation` 的纯转换统一定义。宿主只处理转换结果与业务动作，不在每个页面重新抄按键表。动作字段忽略 Adjust，只响应 Activate。
 
 ### 框架内置组件的鼠标行为矩阵与「match scrutinee 死锁」复发
 
@@ -761,3 +761,14 @@ TTSManager 的听书、声音、高级三个页复用父页当帧输入层。声
 自定义配色的部分 hex 输入与当前字段说明必须在宿主显示；颜色选择器带真实色块，不只给颜色名称。键盘操作版本也适用于配色编辑，保证滚轮浏览后原地改值可显露字段。一行视口应优先显示字段，不能被分组标题遮住。听书在矮窗口缩减固定说明和内边距，把空间留给表单。
 
 `ratatui-kit` 0.12 的离屏 `render_frames` 关闭鼠标，不能挂载直接注册 `use_pointer` 的完整组件；不要关闭应用鼠标或改依赖来迁就测试。纯 widget 检查绘制，`tests/pty/settings_surfaces.py` 在隔离 HOME 下验证实际输入层、hover、搜索、保存和小窗口，听书使用协议 fixture，不能据此声称真实模型或音频验收。
+
+
+### 设置模型、稳定回调与后台保存顺序
+
+阅读设置使用 `settings/model.rs` 的具名 `Setting` 和 `Group`，不要把视觉索引作为配置字段身份，也不要用 feature 改变字段编号。元数据、枚举选择和边界规则由模型提供；全局页与阅读弹窗只负责交互和保存。听书的快照投影在 `tts/ui/model.rs`，命令发送留在 UI 接线；配色草稿与编辑交互在 `theme_setting/editor.rs`。
+
+键鼠共享回调使用 `hooks::Callback` / `use_callback`，调用方用 `.call()`，不接触 mutex 或每帧直接消费 Handler。局部重绘收到已取走的默认 Handler 时保留上次有效回调。
+
+阅读与全局设置统一调用 `use_reader_preferences`。后台保存和卸载 flush 共用进程写入门，获得门后再读取当前 atom，成功才推进已存值；任务不得捕获旧配置或页面 State。ConfigStore 的文件锁只保证单次写入事务，不保证任务按新旧顺序执行。仅在 drop 补写最新快照、却允许旧任务随后写入，会丢失最后一次修改。
+
+配色草稿记录显式覆盖字段，切换基准仅刷新继承字段；键盘、鼠标和 hex 输入共用修改方法。字段行直接显示当前色块，不能仅在固定色板选择器内提供预览，否则任意 hex 没有可见反馈。

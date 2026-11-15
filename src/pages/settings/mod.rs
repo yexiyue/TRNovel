@@ -1,17 +1,16 @@
 //! 顶部标签、分组表单与直接操作控件。配置仍由原有 ConfigStore 保存。
 mod model;
 
-use crate::components::settings::view::Focus;
+use crate::components::settings::Focus;
 use crate::components::settings::{self, Edit, Editor};
 use crate::{
     AppearanceConfig, BackgroundMode, ReaderDisplayConfig,
     app::navigation::UseAppNavigate,
     components::{ActionBar, ActionButton, KeyShortcutInfo, ShortcutInfoModal},
-    hooks::{DebounceOptions, UseDebounceEffect},
-    pages::read_novel::settings::adjust,
+    hooks::use_reader_preferences,
     theme::AppChromeTheme,
 };
-use crossterm::event::{Event, KeyCode, KeyEventKind, KeyModifiers};
+use crossterm::event::{Event, KeyCode, KeyEventKind};
 use model::{Control, Key, Picker, SECTIONS};
 use ratatui::{
     layout::{Constraint, Margin},
@@ -19,7 +18,7 @@ use ratatui::{
     widgets::{Paragraph, Wrap},
 };
 use ratatui_kit::prelude::*;
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 
 fn select_row(mut cursors: State<[usize; 5]>, section: usize, index: usize) {
     let mut current = cursors.get();
@@ -56,7 +55,9 @@ fn choose(
         save_appearance(appearance, next, feedback);
     } else {
         let mut config = *reader.read();
-        model::choose_reader(&mut config, key, index);
+        if let Key::Reader(setting) = key {
+            setting.choose(&mut config, index);
+        }
         reader.set(config);
     }
 }
@@ -97,28 +98,7 @@ pub fn Settings(mut hooks: Hooks) -> impl Into<AnyElement<'static>> {
         (current_section, cursor),
     );
 
-    let saved = hooks.use_state(|| crate::state::READER_DISPLAY.get());
-    hooks.use_debounce_effect(
-        move || {
-            let config = *reader.read();
-            if config != saved.get() {
-                let mut saved = saved;
-                tokio::task::spawn_blocking(move || {
-                    if config.save().is_ok() {
-                        saved.set(config);
-                    }
-                });
-            }
-        },
-        *reader.read(),
-        DebounceOptions::default(),
-    );
-    hooks.use_on_drop(move || {
-        let config = *reader.read();
-        if config != saved.get() {
-            let _ = config.save();
-        }
-    });
+    use_reader_preferences(&mut hooks, *reader.read());
     hooks.use_effect(
         move || {
             crate::app::ui_memory::save_cursor(
@@ -129,7 +109,7 @@ pub fn Settings(mut hooks: Hooks) -> impl Into<AnyElement<'static>> {
         (current_section, cursor),
     );
 
-    let editor: Editor = Arc::new(Mutex::new(Handler::from({
+    let editor: Editor = settings::callback({
         let keymap = keymap.clone();
         let mut picker = picker;
         move |edit| {
@@ -154,13 +134,13 @@ pub fn Settings(mut hooks: Hooks) -> impl Into<AnyElement<'static>> {
                         && ((delta < 0 && decrease) || (delta > 0 && increase))
                         && let Key::Reader(id) = row.key
                     {
-                        adjust(reader, id, delta);
+                        id.adjust(&mut reader.write(), delta);
                     }
                 }
                 Control::Toggle(value) => {
                     let next = delta.map(|d| d > 0).unwrap_or(!value);
                     if let Key::Reader(id) = row.key {
-                        adjust(reader, id, if next { 1 } else { -1 });
+                        id.adjust(&mut reader.write(), if next { 1 } else { -1 });
                     } else {
                         let mut config = appearance.read().clone();
                         match row.key {
@@ -184,11 +164,12 @@ pub fn Settings(mut hooks: Hooks) -> impl Into<AnyElement<'static>> {
                         }
                     }
                 }
-                Control::Action => navigate.push("/theme-setting"),
+                Control::Action if delta.is_none() => navigate.push("/theme-setting"),
+                Control::Action => {}
                 Control::ReadOnly => {}
             }
         }
-    })));
+    });
     let overlay = info_open.get() || picker.read().is_some();
     hooks.use_event_handler(EventScope::Current, EventPriority::Normal, {
         let editor = editor.clone();
@@ -203,75 +184,29 @@ pub fn Settings(mut hooks: Hooks) -> impl Into<AnyElement<'static>> {
             if key.kind != KeyEventKind::Press {
                 return EventResult::Ignored;
             }
-            let tab = section.get();
-            let item = cursors.get()[tab].min(count.saturating_sub(1));
-            let switch = match key.code {
-                KeyCode::Left | KeyCode::Char('h') if focus.get() == Focus::Tabs => Some(-1),
-                KeyCode::Right | KeyCode::Char('l') if focus.get() == Focus::Tabs => Some(1),
-                KeyCode::PageUp if key.modifiers.contains(KeyModifiers::CONTROL) => Some(-1),
-                KeyCode::PageDown if key.modifiers.contains(KeyModifiers::CONTROL) => Some(1),
-                _ => None,
-            };
-            if let Some(delta) = switch {
-                section.set((tab as i32 + delta).rem_euclid(SECTIONS.len() as i32) as usize);
+            if key.code == KeyCode::Char('i') {
+                info_open.set(true);
                 return EventResult::Consumed;
             }
-            match key.code {
-                KeyCode::Tab | KeyCode::BackTab => focus.set(if focus.get() == Focus::Tabs {
-                    Focus::Form
-                } else {
-                    Focus::Tabs
-                }),
-                KeyCode::Down | KeyCode::Char('j') => {
-                    if focus.get() == Focus::Tabs {
-                        focus.set(Focus::Form);
-                    } else {
-                        select_row(cursors, tab, (item + 1).min(count.saturating_sub(1)));
-                    }
-                }
-                KeyCode::Up | KeyCode::Char('k') if focus.get() == Focus::Form => {
-                    select_row(cursors, tab, item.saturating_sub(1))
-                }
-                KeyCode::Home => {
-                    if focus.get() == Focus::Tabs {
-                        section.set(0);
-                    } else {
-                        select_row(cursors, tab, 0);
-                    }
-                }
-                KeyCode::End => {
-                    if focus.get() == Focus::Tabs {
-                        section.set(SECTIONS.len() - 1);
-                    } else {
-                        select_row(cursors, tab, count.saturating_sub(1));
-                    }
-                }
-                KeyCode::PageDown if focus.get() == Focus::Form => {
-                    select_row(cursors, tab, (item + 5).min(count.saturating_sub(1)))
-                }
-                KeyCode::PageUp if focus.get() == Focus::Form => {
-                    select_row(cursors, tab, item.saturating_sub(5))
-                }
-                KeyCode::Left | KeyCode::Char('h') if focus.get() == Focus::Form => {
-                    (editor.lock().unwrap_or_else(|e| e.into_inner()))(Edit::Adjust(item, -1))
-                }
-                KeyCode::Right | KeyCode::Char('l') if focus.get() == Focus::Form => {
-                    (editor.lock().unwrap_or_else(|e| e.into_inner()))(Edit::Adjust(item, 1))
-                }
-                KeyCode::Enter | KeyCode::Char(' ') => {
-                    if focus.get() == Focus::Tabs {
-                        focus.set(Focus::Form);
-                    } else {
-                        (editor.lock().unwrap_or_else(|e| e.into_inner()))(Edit::Activate(item));
-                    }
-                }
-                KeyCode::Esc => navigate.go(-1),
-                KeyCode::Char('i') => info_open.set(true),
-                _ => return EventResult::Ignored,
+            let tab = section.get();
+            let state = settings::navigation::Navigation {
+                tab,
+                row: cursors.get()[tab],
+                focus: focus.get(),
+            };
+            let Some(command) = settings::navigation::command(key, state, SECTIONS.len(), count)
+            else {
+                return EventResult::Ignored;
+            };
+            use settings::navigation::Command;
+            match command {
+                Command::Tab(value) => section.set(value),
+                Command::Focus(next) => focus.set(next),
+                Command::Row(value) => select_row(cursors, tab, value),
+                Command::Edit(edit) => editor.call(edit),
+                Command::Close => navigate.go(-1),
             }
-            if focus.get() == Focus::Form {
-                keyboard_revision.set(keyboard_revision.get().wrapping_add(1));
-            }
+            keyboard_revision.set(keyboard_revision.get().wrapping_add(1));
             EventResult::Consumed
         }
     });
@@ -284,9 +219,7 @@ pub fn Settings(mut hooks: Hooks) -> impl Into<AnyElement<'static>> {
                 options: Arc::new(current.options),
                 initial: current.selected,
                 on_select: settings::callback(move |index| {
-                    if let Some(key) = current.key {
-                        choose(key, index, reader, appearance, feedback);
-                    }
+                    choose(current.key, index, reader, appearance, feedback);
                     picker.set(None);
                 }),
                 on_cancel: settings::callback(move |_| picker.set(None)),
@@ -304,6 +237,25 @@ pub fn Settings(mut hooks: Hooks) -> impl Into<AnyElement<'static>> {
             .map(|r| r.detail.clone())
             .unwrap_or_default()
     };
+    let tabs_props = settings::TabsProps {
+        labels: Arc::new(SECTIONS.iter().map(|s| (*s).to_owned()).collect()),
+        selected: current_section,
+        focused: focus.get() == Focus::Tabs,
+        active: !overlay,
+        on_select: settings::callback(move |index| {
+            section.set(index);
+            focus.set(Focus::Tabs);
+        }),
+    };
+    let form_props = settings::FormProps {
+        rows,
+        selected: cursor,
+        focused: focus.get() == Focus::Form,
+        editor,
+        active: !overlay,
+        keyboard_revision: keyboard_revision.get(),
+        identity: current_section,
+    };
     element!(View(margin:Margin::new(3,1)) {
         ActionBar(menu:"全局设置") {
             ActionButton(label:"帮助",shortcut:"I",on_press:move |_|info_open.set(true))
@@ -312,9 +264,9 @@ pub fn Settings(mut hooks: Hooks) -> impl Into<AnyElement<'static>> {
         View(width:Constraint::Length(width.saturating_sub(6).min(88))) {
             View(height:Constraint::Length(1)){widget(Line::from("设置").style(theme.title))}
             View(height:Constraint::Length(1)){}
-            settings::SettingsTabs(..settings::TabsProps {labels:Arc::new(SECTIONS.iter().map(|s|(*s).to_owned()).collect()),selected:current_section,focused:focus.get()==Focus::Tabs,active:!overlay,on_select:settings::callback(move |index|{section.set(index);focus.set(Focus::Tabs);})})
+            settings::SettingsTabs(..tabs_props)
             View(height:Constraint::Length(1)){}
-            settings::SettingsForm<model::Key>(..settings::FormProps {rows,selected:cursor,focused:focus.get()==Focus::Form,editor,active:!overlay,keyboard_revision:keyboard_revision.get(),identity:current_section})
+            settings::SettingsForm<model::Key>(..form_props)
             View(height:Constraint::Length(2)){widget(Paragraph::new(detail).style(theme.muted).wrap(Wrap{trim:false}))}
             View(height:Constraint::Length(u16::from(hint))){widget(Line::from("Tab 切换焦点 · ↑↓ 选择 · ←→ 调整 · 空格/Enter 操作 · Esc 返回").style(theme.muted))}
         }

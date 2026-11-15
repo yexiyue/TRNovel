@@ -405,7 +405,7 @@ pub fn nearest_custom_color(color: Color) -> usize {
 
 /// 用户创建的一套配色, 持久化在 [appearance].custom_themes。
 ///
-/// colors 以 PALETTE_FIELDS 的字段名为键, 只存与 base 不同的颜色; 未填字段
+/// colors 以 PALETTE_FIELDS 的字段名为键，保存用户显式覆盖的颜色；未填字段
 /// 解析时从 base 继承 —— 以后调整预设计算逻辑时, 自定义方案会自动跟着改善,
 /// 而不是冻结旧色板。
 ///
@@ -429,7 +429,7 @@ pub struct CustomTheme {
     /// 旧版强调色; 仅用于兼容旧配置。
     #[serde(skip_serializing_if = "String::is_empty")]
     pub accent: String,
-    /// Palette 字段名 -> #rrggbb; 只覆盖与 base 不同的字段。
+    /// Palette 字段名 -> #rrggbb；保存显式覆盖，未设置的字段继承 base 及派生规则。
     #[serde(skip_serializing_if = "BTreeMap::is_empty")]
     pub colors: BTreeMap<String, String>,
 }

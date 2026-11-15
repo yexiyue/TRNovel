@@ -3,7 +3,7 @@ use crate::{
     History,
     components::{KeyShortcutInfo, Loading, ShortcutInfoModal, WarningModal},
     errors::Errors,
-    hooks::{DebounceOptions, UseDebounceEffect, UseInitState},
+    hooks::{UseInitState, use_reader_preferences},
     keymap::{HintPage, ReaderAction, display_keys, hint_bar},
     novel::{Novel, VolumeMarker},
     theme::ReaderTheme,
@@ -183,8 +183,7 @@ where
         current_chapter.get(),
     );
 
-    // 阅读偏好的唯一落盘点:设置面板与 v 键都只改 READER_DISPLAY atom,由这里防抖写盘。
-    // 放页面级(而非 App 根)是因为该配置只在阅读页被修改,重渲染范围也就止于本子树。
+    // Subscribe locally; the shared saver also serves the global settings page.
     let reader_display = hooks.use_atom(&crate::state::READER_DISPLAY);
     #[cfg(feature = "tts")]
     {
@@ -209,39 +208,7 @@ where
             enabled,
         );
     }
-    // 记住已在盘上的值:防抖 effect 挂载帧必然触发一次,不比对就会在每次进阅读页时
-    // 把刚 load 进来的配置原样写回一遍。
-    let saved_display = hooks.use_state(|| crate::state::READER_DISPLAY.get());
-    hooks.use_debounce_effect(
-        move || {
-            let current = *reader_display.read();
-            if current == saved_display.get() {
-                return;
-            }
-            // 同步 IO 若跑在渲染循环的任务上会卡住整个 UI(慢盘/网络盘尤其明显),
-            // 配置是 Copy,挪进阻塞线程池的捕获成本为零。
-            // 写盘失败(磁盘满/无权限)不打断阅读,只是不推进 saved_display —— 下次改动会连同
-            // 这次一起重试;先设已存再写会把失败的那次永久吞掉。
-            let mut saved_display = saved_display;
-            tokio::task::spawn_blocking(move || {
-                if current.save().is_ok() {
-                    saved_display.set(current);
-                }
-            });
-        },
-        *reader_display.read(),
-        DebounceOptions::default(),
-    );
-    // 卸载兜底:防抖 effect 的 future 存在 hook 里,组件卸载时是被 **drop 而非 flush** 的——
-    // 没睡满 500ms 的那次改动永远不会落盘。而 READER_DISPLAY 是进程级 atom,重进阅读页时
-    // `saved_display` 会用「已改但未落盘」的内存值初始化,首次比对即相等直接返回,这次改动
-    // 在本进程内再也不会被写盘。故在此同步补一次(卸载路径阻塞一次写盘可接受,History 同样如此)。
-    hooks.use_on_drop(move || {
-        let current = *reader_display.read();
-        if current != saved_display.get() {
-            let _ = current.save();
-        }
-    });
+    use_reader_preferences(&mut hooks, *reader_display.read());
 
     // 页面级 action(模式/浮层切换)在此分发;正文滚动等 action 由 ReadContent 处理。
     let reader_keymap = hooks.use_atom(&crate::state::KEYMAP).read().reader.clone();

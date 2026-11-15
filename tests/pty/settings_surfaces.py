@@ -135,6 +135,9 @@ a = App()
 try:
     open_settings(a)
     click(a, '外观')
+    click(a, '配色方案')
+    a.send('\x1b[C\x1b[D')
+    assert '配色方案' in a.text() and '外观与主题' not in a.text()
     control(a, '配色方案', '›')
     assert '外观与主题' in a.text(), a.text()
     before = a.config()
@@ -168,10 +171,17 @@ try:
     resize(a, 120, 29)
     a.send('n')
     a.send('PTY')
+    control(a, '基于', '▾')
+    click(a, '米黄纸')
+    a.send('\t#123456')
+    assert any(a.screen.buffer[y][x].data == '█' and a.screen.buffer[y][x].fg == '123456' for y in range(a.screen.lines) for x in range(a.screen.columns)), a.text()
+    a.save('theme-custom-hex')
     hover(a, '取消')
     click(a, '保存')
     assert '新建方案' not in a.text()
-    assert any(t['name'].endswith('PTY') for t in a.config()['appearance']['custom_themes'])
+    saved = next(t for t in a.config()['appearance']['custom_themes'] if t['name'].endswith('PTY'))
+    assert saved['colors'] == {'fg': '#123456'}, saved
+    assert 'tokyo' not in saved['base'], saved
     checks.append('Theme base picker, swatch hover/click, visible partial hex, compact reveal, save/cancel persistence')
 finally:
     a.close()

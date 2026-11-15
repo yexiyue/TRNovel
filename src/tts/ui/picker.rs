@@ -98,7 +98,7 @@ pub(super) fn SoundPicker(
             match &event {
                 Event::Key(key) if key.kind == KeyEventKind::Press => match key.code {
                     KeyCode::Esc => {
-                        callbacks.lock().unwrap_or_else(|e| e.into_inner())(());
+                        callbacks.call(());
                     }
                     KeyCode::Up
                     | KeyCode::Down
@@ -126,6 +126,23 @@ pub(super) fn SoundPicker(
     } else {
         "选择音色"
     };
+    let options = Arc::new(
+        items
+            .iter()
+            .map(|c| format!("{}{}", if c.selected { "✓ " } else { "  " }, c.label))
+            .collect(),
+    );
+    let on_select = settings::callback({
+        let callbacks = callbacks.clone();
+        move |index: usize| {
+            if let Some(choice) = items.get(index) {
+                if !choice.selected {
+                    context.handle.update(choice.patch.clone());
+                }
+                callbacks.call(());
+            }
+        }
+    });
     element!(Modal(open:true, layer:Some(layer), width:Constraint::Percentage(80), height:Constraint::Percentage(75)) {
         Border(top_title:Line::from(title), border_style:theme.border, bottom_title:Line::from("输入即过滤 · ↑/↓ 选择 · Enter 保存 · Esc 取消")) {
             View(flex_direction:Direction::Vertical) {
@@ -136,8 +153,8 @@ pub(super) fn SoundPicker(
                 }
                 settings::SettingsChoiceList(..settings::ChoiceListProps {
                     colors:None,
-                    title:"可选项".into(),options:Arc::new(items.iter().map(|c|format!("{}{}",if c.selected{"✓ "}else{"  "},c.label)).collect()),initial,
-                    on_select:settings::callback({let callbacks=callbacks.clone();move|index: usize|{if let Some(choice)=items.get(index){if !choice.selected{context.handle.update(choice.patch.clone());}callbacks.lock().unwrap_or_else(|e|e.into_inner())(());}}}),
+                    title:"可选项".into(),options,initial,
+                    on_select,
                     on_cancel:callbacks.clone(),dismiss_outside:false,
                 })
             }

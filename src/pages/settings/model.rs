@@ -1,4 +1,5 @@
 use crate::keymap::{AppKeymap, ReaderAction, display_keys};
+use crate::pages::read_novel::settings::model::{self as reader_settings, Setting};
 use crate::theme::presets::ThemeChoice;
 use crate::{AppearanceConfig, BackgroundMode, ReaderDisplayConfig};
 
@@ -6,7 +7,7 @@ pub const SECTIONS: [&str; 5] = ["阅读", "外观", "键位", "数据", "关于
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Key {
-    Reader(usize),
+    Reader(Setting),
     Theme,
     Background,
     Header,
@@ -17,9 +18,9 @@ pub enum Key {
 pub use crate::components::settings::Control;
 pub type Row = crate::components::settings::Row<Key>;
 
-#[derive(Clone, Default)]
+#[derive(Clone)]
 pub struct Picker {
-    pub key: Option<Key>,
+    pub key: Key,
     pub title: String,
     pub options: Vec<String>,
     pub selected: usize,
@@ -32,8 +33,8 @@ pub fn picker(
 ) -> Option<Picker> {
     let (title, options, selected) = match key {
         Key::Reader(id) => {
-            let (options, selected) = crate::pages::read_novel::settings::choices(reader, id)?;
-            (if id == 6 { "边框" } else { "目录占宽" }, options, selected)
+            let (options, selected) = id.choices(reader)?;
+            (id.label(), options, selected)
         }
         Key::Background => (
             "背景模式",
@@ -43,17 +44,11 @@ pub fn picker(
         _ => return None,
     };
     Some(Picker {
-        key: Some(key),
+        key,
         title: title.to_owned(),
         options,
         selected,
     })
-}
-
-pub fn choose_reader(config: &mut ReaderDisplayConfig, key: Key, selected: usize) {
-    if let Key::Reader(id) = key {
-        crate::pages::read_novel::settings::choose_config(config, id, selected);
-    }
 }
 
 pub fn rows(
@@ -63,7 +58,7 @@ pub fn rows(
     keymap: &AppKeymap,
 ) -> Vec<Row> {
     match section {
-        0 => crate::pages::read_novel::settings::rows::rows(reader)
+        0 => reader_settings::rows(reader)
             .into_iter()
             .map(|r| r.map_key(Key::Reader))
             .collect(),
@@ -190,48 +185,12 @@ fn row(
     control: Control,
 ) -> Row {
     Row {
+        swatch: None,
         group,
         key,
         label: label.to_owned(),
         value: value.to_owned(),
         detail: detail.to_owned(),
         control,
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::Frameline;
-    #[test]
-    fn reading_fields_cover_shared_settings_once() {
-        let rows = crate::pages::read_novel::settings::rows::rows(&ReaderDisplayConfig::default());
-        let mut ids = rows.iter().map(|r| r.key).collect::<Vec<_>>();
-        ids.sort_unstable();
-        assert_eq!(
-            ids,
-            (0..=crate::pages::read_novel::settings::BLANK_ROW).collect::<Vec<_>>()
-        );
-    }
-    #[test]
-    fn stepper_bounds_come_from_the_shared_adjustment_rules() {
-        let mut config = ReaderDisplayConfig {
-            h_margin: 6,
-            ..Default::default()
-        };
-        let row = crate::pages::read_novel::settings::rows::rows(&config)
-            .into_iter()
-            .find(|r| r.key == 5)
-            .unwrap();
-        assert_eq!(
-            row.control,
-            Control::Number {
-                decrease: true,
-                increase: false
-            }
-        );
-        let choice = picker(Key::Reader(6), &config, &AppearanceConfig::default()).unwrap();
-        choose_reader(&mut config, Key::Reader(6), choice.options.len() - 1);
-        assert_eq!(config.frameline, Frameline::None);
     }
 }
