@@ -77,11 +77,11 @@ try:
     a.save('network-detail-compact')
     resize(a, 120, 29)
     x, y = find(a, '继续阅读')
-    before = a.screen.buffer[y][x].reverse
+    before = (a.screen.buffer[y][x].fg, a.screen.buffer[y][x].bg, a.screen.buffer[y][x].bold)
     a.move(x, y)
-    assert before != a.screen.buffer[y][x].reverse, a.text()
+    assert before != (a.screen.buffer[y][x].fg, a.screen.buffer[y][x].bg, a.screen.buffer[y][x].bold), a.text()
     a.save('network-detail')
-    a.click(x, y)
+    a.click(x - 3, y - 1)  # The top-left border is part of the reading action.
     a.pump(.8)
     assert '第二章' in a.text(), a.text()
     assert '/second' in requests and '/first' not in requests, requests

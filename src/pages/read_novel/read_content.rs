@@ -138,6 +138,37 @@ impl Default for ScrollTarget {
     }
 }
 
+#[derive(PartialEq, Eq)]
+struct ReflowSource {
+    book_id: String,
+    chapter: usize,
+    content: String,
+}
+#[derive(Clone)]
+pub(crate) struct ReflowSnapshot {
+    layout: Arc<ContentLayout>,
+    source: Arc<ReflowSource>,
+    view: usize,
+    target: ScrollTarget,
+    anchor: usize,
+}
+fn target_at_byte(
+    layout: &ContentLayout,
+    anchor: usize,
+    view: usize,
+    target: ScrollTarget,
+) -> ScrollTarget {
+    match target {
+        ScrollTarget::ChapterEnd | ScrollTarget::Overscroll { .. } => ScrollTarget::ChapterEnd,
+        ScrollTarget::Ratio(_) => {
+            let line = layout
+                .match_line(&(anchor..anchor.saturating_add(1)))
+                .min(layout.lines.len().saturating_sub(view));
+            ScrollTarget::Ratio(line as f64 / layout.lines.len().max(1) as f64)
+        }
+    }
+}
+
 /// 前向翻页/滚动的落点。返回(新行号, 要写入的滚动目标)。
 ///
 /// 默认配置(`allow_page_blank = false`)下,最后一页必须贴底铺满:落点钳到
@@ -184,6 +215,7 @@ pub struct ReadContentProps {
     pub chapter_name: String,
     pub chapter_percent: f64,
     pub scroll_target: Option<State<ScrollTarget>>,
+    pub(crate) reflow: Option<State<Option<ReflowSnapshot>>>,
     pub follow_suspended: Option<State<bool>>,
     /// 全书是否还有上一章/下一章。边界提示与「再按一次」武装都要看它,
     /// 否则会在第一章/最后一章承诺不存在的章节(`on_prev`/`on_next` 那时只会静默 no-op)。
@@ -213,8 +245,8 @@ pub fn ReadContent(
     // 比较的是「自己跟自己」,关掉设置面板后排版会冻结在首帧。
     let display = *reader_display.read();
     let inline_title = show_inline_title(&props.content, &props.chapter_name, &display);
-    let mut on_prev = props.on_prev.take();
-    let mut on_next = props.on_next.take();
+    let on_prev = crate::hooks::use_callback(&mut hooks, &mut props.on_prev);
+    let on_next = crate::hooks::use_callback(&mut hooks, &mut props.on_next);
     let mut edge = hooks.use_state(|| Edge::None);
     #[cfg(feature = "tts")]
     let listening = hooks.use_context::<crate::tts::TtsContext>().clone();
@@ -252,7 +284,7 @@ pub fn ReadContent(
             let mut next = request.source.clone();
             next.chapter = (props.chapter_index + 1).to_string();
             continue_source.set(Some(next));
-            on_next(());
+            on_next.call(());
         }
     }
     #[cfg(feature = "tts")]
@@ -408,6 +440,65 @@ pub fn ReadContent(
             paragraph_gap,
             first_line_indent,
             height,
+        ),
+    );
+
+    let source = hooks.use_memo(
+        || {
+            Arc::new(ReflowSource {
+                book_id: props.book_id.clone(),
+                chapter: props.chapter_index,
+                content: props.content.clone(),
+            })
+        },
+        (
+            props.book_id.clone(),
+            props.chapter_index,
+            props.content.clone(),
+        ),
+    );
+    let local_reflow = hooks.use_state(|| None::<ReflowSnapshot>);
+    let mut previous_layout = props.reflow.unwrap_or(local_reflow);
+    hooks.use_effect(
+        {
+            let layout = layout.clone();
+            let source = source.clone();
+            let search_active = !matches.is_empty();
+            move || {
+                let previous = previous_layout.read().clone();
+                let mut target = scroll_target.get();
+                let mut anchor = layout.byte_start(target.resolve(total, end_scroll));
+                if !search_active
+                    && let Some(previous) = previous
+                    && (Arc::ptr_eq(&previous.source, &source) || previous.source == source)
+                    && !Arc::ptr_eq(&previous.layout, &layout)
+                {
+                    // Keep the original byte through repeated drags; snapping to a new
+                    // line start on every motion would gradually drift backwards.
+                    anchor = if target == previous.target {
+                        previous.anchor
+                    } else {
+                        let old_total = previous.layout.lines.len();
+                        previous.layout.byte_start(
+                            target.resolve(old_total, old_total.saturating_sub(previous.view)),
+                        )
+                    };
+                    target = target_at_byte(&layout, anchor, view, target);
+                    scroll_target.set(target);
+                }
+                previous_layout.set(Some(ReflowSnapshot {
+                    layout,
+                    source,
+                    view,
+                    target,
+                    anchor,
+                }));
+            }
+        },
+        (
+            Arc::as_ptr(&layout) as usize,
+            Arc::as_ptr(&source) as usize,
+            view,
         ),
     );
 
@@ -581,7 +672,7 @@ pub fn ReadContent(
                 } else if edge.get() == Edge::Prev {
                     // 已在章首且已武装 → 第二次 ↑ 才翻上一章(落到上一章末尾)。
                     edge.set(Edge::None);
-                    on_prev(true);
+                    on_prev.call(true);
                 } else {
                     // 首次到章首:只武装并在底部提示,不翻章(防误触)。
                     edge.set(Edge::Prev);
@@ -604,7 +695,7 @@ pub fn ReadContent(
                 } else if edge.get() == Edge::Next {
                     // 已在章末且已武装 → 第二次 ↓ 才翻下一章。
                     edge.set(Edge::None);
-                    on_next(());
+                    on_next.call(());
                 } else {
                     // 首次到章末:只武装并在底部提示,不翻章(防误触)。
                     edge.set(Edge::Next);
@@ -613,12 +704,12 @@ pub fn ReadContent(
             }
             ReaderAction::PrevChapter => {
                 edge.set(Edge::None);
-                on_prev(false);
+                on_prev.call(false);
                 EventResult::Consumed
             }
             ReaderAction::NextChapter => {
                 edge.set(Edge::None);
-                on_next(());
+                on_next.call(());
                 EventResult::Consumed
             }
             ReaderAction::GoTop => {
@@ -1407,5 +1498,37 @@ mod tests {
             .resolve(0, 0),
             0
         );
+    }
+    #[test]
+    fn width_reflow_preserves_the_original_byte_and_chapter_end() {
+        let content = (0..100)
+            .map(|i| format!("第{i}段 这是用于换行和拖动的长段落。不同位置需要保持原文锚点。\n"))
+            .collect::<String>();
+        let original = ContentLayout::with_options(
+            &content,
+            LayoutOptions {
+                width: 55,
+                paragraph_gap: 0,
+                indent: 2,
+            },
+        );
+        let anchor = original.byte_start(70);
+        for width in [30, 80, 42, 60, 25, 55] {
+            let layout = ContentLayout::with_options(
+                &content,
+                LayoutOptions {
+                    width,
+                    paragraph_gap: 0,
+                    indent: 2,
+                },
+            );
+            let target = target_at_byte(&layout, anchor, 10, ScrollTarget::Ratio(0.3));
+            let line = target.resolve(layout.lines.len(), layout.lines.len().saturating_sub(10));
+            assert_eq!(line, layout.match_line(&(anchor..anchor + 1)));
+            assert_eq!(
+                target_at_byte(&layout, anchor, 10, ScrollTarget::ChapterEnd),
+                ScrollTarget::ChapterEnd
+            );
+        }
     }
 }

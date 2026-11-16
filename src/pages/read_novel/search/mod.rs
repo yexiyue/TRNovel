@@ -219,6 +219,13 @@ impl ContentLayout {
         self.lines.last().is_some_and(|line| line.spans.is_empty())
     }
 
+    pub fn byte_start(&self, line: usize) -> usize {
+        self.ranges
+            .get(line)
+            .or_else(|| self.ranges.last())
+            .map_or(0, |range| range.start)
+    }
+
     pub fn match_line(&self, target: &Range<usize>) -> usize {
         self.ranges
             .iter()

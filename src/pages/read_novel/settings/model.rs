@@ -1,6 +1,6 @@
 //! Reader preference metadata and edits, independent of modal state and persistence.
 use crate::components::settings::{Control, Row};
-use crate::{Frameline, ReaderDisplayConfig, TocRatio};
+use crate::{Frameline, ReaderDisplayConfig, TocWidth};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum Group {
@@ -37,6 +37,7 @@ pub(crate) enum Setting {
     ParagraphGap,
     Border,
     TocWidth,
+    ResetTocWidth,
     PageOverlap,
     ArrowPaging,
     PageBlank,
@@ -55,6 +56,7 @@ impl Setting {
         Self::ParagraphGap,
         Self::Border,
         Self::TocWidth,
+        Self::ResetTocWidth,
         Self::PageOverlap,
         Self::ArrowPaging,
         Self::PageBlank,
@@ -72,7 +74,16 @@ impl Setting {
             Self::FirstLineIndent => (Group::Layout, "首行缩进", "只缩进段落第一行，不改原文"),
             Self::ParagraphGap => (Group::Layout, "段间空行", "段落之间额外补充的空行数"),
             Self::Border => (Group::Layout, "边框", "选择阅读正文边框样式"),
-            Self::TocWidth => (Group::Layout, "目录占宽", "目录栏占阅读区域的比例"),
+            Self::TocWidth => (
+                Group::Layout,
+                "目录占宽",
+                "按百分点调整，也可拖动目录与正文之间的分隔条",
+            ),
+            Self::ResetTocWidth => (
+                Group::Layout,
+                "重置目录宽度",
+                "恢复默认 50%，不改其它阅读偏好",
+            ),
             Self::PageOverlap => (Group::Paging, "翻页重叠", "翻页时保留上一屏末尾的行数"),
             Self::ArrowPaging => (
                 Group::Paging,
@@ -122,7 +133,8 @@ impl Setting {
             Self::ParagraphGap => format!("{} 行", config.paragraph_gap),
             Self::PageOverlap => format!("{} 行", config.page_overlap),
             Self::Border => config.frameline.label().into(),
-            Self::TocWidth => config.toc_ratio.label().into(),
+            Self::TocWidth => config.toc_width.label(),
+            Self::ResetTocWidth => "恢复 50%".into(),
             Self::Title => on_off(config.show_title),
             Self::BorderTitle => on_off(config.show_frameline_title),
             Self::ReaderHint => on_off(config.show_hint_bar),
@@ -148,7 +160,8 @@ impl Setting {
             | Self::HorizontalMargin
             | Self::FirstLineIndent
             | Self::ParagraphGap
-            | Self::PageOverlap => {
+            | Self::PageOverlap
+            | Self::TocWidth => {
                 let mut lower = *config;
                 self.adjust(&mut lower, -1);
                 let mut upper = *config;
@@ -158,7 +171,8 @@ impl Setting {
                     increase: upper != *config,
                 }
             }
-            Self::Border | Self::TocWidth => Control::Choice,
+            Self::Border => Control::Choice,
+            Self::ResetTocWidth => Control::Action,
             Self::Title => Control::Toggle(config.show_title),
             Self::BorderTitle => Control::Toggle(config.show_frameline_title),
             Self::ReaderHint => Control::Toggle(config.show_hint_bar),
@@ -178,29 +192,19 @@ impl Setting {
                     .position(|v| *v == config.frameline)
                     .unwrap_or(0),
             )),
-            Self::TocWidth => Some((
-                TocRatio::ALL.iter().map(|v| v.label().into()).collect(),
-                TocRatio::ALL
-                    .iter()
-                    .position(|v| *v == config.toc_ratio)
-                    .unwrap_or(0),
-            )),
             _ => None,
         }
     }
     pub fn choose(self, config: &mut ReaderDisplayConfig, index: usize) {
-        match self {
-            Self::Border => {
-                if let Some(value) = Frameline::ALL.get(index) {
-                    config.frameline = *value;
-                }
-            }
-            Self::TocWidth => {
-                if let Some(value) = TocRatio::ALL.get(index) {
-                    config.toc_ratio = *value;
-                }
-            }
-            _ => {}
+        if self == Self::Border
+            && let Some(value) = Frameline::ALL.get(index)
+        {
+            config.frameline = *value;
+        }
+    }
+    pub fn activate(self, config: &mut ReaderDisplayConfig) {
+        if self == Self::ResetTocWidth {
+            config.toc_width = TocWidth::default();
         }
     }
     pub fn adjust(self, config: &mut ReaderDisplayConfig, delta: i32) {
@@ -247,9 +251,8 @@ impl Setting {
                     config.frameline.previous()
                 }
             }
-            Self::TocWidth => {
-                config.toc_ratio = config.toc_ratio.shift(if delta > 0 { 1 } else { -1 })
-            }
+            Self::TocWidth => config.toc_width = config.toc_width.shift(delta.signum()),
+            Self::ResetTocWidth => {}
             Self::Title => config.show_title = delta > 0,
             Self::BorderTitle => config.show_frameline_title = delta > 0,
             Self::ReaderHint => config.show_hint_bar = delta > 0,
@@ -286,5 +289,28 @@ mod tests {
         let (options, _) = Setting::Border.choices(&config).unwrap();
         Setting::Border.choose(&mut config, options.len() - 1);
         assert_eq!(config.frameline, Frameline::None);
+    }
+    #[test]
+    fn toc_percentage_is_numeric_and_reset_only_changes_its_width() {
+        let mut config = ReaderDisplayConfig {
+            toc_width: TocWidth::from_percent(37.25),
+            h_margin: 3,
+            ..Default::default()
+        };
+        assert!(matches!(
+            Setting::TocWidth.row(&config).control,
+            Control::Number { .. }
+        ));
+        Setting::TocWidth.adjust(&mut config, 1);
+        assert_eq!(config.toc_width.percent(), 38.25);
+        Setting::ResetTocWidth.activate(&mut config);
+        assert_eq!(config.toc_width, TocWidth::default());
+        assert_eq!(config.h_margin, 3);
+        let encoded = toml::to_string(&config).unwrap();
+        assert!(encoded.contains("toc_width_percent = 50.0"));
+        assert_eq!(
+            toml::from_str::<ReaderDisplayConfig>(&encoded).unwrap(),
+            config
+        );
     }
 }

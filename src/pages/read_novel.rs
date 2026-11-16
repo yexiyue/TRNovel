@@ -9,7 +9,7 @@ use crate::{
     theme::ReaderTheme,
 };
 use futures::FutureExt;
-use ratatui::layout::{Constraint, Direction, Margin};
+use ratatui::layout::{Constraint, Direction, Margin, Offset};
 use ratatui::text::Line;
 use ratatui_kit::prelude::*;
 use ratatui_kit_keymap::UseKeymapHandler;
@@ -17,6 +17,7 @@ use ratatui_kit_keymap::UseKeymapHandler;
 mod follow;
 mod search;
 mod select_chapter;
+mod splitter;
 pub use select_chapter::*;
 mod read_content;
 pub use read_content::*;
@@ -92,6 +93,8 @@ where
     let mut content_loading = hooks.use_state(|| false);
     let mut info_modal_open = hooks.use_state(|| false);
     let mut scroll_target = hooks.use_state(ScrollTarget::default);
+    let reflow = hooks.use_state(|| None::<ReflowSnapshot>);
+    let mut resize_feedback = hooks.use_state(|| false);
     let follow_suspended = hooks.use_state(|| false);
 
     let (novel, loading, error) = hooks.use_init_state(async move {
@@ -221,7 +224,9 @@ where
     } else {
         String::new()
     };
-    let toc_width = display.toc_ratio.width(width);
+    let pane_width = if size.width > 0 { size.width } else { width };
+    let panes = splitter::PaneLayout::new(pane_width, display.toc_width);
+    let toc_width = panes.map_or(pane_width, |layout| layout.directory);
     let panel_open = panel.get() != Panel::None && is_read_mode.get();
     let panel_layer = hooks.use_input_layer(panel_open, true);
     let page_scope = if panel_open {
@@ -326,6 +331,7 @@ where
         { if is_read_mode.get() {
             element!(View(height: Constraint::Fill(1)){
                 ReadContent(
+                    reflow:Some(reflow),
                     search: search,
                     show_actions: true,
                     is_scroll: panel.get() == Panel::None && !info_modal_open.get(),
@@ -479,18 +485,26 @@ where
                     },
                 )
                 }
+                if let Some(layout)=panes {
+                    splitter::PaneDivider(..splitter::PaneDividerProps {
+                        layout,
+                        active: !info_modal_open.get(),
+                        on_feedback: crate::hooks::callback(move |visible| resize_feedback.set(visible)),
+                    })
                 ReadContent(
+                    reflow:Some(reflow),
                     content: content.read().clone(),
                     book_id: novel.read().as_ref().map(|book|book.get_id()).unwrap_or_default(),
                     chapter_index: current_chapter.get(),
                     chapter_name: chapter_name,
                     chapter_percent: chapter_percent,
-                    width: width.saturating_sub(toc_width),
+                    width: layout.body,
                     height: height,
                     is_loading: content_loading.get(),
                     scroll_target: scroll_target,
                     follow_suspended: follow_suspended,
                 )
+                }
                 ShortcutInfoModal(
                     close_shortcut: display_keys(&reader_keymap, ReaderAction::ToggleInfo),
                     close_on_key: { let keymap = reader_keymap.clone(); move |key| keymap.action_for(key) == Some(ReaderAction::ToggleInfo) },
@@ -512,6 +526,17 @@ where
                 )
             })
         } }
+        // Page-level feedback must not be clipped to the three-column handle.
+        Modal(
+            open: resize_feedback.get() && !is_read_mode.get() && !info_modal_open.get() && panes.is_some(),
+            blocks_lower: Some(false),
+            style: ratatui::style::Style::default().remove_modifier(ratatui::style::Modifier::DIM),
+            placement: Placement::TopLeft,
+            offset: Offset{x:i32::from((pane_width.saturating_sub(26))/2),y:i32::from(size.y)},
+            width: Constraint::Length(26),height: Constraint::Length(1),
+        ) {
+            Text(text:format!("目录 {} · 拖动调整",display.toc_width.label()),style:theme.chapter)
+        }
         // 快捷提示条固定在整屏最后一行,边框之外;关掉时占 0 行。
         View(height: Constraint::Length(hint_rows), margin: Margin::new(1, 0)) {
             widget(Line::from(hint).style(theme.footer).centered())

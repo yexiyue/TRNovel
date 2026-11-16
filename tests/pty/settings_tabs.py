@@ -33,7 +33,7 @@ class App:
             seed(self.root)
         args = [BINARY]
         if novel:
-            (self.root / 'sample.txt').write_text('第一章 测试\n' + '这是用于交互验收的文字。\n' * 200)
+            (self.root / 'sample.txt').write_text(novel if isinstance(novel, str) else '第一章 测试\n' + '这是用于交互验收的文字。\n' * 200)
             args += ['-l', str(self.root)]
         self.screen = pyte.Screen(120, 29)
         self.stream = pyte.Stream(self.screen)

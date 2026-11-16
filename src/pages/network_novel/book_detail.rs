@@ -1,5 +1,5 @@
 use crate::app::navigation::UseAppNavigate;
-use crate::components::ActionButton;
+use crate::components::OutlinedButton;
 use anyhow::anyhow;
 use crossterm::event::{Event, KeyCode, KeyEventKind};
 use parse_book_source::{BookInfo, BookListItem, Engine};
@@ -178,12 +178,12 @@ pub fn BookDetail(mut hooks: Hooks) -> impl Into<AnyElement<'static>> {
             }).into_any()
         }}
         View(
-            height: Constraint::Length(3),
+            height: Constraint::Length(5),
             margin: Margin::new(1,1),
             flex_direction: Direction::Horizontal,
             justify_content: Flex::Center,
         ) {
-            ActionButton(label: if cached { "继续阅读" } else { "开始阅读" }, shortcut: "Enter / L / →", disabled: loading.get() || book_source_parser.read().is_none(), on_press: move |_| open_book())
+            OutlinedButton(label: if cached { "继续阅读" } else { "开始阅读" }, disabled: loading.get() || book_source_parser.read().is_none(), on_press: move |_| open_book())
         }
         WarningModal(
             // 用 Display(非 Debug)展示:登录态失效会清晰提示「登录态已失效,请重新登录」(9.3)。

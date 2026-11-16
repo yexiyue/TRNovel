@@ -111,6 +111,7 @@ pub fn ReaderSettingsModal(
                         picker.set(Some(row.key));
                     }
                 }
+                Control::Action if delta.is_none() => row.key.activate(&mut display.write()),
                 _ => {}
             }
         }

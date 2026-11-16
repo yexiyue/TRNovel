@@ -172,7 +172,7 @@ mod tests {
 
     #[test]
     fn every_reader_and_appearance_field_survives_a_disk_round_trip() {
-        use crate::cache::{BackgroundMode, Frameline, TocRatio};
+        use crate::cache::{BackgroundMode, Frameline, TocWidth};
         use crate::theme::presets::CustomTheme;
         use std::collections::BTreeMap;
 
@@ -192,7 +192,7 @@ mod tests {
             h_margin: 4,
             frameline: Frameline::Rounded,
             show_frameline_title: false,
-            toc_ratio: TocRatio::Quarter,
+            toc_width: TocWidth::from_percent(25.0),
             arrows_page: true,
         };
         let mut colors = BTreeMap::new();

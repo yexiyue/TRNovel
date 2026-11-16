@@ -164,7 +164,11 @@ pub fn Settings(mut hooks: Hooks) -> impl Into<AnyElement<'static>> {
                         }
                     }
                 }
-                Control::Action if delta.is_none() => navigate.push("/theme-setting"),
+                Control::Action if delta.is_none() => match row.key {
+                    Key::Reader(setting) => setting.activate(&mut reader.write()),
+                    Key::Theme => navigate.push("/theme-setting"),
+                    _ => {}
+                },
                 Control::Action => {}
                 Control::ReadOnly => {}
             }

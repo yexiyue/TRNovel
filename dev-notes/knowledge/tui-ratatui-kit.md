@@ -776,8 +776,21 @@ TTSManager 的听书、声音、高级三个页复用父页当帧输入层。声
 
 ### 页面主要动作不应只注册到顶栏菜单
 
-`ActionBar(menu: "分组")` 只向顶栏注册动作，不绘制页内按钮。书籍详情的开始/继续阅读属于主要动作，使用不带 menu 的页内 ActionBar，加载完成前禁用，鼠标和键盘共用同一个打开回调。缓存详情保留章节位置，以“继续阅读”标识。
+`ActionBar(menu: "分组")` 只向顶栏注册动作，不绘制页内按钮。书籍详情的开始/继续阅读属于主要动作，直接绘制页内按钮，加载完成前禁用，鼠标和键盘共用同一个打开回调。缓存详情保留章节位置，以“继续阅读”标识。
 
 详情阅读按钮放在 ScrollView 外的底部固定区域并水平居中，长简介滚动时保持可点击。header 隐藏时全局 ActionHint 仍在第 1 行显示临时提示，底部按钮不会被提示覆盖。全局设置正文直接从 Tabs 开始，不再重复顶栏已有的设置标题。
 
 **相关文件**：`src/pages/network_novel/book_detail.rs`、`src/pages/settings/mod.rs`、`tests/pty/book_detail.py`。详情回归使用隔离 HOME 和 loopback 书源，验证加载门控、hover、鼠标续读和 Enter；不依赖真实书站。
+
+
+### 连续目录宽度与重排锚点
+
+目录偏好为 `TocWidth`（整数基点，序列化为 `toc_width_percent`），不再保留三档枚举或兼容解析。`PaneLayout` 是几何和最小列宽的唯一计算处；三个命中列与目录滚动条独立，鼠标 `use_drag` 以起点累计位移计算，不能把增量误当绝对位置，也不能在每帧重复加总累计位移。任何终端宽/高变化、视图切换或浮层覆盖都清理拖动状态。
+
+连续重排要记住同一原文字节锚点，不能每次把新行首当作下次锚点，否则拖动往返会逐渐向前漂移。`ContentLayout::byte_start` 与 `match_line` 共用原文范围，阅读页持有上一版布局和锚点，`ReadContent` 在相同内容/章节内重排时映射该锚点，跨单栏隐藏和 Tab 重挂载也保留；用户重新滚动后才重新取锚点。章末目标仍贴底，搜索及播放跟随保持自身优先级。
+
+描边页内动作与退出确认共用 `OutlinedButton`，复用主题、稳定回调与整框命中；加载时禁用。不把描边加到顶栏紧凑文字按钮上。
+
+**相关文件**：`src/cache/setting/toc_width.rs`、`src/pages/read_novel/splitter.rs`、`src/pages/read_novel/read_content.rs`、`src/components/button.rs`、`tests/pty/reader_panes.py`。
+
+分隔条的百分比提示由阅读页绘制浮层，不要放在只有三列宽的组件子树中，否则被父级裁剪而不可见。分隔条只向页面报告 hover/拖动反馈状态。

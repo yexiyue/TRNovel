@@ -1,3 +1,4 @@
+use crate::components::OutlinedButton as ExitButton;
 use crossterm::event::{Event, KeyCode, KeyEventKind, MouseButton, MouseEventKind};
 use ratatui::{
     layout::{Alignment, Constraint, Direction, Flex, Margin},
@@ -211,49 +212,6 @@ fn confirm_handler(shared: &SharedHandler<bool>, no_remind: bool) -> Handler<'st
 fn unit_handler(shared: &SharedHandler<()>) -> Handler<'static, ()> {
     let shared = shared.clone();
     Handler::from(move |()| shared.call(()))
-}
-
-#[derive(Props, Default)]
-struct ExitButtonProps {
-    label: String,
-    focused: bool,
-    on_press: Handler<'static, ()>,
-}
-
-/// 确认框按钮:风格与框架 ConfirmModal 一致(边框 + 文字,选中反色加粗)。
-#[component]
-fn ExitButton(props: &mut ExitButtonProps, mut hooks: Hooks) -> impl Into<AnyElement<'static>> {
-    let theme = hooks.use_component_theme::<AppChromeTheme>();
-    let on_press = use_callback(&mut hooks, &mut props.on_press);
-    let hovered = hooks.use_hover();
-    hooks.use_pointer(PointerOptions::default(), move |event| {
-        if let PointerKind::Down(MouseButton::Left) = event.kind {
-            on_press.call(());
-            EventResult::Consumed
-        } else {
-            EventResult::Ignored
-        }
-    });
-
-    let selected = props.focused || hovered;
-    let style = if selected {
-        theme.highlight.add_modifier(Modifier::BOLD)
-    } else {
-        theme.text
-    };
-    let label = if selected {
-        format!(" {} ", props.label)
-    } else {
-        props.label.clone()
-    };
-    let width = Line::from(props.label.as_str()).width() as u16 + 6;
-    element!(Border(
-        width: Constraint::Length(width),
-        height: Constraint::Length(3),
-        border_style: style,
-    ) {
-        Text(text: Line::styled(label, style), alignment: Alignment::Center)
-    })
 }
 
 #[derive(Props, Default)]
