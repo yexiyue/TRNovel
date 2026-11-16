@@ -78,7 +78,7 @@ pub fn tab_at(area: Rect, count: usize, position: Position) -> Option<usize> {
         .position(|r| r.contains(position))
 }
 
-fn control_area(area: Rect, control: Control) -> Rect {
+pub fn control_area(area: Rect, control: Control) -> Rect {
     let available = area.width.saturating_sub(4);
     let desired = match control {
         Control::Toggle(_) => 8,
@@ -134,6 +134,13 @@ pub fn hit<K>(
             }
             Control::Toggle(_) | Control::Choice | Control::Action => {
                 return Some(Hit::Activate(index));
+            }
+            Control::Link => {
+                let text_width =
+                    Line::from(shorten_middle(&row.value, controls.width)).width() as u16;
+                if position.x < controls.x + text_width {
+                    return Some(Hit::Activate(index));
+                }
             }
             _ => {}
         }
@@ -302,6 +309,16 @@ impl<K: Clone> Widget for FormWidget<K> {
                                 buf,
                             );
                         }
+                        Control::Link => {
+                            let style = if self.hover == Some(Hit::Activate(index)) {
+                                self.theme.selected
+                            } else {
+                                self.theme.title
+                            }
+                            .add_modifier(Modifier::UNDERLINED);
+                            Line::styled(shorten_middle(&row.value, controls.width), style)
+                                .render(controls, buf);
+                        }
                         Control::ReadOnly => {
                             Line::styled(&row.value, self.theme.text).render(controls, buf)
                         }
@@ -311,6 +328,36 @@ impl<K: Clone> Widget for FormWidget<K> {
         }
     }
 }
+fn shorten_middle(text: &str, width: u16) -> String {
+    use unicode_width::{UnicodeWidthChar, UnicodeWidthStr};
+    if text.width() <= usize::from(width) {
+        return text.to_owned();
+    }
+    let budget = usize::from(width).saturating_sub(1);
+    let suffix_budget = budget * 2 / 3;
+    let mut suffix = Vec::new();
+    let mut used = 0;
+    for c in text.chars().rev() {
+        let w = c.width().unwrap_or(0);
+        if used + w > suffix_budget {
+            break;
+        }
+        suffix.push(c);
+        used += w;
+    }
+    let mut prefix = String::new();
+    let mut used_prefix = 0;
+    for c in text.chars() {
+        let w = c.width().unwrap_or(0);
+        if used_prefix + w > budget - used {
+            break;
+        }
+        prefix.push(c);
+        used_prefix += w;
+    }
+    format!("{prefix}…{}", suffix.into_iter().rev().collect::<String>())
+}
+
 fn draw_control(
     text: &str,
     area: Rect,

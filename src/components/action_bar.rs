@@ -2,13 +2,7 @@ use crate::theme::AppChromeTheme;
 use ratatui::layout::{Constraint, Direction};
 use ratatui_kit::prelude::*;
 
-#[derive(Clone, Default)]
-struct HoverHint {
-    owner: u64,
-    text: String,
-}
-static NEXT_HINT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(1);
-static HINT: Atom<HoverHint> = Atom::new(HoverHint::default);
+static NEXT_ACTION: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(1);
 
 #[derive(Default, Props)]
 pub struct ActionButtonProps {
@@ -38,46 +32,31 @@ pub fn ActionButton(
         *callback.lock().unwrap_or_else(|e| e.into_inner()) = props.on_press.take();
     }
     let theme = hooks.use_component_theme::<AppChromeTheme>();
-    let mut hint = hooks.use_atom(&HINT);
     let owner = hooks
-        .use_state(|| NEXT_HINT.fetch_add(1, std::sync::atomic::Ordering::Relaxed))
+        .use_state(|| NEXT_ACTION.fetch_add(1, std::sync::atomic::Ordering::Relaxed))
         .get();
     let mut hovered = hooks.use_state(|| false);
     let disabled = props.disabled;
     let label = props.label.clone();
-    let description = if props.shortcut.is_empty() {
-        label.clone()
+    let description = if label.ends_with('▾') {
+        "打开菜单".to_owned()
     } else {
-        format!("{} · 快捷键 {}", label, props.shortcut)
+        label.clone()
     };
     let description = if disabled {
         format!("{description} · 当前不可用")
     } else {
         description
     };
-    hooks.use_effect(
-        move || {
-            if hovered.get() {
-                hint.set(HoverHint {
-                    owner,
-                    text: description.clone(),
-                });
-            } else if hint.read().owner == owner {
-                hint.set(HoverHint::default());
-            }
-        },
-        (
-            hovered.get(),
-            props.label.clone(),
-            props.shortcut.clone(),
-            disabled,
-        ),
+    let anchor = hooks.use_previous_size();
+    super::tooltip::use_tooltip(
+        &mut hooks,
+        hovered.get().then_some(super::tooltip::Hint {
+            text: description,
+            shortcut: props.shortcut.clone(),
+            anchor,
+        }),
     );
-    hooks.use_on_drop(move || {
-        if hint.read().owner == owner {
-            hint.set(HoverHint::default());
-        }
-    });
     let registration = (
         menu_group.clone(),
         props.label.clone(),
@@ -190,17 +169,6 @@ pub fn ActionBar<'a>(
 
 fn actions_per_row(width: u16) -> usize {
     usize::from(width / 20).max(1)
-}
-
-#[component]
-pub fn ActionHint(mut hooks: Hooks) -> impl Into<AnyElement<'static>> {
-    let hint = hooks.use_atom(&HINT);
-    let theme = hooks.use_component_theme::<AppChromeTheme>();
-    let text = hint.read().text.clone();
-    let menu_open = super::action_menu::menu_is_open(&mut hooks);
-    element!(Modal(open: !text.is_empty() && !menu_open, style: ratatui::style::Style::default().remove_modifier(ratatui::style::Modifier::DIM), blocks_lower: Some(false), placement: Placement::TopLeft, offset: ratatui::layout::Offset { x: 0, y: 1 }, width: Constraint::Length((ratatui::text::Line::from(text.clone()).width() + 2) as u16), height: Constraint::Length(1)) {
-        Text(text: text, style: theme.meta_label)
-    })
 }
 
 /// Share one semantic action handler between a keyboard binding and visible buttons.

@@ -1,6 +1,6 @@
 [package]
 name = "trnovel"
-version = "0.18.3"
+version = "0.19.0"
 edition = "2024"
 rust-version = "1.89"
 default-run = "trnovel"
@@ -74,6 +74,7 @@ zeno = { version = "0.3.3", optional = true }
 woff2 = { version = "0.4.0", package = "woff2-patched", optional = true }
 reqwest = { version = "0.13", default-features = false, features = ["rustls"], optional = true }
 rat-menu = "3.1.1"
+open = "5.4.5"
 
 
 [workspace]

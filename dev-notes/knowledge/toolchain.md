@@ -352,3 +352,9 @@ crate 使用 package.include 白名单保留 src、tests、清单/锁文件、�
 阅读器使用 rustls；完整 musl 依赖树没有 openssl-sys、ort、rodio、Candle 或 Talechime core/backends。openssl-probe 仅探测信任根路径，不链接 OpenSSL。Intel 使用 macos-15-intel，ARM64 musl 使用 ubuntu-24.04-arm，Linux musl 安装 musl-tools。改 dist-workspace.toml 后仍执行 dist generate / generate --check；release workflow 的目标矩阵由 plan 动态计算，因此生成文件可能无需变化。CI 安装检查覆盖六个平台，musl 额外要求无 ELF INTERP 并在 Alpine 中执行 CLI。
 
 新增平台的普通阅读无需 worker；听书仍取决于独立 Talechime 是否支持该平台。不能把阅读器平台恢复写成 Talechime 原生模型推理的支持承诺。
+
+### 0.19.0 发布候选与听书重构状态
+
+本轮候选仅升级 TRNovel，parse-book-source 保持 0.7.0；候选说明在 `dev-notes/releases/0.19.0.md`。听书正处于大规模重构，README 与听书指南明确标注暂不保证稳定性与可用性；普通阅读独立于 Talechime。fixture、cargo check 或本地包编译不能作为真实模型稳定性的证明。
+
+`.github/scripts/release.sh` 会执行版本修改、hook、commit、tag 和 push，不适合发布预览。清单提前准备版本后，实际发布须避免再次 bump；git-cliff hook 重写 CHANGELOG 后，要与候选说明核对听书警告与配置变化。`cargo package --locked --allow-dirty -p trnovel` 用于本地候选包及源码编译验收；真正发布重新从提交后的清单打包。固定 cargo-dist 0.32.0 执行 generate --check 和 plan，不手改生成的 workflow。

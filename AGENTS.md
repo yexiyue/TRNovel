@@ -18,6 +18,8 @@ Book sources use structured `trnovel-booksource/v2` JSON and `parse_book_source:
 
 The TUI uses ratatui-kit components and hooks. Routes and root providers live in `src/app/`. Process-wide appearance, reader preferences, TTS handles and keybindings live in `src/state.rs` as atoms; caches that rely on `Drop::save` remain owned by the app. Configurable keyboard actions live in `src/keymap/` and load `~/.trnovel/keybindings.toml`.
 
+Settings share `src/components/settings/`; hover hints use `src/components/tooltip.rs`, and operating-system links use typed destinations in `src/external.rs`. Reuse these components and their mouse/keyboard callbacks; see the TUI notes and `tests/pty/` for interaction acceptance.
+
 Paths are centralized in `src/paths.rs`. `~/.trnovel/config.toml` stores appearance/reader/browser/tts sections through the transactional ConfigStore; data lives in `data/`, rebuildable resources in `cache/`. Talechime owns `~/.talechime/`. Migration of legacy `.novel` files (`src/migration.rs`) is consent-gated: normal startup only stats markers and asks in-app on first run (`src/migration/ui.rs`); `trn migrate` is the explicit interface (`--yes` runs headless). It never replaces new files or deletes originals, and path resolution remains pure. Help/version and non-TUI subcommands do not migrate. Migration, clear and declined markers survive `clear`, including partial migration retries; `clear` preserves preferences, book sources and login state.
 
 ## Commands
@@ -60,4 +62,4 @@ Rust 1.89 or newer is required. Linux reader builds need OpenSSL development lib
 
 `.github/scripts/release.sh` uses cargo-release and git-cliff. Application tags `trnovel-v*` trigger cargo-dist; crate tags also trigger crates.io publication. Change cargo-dist metadata and regenerate `.github/workflows/trnovel-release.yml` rather than editing the generated workflow. npm uses OIDC Trusted Publishing; Homebrew uses its tap token. Both applications use cargo-dist 0.32.0 and one native Cargo dist-workspace.toml each. TRNovel targets Apple Silicon and Intel macOS, x86_64 Linux GNU, x86_64 and ARM64 Linux musl, and x86_64 Windows MSVC. Talechime has its own narrower native inference platform matrix. TRNovel never bundles a worker or audio inference libraries; basic and accelerated variants are retired, and ARM64 musl is part of the unified reader distribution.
 
-Use Conventional Commit messages. PRs should explain the behavior, scope and validation, with persisted-format or schema impacts when relevant. Include screenshots for visible UI changes.
+Use Conventional Commit messages. PRs should explain the behavior, scope and validation, with persisted-format or schema impacts when relevant. Verify visible UI changes with screenshots, but keep acceptance images local in ignored `dev-notes/images/`; commit text evidence and reproduction scripts instead.

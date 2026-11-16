@@ -48,7 +48,8 @@ pub fn Layout(mut hooks: Hooks) -> impl Into<AnyElement<'static>> {
         let trail = trail.read();
         matches!(trail.current_path(), "/local-novel" | "/network-novel")
     };
-    let footer_rows = u16::from(display.show_global_hint && !reading_page);
+    let settings_page = trail.read().current_path() == "/settings";
+    let footer_rows = u16::from(display.show_global_hint && !reading_page && !settings_page);
     let footer_hint = if footer_rows > 0 {
         crate::keymap::other_hint_bar(terminal_width.saturating_sub(2) as usize)
     } else {
@@ -194,7 +195,7 @@ pub fn Layout(mut hooks: Hooks) -> impl Into<AnyElement<'static>> {
             back_disabled: back.is_none(), on_back: move |_| navigate.go(-1),
         )
         crate::components::action_menu::AppMenuPopup
-        crate::components::ActionHint
+        crate::components::tooltip::AppTooltip
         BrowserPromptSlot
         // 放在元素树最后:遮罩和面板盖在所有页面内容之上,鼠标命中顺序也一致。
         crate::components::ConfirmExitModal(

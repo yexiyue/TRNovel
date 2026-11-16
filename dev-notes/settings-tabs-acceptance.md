@@ -45,12 +45,6 @@ uv run tests/pty/settings_tabs.py
 
 下图来自本次真实 PTY 字符网格与颜色导出，不是设计稿：
 
-![顶部标签与分组设置行](images/settings-tabs/settings.png)
-
-![数值控件悬停反馈](images/settings-tabs/hover.png)
-
-![枚举选择浮层](images/settings-tabs/enum-picker.png)
-
-![52×18 的末项焦点与滚动条](images/settings-tabs/compact.png)
-
 本轮不包含 Windows 实机或真实 Talechime 音频验收。
+
+截图仅保留在本地 `dev-notes/images/`（Git 忽略），不随仓库上传；文字验收记录和复现脚本继续入库。

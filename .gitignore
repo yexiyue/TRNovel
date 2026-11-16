@@ -26,3 +26,6 @@ espeak-ng-data
 /.github/scripts/__pycache__/
 /tools/tts/__pycache__/
 /.github/scripts/__pycache__/
+
+# Local UI acceptance screenshots; retain scripts and text records in Git
+/dev-notes/images/

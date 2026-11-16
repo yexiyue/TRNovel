@@ -41,24 +41,12 @@ uv run tests/pty/settings_surfaces.py
 
 复查发现 1 项 P2：组件局部锚点会在窄窗口或 Tab 重挂载时丢失。现由页面持有锚点并按书籍、章节和内容识别，混合段落实测保留同一位置。复查无遗留发现。
 
-下图来自真实 PTY 字符和颜色网格导出，不是设计稿。
-
-![正文左边框 hover 与百分比反馈](images/resizable-reader-panes/hover.png)
-
-![自定义目录宽度](images/resizable-reader-panes/custom-width.png)
-
-![百分比设置和恢复默认](images/resizable-reader-panes/percentage-settings.png)
-
-![窄窗口单栏目录](images/resizable-reader-panes/narrow-directory.png)
-
-![底部描边阅读按钮](images/resizable-reader-panes/reading-button-compact.png)
-
-![无边框模式仅在留白显示临时拖动指示](images/resizable-reader-panes/border-none-hover.png)
-
-![无边框模式移开鼠标后无额外竖线](images/resizable-reader-panes/border-none-rest.png)
+截图由真实 PTY 字符和颜色网格导出。
 
 ## 边框调整后的审查与简化
 
 范围 `7a20f74...78a4d67`。Standards 发现 1 项：页面自行推导热区和提示坐标，违反 `PaneLayout` 集中几何约定；已通过 `resize_regions` 统一正文起点、边框 inset、热区和提示矩形，阅读页只放置组件。`PaneDivider` 改名为 `PaneResizeHandle`，准确表达不再绘制独立分隔线后的职责。Spec 未发现需求缺失、错误实现或范围扩张。此轮仅收拢计算与命名，不改变配置或交互。
 
 简化后复查无遗留发现；全功能 workspace lib/tests/examples、严格 Clippy、格式、严格 rustdoc 和真实 PTY `reader_panes.py` 均通过（各边框样式、header、留白拖动、正文/目录滚动条隔离、捕获取消、重排锚点和持久化）。
+
+截图仅保留在本地 `dev-notes/images/`（Git 忽略），不随仓库上传；文字验收记录和复现脚本继续入库。

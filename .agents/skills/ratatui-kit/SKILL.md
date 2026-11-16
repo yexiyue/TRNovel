@@ -43,6 +43,16 @@ it done** (see *Verifying*) — `cargo check` names every such trivial error pre
 
 ---
 
+## Existing project components
+
+For a scoped change, inspect the application's shared components before adding
+another abstraction. In TRNovel, settings use `src/components/settings/`, hints
+use `src/components/tooltip.rs`, and operating-system destinations are typed in
+`src/external.rs`. Project-specific rules live in
+`dev-notes/knowledge/tui-ratatui-kit.md`; do not infer them from old screenshots.
+For hover hints, resize handles and link hit regions, also read
+[Pointer interactions](references/pointer-events.md).
+
 ## The build workflow
 
 When asked to build, scaffold, or extend a ratatui-kit UI, work in this order:

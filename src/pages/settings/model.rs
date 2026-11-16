@@ -13,6 +13,7 @@ pub enum Key {
     Header,
     ConfirmExit,
     Info,
+    Link(crate::external::Link),
 }
 
 pub use crate::components::settings::Control;
@@ -133,29 +134,14 @@ pub fn rows(
                 })
                 .collect()
         }
-        3 => {
-            let paths = crate::paths::AppPaths::user_default().ok();
-            [
-                ("配置", paths.as_ref().map(|p| p.config())),
-                ("数据", paths.as_ref().map(|p| p.data())),
-                ("缓存", paths.as_ref().map(|p| p.cache())),
-            ]
-            .into_iter()
-            .map(|(label, path)| {
-                let path = path
-                    .map(|p| p.display().to_string())
-                    .unwrap_or_else(|| "无法获取用户目录".to_owned());
-                row(
-                    "本地目录",
-                    Key::Info,
-                    label,
-                    &path,
-                    &path,
-                    Control::ReadOnly,
-                )
-            })
-            .collect()
-        }
+        3 => [
+            ("配置文件", crate::external::Link::Config),
+            ("数据目录", crate::external::Link::Data),
+            ("缓存目录", crate::external::Link::Cache),
+        ]
+        .into_iter()
+        .map(|(label, link)| link_row("本地文件与目录", label, link))
+        .collect(),
         _ => {
             let build = match (cfg!(feature = "network"), cfg!(feature = "tts")) {
                 (true, true) => "本地 + 网络 + 听书",
@@ -163,15 +149,20 @@ pub fn rows(
                 (false, true) => "本地 + 听书",
                 (false, false) => "纯本地",
             };
-            [
-                ("版本", env!("CARGO_PKG_VERSION")),
-                ("构建", build),
-                ("上游仓库", "github.com/yexiyue/TRNovel"),
-                ("许可证", "MIT"),
+            vec![
+                row(
+                    "TRNovel",
+                    Key::Info,
+                    "版本",
+                    env!("CARGO_PKG_VERSION"),
+                    "",
+                    Control::ReadOnly,
+                ),
+                row("TRNovel", Key::Info, "构建", build, "", Control::ReadOnly),
+                link_row("TRNovel", "GitHub 仓库", crate::external::Link::Repository),
+                link_row("TRNovel", "使用文档", crate::external::Link::Documentation),
+                row("TRNovel", Key::Info, "许可证", "MIT", "", Control::ReadOnly),
             ]
-            .into_iter()
-            .map(|(label, value)| row("TRNovel", Key::Info, label, value, value, Control::ReadOnly))
-            .collect()
         }
     }
 }
@@ -192,5 +183,26 @@ fn row(
         value: value.to_owned(),
         detail: detail.to_owned(),
         control,
+    }
+}
+
+fn link_row(group: &'static str, label: &str, link: crate::external::Link) -> Row {
+    match link.target() {
+        Ok(target) => row(
+            group,
+            Key::Link(link),
+            label,
+            &target.display(),
+            &target.description(),
+            Control::Link,
+        ),
+        Err(error) => row(
+            group,
+            Key::Info,
+            label,
+            "不可用",
+            &error.to_string(),
+            Control::ReadOnly,
+        ),
     }
 }

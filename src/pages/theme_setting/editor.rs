@@ -454,8 +454,9 @@ pub(super) fn CustomEditor(
     let detail = rows[selected].detail.clone();
     element!(View(flex_direction:ratatui::layout::Direction::Vertical,margin:ratatui::layout::Margin::new(1,0)) {
         settings::SettingsForm<usize>(..settings::FormProps {rows:Arc::new(rows),selected,focused:true,active:picker.get().is_none(),identity:0,keyboard_revision:keyboard_revision.get(),editor})
-        View(height:Constraint::Length(1)) {Text(text:detail)}
-        View(height:Constraint::Length(1)) {Text(text:"Tab 切换区域 · ↑↓ 选颜色 · ←→ 取色 · 输入 #rrggbb")}
+        if !snapshot.hex_input.is_empty() {
+            View(height:Constraint::Length(1)) {Text(text:detail)}
+        }
         View(height:Constraint::Length(1),flex_direction:ratatui::layout::Direction::Horizontal,gap:2) {
             settings::SettingsButton(..settings::ButtonProps {label:"保存 · Enter".into(),on_press:save})
             settings::SettingsButton(..settings::ButtonProps {label:"取消 · Esc".into(),on_press:cancel})

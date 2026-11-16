@@ -14,6 +14,7 @@ pub enum Control {
     Choice,
     Action,
     ReadOnly,
+    Link,
 }
 #[derive(Clone)]
 pub struct Row<K> {

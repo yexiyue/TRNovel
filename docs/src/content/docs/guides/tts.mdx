@@ -1,12 +1,19 @@
 ---
 title: 听书模式
-lastUpdated: 2026-10-14
+lastUpdated: 2026-11-16
 sidebar:
     order: 7
     badge:
-        text: 新
-        variant: success
+        text: 重构中
+        variant: caution
 ---
+
+import { Aside } from '@astrojs/starlight/components';
+
+<Aside type="caution" title="听书功能正在大规模重构">
+当前听书功能暂不保证稳定性与可用性，接入、模型与操作方式仍可能调整，请等待重构完成后再将其用于日常听书。普通阅读可独立使用，无需安装 Talechime。下文保留当前阅读器的接入说明；具体模型、设备和音色能力以所安装 Talechime 版本的文档及实际输出为准。
+</Aside>
+
 
 听书由独立安装的 [Talechime · 叙铃](https://github.com/yexiyue/talechime#installation) 处理。TRNovel 默认提供听书 UI，仅链接轻量协议库，通过 JSON Lines v7 与 worker 通信；两边应用版本无需相同。普通阅读无需安装 worker。标准包提供 Nano 与 Qwen / VoxCPM / OmniVoice；Apple Silicon 增加 Metal 和 MOSS Candle Metal，Windows/Linux 使用 CPU。CUDA 通过源码构建使用。
 

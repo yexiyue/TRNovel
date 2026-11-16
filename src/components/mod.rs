@@ -10,7 +10,7 @@ pub mod search_input;
 pub mod select;
 
 pub mod action_bar;
-pub use action_bar::{ActionBar, ActionButton, ActionHint};
+pub use action_bar::{ActionBar, ActionButton};
 
 pub mod action_menu;
 
@@ -18,3 +18,5 @@ pub mod settings;
 
 pub mod button;
 pub use button::OutlinedButton;
+
+pub mod tooltip;

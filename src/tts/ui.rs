@@ -258,10 +258,6 @@ pub fn TTSManager(props: &mut TTSManagerProps, mut hooks: Hooks) -> impl Into<An
     } else {
         "声音设置用于下次播放；速度、音量与续章立即生效"
     };
-    let detail = items
-        .get(index.get().min(last))
-        .map(|r| r.detail.clone())
-        .unwrap_or_default();
     let compact = height < 24;
     let tabs_props = settings::TabsProps {
         labels: Arc::new(vec!["播放".into(), "声音".into(), "高级".into()]),
@@ -293,7 +289,6 @@ pub fn TTSManager(props: &mut TTSManagerProps, mut hooks: Hooks) -> impl Into<An
             if !compact && !snapshot.buffer.is_empty(){View(height:Constraint::Length(1)){Text(text:snapshot.buffer.clone(),style:theme.muted)}}
             if !compact && snapshot.sound_capabilities().is_some_and(|caps|caps.backend=="voxcpm"&&caps.model.as_deref()==Some("2b-bf16")){View(height:Constraint::Length(1)){Text(text:"实验模型 · 数值与长期稳定性验收待完成",style:theme.highlight)}}
             settings::SettingsForm<Control>(..form_props)
-            View(height:Constraint::Length(if compact{1}else{2})){Text(text:detail,style:theme.muted,wrap:true)}
         }}
         {enum_view}
         if let Some(kind)=picker.get(){picker::SoundPicker(kind:Some(kind),on_close:move |_|picker.set(None))}

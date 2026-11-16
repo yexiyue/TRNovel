@@ -24,6 +24,8 @@ description: |
 
 **读取方式**：用 Read 工具读对应文件，遵循其中的最佳实践与坑。不确定读哪个时，先 `ls dev-notes/knowledge/` 按文件名判断。
 
+涉及设置、菜单、悬停提示或路径链接时，先查看 `src/components/settings/`、`src/components/tooltip.rs` 与 `src/external.rs` 的现有接口；交互约定及验证入口见 `dev-notes/knowledge/tui-ratatui-kit.md`。复用共享控件与原有业务动作，不按页面另写一套提示、键鼠或打开命令。
+
 ### 2. 开发中：遵循最佳实践
 
 同时参考以下通用 skill（与当前任务相关时自动调用）：
@@ -71,3 +73,10 @@ RUSTDOCFLAGS="-D warnings" cargo doc --no-deps --document-private-items --all-fe
 # 改了会被 tokio::spawn 调用的引擎公开 API（如 Engine::explore/search）后，必须额外：
 cargo build   # 验证主程序 trnovel 的 Future 仍 Send（子 crate 的 lib test 测不出 spawn 上下文）
 ```
+
+
+UI 改动还应按影响面运行 `tests/pty/` 中的实际终端回归：设置标签用 `settings_tabs.py`，阅读/听书/配色弹窗用 `settings_surfaces.py`，分栏用 `reader_panes.py`，提示与系统链接用 `tooltips_links.py`。运行前构建并通过 `TRNOVEL_TEST_BINARY` 指向不再覆盖的副本；PTY 目录由隔离 HOME 管理。文字运行记录放 `dev-notes/`；截图仅放 Git 忽略的 `dev-notes/images/`，不上传，区分 mock 启动参数验收、真实外部程序打开和跨平台实机验收。
+
+### 5. 发布准备
+
+发布前读取 `dev-notes/knowledge/toolchain.md` 的最新适用条目，并核对 `.github/scripts/release.sh`、`release.toml` 和 `dist-workspace.toml`。仅应用变动时排除 `parse-book-source`；不要用完整发布脚本作预览，它会提交、打标签和推送。准备阶段可生成发布说明、检查源码包及 cargo-dist 计划，但不将本地计划成功描述为已发布。听书正在大规模重构期间，README 与听书指南须保留清晰状态提示，发布说明不得把 fixture 或构建成功等同于真实模型的稳定验收。

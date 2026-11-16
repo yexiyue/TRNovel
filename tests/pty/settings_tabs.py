@@ -8,6 +8,7 @@ import fcntl
 import json
 import os
 import pty
+import resource
 import select
 import signal
 import struct
@@ -40,6 +41,7 @@ class App:
         self.decoder = codecs.getincrementaldecoder('utf8')('replace')
         self.pid, self.fd = pty.fork()
         if self.pid == 0:
+            resource.setrlimit(resource.RLIMIT_CORE, (0, 0))
             fcntl.ioctl(0, termios.TIOCSWINSZ, struct.pack('HHHH', 29, 120, 0, 0))
             child_env = os.environ.copy()
             child_env.update(HOME=str(self.root), TERM='xterm-256color', COLORTERM='truecolor')
@@ -89,7 +91,7 @@ class App:
 
     def save(self, name):
         (OUT / (name + '.txt')).write_text(self.text())
-        cells = [[dict(data=self.screen.buffer[y][x].data, fg=self.screen.buffer[y][x].fg, bg=self.screen.buffer[y][x].bg, reverse=self.screen.buffer[y][x].reverse) for x in range(self.screen.columns)] for y in range(self.screen.lines)]
+        cells = [[dict(data=self.screen.buffer[y][x].data, fg=self.screen.buffer[y][x].fg, bg=self.screen.buffer[y][x].bg, reverse=self.screen.buffer[y][x].reverse, underscore=self.screen.buffer[y][x].underscore, bold=self.screen.buffer[y][x].bold) for x in range(self.screen.columns)] for y in range(self.screen.lines)]
         (OUT / (name + '.json')).write_text(json.dumps(cells, ensure_ascii=False))
 
     def config(self):
@@ -104,7 +106,13 @@ class App:
     def close(self):
         try:
             os.kill(self.pid, signal.SIGTERM)
-            os.waitpid(self.pid, 0)
+            deadline = time.monotonic() + 2
+            while time.monotonic() < deadline:
+                if os.waitpid(self.pid, os.WNOHANG)[0]:
+                    break
+                time.sleep(.02)
+            else:
+                os.kill(self.pid, signal.SIGKILL)
         except ProcessLookupError:
             pass
         except ChildProcessError:
@@ -156,7 +164,7 @@ if __name__ == '__main__':
     checks = []
     try:
         # Force overflow: removing the redundant heading frees two form rows.
-        resize(a, 120, 27)
+        resize(a, 120, 23)
         open_settings(a)
         a.save('initial')
         print(a.text(), flush=True)
@@ -219,7 +227,7 @@ if __name__ == '__main__':
         rowclick(a, '框底提示', '[关]')
         a.pump(.7)
         assert a.config()['reader']['show_hint_bar'] is True
-        checks.append('Hint toggle hides and restores the instructions without losing the focused control')
+        checks.append('Reader frame-hint preference remains editable without adding a settings footer')
 
         rowclick(a, '边框', '▾')
         assert '无边框' in a.text(), a.text()
@@ -274,7 +282,7 @@ if __name__ == '__main__':
         a.click(*find(a, '键位'))
         assert '当前绑定' in a.text(), a.text()
         a.click(*find(a, '数据'))
-        assert '本地目录' in a.text(), a.text()
+        assert '本地文件与目录' in a.text(), a.text()
         a.click(*find(a, '关于'))
         assert '许可证' in a.text(), a.text()
         resize(a, 52, 18)

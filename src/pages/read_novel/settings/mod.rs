@@ -39,10 +39,23 @@ pub fn ReaderSettingsModal(
     let close = settings::use_callback(&mut hooks, &mut props.on_close);
     let groups = Group::ALL;
     let current_tab = tab.get().min(groups.len() - 1);
+    let visible = props
+        .viewport_lines
+        .unwrap_or_else(|| visible_lines(height, &config, config.inline_title()));
     let items = Arc::new(
         rows(&config)
             .into_iter()
             .filter(|r| r.key.group() == groups[current_tab])
+            .map(|mut row| {
+                if row.key == Setting::PageOverlap {
+                    row.detail = format!(
+                        "{} · 当前每页滚动 {} 行",
+                        row.detail,
+                        config.page_step(visible)
+                    );
+                }
+                row
+            })
             .collect::<Vec<_>>(),
     );
     let selected = indices.get()[current_tab].min(items.len().saturating_sub(1));
@@ -179,23 +192,6 @@ pub fn ReaderSettingsModal(
     } else {
         element!(View(height:Constraint::Length(0))).into_any()
     };
-    let visible = props
-        .viewport_lines
-        .unwrap_or_else(|| visible_lines(height, &config, config.inline_title()));
-    let detail = items
-        .get(selected)
-        .map(|r| {
-            if r.key == Setting::PageOverlap {
-                format!(
-                    "{} · 当前每页滚动 {} 行",
-                    r.detail,
-                    config.page_step(visible)
-                )
-            } else {
-                r.detail.clone()
-            }
-        })
-        .unwrap_or_default();
     let tabs_props = settings::TabsProps {
         labels: Arc::new(groups.iter().map(|s| s.label().to_owned()).collect()),
         selected: current_tab,
@@ -221,8 +217,6 @@ pub fn ReaderSettingsModal(
                 View(height:Constraint::Length(1),flex_direction:Direction::Horizontal){View(width:Constraint::Fill(1)){widget(Line::from("阅读设置").style(theme.title))}settings::SettingsButton(..settings::ButtonProps{label:"关闭".into(),on_press:close})}
                 settings::SettingsTabs(..tabs_props)
                 settings::SettingsForm<Setting>(..form_props)
-                View(height:Constraint::Length(2)){Text(text:detail,style:theme.muted,wrap:true)}
-                View(height:Constraint::Length(u16::from(config.show_hint_bar))){widget(Line::from("Tab 切换焦点 · ↑↓ 选择 · ←→ 调整 · 空格/Enter 操作 · Esc 关闭").style(theme.muted))}
             }
         }
         {picker_view}

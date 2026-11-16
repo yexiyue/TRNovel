@@ -9,7 +9,7 @@ use crate::{
     theme::ReaderTheme,
 };
 use futures::FutureExt;
-use ratatui::layout::{Constraint, Direction, Margin, Offset, Rect};
+use ratatui::layout::{Constraint, Direction, Margin, Rect};
 use ratatui::text::Line;
 use ratatui_kit::prelude::*;
 use ratatui_kit_keymap::UseKeymapHandler;
@@ -553,17 +553,12 @@ where
                 }
             }
         }
-        // Keep the hint outside the narrow border overlay to avoid clipping.
-        Modal(
+        crate::components::tooltip::Tooltip(
+            immediate: true,
             open: resize_feedback.get() && !is_read_mode.get() && !info_modal_open.get() && panes.is_some(),
-            blocks_lower: Some(false),
-            style: ratatui::style::Style::default().remove_modifier(ratatui::style::Modifier::DIM),
-            placement: Placement::TopLeft,
-            offset: Offset{x:i32::from(resize_regions.hint.x),y:i32::from(resize_regions.hint.y)},
-            width: Constraint::Length(resize_regions.hint.width),height: Constraint::Length(resize_regions.hint.height),
-        ) {
-            widget(Line::from(format!("目录 {} · 拖动调整",display.toc_width.label())).style(theme.chapter).centered())
-        }
+            text: format!("目录 {} · 拖动调整",display.toc_width.label()),
+            anchor: resize_regions.hint,
+        )
         // 快捷提示条固定在整屏最后一行,边框之外;关掉时占 0 行。
         View(height: Constraint::Length(hint_rows), margin: Margin::new(1, 0)) {
             widget(Line::from(hint).style(theme.footer).centered())

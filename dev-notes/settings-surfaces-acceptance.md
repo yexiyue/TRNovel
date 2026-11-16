@@ -29,14 +29,4 @@ uv run tests/pty/settings_surfaces.py
 
 以下图像由真实 PTY 字符及颜色网格导出，非设计稿。此轮不包含 Windows 实机或真实模型、音频验收。
 
-![阅读设置](images/settings-surfaces/reader-layout.png)
-
-![52x18 阅读设置](images/settings-surfaces/reader-compact.png)
-
-![听书声音设置](images/settings-surfaces/tts-sound.png)
-
-![52x14 听书设置](images/settings-surfaces/tts-short.png)
-
-![配色色块](images/settings-surfaces/theme-swatches.png)
-
-![52x18 配色编辑](images/settings-surfaces/theme-compact.png)
+截图仅保留在本地 `dev-notes/images/`（Git 忽略），不随仓库上传；文字验收记录和复现脚本继续入库。

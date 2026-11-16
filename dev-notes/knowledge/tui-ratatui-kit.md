@@ -641,7 +641,7 @@ PointerEvent.position 与 area 共用绘制坐标,嵌套 ScrollView 内为内容
 
 ### 紧凑工具栏、悬停提示与历史导航
 
-`components/action_bar.rs` 的 `ActionButton` 占一行，用 `use_pointer` 左键 Down 激活、Enter/Leave 更新悬停；`layer` 用于输入层内的提交/取消按钮。标签宽度以 Ratatui `Line::width()` 计量并限制为 20 列；完整标签与实际快捷键在悬停时的临时浮层显示，禁用按钮注明不可用。`ActionBar(menu: "分组名")` 不占布局空间，将子按钮注册到共享顶栏菜单；不带 menu 的搜索/弹窗操作条仍按实际宽度分行。常驻顶栏只占一行，返回使用明确的文字按钮，与搜索保留间距，不显示当前页面标题。
+`components/action_bar.rs` 的 `ActionButton` 占一行，用 `use_pointer` 左键 Down 激活、Enter/Leave 更新悬停；`layer` 用于输入层内的提交/取消按钮。标签宽度以 Ratatui `Line::width()` 计量并限制为 20 列；完整标签与实际快捷键在共享 Tooltip 的延迟悬停浮层显示，禁用按钮注明不可用。`ActionBar(menu: "分组名")` 不占布局空间，将子按钮注册到共享顶栏菜单；不带 menu 的搜索/弹窗操作条仍按实际宽度分行。常驻顶栏只占一行，返回使用明确的文字按钮，与搜索保留间距，不显示当前页面标题。
 
 框架 0.12 没有公开历史目的地查询 API。`app/navigation.rs` 只记录历史路径标签，路由状态仍交给框架保存；所有应用导航统一用 `UseAppNavigate`，禁止绕过该入口直接 push/go。标签历史与 RouterProvider 共用 `HISTORY_LENGTH = 10`，同步处理后退、前进、容量截断和后退后新建分支。CLI 初始导航也走同一入口，避免返回按钮猜测业务上级。
 
@@ -778,7 +778,7 @@ TTSManager 的听书、声音、高级三个页复用父页当帧输入层。声
 
 `ActionBar(menu: "分组")` 只向顶栏注册动作，不绘制页内按钮。书籍详情的开始/继续阅读属于主要动作，直接绘制页内按钮，加载完成前禁用，鼠标和键盘共用同一个打开回调。缓存详情保留章节位置，以“继续阅读”标识。
 
-详情阅读按钮放在 ScrollView 外的底部固定区域并水平居中，长简介滚动时保持可点击。header 隐藏时全局 ActionHint 仍在第 1 行显示临时提示，底部按钮不会被提示覆盖。全局设置正文直接从 Tabs 开始，不再重复顶栏已有的设置标题。
+详情阅读按钮放在 ScrollView 外的底部固定区域并水平居中，长简介滚动时保持可点击。header 隐藏时提示仍由根层 AppTooltip 按入口定位，不占正文固定行。全局设置正文直接从 Tabs 开始，不再重复顶栏已有的设置标题。
 
 **相关文件**：`src/pages/network_novel/book_detail.rs`、`src/pages/settings/mod.rs`、`tests/pty/book_detail.py`。详情回归使用隔离 HOME 和 loopback 书源，验证加载门控、hover、鼠标续读和 Enter；不依赖真实书站。
 
@@ -794,3 +794,13 @@ TTSManager 的听书、声音、高级三个页复用父页当帧输入层。声
 **相关文件**：`src/cache/setting/toc_width.rs`、`src/pages/read_novel/splitter.rs`、`src/pages/read_novel/read_content.rs`、`src/components/button.rs`、`tests/pty/reader_panes.py`。
 
 正文边框的拖动热区通过页面级 `Positioned` 透明覆盖（绘制坐标），只含外侧一列留白及已有边框；无边框时宽度只有一列，不挡首列正文。高亮直接修改已有 cell 样式，保留不同边框字符与拐角。窗口 resize 的第一帧 `use_previous_size` 仍是旧矩形，直接索引 buffer 前须与当前 `buffer.area` 取交集。百分比提示由阅读页绘制浮层，不要放在窄热区子树中，否则被父级裁剪；热区只向页面报告 hover/拖动反馈状态。
+
+### 共享 Tooltip 与设置链接
+
+提示复用 `components/tooltip.rs`：来源通过 owner 清理自己的内容；工具栏与共享表单延迟 300ms，离开或换目标取消，拖动百分比使用同一组件即时展示。提示贴近入口并留一行距离，根据终端边界向上/下放置，不占固定行。菜单完整导航说明在展开后显示。全局/阅读/听书设置删除重复底部 detail；错误和实际业务状态保留。
+
+`Control::Link` 是显式动作值区，标签仍只聚焦，命中仅覆盖可见链接文字；鼠标和 Enter 走同一 Editor。显示的 ~、中间省略及 ↗ 不进入真实目标。`external::{Link,Target}` 区分文件、目录和网址，系统调用移出渲染线程，并反馈失败；不得对路径调用 shell。PTY 拦截 macOS open 记录真实 argv，避免测试打开用户程序。
+
+普通 Tooltip 在键盘、点击和滚动后保持收起，直到实际指针移动；不能仅监听提示打开时的输入，或在内容/锚点变化时重置收起状态，否则点击刚结束又会弹出，遮住下一次操作。输入观察者只返回 Ignored，不吞按键或鼠标；即时拖拽提示不受此门控。截断的只读值仍需允许悬停显示全文。
+
+UI 验收截图仅保存于 Git 忽略的 `dev-notes/images/`，不再跟踪或上传；仓库保留文字验收、PTY 脚本和复现命令，避免提交依赖本地图片的 Markdown 链接。`dev-notes/blog/images/` 等正式文章素材不属于此忽略目录。

@@ -12,11 +12,7 @@ use crate::{
 };
 use crossterm::event::{Event, KeyCode, KeyEventKind};
 use model::{Control, Key, Picker, SECTIONS};
-use ratatui::{
-    layout::{Constraint, Margin},
-    text::Line,
-    widgets::{Paragraph, Wrap},
-};
+use ratatui::layout::{Constraint, Margin};
 use ratatui_kit::prelude::*;
 use std::sync::Arc;
 
@@ -83,7 +79,7 @@ pub fn Settings(mut hooks: Hooks) -> impl Into<AnyElement<'static>> {
     let mut keyboard_revision = hooks.use_state(|| 0u64);
     let mut info_open = hooks.use_state(|| false);
     let picker = hooks.use_state(|| None::<Picker>);
-    let feedback = hooks.use_state(String::new);
+    let mut feedback = hooks.use_state(String::new);
     let mut navigate = hooks.use_app_navigate();
     let current_section = section.get();
     let rows = Arc::new(model::rows(
@@ -170,7 +166,22 @@ pub fn Settings(mut hooks: Hooks) -> impl Into<AnyElement<'static>> {
                     _ => {}
                 },
                 Control::Action => {}
-                Control::ReadOnly => {}
+                Control::Link if delta.is_none() => {
+                    if let Key::Link(link) = row.key {
+                        feedback.set(String::new());
+                        tokio::spawn(async move {
+                            let result =
+                                tokio::task::spawn_blocking(move || link.target()?.open()).await;
+                            let message = match result {
+                                Ok(Ok(())) => String::new(),
+                                Ok(Err(error)) => format!("打开失败：{error}"),
+                                Err(error) => format!("打开失败：{error}"),
+                            };
+                            feedback.set(message);
+                        });
+                    }
+                }
+                Control::Link | Control::ReadOnly => {}
             }
         }
     });
@@ -233,14 +244,6 @@ pub fn Settings(mut hooks: Hooks) -> impl Into<AnyElement<'static>> {
     } else {
         element!(View(height:Constraint::Length(0))).into_any()
     };
-    let hint = reader.read().show_hint_bar;
-    let detail = if !feedback.read().is_empty() {
-        feedback.read().clone()
-    } else {
-        rows.get(cursor)
-            .map(|r| r.detail.clone())
-            .unwrap_or_default()
-    };
     let tabs_props = settings::TabsProps {
         labels: Arc::new(SECTIONS.iter().map(|s| (*s).to_owned()).collect()),
         selected: current_section,
@@ -269,8 +272,9 @@ pub fn Settings(mut hooks: Hooks) -> impl Into<AnyElement<'static>> {
             settings::SettingsTabs(..tabs_props)
             View(height:Constraint::Length(1)){}
             settings::SettingsForm<model::Key>(..form_props)
-            View(height:Constraint::Length(2)){widget(Paragraph::new(detail).style(theme.muted).wrap(Wrap{trim:false}))}
-            View(height:Constraint::Length(u16::from(hint))){widget(Line::from("Tab 切换焦点 · ↑↓ 选择 · ←→ 调整 · 空格/Enter 操作 · Esc 返回").style(theme.muted))}
+            if !feedback.read().is_empty() {
+                View(height:Constraint::Length(2)){Text(text:feedback.read().clone(),style:theme.error,wrap:true)}
+            }
         }
         {picker_view}
         ShortcutInfoModal(

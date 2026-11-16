@@ -64,6 +64,36 @@ where
             }
         }
     });
+    let tip = hover.get().filter(|_| active).and_then(|hit| {
+        let row = rows.get(hit.row())?;
+        let controls = view::control_area(area, row.control);
+        let clipped =
+            ratatui::text::Line::from(row.value.as_str()).width() > usize::from(controls.width);
+        if row.detail.is_empty() || (row.detail == row.value && !clipped) || row.detail == row.label
+        {
+            return None;
+        }
+        let line = list
+            .iter()
+            .position(|entry| matches!(entry, view::Entry::Field(index) if *index == hit.row()))?;
+        let y = area.y + u16::try_from(line.checked_sub(offset.get())?).ok()?;
+        if y >= area.bottom() {
+            return None;
+        }
+        let anchor = match hit {
+            Hit::Row(_) => ratatui::layout::Rect::new(area.x + 2, y, 1, 1),
+            _ => view::control_area(
+                ratatui::layout::Rect::new(area.x, y, area.width, 1),
+                row.control,
+            ),
+        };
+        Some(crate::components::tooltip::Hint {
+            text: row.detail.clone(),
+            shortcut: String::new(),
+            anchor,
+        })
+    });
+    crate::components::tooltip::use_tooltip(&mut hooks, tip);
     hooks.use_scrollbar(
         ScrollbarOptions {
             content_length: list.len(),

@@ -36,4 +36,4 @@
 
 PTY 使用隔离 HOME 和固定的全功能二进制，听书使用协议 fixture；不代表真实模型、音频或 Windows 验收。
 
-![任意 hex 颜色与字段预览](images/settings-review/theme-custom-hex.png)
+截图仅保留在本地 `dev-notes/images/`（Git 忽略），不随仓库上传；文字验收记录和复现脚本继续入库。

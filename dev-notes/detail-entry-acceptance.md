@@ -15,8 +15,4 @@ uv run tests/pty/settings_tabs.py
 
 图像来自真实 PTY 的字符/颜色网格导出。
 
-![网络详情常驻阅读按钮与 hover](images/detail-entry/network-detail.png)
-
-![52×18 窗口底部阅读按钮](images/detail-entry/network-detail-compact.png)
-
-![设置页直接显示 Tabs](images/detail-entry/settings.png)
+截图仅保留在本地 `dev-notes/images/`（Git 忽略），不随仓库上传；文字验收记录和复现脚本继续入库。

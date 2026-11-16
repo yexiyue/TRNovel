@@ -150,7 +150,7 @@ fn ActionMenu(props: &mut ActionMenuProps, mut hooks: Hooks) -> impl Into<AnyEle
             } else { EventResult::Ignored }
         }
     });
-    element!(super::ActionButton(label: format!("{name} ▾"), shortcut: "F10 打开菜单 · ↑/↓ 选择 · Enter 执行 · Esc 关闭", on_press: move |_| {
+    element!(super::ActionButton(label: format!("{name} ▾"), shortcut: "F10", on_press: move |_| {
         active.set(Some(ActiveMenu { name: name.clone(), x }));
     }))
 }
@@ -263,8 +263,23 @@ pub fn AppMenuPopup(mut hooks: Hooks) -> impl Into<AnyElement<'static>> {
             ..Default::default()
         });
     }
+    let help = if width >= 42 {
+        "↑↓ 选择 · Enter 确认 · Esc 关闭"
+    } else {
+        "↑↓ · Enter · Esc"
+    };
+    let menu_width = widget
+        .width()
+        .saturating_sub(2)
+        .max(ratatui::text::Line::from(help).width() as u16)
+        .min(width.saturating_sub(2));
     let widget = widget
-        .block(Block::bordered().border_style(theme.title))
+        .block(
+            Block::bordered()
+                .border_style(theme.border)
+                .title_bottom(ratatui::text::Line::styled(help, theme.meta_label)),
+        )
+        .menu_width(menu_width.saturating_sub(2))
         .style(theme.text)
         .highlight_style(theme.highlight.reversed())
         .focus_style(theme.highlight.reversed())

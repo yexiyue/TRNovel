@@ -104,6 +104,29 @@ hooks.use_drag(move |d| {
   clipped through every ancestor scroll viewport. Nested ScrollViews do not hand wheel events outward
   at their limits. Pointer input does not establish keyboard focus.
 
+## Hints, resize handles and links
+
+- Render hints outside narrow buttons or handles so ancestor clipping does not
+  cut them off. Keep them out of layout flow and do not open a blocking input
+  layer. An input observer that dismisses a hint returns `Ignored`; it must not
+  steal the activation key or mouse click.
+- A delayed hint needs cancellation on target change, leave, and unmount. Keep
+  ordinary hints dismissed after keyboard, click or scroll until pointer movement;
+  resetting dismissal merely because content or geometry changed can make a hint
+  reappear while typing. Direct manipulation feedback may update immediately.
+- A transparent border overlay should preserve existing symbols and intersect its
+  draw region with the current buffer before indexing. A previous-frame rectangle
+  can exceed the new buffer on the first frame of a terminal resize.
+- For captured resize gestures that must return to the original width after
+  clamping, preserve the initial pointer and width. Do not treat incremental
+  `DragUpdate.from` as that initial pointer. Keep text and scrollbar hit regions
+  separate from the resize handle. Reflowed reading content needs a stable source
+  anchor, not a fresh line-start anchor on every move.
+- A link's mouse and keyboard actions share the same typed destination. Display
+  abbreviation and link markers must not become launcher arguments. Keep system
+  launching outside drawing, and report failure to the owning UI. Only the visible
+  control activates; labels can retain a separate focus-only action.
+
 ## Built-in component mouse behaviors
 
 All interactive built-ins register pointer handlers **only when the app

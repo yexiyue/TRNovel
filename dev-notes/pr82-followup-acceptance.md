@@ -30,8 +30,6 @@
 
 下列 PNG 从该次真实 PTY 的字符网格与颜色导出，不是设计稿：
 
-![设置页：内容命中与提示开关](images/pr82-followups/settings.png)
-
-![阅读末页：正文最后一行贴底](images/pr82-followups/reader-last-page.png)
-
 本轮验证不包含真实 Talechime 音频输出或 Windows 实机鼠标验收。
+
+截图仅保留在本地 `dev-notes/images/`（Git 忽略），不随仓库上传；文字验收记录和复现脚本继续入库。
