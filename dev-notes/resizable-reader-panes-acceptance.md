@@ -56,3 +56,9 @@ uv run tests/pty/settings_surfaces.py
 ![无边框模式仅在留白显示临时拖动指示](images/resizable-reader-panes/border-none-hover.png)
 
 ![无边框模式移开鼠标后无额外竖线](images/resizable-reader-panes/border-none-rest.png)
+
+## 边框调整后的审查与简化
+
+范围 `7a20f74...78a4d67`。Standards 发现 1 项：页面自行推导热区和提示坐标，违反 `PaneLayout` 集中几何约定；已通过 `resize_regions` 统一正文起点、边框 inset、热区和提示矩形，阅读页只放置组件。`PaneDivider` 改名为 `PaneResizeHandle`，准确表达不再绘制独立分隔线后的职责。Spec 未发现需求缺失、错误实现或范围扩张。此轮仅收拢计算与命名，不改变配置或交互。
+
+简化后复查无遗留发现；全功能 workspace lib/tests/examples、严格 Clippy、格式、严格 rustdoc 和真实 PTY `reader_panes.py` 均通过（各边框样式、header、留白拖动、正文/目录滚动条隔离、捕获取消、重排锚点和持久化）。

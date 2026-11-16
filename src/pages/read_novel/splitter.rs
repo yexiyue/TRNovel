@@ -1,5 +1,9 @@
 //! Directory/body geometry and the reader's resize handle.
-use crate::{cache::TocWidth, state::READER_DISPLAY, theme::AppChromeTheme};
+use crate::{
+    cache::{Frameline, TocWidth},
+    state::READER_DISPLAY,
+    theme::AppChromeTheme,
+};
 use ratatui::{
     buffer::Buffer,
     layout::{Constraint, Rect},
@@ -17,6 +21,12 @@ pub struct PaneLayout {
     pub body: u16,
     pub available: u16,
 }
+/// Drawing regions share the body's origin but keep the hint outside the hit target.
+#[derive(Default)]
+pub struct ResizeRegions {
+    pub handle: Rect,
+    pub hint: Rect,
+}
 impl PaneLayout {
     pub fn new(width: u16, preference: TocWidth) -> Option<Self> {
         let available = width.saturating_sub(GUTTER_WIDTH);
@@ -32,6 +42,24 @@ impl PaneLayout {
             available,
         })
     }
+    pub fn resize_regions(self, page: Rect, frame: Frameline) -> ResizeRegions {
+        let body_x = page.x + self.directory + GUTTER_WIDTH;
+        let inset = frame.inset();
+        ResizeRegions {
+            handle: Rect::new(
+                body_x - GUTTER_WIDTH,
+                page.y,
+                GUTTER_WIDTH + inset,
+                page.height,
+            ),
+            hint: Rect::new(
+                body_x + inset,
+                page.y,
+                self.body.saturating_sub(2 * inset),
+                1,
+            ),
+        }
+    }
     fn clamp_directory(self, width: i32) -> u16 {
         width.clamp(
             i32::from(MIN_DIRECTORY),
@@ -46,13 +74,16 @@ struct DragSession {
     preference: TocWidth,
 }
 #[derive(Props)]
-pub struct PaneDividerProps {
+pub struct PaneResizeHandleProps {
     pub layout: PaneLayout,
     pub active: bool,
     pub on_feedback: crate::hooks::Callback<bool>,
 }
 #[component]
-pub fn PaneDivider(props: &PaneDividerProps, mut hooks: Hooks) -> impl Into<AnyElement<'static>> {
+pub fn PaneResizeHandle(
+    props: &PaneResizeHandleProps,
+    mut hooks: Hooks,
+) -> impl Into<AnyElement<'static>> {
     let theme = hooks.use_component_theme::<AppChromeTheme>();
     let display = hooks.use_atom(&READER_DISPLAY);
     let mut session = hooks.use_state(|| None::<DragSession>);

@@ -9,7 +9,7 @@ use crate::{
     theme::ReaderTheme,
 };
 use futures::FutureExt;
-use ratatui::layout::{Constraint, Direction, Margin, Offset};
+use ratatui::layout::{Constraint, Direction, Margin, Offset, Rect};
 use ratatui::text::Line;
 use ratatui_kit::prelude::*;
 use ratatui_kit_keymap::UseKeymapHandler;
@@ -227,6 +227,19 @@ where
     let pane_width = if size.width > 0 { size.width } else { width };
     let panes = splitter::PaneLayout::new(pane_width, display.toc_width);
     let toc_width = panes.map_or(pane_width, |layout| layout.directory);
+    let resize_regions = panes
+        .map(|layout| {
+            layout.resize_regions(
+                Rect::new(
+                    size.x,
+                    size.y,
+                    pane_width,
+                    reader_height.saturating_sub(hint_rows),
+                ),
+                display.frameline,
+            )
+        })
+        .unwrap_or_default();
     let panel_open = panel.get() != Panel::None && is_read_mode.get();
     let panel_layer = hooks.use_input_layer(panel_open, true);
     let page_scope = if panel_open {
@@ -527,12 +540,12 @@ where
         if !is_read_mode.get() {
             if let Some(layout)=panes {
                 Positioned(
-                    x:size.x + layout.directory,
-                    y:size.y,
-                    width:splitter::GUTTER_WIDTH + display.frameline.inset(),
-                    height:reader_height.saturating_sub(hint_rows),
+                    x:resize_regions.handle.x,
+                    y:resize_regions.handle.y,
+                    width:resize_regions.handle.width,
+                    height:resize_regions.handle.height,
                 ) {
-                    splitter::PaneDivider(..splitter::PaneDividerProps {
+                    splitter::PaneResizeHandle(..splitter::PaneResizeHandleProps {
                         layout,
                         active: !info_modal_open.get(),
                         on_feedback: crate::hooks::callback(move |visible| resize_feedback.set(visible)),
@@ -546,8 +559,8 @@ where
             blocks_lower: Some(false),
             style: ratatui::style::Style::default().remove_modifier(ratatui::style::Modifier::DIM),
             placement: Placement::TopLeft,
-            offset: Offset{x:i32::from(size.x + panes.map_or(0, |layout| layout.directory + splitter::GUTTER_WIDTH + display.frameline.inset())),y:i32::from(size.y)},
-            width: Constraint::Length(panes.map_or(0, |layout| layout.body.saturating_sub(2 * display.frameline.inset()))),height: Constraint::Length(1),
+            offset: Offset{x:i32::from(resize_regions.hint.x),y:i32::from(resize_regions.hint.y)},
+            width: Constraint::Length(resize_regions.hint.width),height: Constraint::Length(resize_regions.hint.height),
         ) {
             widget(Line::from(format!("目录 {} · 拖动调整",display.toc_width.label())).style(theme.chapter).centered())
         }
