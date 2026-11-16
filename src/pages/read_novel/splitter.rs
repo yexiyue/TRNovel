@@ -4,12 +4,11 @@ use ratatui::{
     buffer::Buffer,
     layout::{Constraint, Rect},
     style::Modifier,
-    text::Line,
     widgets::Widget,
 };
 use ratatui_kit::prelude::*;
 
-pub const HANDLE_WIDTH: u16 = 3;
+pub const GUTTER_WIDTH: u16 = 1;
 const MIN_DIRECTORY: u16 = 18;
 const MIN_BODY: u16 = 30;
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -20,7 +19,7 @@ pub struct PaneLayout {
 }
 impl PaneLayout {
     pub fn new(width: u16, preference: TocWidth) -> Option<Self> {
-        let available = width.saturating_sub(HANDLE_WIDTH);
+        let available = width.saturating_sub(GUTTER_WIDTH);
         if available < MIN_DIRECTORY + MIN_BODY {
             return None;
         }
@@ -111,26 +110,36 @@ pub fn PaneDivider(props: &PaneDividerProps, mut hooks: Hooks) -> impl Into<AnyE
         let feedback = props.on_feedback.clone();
         move || feedback.call(false)
     });
-    let content = DividerWidget {
-        style: if highlight {
-            theme.highlight.add_modifier(Modifier::BOLD)
-        } else {
-            theme.border
-        },
+    let content = BorderHighlight {
+        highlight,
+        framed: display.read().frameline != crate::Frameline::None,
+        style: theme.highlight.add_modifier(Modifier::BOLD),
     };
-    element!(View(width:Constraint::Length(HANDLE_WIDTH),height:Constraint::Fill(1)){widget(content)})
+    element!(View(width:Constraint::Fill(1),height:Constraint::Fill(1)){widget(content)})
 }
+/// Transparent overlay: style the existing border cells without replacing their symbols.
 #[derive(Clone)]
-struct DividerWidget {
+struct BorderHighlight {
+    highlight: bool,
+    framed: bool,
     style: ratatui::style::Style,
 }
-impl Widget for DividerWidget {
+impl Widget for BorderHighlight {
     fn render(self, area: Rect, buffer: &mut Buffer) {
+        if !self.highlight || area.is_empty() {
+            return;
+        }
+        let area = Rect::new(area.right() - 1, area.y, 1, area.height).intersection(buffer.area);
+        if area.is_empty() {
+            return;
+        }
+        let x = area.x;
         for y in area.y..area.bottom() {
-            Line::styled("│", self.style).render(
-                Rect::new(area.x + area.width / 2, y, u16::from(area.width > 0), 1),
-                buffer,
-            );
+            let cell = &mut buffer[(x, y)];
+            if !self.framed {
+                cell.set_symbol("│");
+            }
+            cell.set_style(self.style);
         }
     }
 }
@@ -138,13 +147,43 @@ impl Widget for DividerWidget {
 mod tests {
     use super::*;
     #[test]
-    fn geometry_preserves_both_panes_and_a_separate_handle() {
-        assert!(PaneLayout::new(50, TocWidth::default()).is_none());
-        for width in 51..300 {
+    fn hover_preserves_frame_symbols_and_clips_during_resize() {
+        use ratatui::{
+            style::Style,
+            widgets::{Block, Borders},
+        };
+        for frame in crate::Frameline::ALL {
+            if frame == crate::Frameline::None {
+                continue;
+            }
+            let area = Rect::new(0, 0, 10, 6);
+            let mut buffer = Buffer::empty(area);
+            Block::default()
+                .borders(Borders::ALL)
+                .border_set(frame.border_set())
+                .render(area, &mut buffer);
+            let symbols: Vec<_> = (0..6).map(|y| buffer[(0, y)].symbol().to_owned()).collect();
+            BorderHighlight {
+                highlight: true,
+                framed: true,
+                style: Style::new().add_modifier(Modifier::BOLD),
+            }
+            .render(Rect::new(0, 0, 1, 9), &mut buffer);
+            for y in 0..6 {
+                assert_eq!(buffer[(0, y)].symbol(), symbols[usize::from(y)]);
+                assert!(buffer[(0, y)].modifier.contains(Modifier::BOLD));
+                assert!(!buffer[(1, y)].modifier.contains(Modifier::BOLD));
+            }
+        }
+    }
+    #[test]
+    fn geometry_preserves_both_panes_and_one_blank_gutter() {
+        assert!(PaneLayout::new(48, TocWidth::default()).is_none());
+        for width in 49..300 {
             for percent in [1.0, 32.15, 50.0, 99.0] {
                 let layout = PaneLayout::new(width, TocWidth::from_percent(percent)).unwrap();
                 assert!(layout.directory >= 18 && layout.body >= 30);
-                assert_eq!(layout.directory + layout.body + HANDLE_WIDTH, width);
+                assert_eq!(layout.directory + layout.body + GUTTER_WIDTH, width);
             }
         }
     }

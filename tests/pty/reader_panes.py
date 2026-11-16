@@ -19,7 +19,7 @@ def percentage(a):
     return a.config().get('reader', {}).get('toc_width_percent', 50)
 
 def divider(a):
-    available = a.screen.columns - 3
+    available = a.screen.columns - 1
     columns = min(available - 30, max(18, int(available * percentage(a) / 100 + .5)))
     return columns + 1, 10
 
@@ -154,4 +154,44 @@ try:
     a.save('restored-width')
 finally:
     a.close()
-print('PASS: independent hover, capture/clamping/release, stable reflow, resize/mode cancellation, narrow panes, numeric/reset and persisted width')
+# Border styles use the existing glyphs, including corners; the outside gutter
+# is a second drag target without stealing the scrollbar or body text column.
+for style, vertical, corner in [('single', '│', '┌'), ('double', '║', '╔'), ('rounded', '│', '╭'), ('thick', '┃', '┏'), ('none', None, None)]:
+    a = App(f'[appearance]\nshow_header=true\nconfirm_exit=false\n[reader]\nframeline="{style}"\n', novel=NOVEL)
+    try:
+        open_reader(a)
+        x, y = divider(a)
+        gutter = x - 1
+        assert a.screen.buffer[y][gutter].data == ' ', a.text()
+        before = a.config()
+        if vertical:
+            assert a.screen.buffer[y][x].data == vertical, a.text()
+            corners = [(row, a.screen.buffer[row][x].data) for row in range(a.screen.lines) if a.screen.buffer[row][x].data == corner]
+            assert corners, a.text()
+            a.move(x, y)
+            assert a.screen.buffer[y][x].bold, a.text()
+            assert all(a.screen.buffer[row][x].data == glyph for row, glyph in corners)
+        # Hover outside the border highlights it; borderless only paints in the gutter.
+        a.move(gutter, y)
+        assert a.screen.buffer[y][gutter].data == (' ' if vertical else '│'), a.text()
+        assert '拖动调整' in a.text(), a.text()
+        assert a.config() == before
+        a.save('border-' + style + '-hover')
+        a.move(x + 2, y)
+        assert '拖动调整' not in a.text(), a.text()
+        assert a.screen.buffer[y][gutter].data == ' '
+        # Body text and TOC scrollbar must not initiate horizontal resizing.
+        for target in [x if vertical is None else x + 1, gutter - 1]:
+            pointer(a, 0, target, y)
+            pointer(a, 32, target + 8, y)
+            release(a, target + 8, y)
+            assert percentage(a) == 50, a.config()
+        pointer(a, 0, gutter, y)
+        pointer(a, 32, gutter + 6, y)
+        release(a, gutter + 6, y)
+        assert percentage(a) > 50, a.config()
+        a.move(0,0)
+        a.save('border-' + style + '-rest')
+    finally:
+        a.close()
+print('PASS: border/gutter hover and capture, every frame style, corners, borderless text/scrollbar isolation, reflow, resize cancellation and persistence')

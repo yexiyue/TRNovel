@@ -486,11 +486,7 @@ where
                 )
                 }
                 if let Some(layout)=panes {
-                    splitter::PaneDivider(..splitter::PaneDividerProps {
-                        layout,
-                        active: !info_modal_open.get(),
-                        on_feedback: crate::hooks::callback(move |visible| resize_feedback.set(visible)),
-                    })
+                    View(width:Constraint::Length(splitter::GUTTER_WIDTH))
                 ReadContent(
                     reflow:Some(reflow),
                     content: content.read().clone(),
@@ -526,16 +522,34 @@ where
                 )
             })
         } }
-        // Page-level feedback must not be clipped to the three-column handle.
+        // Positioned uses drawing coordinates. Only the gutter and existing border are hit;
+        // the directory scrollbar and the first body text column remain outside the overlay.
+        if !is_read_mode.get() {
+            if let Some(layout)=panes {
+                Positioned(
+                    x:size.x + layout.directory,
+                    y:size.y,
+                    width:splitter::GUTTER_WIDTH + display.frameline.inset(),
+                    height:reader_height.saturating_sub(hint_rows),
+                ) {
+                    splitter::PaneDivider(..splitter::PaneDividerProps {
+                        layout,
+                        active: !info_modal_open.get(),
+                        on_feedback: crate::hooks::callback(move |visible| resize_feedback.set(visible)),
+                    })
+                }
+            }
+        }
+        // Keep the hint outside the narrow border overlay to avoid clipping.
         Modal(
             open: resize_feedback.get() && !is_read_mode.get() && !info_modal_open.get() && panes.is_some(),
             blocks_lower: Some(false),
             style: ratatui::style::Style::default().remove_modifier(ratatui::style::Modifier::DIM),
             placement: Placement::TopLeft,
-            offset: Offset{x:i32::from((pane_width.saturating_sub(26))/2),y:i32::from(size.y)},
-            width: Constraint::Length(26),height: Constraint::Length(1),
+            offset: Offset{x:i32::from(size.x + panes.map_or(0, |layout| layout.directory + splitter::GUTTER_WIDTH + display.frameline.inset())),y:i32::from(size.y)},
+            width: Constraint::Length(panes.map_or(0, |layout| layout.body.saturating_sub(2 * display.frameline.inset()))),height: Constraint::Length(1),
         ) {
-            Text(text:format!("目录 {} · 拖动调整",display.toc_width.label()),style:theme.chapter)
+            widget(Line::from(format!("目录 {} · 拖动调整",display.toc_width.label())).style(theme.chapter).centered())
         }
         // 快捷提示条固定在整屏最后一行,边框之外;关掉时占 0 行。
         View(height: Constraint::Length(hint_rows), margin: Margin::new(1, 0)) {
