@@ -358,3 +358,7 @@ crate 使用 package.include 白名单保留 src、tests、清单/锁文件、�
 本轮候选仅升级 TRNovel，parse-book-source 保持 0.7.0；候选说明在 `dev-notes/releases/0.19.0.md`。听书正处于大规模重构，README 与听书指南明确标注暂不保证稳定性与可用性；普通阅读独立于 Talechime。fixture、cargo check 或本地包编译不能作为真实模型稳定性的证明。
 
 `.github/scripts/release.sh` 会执行版本修改、hook、commit、tag 和 push，不适合发布预览。清单提前准备版本后，实际发布须避免再次 bump；git-cliff hook 重写 CHANGELOG 后，要与候选说明核对听书警告与配置变化。`cargo package --locked --allow-dirty -p trnovel` 用于本地候选包及源码编译验收；真正发布重新从提交后的清单打包。固定 cargo-dist 0.32.0 执行 generate --check 和 plan，不手改生成的 workflow。
+
+### GitHub Apple Silicon runner 的发行修复（2026-11-16）
+
+cargo-dist 0.32.0 默认的 macos-14 已被 GitHub 停用，plan/generate --check 不会探测托管 runner 是否仍可用。TRNovel 在 dist-workspace.toml 显式配置 aarch64-apple-darwin = macos-15，Intel 继续 macos-15-intel，再由 dist generate 生成 workflow，不能手改生成文件。0.19.0 的 crates.io 发布成功而安装包流水线失败，用户要求保持 0.19.0，不重打或移动标签；恢复时临时使用 dispatch-releases 生成手动发布流程，使用修正 runner 的主分支补齐相同版本安装包，随后恢复 tag 自动触发。不能仅凭某个渠道成功宣称整体发版完成。

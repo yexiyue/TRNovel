@@ -4,6 +4,7 @@ members = ["cargo:."]
 [dist]
 cargo-dist-version = "0.32.0"
 ci = "github"
+dispatch-releases = true
 recursive-tarball = false
 packages = ["trnovel"]
 precise-builds = true
@@ -24,5 +25,6 @@ libssl-dev = '*'
 pkg-config = '*'
 
 [dist.github-custom-runners]
+aarch64-apple-darwin = "macos-15"
 x86_64-apple-darwin = "macos-15-intel"
 aarch64-unknown-linux-musl = "ubuntu-24.04-arm"
