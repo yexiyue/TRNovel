@@ -4,7 +4,6 @@ members = ["cargo:."]
 [dist]
 cargo-dist-version = "0.32.0"
 ci = "github"
-dispatch-releases = true
 recursive-tarball = false
 packages = ["trnovel"]
 precise-builds = true
